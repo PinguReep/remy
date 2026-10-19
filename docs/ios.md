@@ -81,5 +81,9 @@ tag) avant l'échéance.
 
 - Bundle ID `com.pingureep.remy` · iOS 17 minimum · iPhone uniquement.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
-- Signature : automatique dans le cloud via la clé API, aucun certificat à gérer.
+- Signature : automatique via la clé API. Chaque build crée un certificat de
+  développement sur une machine jetable ; le workflow TestFlight révoque ces
+  certificats « Created via API » avant d'archiver (`scripts/asc-certificats.mjs`),
+  sinon Apple refuse au-delà de son plafond. Lister sans rien toucher :
+  `node scripts/asc-certificats.mjs` (avec les variables ASC_*).
 - Numéro de build = numéro d'exécution du workflow (toujours croissant).

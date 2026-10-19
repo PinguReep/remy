@@ -1,0 +1,151 @@
+# Prototypes de design du Lot 1 (J1.1) : compile l'app, ouvre chaque prototype
+# sur un simulateur (données FICTIVES, sans serveur) et rapporte des captures
+# et deux vidéos de démonstration des gestes. Rien n'est signé ni envoyé.
+#
+# Quand : à chaque envoi sur la branche du Lot 1 qui touche aux prototypes, ou
+# à la demande. Une minute macOS compte pour dix dans le quota : on n'envoie
+# que des lots de changements cohérents.
+
+name: iOS — prototypes de design
+
+on:
+  push:
+    branches: [claude/lot-1-design]
+    paths:
+      - "ios-native/Remy/Prototypes/**"
+      - "ios-native/Remy/App/RemyApp.swift"
+      - ".github/workflows/ios-prototypes.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-prototypes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prototypes:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/outils-ios
+
+      - name: Générer le projet Xcode
+        working-directory: ios-native
+        run: xcodegen generate
+
+      - name: Compiler pour le simulateur
+        working-directory: ios-native
+        run: |
+          set -o pipefail
+          xcodebuild -project Remy.xcodeproj -scheme Remy -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | grep -E "error:|warning: .*Prototypes/|BUILD (SUCCEEDED|FAILED)" || true
+          # L'exécutable, pas seulement le dossier : un échec de compilation laisse
+          # un Remy.app vide, que l'installation refusait bien plus loin.
+          test -f build/Build/Products/Debug-iphonesimulator/Remy.app/Remy
+
+      - name: Captures et vidéos
+        working-directory: ios-native
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          ios=[(k,v) for k,v in d.items() if 'iOS' in k]
+          ios.sort(key=lambda kv: kv[0])
+          for k,v in reversed(ios):
+              iphones=[d for d in v if d['name'].startswith('iPhone')]
+              grands=[d for d in iphones if d['name'].endswith(' Pro Max')] or [d for d in iphones if d['name'].endswith(' Plus')]
+              pro=[d for d in iphones if d['name'].endswith(' Pro')]
+              choix=(grands or pro or iphones)
+              if choix:
+                  print(choix[-1]['udid']); sys.exit()
+          ")
+          echo "Simulateur : $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          # L'heure de la journée fictive des prototypes.
+          xcrun simctl status_bar "$UDID" override --time "10:40" --batteryState charged --batteryLevel 100 --cellularBars 4
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Remy.app
+          # Sans quoi le premier clavier affiche l'astuce « Speed up your typing… ».
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
+          mkdir -p captures videos
+          lancer() { # direction nav écran [démo]
+            xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
+            SIMCTL_CHILD_REMY_PROTO="$1" SIMCTL_CHILD_REMY_PROTO_NAV="$2" SIMCTL_CHILD_REMY_PROTO_ECRAN="$3" \
+            SIMCTL_CHILD_REMY_PROTO_DEMO="${4:-0}" xcrun simctl launch "$UDID" com.pingureep.remy > /dev/null
+          }
+          verifier() {
+            EN_COURS=$(xcrun simctl spawn "$UDID" launchctl list)
+            if ! grep -q "com.pingureep.remy" <<<"$EN_COURS"; then
+              echo "::error::Le prototype ne tourne plus après « $1 » (crash ?)"
+              exit 1
+            fi
+          }
+          capture() { # nom apparence direction nav écran
+            xcrun simctl ui "$UDID" appearance "$2"
+            lancer "$3" "$4" "$5"
+            sleep 4
+            xcrun simctl io "$UDID" screenshot "captures/$1.png" > /dev/null
+            verifier "$1"
+          }
+          # Premier clavier « à blanc » : l'astuce de saisie, si elle s'affiche, part ici.
+          lancer A carnet capture
+          sleep 4
+          for D in A B; do
+            capture "$D-01-accueil-clair" light $D carnet accueil
+            capture "$D-02-accueil-sombre" dark $D carnet accueil
+            capture "$D-03-gerer-clair" light $D carnet gerer
+            capture "$D-04-journee-clair" light $D carnet planning
+            capture "$D-05-capture-clair" light $D carnet capture
+            capture "$D-06-termine-clair" light $D carnet libre
+            capture "$D-07-boite-clair" light $D carnet boite
+            capture "$D-08-remy-clair" light $D carnet remy
+            capture "$D-09-carnet-clair" light $D carnet tiers
+            capture "$D-10-carnet-liste-clair" light $D carnet detail
+            capture "$D-11-projets-clair" light $D projets tiers
+            capture "$D-12-projet-clair" light $D projets detail
+            capture "$D-13-carnet-sombre" dark $D carnet tiers
+            capture "$D-14-gerer-sombre" dark $D carnet gerer
+          done
+          video() { # nom direction nav
+            xcrun simctl ui "$UDID" appearance light
+            xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
+            sleep 1
+            xcrun simctl io "$UDID" recordVideo --codec=h264 --force "videos/$1.mp4" &
+            REC=$!
+            sleep 2
+            lancer "$2" "$3" accueil 1
+            sleep 33
+            kill -INT $REC
+            wait $REC || true
+            verifier "$1"
+          }
+          video A-demo-carnet A carnet
+          video B-demo-projets B projets
+          ls -la captures videos
+
+      - name: Captures en JPEG
+        if: always()
+        working-directory: ios-native
+        run: |
+          mkdir -p captures/jpeg
+          for f in captures/*.png; do [ -f "$f" ] && sips -s format jpeg -s formatOptions 82 -Z 1500 "$f" --out "captures/jpeg/$(basename "${f%.png}").jpg" > /dev/null; done
+          ls -la captures/jpeg || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prototypes-captures
+          path: ios-native/captures/jpeg/
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prototypes-videos
+          path: ios-native/videos/
+          retention-days: 14

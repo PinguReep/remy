@@ -5,6 +5,10 @@ import RemyCore
 @main
 struct RemyApp: App {
     @State private var app: AppModel
+    /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
+    /// prototype sur données fictives, sans serveur (captures de la CI).
+    @State private var proto: ProtoEtat?
+    private let reseau = SurveillanceReseau()
     /// « auto » suit l'iPhone ; « clair » ou « sombre » forcent l'apparence.
     @AppStorage("theme") private var theme = "auto"
 
@@ -13,7 +17,8 @@ struct RemyApp: App {
         // Par défaut, l'app parle au serveur de production.
         let env = ProcessInfo.processInfo.environment
         let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.urlProduction
-        let modele = AppModel(api: ClientAPI(base: base))
+        // La journée et les gestes pas encore envoyés restent sur l'iPhone (J1.2).
+        let modele = AppModel(api: ClientAPI(base: base), rangement: Rangement.parDefaut())
         modele.nomAppareil = UIDevice.current.name
         // Un seul micro pour la dictée et l'appel : l'un coupe l'autre.
         let micro = MicroiPhone()
@@ -21,14 +26,20 @@ struct RemyApp: App {
         modele.appel.micro = micro
         modele.appel.voix = VoixiPhone()
         _app = State(initialValue: modele)
+        _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
+        reseau.demarrer(modele)
     }
 
     var body: some Scene {
         WindowGroup {
-            RacineView()
-                .environment(app)
-                .tint(Palette.encre)
-                .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+            if let proto {
+                ProtoRacine(etat: proto)
+            } else {
+                RacineView()
+                    .environment(app)
+                    .tint(Palette.encre)
+                    .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+            }
         }
     }
 }
@@ -39,6 +50,10 @@ struct RacineView: View {
     var body: some View {
         ZStack {
             Palette.fond.ignoresSafeArea()
+            if ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "perf-saisie" {
+                // CI : mesure de la frappe, sans tour ni connexion.
+                MesureSaisie()
+            } else {
             switch app.phase {
             case .demarrage:
                 Wordmark(taille: 44)
@@ -49,10 +64,11 @@ struct RacineView: View {
                 OngletsView()
                     .transition(.opacity)
             }
+            }
         }
         // Au-dessus de la barre d'onglets, et du composeur dans l'onglet Rémy.
         .overlay(alignment: .bottom) {
-            ToastView(marge: app.phase != .pret ? 24 : app.onglet == .remy ? 150 : 72)
+            ToastView(marge: app.phase != .pret ? 24 : app.onglet == .remy ? 176 : 96)
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
@@ -135,7 +151,10 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "remy-fil":
+        case "conversations", "retenir":
+            app.chat.fermer()
+            app.onglet = .remy
+        case "remy-fil", "ajuster", "ajuster-rappel":
             // Un fil précis (REMY_DEMO_ANCRE = son identifiant).
             if let id = env["REMY_DEMO_ANCRE"] { await app.ouvrirConversation(id) }
         case "appel", "dictee":
@@ -152,6 +171,15 @@ enum Demo {
         case "reglages":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
+        case "projets", "liste", "rappels", "filtre", "noeud":
+            app.onglet = .projets
+        case "cocher":
+            // J1.2, tour coupée : la coche reste sur l'iPhone et le dit.
+            app.onglet = .aujourdhui
+            if let t = app.tableau.journee?.aFaire?.first ?? app.tableau.journee?.retard?.items.first {
+                app.tableau.delaiAnnulation = 0
+                await app.tableau.terminer(id: t.id, titre: t.titre)
+            }
         default:
             app.onglet = .aujourdhui
         }

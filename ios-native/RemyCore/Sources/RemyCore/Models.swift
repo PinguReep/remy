@@ -23,13 +23,48 @@ public struct ConversationResume: Codable, Identifiable, Equatable, Sendable {
     public var updatedAt: Millis?
     public var pinned: Bool?
     public var origine: Origine?
+    /// Nombre de messages et qui a parlé en dernier (« non lus », tour du 18/10).
+    public var messages: Int?
+    public var dernier: String?
 
-    public init(id: String, title: String, updatedAt: Millis? = nil, pinned: Bool? = nil, origine: Origine? = nil) {
+    public init(id: String, title: String, updatedAt: Millis? = nil, pinned: Bool? = nil, origine: Origine? = nil,
+                messages: Int? = nil, dernier: String? = nil) {
         self.id = id
         self.title = title
         self.updatedAt = updatedAt
         self.pinned = pinned
         self.origine = origine
+        self.messages = messages
+        self.dernier = dernier
+    }
+}
+
+/// Où ranger un fil dans l'historique (Sam, 18/10) : aujourd'hui, les sept
+/// derniers jours, avant.
+public enum PeriodeFil: String, CaseIterable, Sendable {
+    case epingles = "Épinglées"
+    case aujourdhui = "Aujourd'hui"
+    case semaine = "7 derniers jours"
+    case avant = "Plus ancien"
+
+    public static func de(_ c: ConversationResume, maintenant: Date = Date()) -> PeriodeFil {
+        if c.pinned == true { return .epingles }
+        guard let m = c.updatedAt else { return .avant }
+        let debut = Format.debutDuJour(maintenant)
+        if m >= debut.millis { return .aujourdhui }
+        let semaine = Format.calendrier.date(byAdding: .day, value: -6, to: debut) ?? debut
+        return m >= semaine.millis ? .semaine : .avant
+    }
+}
+
+/// Une info que Rémy propose de retenir d'un long texte (à cocher).
+public struct InfoProposee: Codable, Sendable, Equatable, Identifiable, Hashable {
+    public var texte: String
+    public var section: String?
+    public var id: String { texte }
+    public init(texte: String, section: String? = nil) {
+        self.texte = texte
+        self.section = section
     }
 }
 
@@ -143,6 +178,11 @@ public struct Proposition: Codable, Equatable, Sendable {
     public var annulee: Bool?
     /// État local : ce que « Annuler » n'a pas pu défaire.
     public var annulationRatee: [Echec]?
+    /// Ajustée par Sam avant de dire oui (date, durée, catégorie…) : ces
+    /// actions-là partiront (18/10).
+    public var ajustee: Bool?
+    /// Ce que Rémy avait proposé, avant ajustement (la tour l'envoie).
+    public var actionsOrigine: [ActionProposee]?
 
     public init(id: String? = nil, source: String?, resume: String?, actions: [ActionProposee], statut: String? = nil,
                 ledgerId: String? = nil, index: Int? = nil, bilan: Bilan? = nil, annulee: Bool? = nil) {
@@ -158,6 +198,12 @@ public struct Proposition: Codable, Equatable, Sendable {
     }
 
     public var appliquee: Bool { statut == "applique" }
+    /// Tout a été rangé en rappels : plus rien à envoyer à Motion.
+    public var convertie: Bool { statut == "converti" }
+    /// Encore modifiable : ni appliquée, ni refusée, ni rangée.
+    public var ajustable: Bool { !appliquee && !refusee && !convertie }
+    /// Combien de lignes Sam a rangées en rappels (elles ont quitté la proposition).
+    public var rangeesEnRappels: Int { max(0, (actionsOrigine?.count ?? actions.count) - actions.count) }
     /// « Non merci » enregistré : la carte ne revient pas.
     public var refusee: Bool { statut == "refuse" }
     /// Rien n'a pu être écrit : la carte reste, avec la raison, et peut être retentée.
@@ -218,6 +264,10 @@ public struct ActionProposee: Codable, Equatable, Sendable {
     public var id: String?
     /// Les notes que Rémy joint à la tâche : renvoyées telles quelles à l'application.
     public var description: String?
+    /// Sa place dans la proposition d'origine (une proposition ajustée la garde).
+    public var rang: Int?
+    /// Catégories (identifiants d'étiquettes) que la tâche gardera, créée.
+    public var etiquettes: [String]?
 
     public init(type: String? = nil, nom: String? = nil, nouveau_nom: String? = nil, titre: String? = nil,
                 nouveau_titre: String? = nil, echeance: String? = nil, debut: String? = nil, fin: String? = nil,
@@ -351,12 +401,79 @@ public struct TableauDeBord: Codable, Sendable, Equatable {
     public var memoire: ResumeMemoire?
     public var couts: ResumeCouts?
     public var systeme: Systeme?
+    /// Le conseil « maintenant » réfléchi par GLM sur la tour (conseil-v1).
+    public var conseil: ConseilTour?
+    /// Les parties illisibles laissées de côté (« activite », « journee.items (1) ») :
+    /// l'écran s'affiche sans elles et le dit. Jamais envoyé ni gardé.
+    public var illisibles: [String] = []
+
+    enum CodingKeys: String, CodingKey {
+        case maintenant, briefing, journee, activite, setup, memoire, couts, systeme, conseil
+    }
+
+    /// Toutes les parties illisibles, y compris dans la journée et les sujets.
+    public var partiesIllisibles: [String] {
+        illisibles
+            + (journee?.illisibles ?? []).map { "journee." + $0 }
+            + (briefing?.illisibles ?? []).map { "briefing." + $0 }
+    }
+}
+
+// Décodage tolérant (J1.2, défaut n°18) : une section illisible devient nil,
+// un élément illisible est sauté. On perd une ligne, jamais tout l'écran.
+extension TableauDeBord {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        maintenant = c.souple(Millis.self, .maintenant, &i)
+        briefing = c.souple(Briefing.self, .briefing, &i)
+        journee = c.souple(Journee.self, .journee, &i)
+        activite = c.souple(Activite.self, .activite, &i)
+        setup = c.souple(EtatOnboarding.self, .setup, &i)
+        memoire = c.souple(ResumeMemoire.self, .memoire, &i)
+        couts = c.souple(ResumeCouts.self, .couts, &i)
+        systeme = c.souple(Systeme.self, .systeme, &i)
+        conseil = c.souple(ConseilTour.self, .conseil, &i)
+        illisibles = i
+    }
+}
+
+/// GET /api/conseil : le dernier conseil gardé par la tour pour ce type, s'il
+/// correspond encore à la situation (`aJour`), et si un calcul tourne.
+public struct ConseilTour: Codable, Sendable, Equatable {
+    public struct Texte: Codable, Sendable, Equatable {
+        public var texte: String
+        public var pourquoi: [String]?
+        public var tache: String?
+        public var genereA: Millis?
+        public var source: String?
+    }
+    public var type: String?
+    public var conseil: Texte?
+    public var aJour: Bool?
+    public var enCours: Bool?
+    public var disponible: Bool?
+    public var raison: String?
 }
 
 public struct Briefing: Codable, Sendable, Equatable {
     public var text: String?
     public var generatedAt: Millis?
     public var items: [Sujet]?
+    public var illisibles: [String] = []
+
+    enum CodingKeys: String, CodingKey { case text, generatedAt, items }
+}
+
+extension Briefing {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        text = c.souple(String.self, .text, &i)
+        generatedAt = c.souple(Millis.self, .generatedAt, &i)
+        items = c.listeSouple(Sujet.self, .items, &i)
+        illisibles = i
+    }
 }
 
 public struct Sujet: Codable, Sendable, Equatable, Identifiable {
@@ -379,6 +496,76 @@ public struct Journee: Codable, Sendable, Equatable {
     public var aFaire: [TacheResume]?
     public var retard: Retard?
     public var sources: Sources?
+    /// Fraîcheur des tâches Motion, dite par la tour (Lot 1, motion-etat-v1).
+    public var motion: EtatMotion?
+    public var illisibles: [String] = []
+
+    enum CodingKeys: String, CodingKey { case jour, minute, items, toute, aFaire, retard, sources, motion }
+}
+
+/// « Tâches d'il y a 4 min : Motion limite les requêtes ». L'état vient de la
+/// tour, qui seule sait si c'est le quota, une panne ou une mise à jour.
+public struct EtatMotion: Codable, Sendable, Equatable {
+    /// ok, maj, quota, menage, panne, reseau, auth, attente, off
+    public var etat: String
+    public var luA: Millis?
+    public var raison: String?
+    public var quota: Quota?
+
+    public struct Quota: Codable, Sendable, Equatable {
+        public var utilise: Int
+        public var max: Int
+    }
+
+    public init(etat: String, luA: Millis? = nil, raison: String? = nil) {
+        self.etat = etat
+        self.luA = luA
+        self.raison = raison
+    }
+
+    /// Ce que l'accueil dit (nil : rien à dire). Une liste de moins de 3 min
+    /// sans souci ne mérite pas de bandeau.
+    public func phrase(maintenant: Millis) -> String? {
+        let age = luA.map { max(0, Int((maintenant - $0) / 60_000)) }
+        let depuis = age.map { $0 < 1 ? "à l'instant" : "il y a \(Format.duree(minutes: $0))" }
+        let liste = depuis.map { "Tâches Motion lues \($0)" }
+        switch etat {
+        case "auth":
+            return "Motion refuse la clé de la tour : vérifie MOTION_API_KEY dans remy.env."
+        case "quota":
+            return (liste.map { $0 + " : " } ?? "") + "Motion limite les requêtes, mise à jour dès que possible."
+        case "menage":
+            guard let a = age, a >= 3 else { return nil }
+            return (liste ?? "Tâches Motion") + " : Rémy garde le quota Motion pour tes gestes, mise à jour dans un instant."
+        case "panne":
+            return (liste.map { $0 + " : " } ?? "") + "Motion ne répond pas pour l'instant."
+        case "reseau":
+            return (liste.map { $0 + " : " } ?? "") + "la tour ne joint pas Motion (réseau)."
+        case "attente":
+            return "Première lecture de Motion en cours…"
+        case "ok", "maj":
+            guard let a = age, a >= 10, let l = liste else { return nil }
+            return l + (etat == "maj" ? ", mise à jour en cours." : ".")
+        default:
+            return nil
+        }
+    }
+}
+
+extension Journee {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        jour = c.souple(String.self, .jour, &i)
+        minute = c.souple(Int.self, .minute, &i)
+        items = c.listeSouple(ElementJour.self, .items, &i)
+        toute = c.listeSouple(ElementJourneeEntiere.self, .toute, &i)
+        aFaire = c.listeSouple(TacheResume.self, .aFaire, &i)
+        retard = c.souple(Retard.self, .retard, &i)
+        sources = c.souple(Sources.self, .sources, &i)
+        motion = c.souple(EtatMotion.self, .motion, &i)
+        illisibles = i
+    }
 }
 
 public struct ElementJour: Codable, Sendable, Equatable, Identifiable {
@@ -391,12 +578,35 @@ public struct ElementJour: Codable, Sendable, Equatable, Identifiable {
     public var debut: Millis
     public var fin: Millis?
     public var retard: Bool?
+    /// La durée que Motion attribue à la tâche, en minutes (absente : rendez-vous,
+    /// ou tour d'avant le Lot 1).
+    public var duree: Int?
+    public var echeance: Millis?
+    /// Bloquée (état gardé par Remy, D12), et pourquoi.
+    public var bloquee: Bool?
+    public var raison: String?
+    /// Rendez-vous avec d'autres personnes (invités, organisé par un autre) :
+    /// rien ne s'y modifie d'un geste. Sinon, une activité à soi (« Aspirateur »).
+    public var avecAutres: Bool?
+    /// Commencée depuis l'app (« commencer maintenant », gardé par Remy).
+    public var commencee: Bool?
+    /// Activité de l'agenda marquée faite (gardé par Remy, l'agenda ne change pas).
+    public var fait: Bool?
+    /// Catégories de la tâche (Voiture, Santé…), gardées par Remy (18/10).
+    public var etiquettes: [String]?
 
     public var estRendezVous: Bool { type == "rdv" }
+    /// Une activité à soi, à heure fixe dans l'agenda (pas un vrai rendez-vous).
+    public var estActivite: Bool { type == "rdv" && avecAutres != true }
     public var finEffective: Millis { fin ?? debut + 30 * 60_000 }
+    /// La référence de « 50 min restantes sur 1 h 15 » : la durée Motion, à
+    /// défaut celle du créneau.
+    public var dureeTotale: Int { duree ?? max(1, Int(((finEffective - debut) / 60_000).rounded())) }
 
     public init(type: String, id: String, titre: String, lieu: String? = nil, projet: String? = nil,
-                priorite: String? = nil, debut: Millis, fin: Millis? = nil, retard: Bool? = nil) {
+                priorite: String? = nil, debut: Millis, fin: Millis? = nil, retard: Bool? = nil,
+                duree: Int? = nil, echeance: Millis? = nil, avecAutres: Bool? = nil) {
+        self.avecAutres = avecAutres
         self.type = type
         self.id = id
         self.titre = titre
@@ -406,6 +616,8 @@ public struct ElementJour: Codable, Sendable, Equatable, Identifiable {
         self.debut = debut
         self.fin = fin
         self.retard = retard
+        self.duree = duree
+        self.echeance = echeance
     }
 }
 
@@ -421,11 +633,42 @@ public struct TacheResume: Codable, Sendable, Equatable, Identifiable {
     public var echeance: Millis?
     public var projet: String?
     public var priorite: String?
+    public var bloquee: Bool?
+    public var raison: String?
+    /// Durée Motion (minutes), pour « commencer maintenant ».
+    public var duree: Int?
+    /// Catégories de la tâche (Voiture, Santé…), gardées par Remy (18/10).
+    public var etiquettes: [String]?
+
+    public init(id: String, titre: String, echeance: Millis? = nil, projet: String? = nil, priorite: String? = nil,
+                bloquee: Bool? = nil, raison: String? = nil, duree: Int? = nil) {
+        self.id = id
+        self.titre = titre
+        self.echeance = echeance
+        self.projet = projet
+        self.priorite = priorite
+        self.bloquee = bloquee
+        self.raison = raison
+        self.duree = duree
+    }
 }
 
 public struct Retard: Codable, Sendable, Equatable {
     public var total: Int
     public var items: [TacheResume]
+
+    enum CodingKeys: String, CodingKey { case total, items }
+}
+
+extension Retard {
+    /// Une tâche en retard illisible est sautée ; le total reste celui du serveur.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        items = c.listeSouple(TacheResume.self, .items, &i) ?? []
+        total = c.souple(Int.self, .total, &i) ?? items.count
+        _ = i
+    }
 }
 
 public struct Sources: Codable, Sendable, Equatable {
@@ -455,6 +698,22 @@ public struct Activite: Codable, Sendable, Equatable {
     public var joursActifs: Int?
     public var minutesTotal: Int?
     public var messagesTotal: Int?
+
+    enum CodingKeys: String, CodingKey { case jours, aujourdhui, serie, joursActifs, minutesTotal, messagesTotal }
+}
+
+extension Activite {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        jours = c.listeSouple(JourActivite.self, .jours, &i) ?? []
+        aujourdhui = c.souple(JourActivite.self, .aujourdhui, &i)
+        serie = c.souple(Int.self, .serie, &i)
+        joursActifs = c.souple(Int.self, .joursActifs, &i)
+        minutesTotal = c.souple(Int.self, .minutesTotal, &i)
+        messagesTotal = c.souple(Int.self, .messagesTotal, &i)
+        _ = i
+    }
 }
 
 public struct JourActivite: Codable, Sendable, Equatable, Identifiable {
@@ -477,6 +736,21 @@ public struct EtatOnboarding: Codable, Sendable, Equatable {
     public var couverture: [String: [String]]?
     public var sessions: [SessionOnboarding]?
     public var updatedAt: Millis?
+
+    enum CodingKeys: String, CodingKey { case etats, convs, couverture, sessions, updatedAt }
+}
+
+extension EtatOnboarding {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        etats = c.souple([String: String].self, .etats, &i)
+        convs = c.souple([String: String].self, .convs, &i)
+        couverture = c.souple([String: [String]].self, .couverture, &i)
+        sessions = c.listeSouple(SessionOnboarding.self, .sessions, &i)
+        updatedAt = c.souple(Millis.self, .updatedAt, &i)
+        _ = i
+    }
 }
 
 public struct SessionOnboarding: Codable, Sendable, Equatable, Identifiable {
@@ -513,6 +787,86 @@ public struct Systeme: Codable, Sendable, Equatable {
     public var reflexion: Bool?
 }
 
+// MARK: - Projets (onglet Projets, lecture seule depuis Motion)
+
+public struct Projet: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var nom: String
+    public var statut: String?
+    public var taches: Int
+    public var enRetard: Int?
+    public var prochaine: TacheResume?
+    /// Les tâches ouvertes du projet (dossiers-v1), pour les ranger.
+    public var liste: [TacheResume]?
+
+    public init(id: String, nom: String, statut: String? = nil, taches: Int, enRetard: Int? = nil, prochaine: TacheResume? = nil) {
+        self.id = id
+        self.nom = nom
+        self.statut = statut
+        self.taches = taches
+        self.enRetard = enRetard
+        self.prochaine = prochaine
+    }
+}
+
+public struct ListeProjets: Codable, Sendable, Equatable {
+    public var projets: [Projet]
+    public var sansProjet: Int?
+    /// Faux : Motion n'est pas branché sur la tour.
+    public var motion: Bool?
+    public var tronquee: Bool?
+
+    enum CodingKeys: String, CodingKey { case projets, sansProjet, motion, tronquee }
+
+    public init(projets: [Projet], sansProjet: Int? = nil, motion: Bool? = nil, tronquee: Bool? = nil) {
+        self.projets = projets
+        self.sansProjet = sansProjet
+        self.motion = motion
+        self.tronquee = tronquee
+    }
+}
+
+extension ListeProjets {
+    /// Un projet illisible est sauté, les autres s'affichent.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var i: [String] = []
+        projets = c.listeSouple(Projet.self, .projets, &i) ?? []
+        sansProjet = c.souple(Int.self, .sansProjet, &i)
+        motion = c.souple(Bool.self, .motion, &i)
+        tronquee = c.souple(Bool.self, .tronquee, &i)
+        _ = i
+    }
+}
+
+// MARK: - Décodage tolérant
+
+/// Un élément de liste décodé sans faire échouer la liste qui le contient.
+struct Souple<T: Decodable>: Decodable {
+    let valeur: T?
+    init(from decoder: Decoder) throws { valeur = try? T(from: decoder) }
+}
+
+extension KeyedDecodingContainer {
+    /// Absente ou nulle : nil. Illisible : nil aussi, et notée dans `illisibles`.
+    func souple<T: Decodable>(_ type: T.Type, _ cle: Key, _ illisibles: inout [String]) -> T? {
+        do {
+            return try decodeIfPresent(T.self, forKey: cle)
+        } catch {
+            illisibles.append(cle.stringValue)
+            return nil
+        }
+    }
+
+    /// Une liste dont les éléments illisibles sont sautés (et comptés).
+    func listeSouple<T: Decodable>(_ type: T.Type, _ cle: Key, _ illisibles: inout [String]) -> [T]? {
+        guard let brute = souple([Souple<T>].self, cle, &illisibles) else { return nil }
+        let bons = brute.compactMap(\.valeur)
+        if bons.count < brute.count { illisibles.append("\(cle.stringValue) (\(brute.count - bons.count))") }
+        return bons
+    }
+}
+
 // MARK: - Divers
 
 public struct Memoire: Codable, Sendable, Equatable {
@@ -525,6 +879,17 @@ public struct RetourCapture: Codable, Sendable {
     public var memoire: Bool?
     /// Dit pourquoi la mémoire n'a pas bougé (ex. « Mémoire pleine »).
     public var message: String?
+
+    /// Ce que Sam lit après « Retenir ».
+    public var phrase: String {
+        let a = ajouts ?? []
+        if let premier = a.first {
+            let reste = a.count - 1
+            return "Retenu : \(premier)" + (reste > 0 ? " — et \(reste) autre\(reste > 1 ? "s" : "") chose\(reste > 1 ? "s" : "")." : "")
+        }
+        if memoire == false { return message.map { "Gardé : \($0)" } ?? "Gardé : Rémy le relira cette nuit." }
+        return "Rien de nouveau : Rémy le savait déjà."
+    }
 }
 
 // MARK: - Version et réglages (Lot 0)
@@ -576,4 +941,18 @@ public struct Circuit: Codable, Sendable, Equatable {
     public var actif: Bool
     /// Forcé sur la tour (REMY_CIRCUIT_…) : l'app ne peut pas le changer.
     public var forceParLaTour: Bool?
+}
+
+
+/// GET /api/mesures (capacité « mesures-v1 ») : les temps côté tour.
+public struct MesuresTour: Codable, Sendable, Equatable {
+    public struct Serie: Codable, Sendable, Equatable {
+        public var n: Int
+        public var p50: Int?
+        public var p95: Int?
+        public var max: Int?
+        public var dernier: Int?
+    }
+    public var mesures: [String: Serie]
+    public var motion: EtatMotion?
 }

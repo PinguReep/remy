@@ -70,6 +70,8 @@ public final class DicteeModel {
     /// part d'elle-même.
     @ObservationIgnored public var dureeMax: Double = 180
     @ObservationIgnored private var prise = 0
+    /// Où va le texte dicté (le « + ») ; nil : le composeur de Rémy.
+    @ObservationIgnored public var destination: ((String) -> Void)?
 
     public init(api: ClientAPI) { self.api = api }
 
@@ -143,13 +145,15 @@ public final class DicteeModel {
         etat = .transcription
         defer { etat = .repos }
         do {
+            let finDictee = Mesures.partagees.chrono("app.dictee")
             let texte = try await api.transcrire(audio: e.audio, duree: e.duree)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            finDictee()
             guard !texte.isEmpty else {
                 app?.dire("Je n'ai rien entendu — réessaie plus près du micro.")
                 return
             }
-            app?.chat.ajouterDictee(texte)
+            if let destination { destination(texte) } else { app?.chat.ajouterDictee(texte) }
         } catch {
             if let x = error as? ErreurAPI, x == .nonConnecte { app?.signaler(x); return }
             app?.dire((error as? LocalizedError)?.errorDescription ?? "Transcription impossible — réessaie.")

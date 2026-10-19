@@ -43,6 +43,9 @@ targets:
           NSAllowsLocalNetworking: true
         # Dictée et mode appel : l'audio part vers la tour (Dictée Locale) pour
         # être transcrit, puis il est effacé — jamais conservé.
+        # Import des rappels de l'iPhone (J1.5) : lus sur l'iPhone, envoyés à la
+        # tour, nulle part ailleurs ; rien n'est effacé côté Apple.
+        NSRemindersFullAccessUsageDescription: "Pour reprendre tes rappels dans Rémy : ils sont lus sur l'iPhone et envoyés à ta tour, nulle part ailleurs. Rien n'est effacé dans l'app Rappels."
         NSMicrophoneUsageDescription: "Rémy t'écoute quand tu dictes un message ou que tu l'appelles. L'audio part seulement vers ta tour pour être transcrit, puis il est effacé."
         UILaunchScreen:
           UIColorName: Fond
