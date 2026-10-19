@@ -75,6 +75,7 @@ struct RemyView: View {
 private struct EnTeteRemy: View {
     @Environment(AppModel.self) private var app
     @Binding var listeOuverte: Bool
+    @State private var jaugeOuverte = false
 
     var body: some View {
         let chat = app.chat
@@ -90,6 +91,14 @@ private struct EnTeteRemy: View {
                     .accessibilityLabel("Conversation : \(titre)")
             }
             Spacer(minLength: 6)
+            // Le compteur du contexte (Sam, 19/10) : seulement dans un fil de
+            // Rémy, face à une tour qui sait mesurer.
+            if chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
+                BoutonJauge(jauge: chat.jauge) {
+                    Haptique.leger()
+                    jaugeOuverte = true
+                }
+            }
             // Une réponse que Sam n'a pas vue : pastille rouge (Sam, 18/10).
             BoutonRond(symbole: "text.bubble", libelle: "Conversations", pastille: chat.nombreNonLus, pastilleRouge: true) {
                 Haptique.leger()
@@ -110,6 +119,26 @@ private struct EnTeteRemy: View {
         .padding(.top, 6)
         .padding(.bottom, 10)
         .overlay(alignment: .bottom) { Filet() }
+        .sheet(isPresented: $jaugeOuverte) { ContexteVue() }
+        .task {
+            // Captures de la CI : un fil mesuré, et le détail de la jauge.
+            let env = ProcessInfo.processInfo.environment
+            guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "jauge" else { return }
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            let reponses: [(String, String, MesuresReponse)] = [
+                ("On reprend le budget de la boutique ?", "Oui : le poste qui bouge le plus, ce sont les frais de port.",
+                 MesuresReponse(jetons: 640, tps: 46.2, decodeMs: 13_850, premierMs: 1900, contexte: 31_400, fenetre: 131_072, fenetreSource: "modele")),
+                ("Et si je passe à la livraison en point relais ?", "Tu gagnes environ 1,80 € par colis, au prix d'un jour de délai.",
+                 MesuresReponse(jetons: 1830, tps: 41.6, decodeMs: 44_000, premierMs: 2600, contexte: 44_230,
+                                repartition: RepartitionContexte(systeme: 30_900, conversation: 9_800, outils: 1_700, reponse: 1_830),
+                                fenetre: 131_072, fenetreSource: "modele")),
+            ]
+            for (question, reponse, m) in reponses {
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: question))
+                app.chat.montrerPourCapture(LigneChat(deToi: false, texte: reponse, mesures: m))
+            }
+            jaugeOuverte = true
+        }
     }
 }
 
@@ -424,13 +453,25 @@ struct BarreEtapes: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Palette.encre2)
                         .frame(width: 18)
-                    Text(ligne.enCours ? (etapes.last?.texte ?? "") : "Réponse en \(Self.duree(total(etapes)))")
+                    Text(ligne.enCours ? (etapes.last?.texte ?? "") : "Réponse en \(Self.duree(total(etapes)))" + vitesseFinale)
                         .font(Police.texte(14))
                         .foregroundStyle(Palette.encre2)
                         .lineLimit(1)
                         .contentTransition(.opacity)
                         .animation(.easeOut(duration: 0.2), value: etapes.last?.texte)
                     Spacer(minLength: 4)
+                    // La vitesse d'écriture en direct (jauge-v1), une fois par seconde.
+                    if ligne.enCours, let d = ligne.debit {
+                        Text(JaugeContexte.tps(d))
+                            .font(Police.mono(13, .medium))
+                            .foregroundStyle(Palette.encre2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize()
+                            .contentTransition(.numericText())
+                            .animation(.easeOut(duration: 0.25), value: d)
+                            .accessibilityLabel("\(Int(d.rounded())) jetons par seconde")
+                    }
                     if ligne.enCours, let debut = ligne.debutEtapes {
                         TimelineView(.periodic(from: debut, by: 1)) { ctx in
                             Text("\(max(0, Int(ctx.date.timeIntervalSince(debut)))) s")
@@ -451,7 +492,9 @@ struct BarreEtapes: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(ligne.enCours ? (etapes.last?.texte ?? "Rémy travaille") : "Réponse en \(Self.duree(total(etapes)))")
+            .accessibilityLabel(ligne.enCours
+                ? (etapes.last?.texte ?? "Rémy travaille") + (ligne.debit.map { ", \(Int($0.rounded())) jetons par seconde" } ?? "")
+                : "Réponse en \(Self.duree(total(etapes)))" + vitesseFinale)
             .accessibilityHint(ouverte ? "Masque les étapes" : "Montre ce que Rémy a fait")
             if ouverte {
                 VStack(alignment: .leading, spacing: 8) {
@@ -490,6 +533,12 @@ struct BarreEtapes: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+    }
+
+    /// « · 42 tok/s » après la durée, une fois la réponse mesurée.
+    private var vitesseFinale: String {
+        guard let t = ligne.mesures?.tps, t > 0 else { return "" }
+        return " · " + JaugeContexte.tps(t)
     }
 
     /// Durée totale de la réponse (iPhone), ou à défaut la dernière étape (tour).
@@ -1180,6 +1229,7 @@ private struct Composeur: View {
                 ]
                 l.statut = l.etapes.last?.texte
                 l.debutEtapes = Date().addingTimeInterval(-9)
+                l.debit = 41.6
                 app.chat.montrerPourCapture(l)
                 return
             }

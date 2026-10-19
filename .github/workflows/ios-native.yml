@@ -209,6 +209,7 @@ jobs:
           capture 5i-corriger-dictee-clair light corriger-dictee
           capture 5j-etapes-sombre dark etapes
           capture 5k-tableau-clair light remy-fil c12
+          capture 5l-jauge-clair light jauge
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee

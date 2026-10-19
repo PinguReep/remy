@@ -165,6 +165,17 @@ notes privées, sur la tour.
   d'horloge entre la tour et l'iPhone).
 - **« Retenir » au choix** (`retenir-choix-v1`) : le modèle local propose les
   informations, l'utilisateur coche, seules les cochées entrent en mémoire.
+- **Jauge du chat** (`jauge-v1`, 19/10) : pendant la réponse, un événement
+  `debit` `{ tps, jetons }` au plus une fois par seconde, estimé d'après les
+  caractères reçus (réflexion, texte, arguments d'outils) avec un rapport
+  caractères/jeton appris sur les vraies réponses. À la fin, `mesures` (dans
+  `done` et sur le message enregistré) : jetons exacts du modèle, débit sur le
+  seul temps d'écriture (ni lecture du contexte, ni outils), premier jeton,
+  contexte du dernier appel (`prompt_tokens + completion_tokens`) et sa
+  répartition ≈ par part de caractères (consigne, conversation, outils,
+  réponse). Taille maximale : `REMY_GLM_CONTEXTE`, sinon déclarée par
+  `/v1/models` (`max_model_len`, `parameters.max_seq_len`…), sinon inconnue —
+  jamais supposée. Des compteurs, jamais de contenu (`lib/debit.js`).
 
 ## App iPhone
 
@@ -177,6 +188,11 @@ notes privées, sur la tour.
 - Hors ligne : la journée et les gestes non envoyés restent sur l'iPhone (outbox),
   partent au retour du réseau.
 - Rappels « à traiter » : sans date, ou sans catégorie dès qu'il en existe.
+- Jauge du chat : un cadran dans l'en-tête (arc ouvert en bas, aiguille,
+  pourcentage), la feuille « Contexte » (place prise, d'où elle vient, vitesse
+  de la dernière réponse, moyenne du fil pondérée par le temps d'écriture) et
+  les jetons par seconde en direct dans la barre d'étapes. Calculs dans
+  `RemyCore/Jauge.swift` (tests du cœur).
 
 ## CI
 
