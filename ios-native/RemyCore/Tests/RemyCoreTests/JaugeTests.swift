@@ -97,8 +97,7 @@ final class JaugeTests: XCTestCase {
     func testCompacterResumeLeDebutSansRienEffacer() async throws {
         let json = #"{"id":"c1","title":"x","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"},{"role":"assistant","content":"d"}]}"#
         FauxServeur.reponses = [
-            "POST /api/conversations/c1/compacter": [(200, #"{"compacte":true,"resumes":2,"compactage":{"jusqua":2,"a":1760900000000,"resume":"## Dit plus tôt
-- a, b"}}"#)],
+            "POST /api/conversations/c1/compacter": [(200, #"{"compacte":true,"resumes":2,"compactage":{"jusqua":2,"a":1760900000000,"resume":"Dit plus tôt : a, b"}}"#)],
             "GET /api/conversations": [(200, "[]")],
             "GET /api/journal": [(200, "[]")],
         ]
