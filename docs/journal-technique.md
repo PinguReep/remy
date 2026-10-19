@@ -176,6 +176,20 @@ notes privées, sur la tour.
   réponse). Taille maximale : `REMY_GLM_CONTEXTE`, sinon déclarée par
   `/v1/models` (`max_model_len`, `parameters.max_seq_len`…), sinon inconnue —
   jamais supposée. Des compteurs, jamais de contenu (`lib/debit.js`).
+  Chaque réponse dit aussi son modèle et sa machine (`REMY_GLM_MACHINE`,
+  défaut « DGX Spark » ; Claude : « Anthropic (cloud) »).
+- **Réponses trop longues** (19/10 : une dictée de ~8 min restait sans
+  réponse) : passé le budget (`REMY_BUDGET_MS`, 4 min sur la tour), une
+  réflexion qui n'a encore rien écrit est arrêtée et GLM conclut sans
+  réfléchir à partir de ses notes ; coupée en pleine écriture à l'échéance
+  (budget + 90 s), la réponse est gardée avec « *(coupée : réponse trop
+  longue)* ». L'échéance n'est plus une panne (`nature: "delai"`) : GLM n'est
+  pas marqué injoignable, et le message ne dit plus « ne répond pas ».
+- **Codes d'erreur** (`lib/incidents.js`) : chaque erreur du chat (et chaque
+  500 d'une route) reçoit un code `R-XXXXX` et un incident dans
+  `<base>/incidents.jsonl` (300 derniers) : étapes, durées, tailles, modèle,
+  débit, erreur technique bornée — jamais le contenu. `GET /api/incidents[/:code]`,
+  et sur la tour `node scripts/incident.mjs [code]`.
 
 ## App iPhone
 
@@ -193,6 +207,10 @@ notes privées, sur la tour.
   de la dernière réponse, moyenne du fil pondérée par le temps d'écriture) et
   les jetons par seconde en direct dans la barre d'étapes. Calculs dans
   `RemyCore/Jauge.swift` (tests du cœur).
+- Sélection : l'appui long d'une bulle (la tienne, celle de Rémy, une
+  erreur) propose « Sélectionner le texte » — le message dans un `UITextView`
+  en lecture seule, la vraie sélection d'iOS. Une erreur montre son code et
+  « Copier le diagnostic » (l'incident de la tour, en JSON).
 
 ## CI
 

@@ -128,7 +128,9 @@ public final class ClientAPI: @unchecked Sendable {
         let obj = (try? JSONSerialization.jsonObject(with: donnees)) as? [String: Any]
         // Un mot de passe refusé n'est pas une session expirée.
         if http.statusCode == 401 && (obj?["error"] as? String) != "bad_password" { throw ErreurAPI.nonConnecte }
-        let message = (obj?["message"] as? String) ?? (obj?["error"] as? String) ?? "Erreur \(http.statusCode) — réessaie."
+        var message = (obj?["message"] as? String) ?? (obj?["error"] as? String) ?? "Erreur \(http.statusCode) — réessaie."
+        // Le code d'incident de la tour : Sam peut le transmettre tel quel.
+        if let code = obj?["code"] as? String, code.hasPrefix("R-") { message += " (code \(code))" }
         throw ErreurAPI.serveur(http.statusCode, message)
     }
 
@@ -240,6 +242,15 @@ public final class ClientAPI: @unchecked Sendable {
 
     public func mesures() async throws -> MesuresTour {
         try await json(MesuresTour.self, "api/mesures")
+    }
+
+    /// Un incident de la tour (code d'erreur), en JSON lisible, prêt à copier.
+    public func diagnostic(_ code: String) async throws -> String {
+        let d = try await brut("api/incidents/\(code)")
+        guard let obj = try? JSONSerialization.jsonObject(with: d),
+              let joli = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+              let s = String(data: joli, encoding: .utf8) else { throw ErreurAPI.illisible }
+        return s
     }
 
     public func tableauDeBord(frais: Bool = false) async throws -> TableauDeBord {

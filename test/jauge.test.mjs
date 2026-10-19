@@ -141,6 +141,8 @@ test("une réponse dit son débit en direct, puis ses mesures exactes, gardées 
   assert.equal(m.contexte, 4226);
   assert.equal(m.fenetre, 131072);
   assert.equal(m.fenetreSource, "modele");
+  assert.equal(m.modele, "GLM-5.3-Flash-EXL3", "le modèle servi");
+  assert.equal(m.machine, "DGX Spark", "la machine qui le sert (REMY_GLM_MACHINE sinon)");
   const r = m.repartition;
   assert.equal(r.systeme + r.conversation + r.outils, 4200);
   assert.ok(r.systeme > r.conversation, "la consigne (mémoire, planning) pèse plus que « Un conseil ? »");

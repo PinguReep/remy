@@ -296,7 +296,7 @@ public struct DetecteurParole: Sendable {
 public enum Parole {
     public static func pourVoix(_ texte: String) -> String {
         var t = Marqueurs.retirer(texte)
-        t = remplacer(t, #"\*\(interrompu\)\*"#, "")
+        t = remplacer(t, #"\*\((interrompu|coupée : réponse trop longue)\)\*"#, "")
         t = remplacer(t, #"```[\s\S]*?```"#, " (code) ")
         t = remplacer(t, #"\[([^\]]+)\]\((https?://[^)\s]+)\)"#, "$1")
         t = remplacer(t, #"https?://\S+"#, "(lien)")

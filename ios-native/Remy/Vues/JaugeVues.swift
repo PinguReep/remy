@@ -103,6 +103,7 @@ struct ContexteVue: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     place(j)
+                    if j.modele != nil || j.machine != nil { quiARepondu(j) }
                     if let r = j.repartition { repartition(r, j) }
                     vitesse(j, direct: direct)
                     note(j)
@@ -149,7 +150,8 @@ struct ContexteVue: View {
                         .font(Police.titre(22))
                         .foregroundStyle(Palette.encre)
                     Text(app.chat.envoi ? "La mesure arrive à la fin de la réponse de Rémy."
-                                        : "La mesure arrive avec la prochaine réponse de Rémy dans ce fil.")
+                         : j.machine?.contains("Anthropic") == true ? "Cette réponse vient de Claude : la place n'est mesurée que sur le modèle local."
+                         : "La mesure arrive avec la prochaine réponse de Rémy dans ce fil.")
                         .font(Police.texte(14))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -173,6 +175,30 @@ struct ContexteVue: View {
                 .disabled(app.chat.envoi)
             }
         }
+    }
+
+    // MARK: Qui a répondu (19/10 : le modèle, et sur quelle machine)
+
+    private func quiARepondu(_ j: JaugeContexte) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Etiquette("Dernière réponse écrite par")
+            if let m = j.modele { info("Modèle", m) }
+            if let m = j.machine { info("Machine", m) }
+        }
+    }
+
+    private func info(_ titre: String, _ valeur: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(titre).font(Police.texte(15, .medium)).foregroundStyle(Palette.encre)
+            Spacer(minLength: 6)
+            Text(valeur)
+                .font(Police.mono(14))
+                .foregroundStyle(Palette.encre)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: 24)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: D'où vient la place

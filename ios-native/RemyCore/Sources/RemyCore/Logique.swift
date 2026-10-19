@@ -215,4 +215,33 @@ public enum Markdown {
         sortie.append(courant.trimmingCharacters(in: .whitespaces))
         return sortie
     }
+
+    /// Le texte tel qu'on le lit, sans la syntaxe markdown : pour sélectionner
+    /// et copier une partie d'une réponse (Sam, 19/10).
+    public static func enClair(_ texte: String) -> String {
+        var lignes: [String] = []
+        for b in blocs(texte) {
+            switch b {
+            case .titre(let t), .paragraphe(let t): lignes.append(sansStyle(t))
+            case .puce(let t): lignes.append("• " + sansStyle(t))
+            case .numero(let n, let t): lignes.append("\(n). " + sansStyle(t))
+            case .code(let c): lignes.append(c)
+            case .tableau(let entetes, let rangs):
+                lignes.append(([entetes] + rangs).map { $0.map(sansStyle).joined(separator: " · ") }.joined(separator: "\n"))
+            case .trait: lignes.append("—")
+            case .espace: lignes.append("")
+            }
+        }
+        return lignes.joined(separator: "\n")
+    }
+
+    /// « **gras** », « *italique* », « `code` », « [lien](url) » → leur texte.
+    static func sansStyle(_ t: String) -> String {
+        var s = t
+        s = s.replacingOccurrences(of: #"\[([^\]]+)\]\(([^)\s]+)\)"#, with: "$1 ($2)", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(\*\*|__)(.+?)\1"#, with: "$2", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])"#, with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"`([^`]+)`"#, with: "$1", options: .regularExpression)
+        return s
+    }
 }
