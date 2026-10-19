@@ -20,6 +20,10 @@ notes privées, sur la tour.
   les `UserDefaults`, ou inscrite à la compilation (`RemyAdresseTour`, depuis le
   secret `REMY_ADRESSE_TOUR`). Le jeton d'appareil et les cookies sont rangés par
   nom d'hôte : retaper la même adresse garde la session.
+- **Vérifier l'adresse sans session** (19/10) : une tour avec mot de passe ne
+  rend à `/api/version` que `{api, appMin}`. L'écran décodait la version complète
+  et prenait cette réponse pour « pas de réponse » ; la CI ne le voyait pas (serveur
+  de démo sans mot de passe). `ClientAPI.tourRepond()` ne demande que `api`.
 - **Tests et démo** : personnes, lieux et projets fictifs, cohérents entre la
   démo (`ios-native/ci/`) et les tests.
 - **Numéros de build** : l'ancien dépôt s'est arrêté au build 15 ; le workflow

@@ -96,7 +96,8 @@ struct AdresseTourVue: View {
             let conf = URLSessionConfiguration.ephemeral
             conf.timeoutIntervalForRequest = 8
             do {
-                _ = try await ClientAPI(base: u, session: URLSession(configuration: conf)).versionServeur()
+                // Sans session, la tour ne répond qu'en partie : c'est attendu.
+                try await ClientAPI(base: u, session: URLSession(configuration: conf)).tourRepond()
                 Haptique.succes()
                 valider(u)
             } catch {
