@@ -70,6 +70,11 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
    relever les plantages et captures partagés depuis TestFlight
    (`docs/ios.md`, « Retours des testeurs »), les analyser et corriger ce qui
    peut l'être dans ce build.
+8. **Builds TestFlight sans attendre** (accord permanent du 19/10) : dès qu'une
+   modification de l'app est prête et que la CI est verte, lancer le build
+   TestFlight sans demander. Un build ne change rien sur l'iPhone tant qu'il
+   n'est pas installé ; une fonction que la tour ne connaît pas encore reste
+   cachée (capacités). La mise à jour de la tour, elle, reste à son geste.
 
 ## Pièges connus
 

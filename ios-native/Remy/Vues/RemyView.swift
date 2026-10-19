@@ -1165,7 +1165,6 @@ private struct Composeur: View {
     @Binding var clavier: Bool
     /// Un lien fait lire une page web à Rémy : ça coûte un peu plus.
     @AppStorage("confirmerLiens") private var confirmerLiens = true
-    @State private var collageLong = false
     @State private var lienAConfirmer: String?
     /// Écrit pendant que Rémy répond : l'interrompre, ou envoyer après ?
     @State private var choixEnvoi: String?
@@ -1197,26 +1196,6 @@ private struct Composeur: View {
             if retenir {
                 bande("Noter une idée : Rémy la retient, sans répondre.") {
                     BoutonTexte("Plutôt en parler") { chat.modeRetenir = false }
-                }
-            } else if collageLong {
-                bande("Long texte ? Rémy peut en retenir des infos, sans répondre.") {
-                    Menu {
-                        Button("C'est une réponse de ChatGPT") { retenirCollage("chatgpt") }
-                        Button("C'est une réponse de Claude") { retenirCollage("claude") }
-                        Button("C'est une note à moi") { retenirCollage("note") }
-                    } label: {
-                        Text("Retenir")
-                            .font(Police.texte(14, .semibold))
-                            .foregroundStyle(Palette.encre)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    Button { collageLong = false } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Palette.encre2)
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Non, c'est pour en parler")
                 }
             }
             Group {
@@ -1260,16 +1239,9 @@ private struct Composeur: View {
             }
         }
         .background(Palette.fond)
-        .onChange(of: chat.brouillon) { ancien, nouveau in
-            // Un gros bloc arrivé d'un coup, c'est un collage : peut-être une
-            // réponse d'une autre IA à garder, pas une question.
-            if nouveau.count - ancien.count >= 200, !chat.modeRetenir,
-               !nouveau.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
-                collageLong = true
-            }
-            if nouveau.isEmpty { collageLong = false }
-        }
-        .onChange(of: chat.idCourant) { _, _ in collageLong = false }
+        // Le bandeau « Long texte ? » est parti (Sam, 19/10) : il s'affichait
+        // après chaque longue dictée, qui arrive d'un bloc comme un collage.
+        // Retenir un texte reste possible par « Noter une idée ».
         .sheet(item: $aRetenir) { d in RetenirInfosVue(demande: d) }
         .alert("Corriger la dictée", isPresented: Binding(get: { correction != nil }, set: { if !$0 { correction = nil } }),
                presenting: correction) { c in
@@ -1470,21 +1442,18 @@ private struct Composeur: View {
 
     private func partir(_ t: String) {
         app.chat.brouillon = ""
-        collageLong = false
         Haptique.leger()
         Task { await app.chat.envoyer(t) }
     }
 
     private func interrompre(_ t: String) {
         app.chat.brouillon = ""
-        collageLong = false
         Haptique.leger()
         Task { await app.chat.interrompreEtEnvoyer(t) }
     }
 
     private func apres(_ t: String) {
         app.chat.brouillon = ""
-        collageLong = false
         Haptique.leger()
         app.chat.envoyerApres(t)
     }
@@ -1501,15 +1470,6 @@ private struct Composeur: View {
         if c.place.location + c.place.length <= texte.length, texte.substring(with: c.place) == c.entendu {
             app.chat.brouillon = texte.replacingCharacters(in: c.place, with: voulu)
         }
-    }
-
-    private func retenirCollage(_ source: String) {
-        collageLong = false
-        if app.chat.retenirChoixDisponible {
-            aRetenir = DemandeRetenir(texte: app.chat.brouillon, source: source)
-            return
-        }
-        Task { await app.chat.retenir(source: source) }
     }
 }
 
