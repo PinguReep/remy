@@ -125,7 +125,10 @@ jobs:
           capture() { # nom apparence écran
             xcrun simctl ui "$UDID" appearance "$2"
             xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
-            if [ "$3" = "connexion" ]; then
+            if [ "$3" = "adresse" ]; then
+              # Premier lancement sans adresse de tour connue : l'app la demande.
+              xcrun simctl launch "$UDID" com.pingureep.remy
+            elif [ "$3" = "connexion" ]; then
               SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 xcrun simctl launch "$UDID" com.pingureep.remy
             else
               SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 SIMCTL_CHILD_REMY_DEMO_MDP=demo-demo-demo \
@@ -143,6 +146,7 @@ jobs:
               exit 1
             fi
           }
+          capture 0-adresse-tour-clair light adresse
           capture 1-connexion-sombre dark connexion
           capture 2-aujourdhui-clair light aujourdhui
           capture 3-aujourdhui-sombre dark aujourdhui

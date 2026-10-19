@@ -18,6 +18,25 @@ qu'en `127.0.0.1` ; Tailscale Serve le publie aux seuls appareils du tailnet
 Une mise à jour ne remplace que le code : le coffre, la base, `remy.env` et
 `prive\` ne bougent pas.
 
+## Ce qui te concerne : dans `remy.env`, jamais dans le dépôt
+
+| Réglage | Rôle |
+| --- | --- |
+| `REMY_PRENOM` | ton prénom, tel que Rémy l'emploie (sinon « Sam », fictif) |
+| `REMY_VOCABULAIRE` | les mots que tu dictes souvent (proches, projets), pour la dictée |
+| `REMY_PRIVE` | le dossier de tes notes privées (défaut : `%USERPROFILE%\.remy\prive`) ; la roadmap y est lue (`constitution\roadmap.md`) |
+
+L'app iPhone ne connaît pas l'adresse de la tour à l'avance : elle la demande
+une fois (ou la reçoit à la compilation, secret `REMY_ADRESSE_TOUR`, voir
+`docs/ios.md`).
+
+## Venir d'une copie de l'ancien dépôt privé (une fois)
+
+`scripts\basculer-depot-public.ps1 -Ref <commit>` (PowerShell administrateur,
+depuis une copie de ce dépôt) : il range d'abord les fichiers privés de la copie
+de production dans `prive\` avec tout l'historique (`historique-ancien-depot.bundle`),
+ajoute tes réglages à `remy.env`, puis lance l'installeur. Rien n'est supprimé.
+
 ## Mettre à jour
 
 Dans un PowerShell **administrateur**, depuis une copie du dépôt :

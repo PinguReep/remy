@@ -4,7 +4,8 @@ import RemyCore
 
 @main
 struct RemyApp: App {
-    @State private var app: AppModel
+    /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
+    @State private var app: AppModel?
     /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
     /// prototype sur données fictives, sans serveur (captures de la CI).
     @State private var proto: ProtoEtat?
@@ -14,9 +15,16 @@ struct RemyApp: App {
 
     init() {
         // REMY_BASE_URL : pour la CI et les essais sur un serveur de démo.
-        // Par défaut, l'app parle au serveur de production.
+        // Sinon, l'adresse de la tour gardée sur l'iPhone (ou posée à la compilation).
         let env = ProcessInfo.processInfo.environment
-        let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.urlProduction
+        let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.adresseTour
+        let modele = base.map(Self.modele)
+        _app = State(initialValue: modele)
+        _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
+        if let modele { reseau.demarrer(modele) }
+    }
+
+    private static func modele(_ base: URL) -> AppModel {
         // La journée et les gestes pas encore envoyés restent sur l'iPhone (J1.2).
         let modele = AppModel(api: ClientAPI(base: base), rangement: Rangement.parDefaut())
         modele.nomAppareil = UIDevice.current.name
@@ -25,20 +33,27 @@ struct RemyApp: App {
         modele.dictee.micro = micro
         modele.appel.micro = micro
         modele.appel.voix = VoixiPhone()
-        _app = State(initialValue: modele)
-        _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
-        reseau.demarrer(modele)
+        return modele
     }
 
     var body: some Scene {
         WindowGroup {
             if let proto {
                 ProtoRacine(etat: proto)
-            } else {
+            } else if let app {
                 RacineView()
                     .environment(app)
                     .tint(Palette.encre)
                     .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+            } else {
+                AdresseTourVue { url in
+                    ClientAPI.retenirAdresse(url)
+                    let m = Self.modele(url)
+                    reseau.demarrer(m)
+                    app = m
+                }
+                .tint(Palette.encre)
+                .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
             }
         }
     }

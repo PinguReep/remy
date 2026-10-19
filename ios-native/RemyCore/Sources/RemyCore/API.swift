@@ -23,9 +23,42 @@ public enum ErreurAPI: Error, LocalizedError, Equatable {
 /// Parle au même serveur que le site : mêmes routes /api, même session par
 /// cookie (gardé par le système entre deux lancements).
 public final class ClientAPI: @unchecked Sendable {
-    /// Rémy tourne sur la tour depuis le 08/10/2026, publié par Tailscale Serve :
-    /// joignable seulement quand le VPN Tailscale de l'iPhone est actif.
-    public static let urlProduction = URL(string: "https://ma-tour.exemple.ts.net:8444")!
+    /// L'adresse de la tour (publiée par Tailscale Serve : joignable seulement
+    /// quand le VPN Tailscale de l'iPhone est actif). Jamais écrite dans le code
+    /// (dépôt public) : posée à la compilation (`RemyAdresseTour`, depuis un
+    /// secret de la CI) ou saisie une fois dans l'app, puis gardée sur l'iPhone.
+    public static var adresseTour: URL? {
+        if let s = UserDefaults.standard.string(forKey: cleAdresseTour), let u = normaliserAdresse(s) { return u }
+        if let s = Bundle.main.object(forInfoDictionaryKey: "RemyAdresseTour") as? String, let u = normaliserAdresse(s) { return u }
+        return nil
+    }
+
+    public static let cleAdresseTour = "remy.adresseTour"
+
+    public static func retenirAdresse(_ url: URL?) {
+        if let url { UserDefaults.standard.set(url.absoluteString, forKey: cleAdresseTour) }
+        else { UserDefaults.standard.removeObject(forKey: cleAdresseTour) }
+    }
+
+    /// « ma-tour.mon-tailnet.ts.net:8444 » → « https://ma-tour.mon-tailnet.ts.net:8444 ».
+    /// Rien d'autre qu'un hôte et un port : pas de chemin, pas de « http » vers
+    /// l'extérieur (le mot de passe y passerait en clair).
+    public static func normaliserAdresse(_ texte: String) -> URL? {
+        var t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !t.contains("$(") else { return nil }
+        if !t.contains("://") { t = "https://" + t }
+        while t.hasSuffix("/") { t.removeLast() }
+        guard let c = URLComponents(string: t), let hote = c.host, !hote.isEmpty, hote.contains(".") || hote == "localhost",
+              c.path.isEmpty, c.query == nil, c.user == nil else { return nil }
+        let local = hote == "localhost" || hote == "127.0.0.1"
+        let schema = c.scheme?.lowercased()
+        guard schema == "https" || (schema == "http" && local) else { return nil }
+        var propre = URLComponents()
+        propre.scheme = schema
+        propre.host = hote.lowercased()
+        propre.port = c.port
+        return propre.url
+    }
 
     public let base: URL
     private let session: URLSession
@@ -41,7 +74,7 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// `coffre` : par défaut le Keychain ; avec une session fournie (tests,
     /// aperçus), la mémoire — un test ne touche jamais au vrai trousseau.
-    public init(base: URL = ClientAPI.urlProduction, session: URLSession? = nil,
+    public init(base: URL = ClientAPI.adresseTour ?? URL(string: "http://localhost:3000")!, session: URLSession? = nil,
                 build: String? = Bundle.main.infoDictionary?["CFBundleVersion"] as? String,
                 coffre: CoffreJeton? = nil) {
         self.base = base

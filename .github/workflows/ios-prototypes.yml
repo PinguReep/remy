@@ -9,12 +9,7 @@
 name: iOS — prototypes de design
 
 on:
-  push:
-    branches: [claude/lot-1-design]
-    paths:
-      - "ios-native/Remy/Prototypes/**"
-      - "ios-native/Remy/App/RemyApp.swift"
-      - ".github/workflows/ios-prototypes.yml"
+  # Comparatif A/B tranché (direction A) : à la demande seulement.
   workflow_dispatch:
 
 concurrency:
