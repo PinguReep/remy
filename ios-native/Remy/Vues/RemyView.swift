@@ -838,6 +838,11 @@ private struct Composeur: View {
                     .accessibilityHint("Remet le message en attente dans le champ")
                 }
             }
+            if dictee.etat == .repos, !dictee.enAttente.isEmpty {
+                VocauxEnAttente()
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+            }
             if retenir {
                 bande("Noter une idée : Rémy la retient, sans répondre.") {
                     BoutonTexte("Plutôt en parler") { chat.modeRetenir = false }
@@ -1138,6 +1143,58 @@ private struct Composeur: View {
     }
 }
 
+/// Les vocaux qui ne sont pas partis (19/10 : un vocal de 2 min perdu sur un
+/// délai dépassé). Ils attendent en mémoire : « Renvoyer », ou la poubelle.
+struct VocauxEnAttente: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(app.dictee.enAttente) { v in
+                HStack(alignment: .center, spacing: 4) {
+                    Image(systemName: "waveform.badge.exclamationmark")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Palette.signal)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Vocal de \(v.duree) pas parti")
+                            .font(Police.texte(14, .semibold))
+                            .foregroundStyle(Palette.encre)
+                        Text(v.raison)
+                            .font(Police.texte(12))
+                            .foregroundStyle(Palette.encre2)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 4)
+                    BoutonTexte("Renvoyer", couleur: Palette.signal) {
+                        Haptique.leger()
+                        Task { await app.dictee.renvoyer(v.id) }
+                    }
+                    .accessibilityHint("Retente la transcription sur la tour")
+                    Button {
+                        Haptique.leger()
+                        app.dictee.jeter(v.id)
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Palette.encre2)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jeter ce vocal")
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 2)
+                .padding(.vertical, 4)
+                .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+            }
+        }
+    }
+}
+
 /// Pendant la dictée : ✕ pour annuler (rien ne part), la durée qui avance,
 /// ✓ pour transcrire. Comme sur le site : impossible d'envoyer par accident.
 struct BarreEnregistrement: View {
@@ -1170,9 +1227,12 @@ struct BarreEnregistrement: View {
                         .font(Police.mono(15, .medium))
                         .foregroundStyle(Palette.encre)
                         .monospacedDigit()
-                    Text("Je t'écoute…")
-                        .font(Police.texte(15))
-                        .foregroundStyle(Palette.encre2)
+                    // La dernière minute avant le plafond se voit : rien ne
+                    // s'arrête par surprise.
+                    let reste = Int(app.dictee.dureeMax) - s
+                    Text(reste <= 60 ? "Encore \(max(0, reste)) s" : "Je t'écoute…")
+                        .font(Police.texte(15, reste <= 60 ? .semibold : .regular))
+                        .foregroundStyle(reste <= 60 ? Palette.signal : Palette.encre2)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }

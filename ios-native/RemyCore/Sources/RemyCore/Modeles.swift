@@ -194,6 +194,7 @@ public final class AppModel {
     public func deconnecter() async {
         appel.raccrocher()
         dictee.annuler(sansMessage: true)
+        dictee.oublierEnAttente()
         await api.deconnexion()
         chat.vider()
         tableau.vider()

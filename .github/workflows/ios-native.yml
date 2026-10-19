@@ -210,6 +210,7 @@ jobs:
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
+          capture 8b-vocal-en-attente-sombre dark vocal-en-attente
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
           xcrun simctl ui "$UDID" appearance light

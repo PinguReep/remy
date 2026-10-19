@@ -421,10 +421,17 @@ public final class ClientAPI: @unchecked Sendable {
     /// journal des coûts (0 $ en local).
     public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double) async throws -> String {
         let d = String(format: "%.1f", max(0, duree))
-        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio, delai: 90,
-                                     typeCorps: "application/octet-stream")
+        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio,
+                                     delai: Self.delaiTranscription(duree), typeCorps: "application/octet-stream")
         guard let t = try? JSONDecoder().decode(Texte.self, from: donnees) else { throw ErreurAPI.illisible }
         return t.text ?? ""
+    }
+
+    /// Le temps laissé à la tour pour transcrire : il grandit avec le vocal
+    /// (un vocal long se transcrit puis se relit sur la tour). Toujours un
+    /// peu plus que la tour ne s'en laisse : c'est elle qui dit ce qui coince.
+    public static func delaiTranscription(_ duree: Double) -> TimeInterval {
+        120 + max(0, duree)
     }
 
     // MARK: Message en flux
