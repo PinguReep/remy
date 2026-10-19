@@ -1862,6 +1862,25 @@ public final class ChatModel {
         }
     }
 
+    // MARK: Corriger la dictée (19/10)
+
+    public var correctionDicteeDisponible: Bool { app?.serveur?.sait("dictee-correction-v1") == true }
+
+    /// Un mot mal compris, surligné dans le champ : Dictée Locale (sur la tour)
+    /// apprend le bon pour les dictées suivantes. Le résultat est dit.
+    @discardableResult
+    public func corrigerDictee(entendu: String, voulu: String) async -> Bool {
+        do {
+            try await api.corrigerDictee(entendu: entendu, voulu: voulu)
+            app?.dire("Dictée Locale retiendra « \(voulu) ».")
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            app?.dire("Pas envoyé à Dictée Locale : \((error as? LocalizedError)?.errorDescription ?? "erreur")")
+            return false
+        }
+    }
+
     // MARK: Ajuster une proposition avant de dire oui (Sam, 18/10)
 
     public var ajustementDisponible: Bool { app?.serveur?.sait("propositions-ajustables-v1") == true }

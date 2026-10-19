@@ -802,6 +802,13 @@ private struct BandeauImporte: View {
 
 // MARK: - Composeur
 
+/// Les mots surlignés et leur place dans le champ, le temps de demander le bon.
+private struct CorrectionDictee: Identifiable {
+    let id = UUID()
+    let entendu: String
+    let place: NSRange
+}
+
 private struct Composeur: View {
     @Environment(AppModel.self) private var app
     @Binding var clavier: Bool
@@ -813,6 +820,9 @@ private struct Composeur: View {
     @State private var choixEnvoi: String?
     /// « Retenir » un long texte : Rémy propose, Sam coche (18/10).
     @State private var aRetenir: DemandeRetenir?
+    /// Un mot mal transcrit, surligné dans le champ (19/10).
+    @State private var correction: CorrectionDictee?
+    @State private var bonMot = ""
 
     var body: some View {
         @Bindable var chat = app.chat
@@ -905,9 +915,33 @@ private struct Composeur: View {
         }
         .onChange(of: chat.idCourant) { _, _ in collageLong = false }
         .sheet(item: $aRetenir) { d in RetenirInfosVue(demande: d) }
+        .alert("Corriger la dictée", isPresented: Binding(get: { correction != nil }, set: { if !$0 { correction = nil } }),
+               presenting: correction) { c in
+            TextField("Le bon mot", text: $bonMot)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Envoyer à Dictée Locale") {
+                let voulu = bonMot.trimmingCharacters(in: .whitespacesAndNewlines)
+                Task { await envoyerCorrection(c, voulu: voulu) }
+            }
+            .disabled(bonMot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Annuler", role: .cancel) {}
+        } message: { c in
+            Text("« \(c.entendu) » a été mal compris ? Tape le bon mot : Dictée Locale l'apprendra pour tes prochaines dictées.")
+        }
         .task {
             // Captures de la CI : un long collage, et ce que Rémy en retiendrait.
             let env = ProcessInfo.processInfo.environment
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "corriger-dictee" {
+                // Captures de la CI : un mot mal compris, surligné, et la bulle.
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                let t = "Rappelle-moi d'appeler Rémi Sanchez demain matin"
+                app.chat.brouillon = t
+                let place = (t as NSString).range(of: "Rémi Sanchez")
+                bonMot = "Rémy Sanchez"
+                correction = CorrectionDictee(entendu: "Rémi Sanchez", place: place)
+                return
+            }
             guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "retenir" else { return }
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             let t = "Je veux lancer la démo de la boutique avant la fin du mois. Hugo s'occupe des contrats et moi du produit. ChatGPT me conseille une facturation à l'usage plutôt qu'un abonnement. Je préfère travailler le matin et garder mes soirées libres. Il faut aussi que je pense au cadeau de Léa pour le 14 mars."
@@ -942,7 +976,11 @@ private struct Composeur: View {
             // écran (fil de 60 messages, dictée de 2 min dans le champ), 96,6 ms
             // par image et 429 images sautées pour 90 lettres avec le champ
             // SwiftUI, 17,6 ms avec celui-ci (CI, « perf-remy »).
-            ChampTexte(texte: $chat.brouillon, actif: $clavier, invite: retenir ? "Ton idée, en quelques phrases…" : "Écris à Rémy…")
+            ChampTexte(texte: $chat.brouillon, actif: $clavier, invite: retenir ? "Ton idée, en quelques phrases…" : "Écris à Rémy…",
+                       corriger: chat.correctionDicteeDisponible ? { mot, place in
+                           bonMot = mot
+                           correction = CorrectionDictee(entendu: mot, place: place)
+                       } : nil)
                 .padding(.leading, 16)
                 .padding(.vertical, 13)
             Button {
@@ -1074,6 +1112,20 @@ private struct Composeur: View {
         collageLong = false
         Haptique.leger()
         app.chat.envoyerApres(t)
+    }
+
+    /// Envoie la correction ; acceptée, le mot est aussi corrigé dans le champ.
+    private func envoyerCorrection(_ c: CorrectionDictee, voulu: String) async {
+        guard !voulu.isEmpty, voulu != c.entendu else { return }
+        Haptique.leger()
+        guard await app.chat.corrigerDictee(entendu: c.entendu, voulu: voulu) else {
+            Haptique.erreur()
+            return
+        }
+        let texte = app.chat.brouillon as NSString
+        if c.place.location + c.place.length <= texte.length, texte.substring(with: c.place) == c.entendu {
+            app.chat.brouillon = texte.replacingCharacters(in: c.place, with: voulu)
+        }
     }
 
     private func retenirCollage(_ source: String) {

@@ -25,6 +25,19 @@ notes privées, sur la tour.
 - **Numéros de build** : l'ancien dépôt s'est arrêté au build 15 ; le workflow
   TestFlight ajoute 15 au numéro d'exécution.
 
+## 2026-10-19 — Corriger la dictée depuis l'app
+
+- Surligner des mots dans le champ de saisie → « Corriger la dictée » (menu de
+  sélection du `UITextView`) → une bulle demande le bon mot → la tour transmet à
+  Dictée Locale (`POST /api/dictee/correction` → `127.0.0.1:8771/v1/vocabulaire/corrections`),
+  qui crée une règle « entendu → voulu » **active tout de suite** (une correction
+  tapée exprès n'est pas un accident, contrairement à la fenêtre de relecture qui
+  attend de la voir deux fois). Un nom propre rejoint aussi les termes favorisés.
+- Dictée Locale compare désormais les règles sans accents : une règle apprise sur
+  « Rémi » s'applique aussi à « rémi ».
+- Capacité `dictee-correction-v1` ; une Dictée Locale trop ancienne répond 404 et
+  l'app le dit (« mets-la à jour »). Rien ne sort de la tour.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont

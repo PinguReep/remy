@@ -117,3 +117,41 @@ final class AjustementTests: XCTestCase {
         XCTAssertTrue(a.toast?.hasPrefix("Catégorie de « Devis » pas enregistrée") ?? false, a.toast ?? "")
     }
 }
+
+/// Corriger la dictée (19/10) : un mot surligné part à la tour, qui le transmet
+/// à Dictée Locale ; le résultat est dit, l'échec aussi.
+@MainActor
+final class CorrectionDicteeTests: XCTestCase {
+    override func tearDown() {
+        FauxServeur.reponses = [:]
+        FauxServeur.corps = [:]
+    }
+
+    private func app() -> AppModel {
+        let conf = URLSessionConfiguration.ephemeral
+        conf.protocolClasses = [FauxServeur.self]
+        let a = AppModel(api: ClientAPI(base: URL(string: "https://remy.test")!, session: URLSession(configuration: conf)))
+        a.serveur = VersionServeur(api: 1, serveur: "0.5.0", capacites: ["dictee-correction-v1"])
+        return a
+    }
+
+    func testUneCorrectionPartEtCestDit() async throws {
+        let a = app()
+        XCTAssertTrue(a.chat.correctionDicteeDisponible)
+        FauxServeur.reponses["POST /api/dictee/correction"] = [(200, #"{"ok":true,"de":"remi","vers":"Rémy"}"#)]
+        let ok = await a.chat.corrigerDictee(entendu: "Rémi", voulu: "Rémy")
+        XCTAssertTrue(ok)
+        let corps = try XCTUnwrap(FauxServeur.corps["POST /api/dictee/correction"])
+        XCTAssertEqual(corps["entendu"] as? String, "Rémi")
+        XCTAssertEqual(corps["voulu"] as? String, "Rémy")
+        XCTAssertEqual(a.toast, "Dictée Locale retiendra « Rémy ».")
+    }
+
+    func testUneDicteeLocaleTropAncienneLeDit() async {
+        let a = app()
+        FauxServeur.reponses["POST /api/dictee/correction"] = [(501, #"{"error":"dictee","message":"Dictée Locale ne sait pas encore apprendre depuis Rémy : mets-la à jour."}"#)]
+        let ok = await a.chat.corrigerDictee(entendu: "cloud", voulu: "Claude")
+        XCTAssertFalse(ok)
+        XCTAssertEqual(a.toast, "Pas envoyé à Dictée Locale : Dictée Locale ne sait pas encore apprendre depuis Rémy : mets-la à jour.")
+    }
+}
