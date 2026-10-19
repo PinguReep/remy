@@ -1060,6 +1060,47 @@ public final class TableauModel {
 
 // MARK: - Conversation
 
+/// Une étape de la réponse en cours (« Rémy relit… », « Rémy réfléchit… »),
+/// pour la petite barre du chat (etapes-v1, 19/10).
+public struct EtapeReponse: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    /// contexte, choix, modele, reflexion, motion, web, navigateur, proposition,
+    /// budget, secours, ecrit — une clé inconnue s'affiche quand même.
+    public var cle: String
+    public var texte: String
+    /// Un court extrait de la réflexion du modèle local (jamais enregistré).
+    public var detail: String?
+    /// Millisecondes depuis le début de la réponse, horloge de la tour.
+    public var t: Int
+
+    public init(id: UUID = UUID(), cle: String, texte: String, detail: String? = nil, t: Int) {
+        self.id = id
+        self.cle = cle
+        self.texte = texte
+        self.detail = detail
+        self.t = t
+    }
+}
+
+public extension Array where Element == EtapeReponse {
+    /// La durée de chaque étape terminée, en ms (la dernière court encore).
+    func duree(de i: Int) -> Int? {
+        guard indices.contains(i), i + 1 < count else { return nil }
+        return Swift.max(0, self[i + 1].t - self[i].t)
+    }
+
+    /// Ajoute une étape, ou met à jour la dernière si c'est la même (la
+    /// réflexion envoie un nouvel extrait sans créer de ligne).
+    mutating func recevoir(cle: String, texte: String, detail: String?, t: Int) {
+        if let d = last, d.cle == cle {
+            self[count - 1].texte = texte
+            if let detail { self[count - 1].detail = detail }
+            return
+        }
+        append(EtapeReponse(cle: cle, texte: texte, detail: detail, t: t))
+    }
+}
+
 public struct LigneChat: Identifiable, Equatable, Sendable {
     public let id: UUID
     public var deToi: Bool
@@ -1078,6 +1119,12 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
     public var secours: Bool
     /// Rémy demande l'accord de Sam avant une recherche web (V8).
     public var autorisation: Autorisation?
+    /// Ce que Rémy a fait pendant cette réponse (vide face à une tour ancienne).
+    public var etapes: [EtapeReponse] = []
+    /// Quand la première étape est arrivée (horloge de l'iPhone), pour le chrono.
+    public var debutEtapes: Date?
+    /// Fin de la réponse (pour « Réponse en 14 s »).
+    public var finEtapes: Date?
 
     public init(id: UUID = UUID(), deToi: Bool, texte: String, puce: String? = nil, proposition: Proposition? = nil,
                 indexMessage: Int? = nil, statut: String? = nil, erreur: String? = nil, enCours: Bool = false,
@@ -1108,6 +1155,9 @@ struct FinDeReponse: Decodable {
 }
 
 struct Texte: Decodable { var text: String? }
+/// Un événement « status » : `text` seul face à une tour ancienne ; avec
+/// etapes-v1, la clé de l'étape, le temps écoulé et un éventuel extrait.
+struct StatutSSE: Decodable { var text: String?; var cle: String?; var t: Int?; var detail: String? }
 struct MessageErreur: Decodable { var message: String? }
 struct Titre: Decodable { var title: String? }
 
@@ -1122,6 +1172,9 @@ public final class ChatModel {
     /// L'étape « Faire connaissance » portée par le fil ouvert, s'il y en a une.
     public private(set) var sessionCourante: String?
     public private(set) var lignes: [LigneChat] = []
+
+    /// Captures de la CI seulement : une réponse figée en cours, avec ses étapes.
+    public func montrerPourCapture(_ ligne: LigneChat) { lignes.append(ligne) }
     public private(set) var envoi = false
     public private(set) var ouverture = false
 
@@ -1537,7 +1590,12 @@ public final class ChatModel {
                     accumule += e.decode(Texte.self)?.text ?? ""
                     lignes[i].texte = Marqueurs.retirer(accumule)
                 case "status":
-                    lignes[i].statut = e.decode(Texte.self)?.text
+                    let st = e.decode(StatutSSE.self)
+                    lignes[i].statut = st?.text
+                    if let cle = st?.cle, let texte = st?.text {
+                        if lignes[i].debutEtapes == nil { lignes[i].debutEtapes = Date() }
+                        lignes[i].etapes.recevoir(cle: cle, texte: texte, detail: st?.detail, t: st?.t ?? 0)
+                    }
                 case "proposal":
                     if let p = e.decode(Proposition.self), !p.actions.isEmpty {
                         lignes[i].proposition = p
@@ -1563,6 +1621,7 @@ public final class ChatModel {
                     lignes[i].puce = Format.puceModele(model: f?.model, tier: f?.tier, usd: f?.usd)
                     lignes[i].secours = f?.tier == "dégradé"
                     lignes[i].statut = nil
+                    if lignes[i].debutEtapes != nil { lignes[i].finEtapes = Date() }
                     lignes[i].enCours = false
                     if let c = f?.couverture { app?.tableau.majCouverture(c) }
                     if f?.session_done != nil {

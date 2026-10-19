@@ -69,6 +69,19 @@ notes privées, sur la tour.
 - **Relevé des retours** : job `retours` de `ios-testflight.yml` (voir
   `docs/ios.md`), désormais fait avant chaque envoi.
 
+## 2026-10-19 — La barre d'étapes du chat (etapes-v1)
+
+- Pendant une réponse, la tour envoie ses étapes en `status` (compatible avec
+  les apps qui ne lisent que `text`) : `cle` (contexte, choix, modele,
+  reflexion, motion, web, navigateur, proposition, budget, secours, ecrit), `t`
+  (ms depuis le début) et, pour la réflexion du modèle local, un `detail` : un
+  extrait d'une ligne, au plus toutes les 1,5 s (`lib/etapes.js`). Jusqu'ici la
+  réflexion n'était jamais montrée ; l'extrait n'est ni enregistré ni envoyé
+  ailleurs que dans l'app de la personne.
+- L'app : une barre sous la réponse (étape en cours, chrono à la seconde) ; un
+  appui déroule les étapes, leur durée et l'extrait. La dernière réponse garde
+  « Réponse en 14 s » pour savoir pourquoi elle a pris du temps.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
