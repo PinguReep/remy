@@ -101,9 +101,11 @@ public struct Message: Codable, Equatable, Sendable {
     public var proposal: Proposition?
     /// Rémy demande l'accord de Sam avant une recherche web (V8).
     public var autorisation: Autorisation?
+    /// Débit et contexte de la réponse (jauge-v1) ; absent avant le 19/10.
+    public var mesures: MesuresReponse?
 
     public init(role: String, content: String, model: String? = nil, tier: String? = nil, usd: Double? = nil,
-                proposal: Proposition? = nil, autorisation: Autorisation? = nil) {
+                proposal: Proposition? = nil, autorisation: Autorisation? = nil, mesures: MesuresReponse? = nil) {
         self.role = role
         self.content = content
         self.model = model
@@ -111,9 +113,77 @@ public struct Message: Codable, Equatable, Sendable {
         self.usd = usd
         self.proposal = proposal
         self.autorisation = autorisation
+        self.mesures = mesures
     }
 
     public var estDeToi: Bool { role == "user" }
+}
+
+/// Ce que la tour a mesuré sur une réponse (jauge du chat, 19/10) : des
+/// compteurs, jamais de contenu. Chaque champ peut manquer (modèle muet,
+/// réponse de Claude) : l'app dit alors qu'elle ne sait pas.
+public struct MesuresReponse: Codable, Equatable, Sendable {
+    /// Jetons écrits par le modèle, réflexion comprise.
+    public var jetons: Int?
+    /// Jetons par seconde pendant l'écriture (ni lecture du contexte, ni outils).
+    public var tps: Double?
+    public var decodeMs: Int?
+    /// Du départ de la requête au premier jeton.
+    public var premierMs: Int?
+    /// Vrai : jetons estimés d'après les caractères (le modèle n'a pas compté).
+    public var estime: Bool?
+    /// Place prise dans le contexte du modèle au dernier appel.
+    public var contexte: Int?
+    public var repartition: RepartitionContexte?
+    /// Taille maximale du contexte, si la tour la connaît.
+    public var fenetre: Int?
+    /// « modele » (déclarée par le serveur du modèle) ou « reglage » (tour).
+    public var fenetreSource: String?
+
+    public init(jetons: Int? = nil, tps: Double? = nil, decodeMs: Int? = nil, premierMs: Int? = nil, estime: Bool? = nil,
+                contexte: Int? = nil, repartition: RepartitionContexte? = nil, fenetre: Int? = nil, fenetreSource: String? = nil) {
+        self.jetons = jetons
+        self.tps = tps
+        self.decodeMs = decodeMs
+        self.premierMs = premierMs
+        self.estime = estime
+        self.contexte = contexte
+        self.repartition = repartition
+        self.fenetre = fenetre
+        self.fenetreSource = fenetreSource
+    }
+
+    // Tolérant champ par champ : une mesure mal formée ne doit jamais empêcher
+    // d'ouvrir la conversation qui la porte.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        jetons = try? c.decodeIfPresent(Int.self, forKey: .jetons)
+        tps = try? c.decodeIfPresent(Double.self, forKey: .tps)
+        decodeMs = try? c.decodeIfPresent(Int.self, forKey: .decodeMs)
+        premierMs = try? c.decodeIfPresent(Int.self, forKey: .premierMs)
+        estime = try? c.decodeIfPresent(Bool.self, forKey: .estime)
+        contexte = try? c.decodeIfPresent(Int.self, forKey: .contexte)
+        repartition = try? c.decodeIfPresent(RepartitionContexte.self, forKey: .repartition)
+        fenetre = try? c.decodeIfPresent(Int.self, forKey: .fenetre)
+        fenetreSource = try? c.decodeIfPresent(String.self, forKey: .fenetreSource)
+    }
+}
+
+/// D'où vient la place prise (≈, selon la part de caractères de chaque bloc).
+public struct RepartitionContexte: Codable, Equatable, Sendable {
+    /// Consigne de Rémy : sa mémoire, ton planning, ton agenda.
+    public var systeme: Int
+    public var conversation: Int
+    /// Résultats d'outils lus pendant la réponse (Motion, pages…).
+    public var outils: Int
+    public var reponse: Int
+
+    public init(systeme: Int, conversation: Int, outils: Int, reponse: Int) {
+        self.systeme = systeme
+        self.conversation = conversation
+        self.outils = outils
+        self.reponse = reponse
+    }
 }
 
 // MARK: - Autorisations (V8) : rien ne part chez Claude sans l'accord de Sam

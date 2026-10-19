@@ -30,6 +30,9 @@ w("conversations.json", {
       messages: [
         { role: "user", content: "Faut que je pense à acheter l'abonnement Claude Code pour Tom." },
         { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te l'ajoute dans Motion : c'est rapide, dix minutes suffisent.",
+          // La jauge du chat (19/10) : ce que la tour a mesuré sur cette réponse.
+          mesures: { jetons: 212, tps: 44.8, decodeMs: 4730, premierMs: 1700, contexte: 28_900, fenetre: 131_072, fenetreSource: "modele",
+            repartition: { systeme: 26_400, conversation: 1_900, outils: 388, reponse: 212 } },
           proposal: { id: "p-tom", source: "motion", statut: "en_attente", resume: "Échéance proposée : jeudi soir.", actions: [
             { type: "creer", nom: "Acheter abonnement Claude Code pour Tom", duree: 10, echeance: new Date(now + 3 * 24 * H).toISOString().slice(0, 10) + "T21:00:00.000Z" },
           ] } },

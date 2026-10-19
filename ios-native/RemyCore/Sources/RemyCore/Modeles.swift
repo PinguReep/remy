@@ -1125,10 +1125,15 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
     public var debutEtapes: Date?
     /// Fin de la réponse (pour « Réponse en 14 s »).
     public var finEtapes: Date?
+    /// Jetons par seconde en direct, pendant que Rémy écrit (jauge-v1).
+    public var debit: Double?
+    /// Débit et contexte mesurés sur la tour, une fois la réponse finie.
+    public var mesures: MesuresReponse?
 
     public init(id: UUID = UUID(), deToi: Bool, texte: String, puce: String? = nil, proposition: Proposition? = nil,
                 indexMessage: Int? = nil, statut: String? = nil, erreur: String? = nil, enCours: Bool = false,
-                question: String? = nil, auteur: String = "Rémy", secours: Bool = false, autorisation: Autorisation? = nil) {
+                question: String? = nil, auteur: String = "Rémy", secours: Bool = false, autorisation: Autorisation? = nil,
+                mesures: MesuresReponse? = nil) {
         self.id = id
         self.deToi = deToi
         self.texte = texte
@@ -1142,6 +1147,7 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
         self.auteur = auteur
         self.secours = secours
         self.autorisation = autorisation
+        self.mesures = mesures
     }
 }
 
@@ -1152,7 +1158,11 @@ struct FinDeReponse: Decodable {
     var usd: Double?
     var session_done: String?
     var couverture: [String: [String]]?
+    var mesures: MesuresReponse?
 }
+
+/// Un événement « debit » (jauge-v1) : la vitesse d'écriture en direct.
+struct DebitSSE: Decodable { var tps: Double?; var jetons: Int? }
 
 struct Texte: Decodable { var text: String? }
 /// Un événement « status » : `text` seul face à une tour ancienne ; avec
@@ -1206,6 +1216,9 @@ public final class ChatModel {
     public init(api: ClientAPI) { self.api = api }
 
     public var lectureSeule: Bool { origine != nil }
+    /// La jauge du fil ouvert (contexte, débit) ; la tour doit savoir mesurer.
+    public var jaugeDisponible: Bool { app?.serveur?.sait("jauge-v1") == true }
+    public var jauge: JaugeContexte { JaugeContexte.de(lignes) }
 
     // MARK: Non lus (Sam, 18/10)
 
@@ -1377,7 +1390,8 @@ public final class ChatModel {
                 indexMessage: i,
                 auteur: auteur,
                 secours: m.tier == "dégradé",
-                autorisation: demande
+                autorisation: demande,
+                mesures: m.mesures
             )
         }
     }
@@ -1596,6 +1610,8 @@ public final class ChatModel {
                         if lignes[i].debutEtapes == nil { lignes[i].debutEtapes = Date() }
                         lignes[i].etapes.recevoir(cle: cle, texte: texte, detail: st?.detail, t: st?.t ?? 0)
                     }
+                case "debit":
+                    if let tps = e.decode(DebitSSE.self)?.tps, tps.isFinite, tps >= 0 { lignes[i].debit = tps }
                 case "proposal":
                     if let p = e.decode(Proposition.self), !p.actions.isEmpty {
                         lignes[i].proposition = p
@@ -1621,6 +1637,8 @@ public final class ChatModel {
                     lignes[i].puce = Format.puceModele(model: f?.model, tier: f?.tier, usd: f?.usd)
                     lignes[i].secours = f?.tier == "dégradé"
                     lignes[i].statut = nil
+                    lignes[i].debit = nil
+                    if let m = f?.mesures { lignes[i].mesures = m }
                     if lignes[i].debutEtapes != nil { lignes[i].finEtapes = Date() }
                     lignes[i].enCours = false
                     if let c = f?.couverture { app?.tableau.majCouverture(c) }
@@ -1633,6 +1651,7 @@ public final class ChatModel {
                     b.erreurServeur = true
                     lignes[i].enCours = false
                     lignes[i].statut = nil
+                    lignes[i].debit = nil
                     lignes[i].erreur = e.decode(MessageErreur.self)?.message ?? "Erreur côté serveur."
                 default:
                     break
@@ -1718,6 +1737,8 @@ public final class ChatModel {
                     $0.secours = reponse.tier == "dégradé"
                     $0.proposition = Self.carte(reponse.proposal)
                     $0.indexMessage = conv.messages.firstIndex(of: reponse)
+                    $0.mesures = reponse.mesures
+                    $0.debit = nil
                     $0.enCours = false
                     $0.statut = nil
                 }
