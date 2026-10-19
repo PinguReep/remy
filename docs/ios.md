@@ -28,6 +28,18 @@ build → **Installer**. Le numéro de build et le commit de chaque envoi sont d
 le résumé de l'exécution du workflow ; l'archive et ses dSYM y sont gardés 90
 jours (artefact `archive-ios-<build>`).
 
+## Retours des testeurs (plantages, captures)
+
+« Partager des commentaires » dans TestFlight envoie le retour chez Apple. Le
+job `retours` de `ios-testflight.yml` les relève par l'API App Store Connect
+(mêmes secrets que l'envoi), sans tests ni envoi : **Run workflow** avec
+`retours_seulement` coché et `cle_publique` = `base64 -w0 cert.pem` (certificat
+RSA-4096 du destinataire, public). Le dépôt étant public, rien ne sort en clair :
+le journal ne montre que des compteurs, l'artefact `colis` est chiffré (CMS,
+AES-256-GCM + RSA-OAEP) et gardé un jour. Déchiffrer avec la clé privée :
+`bash scripts/retours-testflight/dechiffrer.sh colis.p7m prive.pem retours`.
+Les e-mails des testeurs et les URL signées des images ne sont jamais écrits.
+
 ## Mise en place (une fois)
 
 1. **Clé API App Store Connect** : App Store Connect → Utilisateurs et accès →
