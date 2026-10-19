@@ -66,6 +66,10 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
    (Anthropic, Motion, Whisper, GLM) puis sonder la prod après déploiement — y
    compris les chemins imbriqués `/api/x/y`. Aucune affirmation de succès sans
    preuve exécutée.
+7. **Retours des testeurs avant chaque build** : avant tout envoi TestFlight,
+   relever les plantages et captures partagés depuis TestFlight
+   (`docs/ios.md`, « Retours des testeurs »), les analyser et corriger ce qui
+   peut l'être dans ce build.
 
 ## Pièges connus
 
