@@ -330,6 +330,13 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(VersionServeur.self, "api/version", delai: 10)
     }
 
+    /// Une tour Rémy répond-elle à cette adresse ? Avant toute session, la tour
+    /// ne dit que `api` et `appMin` (ni version ni commit) : c'est assez.
+    public func tourRepond(delai: TimeInterval = 8) async throws {
+        struct Presence: Decodable { let api: Int }
+        _ = try await json(Presence.self, "api/version", delai: delai)
+    }
+
     public func reglages() async throws -> Reglages {
         try await json(Reglages.self, "api/reglages")
     }

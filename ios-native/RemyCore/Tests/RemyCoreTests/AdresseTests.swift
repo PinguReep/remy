@@ -1,5 +1,8 @@
 import XCTest
 @testable import RemyCore
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// L'adresse de la tour n'est pas dans le code (dépôt public) : saisie une fois,
 /// gardée sur l'iPhone. Une adresse mal tapée ne doit ni planter ni partir en clair.
@@ -27,5 +30,20 @@ final class AdresseTests: XCTestCase {
         XCTAssertEqual(ClientAPI().base.host, "ma-tour.mon-tailnet.ts.net")
         ClientAPI.retenirAdresse(nil)
         XCTAssertNil(ClientAPI.adresseTour)
+    }
+
+    /// Une vraie tour (mot de passe posé) ne donne, sans session, que `api` et
+    /// `appMin` : l'écran d'adresse doit y voir une tour qui répond.
+    func testUneTourSansSessionRepond() async throws {
+        let conf = URLSessionConfiguration.ephemeral
+        conf.protocolClasses = [FauxServeur.self]
+        let client = ClientAPI(base: URL(string: "https://remy.test")!, session: URLSession(configuration: conf))
+        FauxServeur.reponses = ["GET /api/version": [(200, #"{"api":1,"appMin":null}"#)]]
+        try await client.tourRepond()
+        FauxServeur.reponses = ["GET /api/version": [(200, "<html>une autre machine</html>")]]
+        do {
+            try await client.tourRepond()
+            XCTFail("une page qui n'est pas Rémy n'est pas une tour")
+        } catch {}
     }
 }
