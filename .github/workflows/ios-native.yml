@@ -211,6 +211,7 @@ jobs:
           capture 5k-tableau-clair light remy-fil c12
           capture 5l-jauge-clair light jauge
           capture 5m-erreur-sombre dark erreur
+          capture 5n-regle-clair light regle
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee

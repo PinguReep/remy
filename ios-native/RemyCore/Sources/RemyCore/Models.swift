@@ -118,6 +118,39 @@ public struct Compactage: Codable, Equatable, Sendable {
     }
 }
 
+/// Une règle de Rémy (regles-v1, 19/10) : « avant une sortie, me raser ».
+public struct RegleRemy: Decodable, Identifiable, Equatable, Sendable {
+    public struct Tache: Decodable, Equatable, Sendable {
+        public var nom: String
+        public var duree: Int?
+        public var priorite: String?
+    }
+    public var id: String
+    public var nom: String
+    public var mots: [String]
+    public var tache: Tache
+    public var avantMin: Int
+    public var actif: Bool
+
+    /// « au plus tard 3 h avant », « au plus tard la veille »
+    public var delai: String {
+        if avantMin <= 0 { return "avant l'événement" }
+        if avantMin % 1440 == 0 { return avantMin == 1440 ? "au plus tard la veille" : "au plus tard \(avantMin / 1440) jours avant" }
+        if avantMin % 60 == 0 { return "au plus tard \(avantMin / 60) h avant" }
+        return "au plus tard \(avantMin) min avant"
+    }
+}
+
+public struct ListeRegles: Decodable, Sendable { public var regles: [RegleRemy] }
+
+/// Ce que rend une vérification des règles (compteurs).
+public struct BilanRegles: Decodable, Sendable {
+    public var regles: Int
+    public var evenements: Int?
+    public var proposees: Int
+    public var deja: Int?
+}
+
 /// Ce que rend POST /api/conversations/:id/compacter.
 public struct RetourCompactage: Decodable, Sendable {
     public var compacte: Bool

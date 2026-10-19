@@ -134,6 +134,16 @@ private struct EnTeteRemy: View {
                 app.chat.montrerPourCapture(l)
                 return
             }
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "regle" {
+                // Une règle de Rémy proposée dans le chat, avant validation.
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: "Avant chaque sortie, rappelle-moi de me raser."))
+                let a = ActionProposee(type: "regle", nom: "Rasage avant une sortie",
+                                       description: "Avant un événement « sortie », « soirée », « resto », « verre » : « Rasage » (15 min), au plus tard 3 h avant.")
+                app.chat.montrerPourCapture(LigneChat(deToi: false, texte: "Motion ne sait pas le faire, mais moi si : je te propose cette règle. Avant chaque sortie de ton agenda, je te proposerai le rasage.",
+                                                      proposition: Proposition(id: "p-demo", source: "regle", resume: nil, actions: [a], statut: "en_attente")))
+                return
+            }
             guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "jauge" else { return }
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             let reponses: [(String, String, MesuresReponse)] = [
@@ -464,7 +474,10 @@ private struct LigneMessage: View {
                             .disabled(app.chat.envoi)
                     }
                 }
-                if let p = ligne.proposition { PropositionView(ligne: ligne, p: p) }
+                if let p = ligne.proposition {
+                    // Une règle de Rémy (19/10) n'est pas une tâche : sa propre carte.
+                    if p.source == "regle" { CarteRegle(ligne: ligne, p: p) } else { PropositionView(ligne: ligne, p: p) }
+                }
                 if let a = ligne.autorisation { AutorisationView(ligne: ligne, a: a) }
             }
             .padding(.bottom, 30)

@@ -13,6 +13,7 @@ struct ReglagesView: View {
     @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
     @State private var memoire = false
     @State private var appareilsOuverts = false
+    @State private var reglesOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -106,6 +107,15 @@ struct ReglagesView: View {
                     if d?.systeme?.reflexion == false {
                         info("Préparation de nuit désactivée : « Rémy a remarqué » restera vide.", symbole: "moon.zzz")
                     }
+                    if app.chat.reglesDisponibles {
+                        ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
+                            reglesOuvertes = true
+                        }
+                    }
+                    if let r = reglages, let c = r.circuits?["regles"] {
+                        circuit("regles", c, titre: "Vérifier les règles",
+                                detail: "Toutes les 3 h, sans IA : Rémy relit ton agenda et Motion pour te proposer les tâches de tes règles.")
+                    }
                     if app.serveur?.sait("appareils") == true {
                         ligne("Appareils connectés", sous: "Déconnecte un iPhone perdu ou prêté.", symbole: "iphone") {
                             appareilsOuverts = true
@@ -145,6 +155,7 @@ struct ReglagesView: View {
         .overlay(alignment: .bottom) { ToastView(marge: 24, annoncer: false) }
         .sheet(isPresented: $memoire) { MemoireView() }
         .sheet(isPresented: $appareilsOuverts) { AppareilsView() }
+        .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
@@ -315,6 +326,7 @@ struct ReglagesView: View {
         case "nuit": return actif ? "Réflexion de la nuit allumée." : "Réflexion de la nuit coupée : Rémy ne travaillera plus la nuit."
         case "conseil": return actif ? "Conseil réfléchi allumé." : "Conseil réfléchi coupé : le conseil se calcule sur l'iPhone."
         case "compactage": return actif ? "Compactage automatique allumé." : "Compactage automatique coupé : à la demande seulement."
+        case "regles": return actif ? "Vérification des règles allumée." : "Vérification des règles coupée : Rémy ne propose plus leurs tâches."
         default: return actif ? "Circuit allumé." : "Circuit coupé."
         }
     }

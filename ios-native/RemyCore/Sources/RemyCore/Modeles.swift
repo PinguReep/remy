@@ -2049,6 +2049,23 @@ public final class ChatModel {
         }
     }
 
+    public var reglesDisponibles: Bool { app?.serveur?.sait("regles-v1") == true }
+
+    /// Sam valide une règle proposée par Rémy (19/10). Vrai si elle est créée.
+    @discardableResult
+    public func validerRegle(_ ligne: LigneChat) async -> Bool {
+        guard let convId = idCourant, let p = ligne.proposition, let pid = p.id else { return false }
+        do {
+            try await api.validerRegle(convId: convId, propositionId: pid)
+            if let i = lignes.firstIndex(where: { $0.id == ligne.id }) { lignes[i].proposition?.statut = "applique" }
+            app?.dire("Règle créée : Rémy te proposera la tâche avant chaque événement qui correspond.")
+            return true
+        } catch {
+            app?.signaler(error)
+            return false
+        }
+    }
+
     /// « Non merci » : la carte disparaît tout de suite et le refus est
     /// enregistré, pour qu'elle ne revienne pas au rechargement. Si la tour ne
     /// l'a pas noté, la carte revient et c'est dit.
