@@ -82,6 +82,26 @@ notes privées, sur la tour.
   appui déroule les étapes, leur durée et l'extrait. La dernière réponse garde
   « Réponse en 14 s » pour savoir pourquoi elle a pris du temps.
 
+## 2026-10-19 — Conversations importées : privées d'office
+
+- **Faille** : une conversation importée (ChatGPT, Claude) n'était pas privée :
+  elle entrait dans la réflexion de nuit, et « Continuer avec Rémy » pouvait la
+  faire passer par Claude quand le secours est activé.
+- **Correctif** : import marqué `prive` ; les imports antérieurs le deviennent à
+  la lecture (`store.getConversation` / `listConversations` : `origine` ⇒ privée).
+  La réflexion de nuit garde les imports (encadrés) mais passe alors `prive` à
+  `fournisseurDeFond`, qui refuse tout repli sur Claude (`PRIVE_DE_FOND`) :
+  modèle local ou rien. Les conversations rendues privées par l'utilisateur
+  restent hors de la réflexion, comme avant.
+
+## Sessions Claude Code gardées (claude-retention.ps1)
+
+- Claude Code efface ses sessions au bout de 30 jours (`cleanupPeriodDays`).
+  `scripts/claude-retention.ps1` (lancé par l'installeur de la tour) pose 3650
+  jours, ne touche qu'à cette clé, copie le fichier avant, ne réécrit jamais un
+  JSON illisible. `scripts/audit-sources-tour.ps1` : audit en lecture seule des
+  sources de sessions (rien que des structures et des hachages).
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
