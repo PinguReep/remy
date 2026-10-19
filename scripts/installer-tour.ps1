@@ -263,6 +263,14 @@ foreach ($i in 1..20) {
 if (-not $ok) { throw "Rémy ne répond pas en 127.0.0.1:$Port — voir $log" }
 # (`tag --points-at` n'écrit rien sur stderr : sous PowerShell 5.1, une ligne
 # d'erreur d'un programme arrêterait l'installeur.)
+# 6. Garder les sessions Claude Code (effacées au bout de 30 jours sinon) : Rémy
+#    en apprendra. Ne touche qu'à « cleanupPeriodDays » ; jamais bloquant.
+try {
+  & (Join-Path $PSScriptRoot 'claude-retention.ps1')
+} catch {
+  Write-Output "Claude Code : rétention non réglée ($($_.Exception.Message)) — scripts\claude-retention.ps1 à la main."
+}
+
 $tagInstalle = & git -C $app tag --points-at HEAD | Select-Object -First 1
 $installe = (& git -C $app rev-parse HEAD).Trim()
 Write-Output "Rémy tourne : $(if ($tagInstalle) { "$tagInstalle = " })$installe — $url"
