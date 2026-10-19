@@ -46,7 +46,8 @@ if ($actuel -ne $public) {
     & git -C $app bundle create $bundle --all
     if ($LASTEXITCODE -ne 0) { throw "Historique non sauvegardé : rien n'a été basculé." }
   }
-  & git bundle verify $bundle | Out-Null
+  # Vérifiée depuis la copie de production : git ne vérifie un bundle que dans un dépôt.
+  & git -C $app bundle verify $bundle | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Sauvegarde de l'historique illisible ($bundle) : rien n'a été basculé." }
   Write-Output "Privé rangé dans $prive (historique : $bundle)."
 }
