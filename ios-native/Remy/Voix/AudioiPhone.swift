@@ -8,6 +8,23 @@ import RemyCore
 final class MicroiPhone: NSObject, Micro {
     private var enregistreur: AVAudioRecorder?
     private var fichier: URL?
+    /// Le système coupe le micro (appel, Siri, alarme) : branché par l'app,
+    /// pour que la dictée garde ce qui a été dit au lieu de le perdre.
+    var coupure: (() -> Void)?
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] n in
+            let brut = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            guard brut.flatMap(AVAudioSession.InterruptionType.init(rawValue:)) == .began else { return }
+            MainActor.assumeIsolated {
+                guard let self, self.enregistreur != nil else { return }
+                self.coupure?()
+            }
+        }
+    }
 
     func demarrer() async throws {
         guard await Self.permission() else {

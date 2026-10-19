@@ -42,6 +42,22 @@ notes privées, sur la tour.
 - Capacité `dictee-correction-v1` ; une Dictée Locale trop ancienne répond 404 et
   l'app le dit (« mets-la à jour »). Rien ne sort de la tour.
 
+## 2026-10-19 — Vocaux longs : plus rien ne se perd
+
+- **Constat** : un vocal de ~2 min parti tout seul puis perdu. Trois causes :
+  plafond de 3 min qui envoyait d'office (vieille limite Vercel de 4,5 Mo),
+  écran non maintenu allumé pendant la dictée (verrouillage = micro coupé),
+  et 90 s pour transcrire quelle que soit la longueur (Dictée Locale transcrit
+  puis relit : un vocal long dépasse).
+- **Maintenant** : plafond 15 min, dernière minute affichée ; écran allumé tant
+  que la dictée tourne ; délai tour = 90 s + la durée du vocal, iPhone = 120 s +
+  la durée (la tour répond d'abord, avec la vraie raison) ; corps accepté jusqu'à
+  24 Mo sur la tour (4,5 Mo sur Vercel).
+- **Vocal qui ne part pas** : gardé **en mémoire** (jamais sur le disque, oublié
+  à la déconnexion ou app fermée), au-dessus du champ : « Renvoyer » ou la
+  poubelle. Micro coupé par le système ou app quittée en pleine dictée : même
+  chose, rien ne part tout seul.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont

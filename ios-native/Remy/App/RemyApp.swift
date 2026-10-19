@@ -30,6 +30,7 @@ struct RemyApp: App {
         modele.nomAppareil = UIDevice.current.name
         // Un seul micro pour la dictée et l'appel : l'un coupe l'autre.
         let micro = MicroiPhone()
+        micro.coupure = { [weak modele] in modele?.dictee.interrompre() }
         modele.dictee.micro = micro
         modele.appel.micro = micro
         modele.appel.voix = VoixiPhone()
@@ -172,7 +173,7 @@ enum Demo {
         case "remy-fil", "ajuster", "ajuster-rappel":
             // Un fil précis (REMY_DEMO_ANCRE = son identifiant).
             if let id = env["REMY_DEMO_ANCRE"] { await app.ouvrirConversation(id) }
-        case "appel", "dictee":
+        case "appel", "dictee", "vocal-en-attente":
             if let c = app.chat.conversations.first(where: { $0.origine == nil && $0.pinned == true })
                 ?? app.chat.conversations.first {
                 await app.ouvrirConversation(c.id)
@@ -182,6 +183,11 @@ enum Demo {
                 app.appel.decrocher()
             } else {
                 await app.dictee.commencer()
+                if env["REMY_DEMO_ECRAN"] == "vocal-en-attente" {
+                    // Le micro coupé en pleine dictée : le vocal attend « Renvoyer ».
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    app.dictee.interrompre()
+                }
             }
         case "reglages":
             app.onglet = .aujourdhui

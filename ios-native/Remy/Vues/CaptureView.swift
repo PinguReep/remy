@@ -93,6 +93,9 @@ struct CaptureView: View {
                 Spacer()
                 bouton("xmark", "Fermer") { fermer() }
             }
+            if app.dictee.etat == .repos, !app.dictee.enAttente.isEmpty {
+                VocauxEnAttente()
+            }
             switch app.dictee.etat {
             case .enregistrement(let debut):
                 BarreEnregistrement(debut: debut)

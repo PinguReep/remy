@@ -123,6 +123,14 @@ struct OngletsView: View {
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
         // Signe de vie tant que l'app est au premier plan : c'est la mesure
         // d'activité (le temps passé devant Rémy, pas le temps où il existe).
+        // Une dictée de plusieurs minutes : l'écran ne se verrouille pas (le
+        // micro serait coupé). L'app quittée quand même : le vocal attend.
+        .onChange(of: app.dictee.etat) { _, e in
+            UIApplication.shared.isIdleTimerDisabled = e != .repos || app.appel.actif
+        }
+        .onChange(of: scene) { _, s in
+            if s == .background { app.dictee.interrompre() }
+        }
         .task(id: scene) {
             guard scene == .active else { return }
             // De retour au premier plan : la journée a pu changer (et le jour aussi).
