@@ -1,0 +1,8 @@
+Polices auto-hébergées de Rémy (aucune requête vers un service tiers).
+
+- Inter — Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+- JetBrains Mono — Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+
+Toutes deux distribuées sous la SIL Open Font License, version 1.1 :
+https://openfontlicense.org/open-font-license-official-text/
+Sous-ensembles « latin » et « latin-ext » en WOFF2, tels que publiés par Google Fonts.

@@ -1,0 +1,19 @@
+{
+  "name": "remy-chat",
+  "version": "0.2.0",
+  "description": "MVP de chat HTML pour discuter avec Rémy (assistant personnel propulsé par Claude)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --env-file=test/test.env --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@sparticuz/chromium": "^149.0.0",
+    "playwright-core": "^1.62.1"
+  }
+}

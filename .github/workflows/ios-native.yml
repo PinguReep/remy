@@ -1,0 +1,173 @@
+# App iPhone native : compile, teste le cœur, lance l'app sur un simulateur
+# contre un serveur de démo (données fictives) et capture les écrans.
+# Aucune signature, aucun envoi : c'est la vérification de chaque changement.
+# Les captures sont dans les « artifacts » de l'exécution.
+#
+# Relancé aussi quand le SERVEUR change (lib/, server.js, package*.json) : le
+# test d'intégration Swift tourne contre le vrai server.js, il doit voir le
+# serveur réellement modifié. Appelé par ios-testflight.yml avant tout envoi.
+#
+# Quand : sur une PR PRÊTE à fusionner (pas en brouillon), à la demande
+# (Actions → Run workflow), et avant chaque envoi TestFlight. Plus à chaque
+# envoi sur une branche : une minute macOS compte pour dix dans le quota
+# GitHub, et c'est ce qui l'avait épuisé le 14/10.
+
+name: iOS natif — build & captures
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "ios-native/**"
+      - "lib/**"
+      - "api/**"
+      - "server.js"
+      - "package.json"
+      - "package-lock.json"
+      - "contrat/**"
+      - ".github/workflows/ios-native.yml"
+      - ".github/actions/outils-ios/**"
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-native-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v4
+
+      # Xcode et XcodeGen en versions figées (les mêmes que pour TestFlight).
+      - uses: ./.github/actions/outils-ios
+
+      # Le serveur s'appuie sur node:sqlite (Node ≥ 22.13), comme sur la tour.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Serveur de démo (données fictives)
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          node ios-native/ci/donnees-demo.mjs
+          nohup node ios-native/ci/faux-services.mjs > faux.log 2>&1 &
+          APP_PASSWORD=demo-demo-demo SESSION_SECRET=ci ANTHROPIC_API_KEY=sk-ci \
+          MOTION_API_KEY=faux MOTION_BASE_URL=http://127.0.0.1:9998/v1 \
+          GOOGLE_CLIENT_ID=x GOOGLE_CLIENT_SECRET=y \
+          GOOGLE_API_URL=http://127.0.0.1:9995/calendar/v3 GOOGLE_TOKEN_URL=http://127.0.0.1:9995/token \
+          DICTEE_LOCALE_URL=http://127.0.0.1:9997 \
+          CRON_SECRET=ci REMY_ENV=test PORT=3000 nohup node server.js > serveur.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/api/health > /dev/null
+
+      - name: Tests du cœur (contre le serveur de démo)
+        working-directory: ios-native/RemyCore
+        env:
+          REMY_TEST_URL: http://127.0.0.1:3000
+          REMY_TEST_MDP: demo-demo-demo
+        # pipefail : sans lui, « tail » réussit toujours et un test rouge passait vert.
+        run: |
+          set -o pipefail
+          swift test 2>&1 | grep -E "error:|failed|XCTAssert|Executed|INTEGRATION" | tail -60
+
+      - name: Générer le projet Xcode
+        working-directory: ios-native
+        run: xcodegen generate
+
+      - name: Compiler pour le simulateur
+        working-directory: ios-native
+        run: |
+          set -o pipefail
+          xcodebuild -project Remy.xcodeproj -scheme Remy -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | grep -E "error:|warning: .*Remy/|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Debug-iphonesimulator/Remy.app
+
+      - name: Lancer et capturer
+        working-directory: ios-native
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          ios=[(k,v) for k,v in d.items() if 'iOS' in k]
+          ios.sort(key=lambda kv: kv[0])
+          # Le runtime iOS le plus récent ; un grand iPhone (« Pro Max », sinon
+          # « Plus ») comme celui de Sam, sinon un « Pro ».
+          for k,v in reversed(ios):
+              iphones=[d for d in v if d['name'].startswith('iPhone')]
+              grands=[d for d in iphones if d['name'].endswith(' Pro Max')] or [d for d in iphones if d['name'].endswith(' Plus')]
+              pro=[d for d in iphones if d['name'].endswith(' Pro')]
+              choix=(grands or pro or iphones)
+              if choix:
+                  print(choix[-1]['udid']); sys.exit()
+          ")
+          echo "Simulateur : $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Remy.app
+          # Le micro (dictée, mode appel) : accordé d'avance, sinon l'alerte
+          # système masquerait les captures.
+          xcrun simctl privacy "$UDID" grant microphone com.pingureep.remy || true
+          mkdir -p captures
+          capture() { # nom apparence écran
+            xcrun simctl ui "$UDID" appearance "$2"
+            xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
+            if [ "$3" = "connexion" ]; then
+              SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 xcrun simctl launch "$UDID" com.pingureep.remy
+            else
+              SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 SIMCTL_CHILD_REMY_DEMO_MDP=demo-demo-demo \
+              SIMCTL_CHILD_REMY_DEMO_ECRAN="$3" SIMCTL_CHILD_REMY_DEMO_ANCRE="${4:-}" \
+              xcrun simctl launch "$UDID" com.pingureep.remy
+            fi
+            sleep 9
+            xcrun simctl io "$UDID" screenshot "captures/$1.png"
+            # Une capture ne prouve rien si l'app est tombée entre-temps : elle
+            # doit TOURNER encore, sinon la CI échoue (crash au lancement).
+            # (liste lue d'abord : « grep -q » en bout de tube coupait launchctl, « Broken pipe »)
+            EN_COURS=$(xcrun simctl spawn "$UDID" launchctl list)
+            if ! grep -q "com.pingureep.remy" <<<"$EN_COURS"; then
+              echo "::error::L'app ne tourne plus après la capture « $1 » (crash ?)"
+              exit 1
+            fi
+          }
+          capture 1-connexion-sombre dark connexion
+          capture 2-aujourdhui-clair light aujourdhui
+          capture 3-aujourdhui-sombre dark aujourdhui
+          capture 3b-journee-clair light aujourdhui journee
+          capture 3c-remarque-sombre dark aujourdhui remarque
+          capture 3d-connaissance-clair light aujourdhui connaissance
+          capture 4-remy-clair light remy
+          capture 4b-remy-sombre dark remy
+          capture 4c-recherche-web-sombre dark remy-fil c6
+          capture 5-remy-vide-clair light remy-vide
+          capture 6-reglages-sombre dark reglages
+          capture 7-appel-sombre dark appel
+          capture 8-dictee-clair light dictee
+          ls -la captures
+
+      - name: Captures en JPEG réduit
+        if: always()
+        working-directory: ios-native
+        run: |
+          mkdir -p captures/petites
+          for f in captures/*.png; do [ -f "$f" ] && sips -s format jpeg -s formatOptions 70 -Z 1000 "$f" --out "captures/petites/$(basename "${f%.png}").jpg" > /dev/null; done
+          ls -la captures/petites || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-iphone
+          path: ios-native/captures/petites/
+          retention-days: 14
+
+      - name: Journaux du serveur de démo
+        if: failure()
+        run: tail -40 serveur.log faux.log || true

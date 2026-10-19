@@ -1,0 +1,3 @@
+# Les scripts envoyés sur Linux (Spark) gardent des fins de ligne Unix,
+# même extraits sous Windows : bash refuse les CRLF.
+*.sh text eol=lf
