@@ -229,10 +229,11 @@ final class DicteeTests: XCTestCase {
         await a.dictee.valider()
         let v = try XCTUnwrap(a.dictee.enAttente.first)
         XCTAssertEqual(v.duree, "2:41")
-        XCTAssertEqual(a.chat.brouillon, "")
+        a.chat.brouillon = "Ce que j'ai écrit entre-temps"
         await a.dictee.renvoyer(v.id)
-        XCTAssertEqual(a.chat.brouillon, "une longue idée")
-        XCTAssertTrue(a.dictee.enAttente.isEmpty, "parti : plus rien n'est gardé")
+        XCTAssertEqual(a.chat.brouillon, "Ce que j'ai écrit entre-temps une longue idée", "à la fin du champ, à relire")
+        XCTAssertFalse(FauxServeur.recues.contains { $0.hasSuffix("/messages") }, "jamais envoyé à Rémy tout seul")
+        XCTAssertTrue(a.dictee.enAttente.isEmpty, "transcrit : plus rien n'est gardé")
         XCTAssertEqual(FauxServeur.recues.filter { $0 == "POST /api/transcribe" }.count, 2)
     }
 
