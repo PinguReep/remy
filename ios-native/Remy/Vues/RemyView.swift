@@ -245,6 +245,10 @@ private struct Fil: View {
     /// lire (Sam, 09/10 : impossible pendant une réponse, l'écran revenait en
     /// bas à chaque mot), on le laisse lire jusqu'à ce qu'il redescende.
     @State private var suitLaFin = true
+    /// Sam fait défiler (doigt posé ou élan) : rien ne le ramène en bas.
+    @State private var defile = false
+    @State private var finY: CGFloat = 0
+    @State private var hauteurFil: CGFloat = 0
 
     var body: some View {
         let chat = app.chat
@@ -272,16 +276,24 @@ private struct Fil: View {
             // des messages continuent de répondre.
             .scrollDismissesKeyboard(.immediately)
             .simultaneousGesture(TapGesture().onEnded { clavier = false })
-            .defaultScrollAnchor(.bottom)
+            // iOS 18+ : l'ancre du bas ne vaut qu'à l'ouverture. Sur « toutes
+            // les tailles », chaque mot ajouté ramenait le fil en bas même quand
+            // Sam était remonté lire (19/10).
+            .modifier(SuiviDuFil(defile: $defile) {
+                suitLaFin = finY <= hauteurFil + 60
+            })
             .coordinateSpace(name: "fil")
             .background(GeometryReader { zone in
                 Color.clear.onPreferenceChange(FinDuFil.self) { y in
+                    finY = y
+                    hauteurFil = zone.size.height
                     // La fin est visible (à 120 pt près) : on suit la réponse.
-                    suitLaFin = y <= zone.size.height + 120
+                    // Pendant que Sam fait défiler, on ne décide rien.
+                    if !defile { suitLaFin = y <= zone.size.height + 120 }
                 }
             })
             .onChange(of: chat.lignes.last?.texte) { _, _ in
-                if suitLaFin { proxy.scrollTo("fin", anchor: .bottom) }
+                if suitLaFin, !defile { proxy.scrollTo("fin", anchor: .bottom) }
             }
             .onChange(of: chat.lignes.count) { _, _ in
                 // Un message que Sam vient d'envoyer : on y va, où qu'il soit.
@@ -293,6 +305,28 @@ private struct Fil: View {
                 proxy.scrollTo("fin", anchor: .bottom)
             }
             .onAppear { proxy.scrollTo("fin", anchor: .bottom) }
+        }
+    }
+}
+
+/// Le fil s'ouvre en bas ; ensuite, seule la décision « suivre la fin »
+/// le fait descendre. Le doigt de Sam l'emporte toujours sur la réponse qui s'écrit.
+private struct SuiviDuFil: ViewModifier {
+    @Binding var defile: Bool
+    /// Sam a lâché le fil : est-il revenu en bas ?
+    let arrete: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .onScrollPhaseChange { _, phase in
+                    let parSam = phase == .tracking || phase == .interacting || phase == .decelerating
+                    if defile, !parSam { arrete() }
+                    defile = parSam
+                }
+        } else {
+            content.defaultScrollAnchor(.bottom)
         }
     }
 }
