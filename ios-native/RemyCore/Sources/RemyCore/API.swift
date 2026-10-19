@@ -411,6 +411,30 @@ public final class ClientAPI: @unchecked Sendable {
         try await envoyer("api/conversations/\(convId)/propositions/\(pid)/refus", methode: "POST", corps: [:])
     }
 
+    // MARK: Règles de Rémy (regles-v1)
+
+    /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.
+    public func validerRegle(convId: String, propositionId: String) async throws {
+        let pid = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
+        try await envoyer("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST", corps: [:])
+    }
+
+    public func regles() async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles").regles
+    }
+
+    public func reglerRegle(_ id: String, actif: Bool) async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles/\(id)", methode: "PATCH", corps: ["actif": actif]).regles
+    }
+
+    public func supprimerRegle(_ id: String) async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles/\(id)", methode: "DELETE").regles
+    }
+
+    public func verifierRegles() async throws -> BilanRegles {
+        try await json(BilanRegles.self, "api/regles/verifier", methode: "POST", corps: [:], delai: 60)
+    }
+
     /// Défait une proposition appliquée. « Déjà annulé » (409) est un succès :
     /// l'état voulu est atteint. Une écriture encore en cours (409 aussi) ne
     /// l'est pas : l'erreur remonte telle quelle.

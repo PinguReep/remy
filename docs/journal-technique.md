@@ -198,6 +198,17 @@ notes privées, sur la tour.
   rempli 70 % du contexte (90 k jetons si la taille est inconnue), circuit
   `compactage` coupable ; à la demande : `POST /api/conversations/:id/compacter`.
   Coût journalisé (`kind: "compaction"`).
+- **Règles de Rémy** (`regles-v1`, `lib/regles.js`, migration 6) : des tâches
+  conditionnelles que Motion ne sait pas faire (« avant une sortie, me
+  raser »). Une règle = des mots-clés + la tâche + « au plus tard N min
+  avant ». Créée par l'outil `regle_proposer` (carte « Nouvelle règle »),
+  validée par l'utilisateur (`POST …/propositions/:pid/regle`, lue dans la
+  conversation stockée). Toutes les 3 h de 7 h à 22 h (job `regles-verifier`,
+  circuit `regles`, sans IA) : agenda + Motion sur 7 jours ; un événement qui
+  correspond (mots entiers, sans accents), sans la tâche déjà prévue dans les
+  3 jours avant → une proposition Motion ordinaire dans le fil « Règles de
+  Rémy » (`systeme: "regles"`), une seule fois par événement (`regles_vues`).
+  `GET/PATCH/DELETE /api/regles`, `POST /api/regles/verifier`.
 
 ## App iPhone
 
