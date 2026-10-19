@@ -1,0 +1,115 @@
+# Tests du serveur (Lot 0, J0.3) : à chaque push et à chaque PR, et avant tout
+# envoi TestFlight (appelé par ios-testflight.yml). Aucun secret, aucun service
+# réel : `npm test` pose REMY_ENV=test, et le code refuse alors toute requête
+# vers une API Motion qui n'est pas locale.
+#
+# Deux machines : Ubuntu (rapide), et Windows comme la tour — c'est là que
+# tourne la production (chemins, renommages, fsync, PowerShell 5.1).
+
+name: Serveur — tests
+
+# Une fois par changement : sur une PR, et sur main après fusion. (Avant, chaque
+# envoi sur une branche de PR lançait deux fois tout — push ET pull_request —
+# et le job Windows compte double dans le quota de minutes.)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: serveur-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu:
+    name: npm test (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+
+  windows:
+    name: npm test + installeur (Windows, comme la tour)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Scripts de la tour — syntaxe (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $echec = $false
+          foreach ($f in Get-ChildItem scripts -Filter *.ps1) {
+            $erreurs = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$erreurs) | Out-Null
+            if ($erreurs) { $echec = $true; $erreurs | ForEach-Object { Write-Error "$($f.Name):$($_.Extent.StartLineNumber): $($_.Message)" } }
+            else { Write-Output "$($f.Name) : syntaxe valide ($($PSVersionTable.PSVersion))" }
+          }
+          if ($echec) { exit 1 }
+      - name: Scripts de la tour — pièges de PowerShell 5.1
+        shell: powershell
+        run: |
+          # Le piège : en mode « Stop », rediriger la sortie d'erreur d'un
+          # programme (2>$null) l'arrête à la première ligne écrite. Node 22
+          # écrit « ExperimentalWarning » quand on charge SQLite.
+          $ErrorActionPreference = 'Stop'
+          $piege = $false
+          try { & node -e "require('node:sqlite')" 2>$null } catch { $piege = $true }
+          Write-Output "Piège présent sous $($PSVersionTable.PSVersion) : $piege"
+          # Ce que font les scripts de la tour : ne doit JAMAIS s'arrêter.
+          $ErrorActionPreference = 'Continue'
+          & node --no-warnings -e "try { require('node:sqlite'); process.exit(0) } catch { process.exit(1) }" 2>$null
+          $nodeOk = ($LASTEXITCODE -eq 0)
+          $ErrorActionPreference = 'Stop'
+          if (-not $nodeOk) { Write-Error "La vérification de Node de l'installeur échoue alors que Node 22 est là"; exit 1 }
+          Write-Output "Vérification de Node de l'installeur : OK"
+          # Un programme qui écrit sur sa sortie d'erreur sans redirection : affiché, pas fatal.
+          & node -e "console.error('avertissement sans gravité')"
+          Write-Output "Sortie d'erreur non redirigée : OK"
+          # Extrait sous Windows, le script du Spark doit rester en fins de ligne
+          # Unix : en CRLF, bash s'arrête dès « set -o pipefail ».
+          if ([IO.File]::ReadAllBytes('scripts/spark-preparer.sh') -contains 13) { Write-Error 'spark-preparer.sh extrait en CRLF'; exit 1 }
+          Write-Output "spark-preparer.sh en fins de ligne Unix (core.autocrlf = $(git config core.autocrlf)) : OK"
+      - name: Spark — empreinte relevée par l'OpenSSH de Windows
+        shell: powershell
+        run: |
+          # Comme sur la tour : l'OpenSSH livré avec Windows, pas celui de Git.
+          $env:Path = "$env:WINDIR\System32\OpenSSH;$env:Path"
+          Write-Output "ssh : $((Get-Command ssh).Source)"
+          $sortie = powershell -NoProfile -ExecutionPolicy Bypass -File scripts\spark-relier.ps1 -Spark github.com -Relever
+          $code = $LASTEXITCODE
+          $sortie | ForEach-Object { Write-Output $_ }
+          # Empreinte ed25519 publiée par GitHub (docs.github.com, « GitHub's SSH key fingerprints »).
+          if ($code -ne 0 -or -not ($sortie -match 'SHA256:\+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU')) { Write-Error 'Empreinte non relevée ou différente'; exit 1 }
+          if (Test-Path "$env:USERPROFILE\.remy\spark_hotes_connus*") { Write-Error 'Le relevé a laissé un fichier'; exit 1 }
+          Write-Output 'Relevé par ssh : OK, rien épinglé'
+          # Pour mémoire : ce que donne ssh-keyscan sur ce Windows.
+          $ErrorActionPreference = 'Continue'
+          $ks = & ssh-keyscan -t ed25519 github.com 2>&1
+          Write-Output "Pour mémoire, ssh-keyscan : [$($ks -join ' | ')] (code $LASTEXITCODE)"
+          exit 0
+      - name: BitLocker — état en lecture seule, sans jamais une clé
+        shell: powershell
+        run: |
+          $sortie = powershell -NoProfile -ExecutionPolicy Bypass -File scripts\bitlocker-etat.ps1
+          $code = $LASTEXITCODE
+          $sortie | ForEach-Object { Write-Output $_ }
+          if ($code -ne 0) { Write-Error "bitlocker-etat.ps1 : code $code"; exit 1 }
+          # Une clé de récupération : 8 groupes de 6 chiffres.
+          if ($sortie -match '\d{6}(-\d{6}){7}') { Write-Error 'Une clé de récupération apparaît dans la sortie'; exit 1 }
+          # Motif sans accent : Windows PowerShell 5.1 lit cette étape en ANSI.
+          if (-not ($sortie -match '^Fin : rien n')) { Write-Error 'Le script ne va pas jusqu''au bout'; exit 1 }
+          Write-Output 'État BitLocker : lu jusqu''au bout, aucune clé affichée'

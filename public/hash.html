@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rémy — Générateur de mot de passe hashé</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0c10; --panel: #12141c; --panel-2: #181b25; --border: #222633;
+    --text: #eceef4; --muted: #8b91a5; --accent: #e07a4a; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Manrope", -apple-system, system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; min-height: 100dvh;
+    display: grid; place-items: center; padding: 24px;
+  }
+  .box {
+    width: 100%; max-width: 440px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 20px; padding: 28px;
+  }
+  h2 { font-family: "Space Grotesk", sans-serif; font-weight: 600; }
+  .logo { width: 48px; height: 48px; border-radius: 30%;
+    background: linear-gradient(140deg, #f0a06a, #e07a4a 58%, #b85431);
+    box-shadow: 0 0 24px rgba(224,122,74,.16);
+    display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 22px; margin-bottom: 14px; }
+  h2 { margin: 0 0 6px; font-weight: 600; }
+  p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+  input {
+    width: 100%; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); border-radius: var(--radius); padding: 12px 14px;
+    font-size: 15px; outline: none; margin: 10px 0;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    width: 100%; border: none; background: var(--accent); color: #fff;
+    border-radius: var(--radius); padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; }
+  #result {
+    display: none; margin-top: 16px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    word-break: break-all; line-height: 1.5;
+  }
+  #copy { margin-top: 10px; background: transparent; border: 1px solid var(--border); color: var(--text); display: none; }
+  #error { color: #e88; font-size: 13px; min-height: 18px; margin-top: 8px; }
+  ol { color: var(--muted); font-size: 13px; padding-left: 18px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">R</div>
+  <h2>Générateur APP_PASSWORD_HASH</h2>
+  <p>Choisis le mot de passe qui protégera Rémy, et récupère sa version hashée à mettre dans Vercel. Rien n'est stocké.</p>
+  <form id="f">
+    <input id="pwd" type="password" placeholder="Ton mot de passe (12+ caractères conseillés)" autocomplete="new-password" required>
+    <button id="go" type="submit">Générer le hash</button>
+  </form>
+  <div id="error"></div>
+  <div id="result"></div>
+  <button id="copy">📋 Copier</button>
+  <ol>
+    <li>Copie la valeur générée</li>
+    <li>Vercel → Settings → Environment Variables → <b>APP_PASSWORD_HASH</b></li>
+    <li>Deployments → ⋯ → Redeploy</li>
+  </ol>
+</div>
+<script>
+const f = document.getElementById("f");
+const result = document.getElementById("result");
+const copyBtn = document.getElementById("copy");
+const errEl = document.getElementById("error");
+let value = "";
+
+f.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errEl.textContent = "";
+  document.getElementById("go").disabled = true;
+  try {
+    const r = await fetch("/api/hash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: document.getElementById("pwd").value }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || data.error || "Erreur");
+    value = data.hash;
+    result.textContent = value;
+    result.style.display = "block";
+    copyBtn.style.display = "block";
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    document.getElementById("go").disabled = false;
+  }
+});
+
+copyBtn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(value);
+  copyBtn.textContent = "✓ Copié";
+  setTimeout(() => (copyBtn.textContent = "📋 Copier"), 1500);
+});
+</script>
+</body>
+</html>

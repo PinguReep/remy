@@ -1,0 +1,41 @@
+# Outils de compilation iOS, en versions FIGÉES (Lot 0, J0.3) : la même
+# entrée donne le même build. Si l'image macOS de GitHub n'a plus ce Xcode,
+# l'échec est explicite et liste ce qui est disponible — on change la version
+# ici, en connaissance de cause, plutôt que de prendre « le plus récent ».
+name: Outils iOS (versions figées)
+description: Sélectionne Xcode et installe XcodeGen à des versions fixes.
+inputs:
+  xcode:
+    description: Version de Xcode
+    default: "26.6"
+  xcodegen:
+    description: Version de XcodeGen
+    default: "2.46.0"
+  xcodegen-sha256:
+    description: Empreinte SHA-256 de l'archive XcodeGen
+    default: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+runs:
+  using: composite
+  steps:
+    - name: Xcode ${{ inputs.xcode }}
+      shell: bash
+      run: |
+        APP="/Applications/Xcode_${{ inputs.xcode }}.app"
+        if [ ! -d "$APP" ]; then
+          echo "::error::Xcode ${{ inputs.xcode }} absent de l'image. Disponibles : $(ls -d /Applications/Xcode_*.app | xargs -n1 basename | tr '\n' ' ')"
+          exit 1
+        fi
+        sudo xcode-select -s "$APP"
+        xcodebuild -version
+    - name: XcodeGen ${{ inputs.xcodegen }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        DEST="$RUNNER_TEMP/xcodegen-${{ inputs.xcodegen }}"
+        mkdir -p "$DEST"
+        curl -fsSL --retry 3 -o "$DEST/xcodegen.zip" \
+          "https://github.com/yonaskolb/XcodeGen/releases/download/${{ inputs.xcodegen }}/xcodegen.zip"
+        echo "${{ inputs.xcodegen-sha256 }}  $DEST/xcodegen.zip" | shasum -a 256 -c -
+        unzip -q "$DEST/xcodegen.zip" -d "$DEST"
+        echo "$DEST/xcodegen/bin" >> "$GITHUB_PATH"
+        "$DEST/xcodegen/bin/xcodegen" --version

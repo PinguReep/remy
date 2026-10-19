@@ -1,0 +1,6 @@
+# Générés : XcodeGen recrée le projet et l'Info.plist, SwiftPM ses artefacts.
+Remy.xcodeproj/
+Support/
+RemyCore/.build/
+build/
+captures/

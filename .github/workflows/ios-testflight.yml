@@ -1,0 +1,148 @@
+# Compile l'app iPhone NATIVE (ios-native/) et l'envoie sur TestFlight — aucun
+# Mac requis, tout se passe sur une machine macOS de GitHub.
+#
+# Déclenchement — SEULEMENT sur décision de Sam (Lot 0, D5) :
+#   - un tag « ios-v… » (ex. git tag ios-v2.1.0 && git push origin ios-v2.1.0) ;
+#   - manuel : onglet Actions → « iOS → TestFlight » → Run workflow.
+# Plus d'envoi à chaque fusion : avec les mises à jour automatiques de l'app
+# TestFlight, l'iPhone l'installait tout seul — un déploiement implicite.
+#
+# Avant d'archiver : les tests serveur (Ubuntu + Windows) ET les tests iOS
+# (cœur, intégration contre le vrai server.js, build simulateur, captures)
+# doivent être verts. Un test rouge = aucun envoi (AC-20).
+#
+# Retour arrière : app TestFlight → Rémy → « Builds précédents » → installer le
+# build voulu (docs/ios.md). Chaque exécution garde l'archive et les dSYM.
+#
+# Secrets GitHub (Settings → Secrets and variables → Actions) :
+#   ASC_KEY_ID     — ID de la clé API App Store Connect (rôle Admin : la
+#                    signature de distribution dans le cloud l'exige)
+#   ASC_ISSUER_ID  — Issuer ID (page des clés API)
+#   ASC_KEY_P8     — contenu du fichier .p8 encodé en base64
+#   APPLE_TEAM_ID  — identifiant d'équipe (developer.apple.com → Membership)
+# S'il en manque un, le workflow ÉCHOUE (avant, il restait vert sans rien
+# envoyer). Pas-à-pas : docs/ios.md
+
+name: iOS → TestFlight
+
+on:
+  push:
+    tags: ["ios-v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  serveur:
+    name: Tests serveur
+    uses: ./.github/workflows/serveur.yml
+
+  ios:
+    name: Tests iOS
+    uses: ./.github/workflows/ios-native.yml
+
+  build:
+    name: Archive et envoi
+    needs: [serveur, ios]
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Secrets présents ?
+        run: |
+          manque=""
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            [ -z "${!v}" ] && manque="$manque $v"
+          done
+          if [ -n "$manque" ]; then
+            echo "::error::Secrets App Store Connect absents :$manque — rien n'est envoyé. Voir docs/ios.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      # Xcode et XcodeGen figés : les mêmes versions que les tests iOS.
+      - uses: ./.github/actions/outils-ios
+
+      - name: Clé API App Store Connect
+        run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_P8" | base64 --decode > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+
+      - name: Enregistrer le Bundle ID (idempotent)
+        run: node scripts/asc-register-bundle.mjs
+
+      - name: Générer le projet
+        working-directory: ios-native
+        run: |
+          xcodegen generate
+
+      - name: Archive (signature automatique via la clé API)
+        working-directory: ios-native
+        run: |
+          xcodebuild -project Remy.xcodeproj -scheme Remy -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Remy.xcarchive archive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      - name: Export .ipa
+        working-directory: ios-native
+        run: |
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/Remy.xcarchive \
+            -exportPath build/export -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Envoi sur TestFlight
+        run: |
+          xcrun altool --upload-app --type ios \
+            --file ios-native/build/export/*.ipa \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Résumé (build ↔ commit)
+        if: always()
+        run: |
+          {
+            echo "### TestFlight"
+            echo "- Build : **${{ github.run_number }}**"
+            echo "- Commit : \`${GITHUB_SHA::7}\` (${{ github.ref_name }})"
+            echo "- Retour arrière : app TestFlight → Rémy → Builds précédents"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Garder l'archive et les dSYM (90 jours)
+        if: always()
+        run: |
+          cd ios-native/build
+          [ -d Remy.xcarchive ] && ditto -c -k --keepParent Remy.xcarchive "Remy-${{ github.run_number }}.xcarchive.zip" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-ios-${{ github.run_number }}
+          path: ios-native/build/Remy-*.xcarchive.zip
+          retention-days: 90
+          if-no-files-found: ignore
