@@ -32,7 +32,10 @@ const remy = http.createServer(async (req, res) => {
 });
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${remy.address().port}`;
-test.after(() => { remy.close(); fs.rmSync(dossier, { recursive: true, force: true }); });
+const { fermer } = await import("../lib/connaissances/base.js");
+const { fermer: fermerRemy } = await import("../lib/db.js");
+// Windows refuse d'effacer une base encore ouverte.
+test.after(() => { remy.close(); fermer(); fermerRemy(); fs.rmSync(dossier, { recursive: true, force: true }); });
 
 // --- Fabrique de sessions fictives -------------------------------------------------
 let n = 0;
