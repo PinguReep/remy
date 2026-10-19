@@ -28,6 +28,11 @@ on:
       - ".github/workflows/ios-native.yml"
       - ".github/actions/outils-ios/**"
   workflow_call:
+    inputs:
+      essentiel:
+        description: "Envoi TestFlight : tests et compilation, mais seulement les captures qui prouvent que l'app démarre (les autres ont été faites sur la PR)"
+        type: boolean
+        default: false
   workflow_dispatch:
 
 concurrency:
@@ -95,6 +100,8 @@ jobs:
 
       - name: Lancer et capturer
         working-directory: ios-native
+        env:
+          ESSENTIEL: ${{ inputs.essentiel && '1' || '' }}
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "
           import json,sys
@@ -146,6 +153,16 @@ jobs:
               exit 1
             fi
           }
+          if [ "$ESSENTIEL" = "1" ]; then
+            # Envoi TestFlight : ce code a déjà eu toutes ses captures sur la PR
+            # (31 min sur 36). Ici, de quoi prouver que l'app démarre, se connecte
+            # et ne plante pas (chaque capture le vérifie).
+            capture 0-adresse-tour-clair light adresse
+            capture 2-aujourdhui-clair light aujourdhui
+            capture 4-remy-clair light remy
+            ls -la captures
+            exit 0
+          fi
           capture 0-adresse-tour-clair light adresse
           capture 1-connexion-sombre dark connexion
           capture 2-aujourdhui-clair light aujourdhui
