@@ -58,6 +58,17 @@ notes privées, sur la tour.
   poubelle. Micro coupé par le système ou app quittée en pleine dictée : même
   chose, rien ne part tout seul.
 
+## 2026-10-19 — Plantage du micro (retour TestFlight, build 19)
+
+- **Journal** : `EXC_BAD_ACCESS (SIGSEGV)` sur un fil d'AudioToolbox,
+  `objc_loadWeak` ← `AudioRecorderAQInputCallback` : la file audio d'un
+  `AVAudioRecorder` livrait encore un tampon après `stop()`, alors que l'app
+  venait de libérer l'enregistreur (dictée validée, annulée, ou tour d'appel).
+- **Correctif** : `MicroiPhone.retirer` arrête l'enregistreur et le garde en vie
+  3 s avant de le lâcher (dictée, appel, interruption, plafond).
+- **Relevé des retours** : job `retours` de `ios-testflight.yml` (voir
+  `docs/ios.md`), désormais fait avant chaque envoi.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont

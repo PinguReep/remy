@@ -8,6 +8,11 @@ import RemyCore
 final class MicroiPhone: NSObject, Micro {
     private var enregistreur: AVAudioRecorder?
     private var fichier: URL?
+    /// Un enregistreur arrêté reçoit encore quelques rappels audio du système :
+    /// libéré tout de suite, ces rappels visaient un objet disparu et l'app
+    /// plantait (EXC_BAD_ACCESS dans AudioRecorderAQInputCallback, build 19,
+    /// retour TestFlight du 19/10). Il est gardé quelques secondes après l'arrêt.
+    private var enArret: [AVAudioRecorder] = []
     /// Le système coupe le micro (appel, Siri, alarme) : branché par l'app,
     /// pour que la dictée garde ce qui a été dit au lieu de le perdre.
     var coupure: (() -> Void)?
@@ -63,7 +68,7 @@ final class MicroiPhone: NSObject, Micro {
     func arreter() -> Enregistrement? {
         guard let r = enregistreur, let url = fichier else { return nil }
         let duree = r.currentTime
-        r.stop()
+        retirer(r)
         enregistreur = nil
         fichier = nil
         defer { try? FileManager.default.removeItem(at: url) }
@@ -72,10 +77,21 @@ final class MicroiPhone: NSObject, Micro {
     }
 
     func jeter() {
-        enregistreur?.stop()
+        if let r = enregistreur { retirer(r) }
         enregistreur = nil
         if let url = fichier { try? FileManager.default.removeItem(at: url) }
         fichier = nil
+    }
+
+    /// Arrête l'enregistreur et le garde en vie le temps que les derniers
+    /// rappels audio en vol soient livrés.
+    private func retirer(_ r: AVAudioRecorder) {
+        r.stop()
+        enArret.append(r)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            self?.enArret.removeAll { $0 === r }
+        }
     }
 
     func niveau() -> Float {
