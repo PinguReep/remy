@@ -102,6 +102,37 @@ notes privées, sur la tour.
   JSON illisible. `scripts/audit-sources-tour.ps1` : audit en lecture seule des
   sources de sessions (rien que des structures et des hachages).
 
+## 2026-10-19 — Mémoire de projets, lot B : lire les sessions Claude Code
+
+- `lib/connaissances/` : lecture **seule** des sessions (`~/.claude/projects`,
+  `CLAUDE_CONFIG_DIR`), curseur par fichier (inode, octet lu, empreinte des
+  4 derniers Ko : un fichier réécrit est relu, une ligne en cours d'écriture
+  attend), lignes de plus de 4 Mo sautées, pause tous les 500 enregistrements.
+- Ne devient « passage » que le dialogue : texte tapé (fil principal, ni méta,
+  ni commande, ni résultat d'outil, ni notification), un long collage marqué
+  `colle`, le texte de l'assistant (jamais sa réflexion ni ses outils), les
+  résumés de compaction (`resume`). Sous-agents et sessions `sdk-cli`
+  (« claude -p » : Rémy, titres de T3…) exclus ; Rémy coupe en plus son propre
+  historique (`CLAUDE_CODE_SKIP_PROMPT_HISTORY`).
+- Secrets masqués en mémoire avant toute écriture (`masquage.js` : préfixes de
+  clés, JWT, PEM, URL avec identifiants, « mot de passe : … », valeurs de
+  remy.env).
+- `connaissances.db` (à côté de remy.db, séparée) : sources, fichiers,
+  projets (dossier normalisé, worktree T3 ramené au dépôt), conversations,
+  passages + FTS5 sans accents, journal des lectures. **En clair sur le disque**
+  (pas de BitLocker, choix du propriétaire) : dit dans l'état, jamais simulé.
+- Source **coupée par défaut** (accord dans l'app ou `REMY_SOURCE_CLAUDE_CODE=on`,
+  `=off` l'emporte) ; `REMY_CONNAISSANCES_PROJETS` limite aux projets dont le
+  dossier contient l'un des mots (réglé sur la tour seulement). Lecture toutes
+  les 30 min (job `connaissances-sync`, circuit « projets »), sans IA.
+- Routes : `GET /api/connaissances`, `PUT …/sources`, `POST …/synchroniser`,
+  `GET …/chercher?q=` (extraits + session + uuid pour citer), `DELETE
+  …/sources/claude-code` (purge). `scripts/connaissances-etat.mjs` : l'état vu
+  de la tour, `--lire` pour lire tout de suite.
+- Lot C (à venir) : extraction des connaissances par GLM local, fiches
+  `Projets/` dans le coffre, bloc « Projets » dans le chat (conversation passée
+  en privé).
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
