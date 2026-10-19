@@ -90,6 +90,40 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var origine: Origine?
     public var pinned: Bool?
     public var updatedAt: Millis?
+    /// Le début du fil résumé pour le modèle (compactage-v1) ; rien d'effacé.
+    public var compactage: Compactage?
+}
+
+/// Une conversation compactée (19/10) : les messages avant `jusqua` arrivent
+/// au modèle sous forme de résumé ; ils restent tous dans le fil.
+public struct Compactage: Codable, Equatable, Sendable {
+    public var jusqua: Int
+    public var a: Millis?
+    public var resume: String?
+    public var modele: String?
+
+    public init(jusqua: Int, a: Millis? = nil, resume: String? = nil, modele: String? = nil) {
+        self.jusqua = jusqua
+        self.a = a
+        self.resume = resume
+        self.modele = modele
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        jusqua = (try? c.decodeIfPresent(Int.self, forKey: .jusqua)) ?? 0
+        a = try? c.decodeIfPresent(Millis.self, forKey: .a)
+        resume = try? c.decodeIfPresent(String.self, forKey: .resume)
+        modele = try? c.decodeIfPresent(String.self, forKey: .modele)
+    }
+}
+
+/// Ce que rend POST /api/conversations/:id/compacter.
+public struct RetourCompactage: Decodable, Sendable {
+    public var compacte: Bool
+    public var raison: String?
+    public var resumes: Int?
+    public var compactage: Compactage?
 }
 
 public struct Message: Codable, Equatable, Sendable {

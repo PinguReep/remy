@@ -299,6 +299,10 @@ private struct Fil: View {
                 // dépassait la fin (vide sous iOS 26).
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(chat.lignes) { l in
+                        // Ce qui précède arrive résumé au modèle (compactage, 19/10).
+                        if let c = chat.compactage, c.jusqua > 0, l.indexMessage == c.jusqua {
+                            RepereResume(compactage: c)
+                        }
                         LigneMessage(ligne: l).id(l.id)
                     }
                     Color.clear.frame(height: 8).id("fin")

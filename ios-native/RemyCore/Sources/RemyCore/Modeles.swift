@@ -1185,6 +1185,9 @@ public final class ChatModel {
     /// L'étape « Faire connaissance » portée par le fil ouvert, s'il y en a une.
     public private(set) var sessionCourante: String?
     public private(set) var lignes: [LigneChat] = []
+    /// Le début du fil ouvert, résumé pour le modèle (compactage-v1).
+    public private(set) var compactage: Compactage?
+    public private(set) var compactageEnCours = false
 
     /// Captures de la CI seulement : une réponse figée en cours, avec ses étapes.
     public func montrerPourCapture(_ ligne: LigneChat) { lignes.append(ligne) }
@@ -1222,6 +1225,32 @@ public final class ChatModel {
     /// La jauge du fil ouvert (contexte, débit) ; la tour doit savoir mesurer.
     public var jaugeDisponible: Bool { app?.serveur?.sait("jauge-v1") == true }
     public var jauge: JaugeContexte { JaugeContexte.de(lignes) }
+
+    public var compactageDisponible: Bool { app?.serveur?.sait("compactage-v1") == true }
+
+    /// Résumer le début du fil maintenant (GLM, sur les machines de Sam) : la
+    /// suite repart plus légère, rien n'est effacé. Vrai si c'est fait.
+    @discardableResult
+    public func compacter() async -> Bool {
+        guard let id = idCourant, !envoi, !compactageEnCours else { return false }
+        compactageEnCours = true
+        defer { compactageEnCours = false }
+        do {
+            let r = try await api.compacter(id)
+            guard idCourant == id else { return r.compacte }
+            if let c = r.compactage { compactage = c }
+            if r.compacte {
+                let n = r.resumes ?? r.compactage?.jusqua ?? 0
+                app?.dire("Rémy a résumé \(n) message\(n > 1 ? "s" : "") : la suite repart plus légère. Rien n'est effacé.")
+            } else {
+                app?.dire(r.raison == "rien-a-resumer" ? "Le fil est encore court : rien à résumer." : "Déjà résumé récemment.")
+            }
+            return r.compacte
+        } catch {
+            app?.signaler(error)
+            return false
+        }
+    }
 
     /// Ce que la tour sait d'un code d'erreur, prêt à coller (jamais le
     /// contenu des messages). Nil si la tour ne répond pas.
@@ -1347,6 +1376,7 @@ public final class ChatModel {
         sessionCourante = conv.session
         titreEnAttente = nil
         modeRetenir = false
+        compactage = conv.compactage
         lignes = Self.lignes(de: conv)
         noterVu(conv.id, max(conv.messages.count, conversations.first(where: { $0.id == conv.id })?.messages ?? 0))
         reprendreSiEnCours(conv)
@@ -1434,6 +1464,7 @@ public final class ChatModel {
         origine = nil
         sessionCourante = nil
         lignes = []
+        compactage = nil
         titreEnAttente = nil
         modeRetenir = false
     }

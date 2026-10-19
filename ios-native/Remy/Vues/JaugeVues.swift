@@ -95,6 +95,7 @@ struct BoutonJauge: View {
 struct ContexteVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
+    @State private var resumeALire: TexteASelectionner?
 
     var body: some View {
         let j = app.chat.jauge
@@ -106,6 +107,7 @@ struct ContexteVue: View {
                     if j.modele != nil || j.machine != nil { quiARepondu(j) }
                     if let r = j.repartition { repartition(r, j) }
                     vitesse(j, direct: direct)
+                    if app.chat.compactageDisponible { compacter(j) }
                     note(j)
                 }
                 .padding(.horizontal, 20)
@@ -121,6 +123,43 @@ struct ContexteVue: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(item: $resumeALire) { SelectionTexteVue(texte: $0.texte) }
+    }
+
+    // MARK: Compacter (19/10)
+
+    private func compacter(_ j: JaugeContexte) -> some View {
+        let chat = app.chat
+        return VStack(alignment: .leading, spacing: 10) {
+            Etiquette("Compacter")
+            Text("Rémy résume le début du fil (sur tes machines) et garde les derniers messages en entier : la suite repart plus légère. Rien n'est effacé. Automatique dès 70 %, réglable dans Réglages.")
+                .font(Police.texte(14))
+                .foregroundStyle(Palette.encre2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let c = chat.compactage, c.jusqua > 0 {
+                HStack(spacing: 12) {
+                    Text("Déjà résumé : les \(c.jusqua) premiers messages\(c.a.map { ", \(Format.heure($0))" } ?? "")")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                    if let r = c.resume, !r.isEmpty {
+                        BoutonTexte("Voir le résumé") { resumeALire = TexteASelectionner(texte: r) }
+                    }
+                }
+            }
+            if chat.compactageEnCours {
+                HStack(spacing: 8) {
+                    Curseur(taille: 7)
+                    Text("Rémy résume le début du fil…").font(Police.texte(14)).foregroundStyle(Palette.encre2)
+                }
+                .frame(minHeight: 44)
+            } else {
+                BoutonA(titre: "Compacter maintenant", symbole: "rectangle.compress.vertical", principal: j.niveau != .calme, hauteur: 44) {
+                    Haptique.leger()
+                    Task { if await chat.compacter() { Haptique.succes() } }
+                }
+                .disabled(chat.envoi || chat.idCourant == nil)
+            }
+        }
     }
 
     // MARK: Place prise
@@ -324,5 +363,39 @@ struct ContexteVue: View {
             .font(Police.texte(12))
             .foregroundStyle(Palette.encre3)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Dans le fil : « Rémy a résumé ce qui précède » (compactage, 19/10). Les
+/// messages au-dessus restent là ; le modèle, lui, n'en relit que le résumé.
+struct RepereResume: View {
+    let compactage: Compactage
+    @State private var lire: TexteASelectionner?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(Palette.filet).frame(height: 1)
+            Button {
+                Haptique.leger()
+                lire = TexteASelectionner(texte: compactage.resume ?? "")
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.compress.vertical")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Rémy a résumé ce qui précède")
+                        .font(Police.texte(13, .medium))
+                }
+                .foregroundStyle(Palette.encre2)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled((compactage.resume ?? "").isEmpty)
+            .accessibilityHint("Montre le résumé que Rémy relit à la place des messages au-dessus")
+            Rectangle().fill(Palette.filet).frame(height: 1)
+        }
+        .padding(.bottom, 18)
+        .sheet(item: $lire) { SelectionTexteVue(texte: $0.texte) }
     }
 }
