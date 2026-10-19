@@ -27,8 +27,11 @@ public struct JaugeContexte: Equatable, Sendable {
     /// Tous les jetons écrits du fil sur tout le temps d'écriture (pondérée).
     public var moyenne: Debit?
     public var reponsesMesurees = 0
+    /// Le modèle de la dernière réponse, et la machine qui le sert.
+    public var modele: String?
+    public var machine: String?
 
-    public var vide: Bool { contexte == nil && derniere == nil }
+    public var vide: Bool { contexte == nil && derniere == nil && modele == nil }
 
     public var fraction: Double? {
         guard let c = contexte, let f = fenetre, f > 0 else { return nil }
@@ -50,6 +53,10 @@ public struct JaugeContexte: Equatable, Sendable {
             j.fenetre = m.fenetre
             j.fenetreReglee = m.fenetreSource == "reglage"
             j.repartition = m.repartition
+        }
+        if let m = mesurees.last(where: { $0.modele != nil || $0.machine != nil }) {
+            j.modele = m.modele
+            j.machine = m.machine
         }
         let debits = mesurees.compactMap(debit(de:))
         j.reponsesMesurees = debits.count

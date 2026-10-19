@@ -1129,6 +1129,8 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
     public var debit: Double?
     /// Débit et contexte mesurés sur la tour, une fois la réponse finie.
     public var mesures: MesuresReponse?
+    /// Le code d'incident d'une erreur de la tour (« R-7KQ2M »).
+    public var codeErreur: String?
 
     public init(id: UUID = UUID(), deToi: Bool, texte: String, puce: String? = nil, proposition: Proposition? = nil,
                 indexMessage: Int? = nil, statut: String? = nil, erreur: String? = nil, enCours: Bool = false,
@@ -1168,7 +1170,8 @@ struct Texte: Decodable { var text: String? }
 /// Un événement « status » : `text` seul face à une tour ancienne ; avec
 /// etapes-v1, la clé de l'étape, le temps écoulé et un éventuel extrait.
 struct StatutSSE: Decodable { var text: String?; var cle: String?; var t: Int?; var detail: String? }
-struct MessageErreur: Decodable { var message: String? }
+/// `code` : le code d'incident de la tour (« R-7KQ2M »), à transmettre.
+struct MessageErreur: Decodable { var message: String?; var code: String? }
 struct Titre: Decodable { var title: String? }
 
 @MainActor
@@ -1219,6 +1222,12 @@ public final class ChatModel {
     /// La jauge du fil ouvert (contexte, débit) ; la tour doit savoir mesurer.
     public var jaugeDisponible: Bool { app?.serveur?.sait("jauge-v1") == true }
     public var jauge: JaugeContexte { JaugeContexte.de(lignes) }
+
+    /// Ce que la tour sait d'un code d'erreur, prêt à coller (jamais le
+    /// contenu des messages). Nil si la tour ne répond pas.
+    public func diagnostic(_ code: String) async -> String? {
+        try? await api.diagnostic(code)
+    }
 
     // MARK: Non lus (Sam, 18/10)
 
@@ -1652,7 +1661,9 @@ public final class ChatModel {
                     lignes[i].enCours = false
                     lignes[i].statut = nil
                     lignes[i].debit = nil
-                    lignes[i].erreur = e.decode(MessageErreur.self)?.message ?? "Erreur côté serveur."
+                    let me = e.decode(MessageErreur.self)
+                    lignes[i].erreur = me?.message ?? "Erreur côté serveur."
+                    lignes[i].codeErreur = me?.code
                 default:
                     break
                 }

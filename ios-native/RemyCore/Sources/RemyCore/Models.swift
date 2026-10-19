@@ -139,9 +139,13 @@ public struct MesuresReponse: Codable, Equatable, Sendable {
     public var fenetre: Int?
     /// « modele » (déclarée par le serveur du modèle) ou « reglage » (tour).
     public var fenetreSource: String?
+    /// Le modèle qui a écrit la réponse, et la machine qui le sert.
+    public var modele: String?
+    public var machine: String?
 
     public init(jetons: Int? = nil, tps: Double? = nil, decodeMs: Int? = nil, premierMs: Int? = nil, estime: Bool? = nil,
-                contexte: Int? = nil, repartition: RepartitionContexte? = nil, fenetre: Int? = nil, fenetreSource: String? = nil) {
+                contexte: Int? = nil, repartition: RepartitionContexte? = nil, fenetre: Int? = nil, fenetreSource: String? = nil,
+                modele: String? = nil, machine: String? = nil) {
         self.jetons = jetons
         self.tps = tps
         self.decodeMs = decodeMs
@@ -151,6 +155,8 @@ public struct MesuresReponse: Codable, Equatable, Sendable {
         self.repartition = repartition
         self.fenetre = fenetre
         self.fenetreSource = fenetreSource
+        self.modele = modele
+        self.machine = machine
     }
 
     // Tolérant champ par champ : une mesure mal formée ne doit jamais empêcher
@@ -166,6 +172,8 @@ public struct MesuresReponse: Codable, Equatable, Sendable {
         repartition = try? c.decodeIfPresent(RepartitionContexte.self, forKey: .repartition)
         fenetre = try? c.decodeIfPresent(Int.self, forKey: .fenetre)
         fenetreSource = try? c.decodeIfPresent(String.self, forKey: .fenetreSource)
+        modele = try? c.decodeIfPresent(String.self, forKey: .modele)
+        machine = try? c.decodeIfPresent(String.self, forKey: .machine)
     }
 }
 

@@ -123,6 +123,17 @@ private struct EnTeteRemy: View {
         .task {
             // Captures de la CI : un fil mesuré, et le détail de la jauge.
             let env = ProcessInfo.processInfo.environment
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "erreur" {
+                // Une réponse en échec : le message, son code, de quoi le transmettre.
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: "Voilà tout ce que j'ai en tête pour la semaine, dans l'ordre…"))
+                var l = LigneChat(deToi: false, texte: "",
+                                  erreur: "Rémy a travaillé plus de 6 minutes sans finir sa réponse : la demande est sans doute très longue ou très ouverte. Le modèle local tourne bien. Réessaie, ou découpe-la en deux ou trois messages.",
+                                  question: "semaine")
+                l.codeErreur = "R-7KQ2M"
+                app.chat.montrerPourCapture(l)
+                return
+            }
             guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "jauge" else { return }
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             let reponses: [(String, String, MesuresReponse)] = [
@@ -131,7 +142,7 @@ private struct EnTeteRemy: View {
                 ("Et si je passe à la livraison en point relais ?", "Tu gagnes environ 1,80 € par colis, au prix d'un jour de délai.",
                  MesuresReponse(jetons: 1830, tps: 41.6, decodeMs: 44_000, premierMs: 2600, contexte: 44_230,
                                 repartition: RepartitionContexte(systeme: 30_900, conversation: 9_800, outils: 1_700, reponse: 1_830),
-                                fenetre: 131_072, fenetreSource: "modele")),
+                                fenetre: 131_072, fenetreSource: "modele", modele: "GLM-5.3-Flash-EXL3", machine: "DGX Spark")),
             ]
             for (question, reponse, m) in reponses {
                 app.chat.montrerPourCapture(LigneChat(deToi: true, texte: question))
@@ -363,8 +374,16 @@ private struct SuiviDuFil: ViewModifier {
 private struct LigneMessage: View {
     @Environment(AppModel.self) private var app
     let ligne: LigneChat
+    /// « Sélectionner le texte » (19/10) : une partie du message, pas tout.
+    @State private var aSelectionner: TexteASelectionner?
 
     var body: some View {
+        contenu
+            .sheet(item: $aSelectionner) { SelectionTexteVue(texte: $0.texte) }
+    }
+
+    @ViewBuilder
+    private var contenu: some View {
         if ligne.deToi {
             HStack {
                 Spacer(minLength: 48)
@@ -377,7 +396,7 @@ private struct LigneMessage: View {
                     .background(Palette.encre, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20,
                                                                           bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
                     .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .contextMenu { BoutonCopier(texte: ligne.texte) }
+                    .contextMenu { ActionsTexte(texte: ligne.texte, aSelectionner: $aSelectionner) }
             }
             .padding(.bottom, 22)
         } else {
@@ -392,7 +411,7 @@ private struct LigneMessage: View {
                 } else if !ligne.texte.isEmpty {
                     TexteRemy(texte: ligne.texte)
                         .contentShape(Rectangle())
-                        .contextMenu { BoutonCopier(texte: ligne.texte) }
+                        .contextMenu { ActionsTexte(texte: Markdown.enClair(ligne.texte), aSelectionner: $aSelectionner) }
                 }
                 if !ligne.etapes.isEmpty, ligne.enCours || app.chat.lignes.last?.id == ligne.id {
                     // Ce que fait Rémy (19/10) ; la dernière réponse garde son
@@ -410,7 +429,31 @@ private struct LigneMessage: View {
                         .foregroundStyle(Palette.encre3)
                 }
                 if let e = ligne.erreur {
-                    Text(e).font(Police.texte(15)).foregroundStyle(Palette.danger)
+                    // Copiable (19/10) : le message, et le code de la tour à transmettre.
+                    let copie = ligne.codeErreur.map { "\(e) (code \($0))" } ?? e
+                    Text(e)
+                        .font(Police.texte(15))
+                        .foregroundStyle(Palette.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            ActionsTexte(texte: copie, aSelectionner: $aSelectionner)
+                            if let c = ligne.codeErreur {
+                                Button { Task { await copierDiagnostic(c, message: e) } } label: {
+                                    Label("Copier le diagnostic", systemImage: "stethoscope")
+                                }
+                            }
+                        }
+                    if let c = ligne.codeErreur {
+                        HStack(spacing: 12) {
+                            Text("Code \(c)")
+                                .font(Police.mono(13, .medium))
+                                .foregroundStyle(Palette.encre2)
+                                .textSelection(.enabled)
+                            BoutonTexte("Copier le diagnostic") { Task { await copierDiagnostic(c, message: e) } }
+                        }
+                        .accessibilityElement(children: .contain)
+                    }
                     if ligne.question != nil {
                         BoutonA(titre: "Réessayer", symbole: "arrow.clockwise", principal: false, hauteur: 44) { Task { await app.chat.reessayer(ligne) } }
                             .frame(width: 150)
@@ -421,6 +464,20 @@ private struct LigneMessage: View {
                 if let a = ligne.autorisation { AutorisationView(ligne: ligne, a: a) }
             }
             .padding(.bottom, 30)
+        }
+    }
+
+    /// Ce que la tour sait de l'erreur (jamais le contenu des messages), prêt à
+    /// coller ; tour injoignable : au moins le message et son code.
+    private func copierDiagnostic(_ code: String, message: String) async {
+        if let d = await app.chat.diagnostic(code) {
+            UIPasteboard.general.string = d
+            Haptique.succes()
+            app.dire("Diagnostic \(code) copié : colle-le où tu veux.")
+        } else {
+            UIPasteboard.general.string = "\(message) (code \(code))"
+            Haptique.leger()
+            app.dire("Tour injoignable : le code est copié, sans le détail.")
         }
     }
 }
