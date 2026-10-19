@@ -84,6 +84,14 @@ test("migration : export → import, et refus d'écraser une base remplie", asyn
   const bilan = await store.importerTout(e, { forcer: true });
   assert.equal(bilan.conversations, 2);
   assert.equal((await store.listConversations()).length, 2);
+  // Non lus (iPhone) : la liste dit combien de messages et qui a parlé en dernier.
+  await store.putConversation({ id: "55555555-eeee", title: "Réponse en attente", createdAt: 2, updatedAt: 2,
+    messages: [{ role: "user", content: "Tu peux regarder ?" }, { role: "assistant", content: "C'est fait." }] });
+  const r = (await store.listConversations()).find((c) => c.id === "55555555-eeee");
+  assert.equal(r.messages, 2);
+  assert.equal(r.dernier, "assistant");
+  assert.equal((await store.listConversations()).find((c) => c.id === "11111111-aaaa")?.dernier ?? null, null, "fil vide : personne");
+  await store.deleteConversation("55555555-eeee");
   assert.ok(lister("Conversations").includes("Importée (22222222).md"));
   assert.deepEqual(lister("Réflexions"), ["2026-10-08.md"]);
 });

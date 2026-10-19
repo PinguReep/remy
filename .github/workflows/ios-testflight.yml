@@ -78,6 +78,15 @@ jobs:
       - name: Enregistrer le Bundle ID (idempotent)
         run: node scripts/asc-register-bundle.mjs
 
+      # Chaque build tourne sur une machine neuve : la signature automatique y crée
+      # un certificat « Apple Development » dont la clé meurt avec elle, et Apple en
+      # plafonne le nombre (build 14 refusé le 15/10/2026). On révoque ceux de la CI
+      # — jamais un certificat de distribution, jamais un fait à la main — avant
+      # d'archiver. Un échec ici n'arrête rien : l'archive dira si ça bloque.
+      - name: Certificats de développement laissés par la CI
+        continue-on-error: true
+        run: node scripts/asc-certificats.mjs --nettoyer
+
       - name: Générer le projet
         working-directory: ios-native
         run: |

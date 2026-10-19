@@ -24,7 +24,38 @@ w("conversations.json", {
         { role: "assistant", model: "claude-sonnet-5", tier: "rapide", usd: 0.003, content: "Oui : **12 h 30 chez Paulette**, c'est déjà dans ton agenda. Tu as ensuite la relecture du contrat de Hugo à 14 h — ça laisse 15 minutes de marge." },
       ],
     },
-    { id: "c2", title: "23/09/2026 · Nocturne", createdAt: now - 8 * H, updatedAt: now - 7 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
+    // Le cas de Sam (18/10) : une proposition à ajuster avant de dire oui (captures « 5e » à « 5g »).
+    {
+      id: "c10", title: "Abonnement de Tom", createdAt: now - 6 * 60_000, updatedAt: now - 5 * 60_000,
+      messages: [
+        { role: "user", content: "Faut que je pense à acheter l'abonnement Claude Code pour Tom." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te l'ajoute dans Motion : c'est rapide, dix minutes suffisent.",
+          proposal: { id: "p-tom", source: "motion", statut: "en_attente", resume: "Échéance proposée : jeudi soir.", actions: [
+            { type: "creer", nom: "Acheter abonnement Claude Code pour Tom", duree: 10, echeance: new Date(now + 3 * 24 * H).toISOString().slice(0, 10) + "T21:00:00.000Z" },
+          ] } },
+      ],
+    },
+    { id: "c2", title: "Cette nuit · ce que j'ai remarqué", createdAt: now - 8 * H, updatedAt: now - 7 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
+    // Un long fil (mesure de la frappe dans le vrai écran) : 30 échanges.
+    { id: "c9", title: "Préparer la levée de fonds", createdAt: now - 330 * H, updatedAt: now - 329 * H,
+      messages: Array.from({ length: 30 }, (_, i) => [
+        { role: "user", content: `Question ${i + 1} : comment je présente la traction de la démo aux investisseurs, sans exagérer ?` },
+        { role: "assistant", content: `#### Point ${i + 1}\n- Montre les **chiffres réels** : rendez-vous pris par la boutique, appels traités, taux de réponse.\n- Raconte un cas client précis, avec la date et le résultat.\n- Termine par ce que tu feras des fonds, en trois lignes.\n\nJe peux préparer la diapositive si tu veux : dis-moi les trois chiffres que tu as.` },
+      ]).flat() },
+    // Pour le test d'intégration (ajuster, ranger en rappel, puis « Oui ») : un vieux fil.
+    {
+      id: "c11", title: "Vidange de la Twingo", createdAt: now - 700 * H, updatedAt: now - 700 * H,
+      messages: [
+        { role: "user", content: "Il faut que je fasse la vidange de la Twingo." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose deux tâches.",
+          proposal: { id: "p-vidange", source: "motion", statut: "en_attente", resume: "La vidange en deux temps.", actions: [
+            { type: "creer", nom: "Prendre rendez-vous pour la vidange", duree: 10 },
+            { type: "creer", nom: "Acheter du liquide de refroidissement", duree: 20 },
+          ] } },
+      ],
+    },
+    { id: "c8", title: "23/09/2026 · Nocturne", createdAt: now - 600 * H, updatedAt: now - 599 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
+    { id: "c7", title: "Idées de cadeaux pour Léa", createdAt: now - 300 * H, updatedAt: now - 299 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
     { id: "c3", title: "Budget tennis 2027", createdAt: now - 30 * H, updatedAt: now - 28 * H, messages: [{ role: "user", content: "x" }] },
     { id: "c4", title: "Idées de nom pour la boîte", createdAt: now - 80 * H, updatedAt: now - 79 * H, messages: [{ role: "user", content: "x" }] },
     { id: "c5", title: "Pitch — version investisseurs", createdAt: now - 130 * H, updatedAt: now - 129 * H, messages: [{ role: "user", content: "x" }] },
@@ -56,4 +87,51 @@ motif.forEach((n, i) => {
 });
 w("activite.json", act);
 w("google.json", { refresh_token: "faux", access_token: "faux", expire_a: now + 30 * 24 * H });
+// J1.5 : le carnet (listes, rappels, tâche bloquée) vit dans remy.db.
+process.env.REMY_DATA_DIR ||= D;
+const carnet = await import("../../lib/carnet.js");
+const listes = [
+  ["l-courses", "Courses", ["Tomates", "Lait d'avoine", "Œufs", "Pain complet", ["Café", true], ["Lessive", true]]],
+  ["l-anniv", "Anniversaires", ["Léa — 14 mars", "Hugo — 2 juin", "Maman — 27 novembre"]],
+  ["l-porto", "Valise Porto", ["Adaptateur", "Crème solaire", "Carnet de croquis pour dessiner les azulejos du quartier de l'Alfama", "Chargeur"]],
+  ["l-idees", "Idées", ["Nom de la boîte : Accueil & Cie ?", "Démo vocale en anglais"]],
+];
+listes.forEach(([id, nom, elements], ordre) => {
+  carnet.ecrireListe(id, { nom, ordre });
+  carnet.ecrireElements(id, elements.map((e, i) => {
+    const [texte, fait] = Array.isArray(e) ? e : [e, false];
+    return { id: `${id}-${i}`, texte, fait, ordre: i };
+  }));
+});
+const M = 60_000;
+// P2 : les catégories proposées par défaut, comme après l'étape 1 du mini-onboarding.
+const etiquettes = [["et-perso", "Personnel"], ["et-pro", "Professionnel"], ["et-sante", "Santé"], ["et-voiture", "Voiture"],
+  ["et-admin", "Administratif"], ["et-proches", "Famille et amis"], ["et-anniv", "Anniversaire"]];
+etiquettes.forEach(([id, nom], ordre) => carnet.ecrireEtiquette(id, { nom, ordre }));
+carnet.ecrireRappels([
+  { id: "r1", texte: "Appeler le garage pour le contrôle technique", quand: now + 2 * H },
+  { id: "r2", texte: "Rappeler Hugo", quand: now + 20 * H, etiquettes: ["et-pro"] },
+  { id: "r3", texte: "Renouveler le passeport", quand: now + 3 * 24 * H, etiquettes: ["et-admin"] },
+  { id: "r4", texte: "Payer le loyer", quand: now - 50 * M },
+  { id: "r5", texte: "Rendre le livre à Léa" },
+  { id: "r6", texte: "Réserver le tennis", quand: now - 26 * H, fait: true },
+]);
+carnet.marquerTache("t3", { bloquee: true, raison: "J'attends le bon de commande d'Ondine" });
+// Catégories des tâches (18/10) : gardées par Remy, Motion n'en sait rien.
+carnet.categoriserTache("t1", ["et-pro"]);
+carnet.categoriserTache("t4", ["et-admin"]);
+carnet.categoriserTache("t5", ["et-perso"]);
+// P3 : des sous-projets dans Remy (Motion n'a pas de hiérarchie), sous un
+// projet Motion ou à part, avec des idées et une tâche rangée.
+carnet.ecrireDossier("d-demo", { nom: "Démo client", parent: "motion:p1", ordre: 0 });
+carnet.ecrireDossier("d-site", { nom: "Site vitrine", parent: "motion:p1", ordre: 1 });
+carnet.ecrireDossier("d-maison", { nom: "Maison", parent: null, ordre: 0 });
+carnet.ecrireDossier("d-cuisine", { nom: "Travaux cuisine", parent: "d-maison", ordre: 0 });
+carnet.ecrireNotes("d-site", [
+  { id: "n1", texte: "Maquette de la page d'accueil" },
+  { id: "n2", texte: "Trois témoignages de clients pilotes" },
+  { id: "n3", texte: "Demander le logo à Hugo", fait: true },
+]);
+carnet.ecrireNotes("d-cuisine", [{ id: "n4", texte: "Devis plombier" }]);
+carnet.rattacher("t1", "d-demo");
 console.log("seed ok");

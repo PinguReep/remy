@@ -63,7 +63,7 @@ const RDV = [
   { id: "r4", summary: "Demain", start: { dateTime: iso(9, 0, 24) }, end: { dateTime: iso(10, 0, 24) } },
 ];
 const TACHES = [
-  { id: "t1", name: "Démo de la boutique", scheduledStart: iso(10, 15), scheduledEnd: iso(11), dueDate: iso(18), priority: "HIGH" },
+  { id: "t1", name: "Démo de la boutique", scheduledStart: iso(10, 15), scheduledEnd: iso(11), dueDate: iso(18), priority: "HIGH", duration: 75 },
   { id: "t2", name: "Relancer le comptable", dueDate: iso(18, 0, 20) },
   { id: "t3", name: "Préparer la facture", dueDate: iso(17) },
   { id: "t4", name: "Plus tard", dueDate: iso(9, 0, 30) },
@@ -74,6 +74,14 @@ test("rendez-vous et tâches placées se mêlent dans l'ordre du temps", () => {
   const j = journee({ taches: TACHES, evenements: RDV, maintenant: MAINTENANT, tz: TZ });
   assert.deepEqual(j.items.map((i) => i.id), ["r1", "t1", "r2"]);
   assert.deepEqual(j.items.map((i) => i.type), ["rdv", "tache", "rdv"]);
+});
+
+test("une tâche placée dit la durée que Motion lui attribue (« 50 min sur 1 h 15 »)", () => {
+  const j = journee({ taches: TACHES, evenements: RDV, maintenant: MAINTENANT, tz: TZ });
+  const t1 = j.items.find((i) => i.id === "t1");
+  assert.equal(t1.duree, 75);
+  assert.equal(t1.echeance, Date.parse(iso(18)));
+  assert.equal(j.items.find((i) => i.id === "r1").duree, undefined, "un rendez-vous n'a pas de durée Motion");
 });
 
 test("chaque élément sait s'il est passé, en cours ou à venir", () => {

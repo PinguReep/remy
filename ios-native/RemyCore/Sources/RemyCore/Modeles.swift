@@ -48,6 +48,16 @@ public enum Brouillons {
         "« \(t.titre) » est en retard" + (t.echeance.map { " depuis le \(Format.jourCourt($0.date))" } ?? "") + ". Qu'est-ce que je fais ?"
     }
 
+    /// Appui long sur le conseil du moment : en demander la raison.
+    public static func conseil(_ texte: String) -> String {
+        "Tu me conseilles : « \(texte) » Explique-moi, ou propose autre chose si tu vois mieux."
+    }
+
+    /// « Est-ce raisonnable ? » depuis « Gérer », avec ce que l'app a estimé.
+    public static func raisonnable(_ e: ElementJour, minutes: Int, impact: ImpactProlongation) -> String {
+        "Je pense prolonger « \(e.titre) » de \(minutes) min. \(impact.phrase) Est-ce raisonnable vu la suite de ma journée ?"
+    }
+
     public static func sujet(_ s: Sujet, generatedAt: Millis?, maintenant: Date = Date()) -> String {
         let quand = Nuit.estRecente(generatedAt, maintenant: maintenant) || generatedAt == nil
             ? "cette nuit" : "le " + Format.jourCourt((generatedAt ?? 0).date)
@@ -59,7 +69,7 @@ public enum Brouillons {
 @Observable
 public final class AppModel {
     public enum Phase: Equatable, Sendable { case demarrage, connexion, pret }
-    public enum Onglet: Hashable, Sendable { case aujourdhui, remy }
+    public enum Onglet: Hashable, Sendable { case aujourdhui, remy, projets }
 
     public var phase: Phase = .demarrage
     /// L'onglet affiché : « Aujourd'hui » est l'accueil.
@@ -78,25 +88,60 @@ public final class AppModel {
     public var erreurAppareils: String?
     public let api: ClientAPI
     public let tableau: TableauModel
+    public let projets: ProjetsModel
+    public let conseil: ConseilModel
+    public let organisation: OrganisationModel
+    public let historique: HistoriqueModel
+    public let carnet: CarnetModel
     public let chat: ChatModel
     /// La dictée du composeur et le mode appel (le micro et la voix sont
     /// branchés par l'app : le cœur ne connaît pas AVFoundation).
     public let dictee: DicteeModel
     public let appel: AppelModel
+    /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
+    /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
+    public private(set) var horsLigne = false
+    /// Pour mesurer le temps jusqu'à la journée à l'écran.
+    @ObservationIgnored let lancement = Date()
 
-    public init(api: ClientAPI = ClientAPI()) {
+    /// `rangement` : où garder la journée et les gestes pas encore envoyés
+    /// (nil : rien sur le disque, pour les tests et les aperçus).
+    public init(api: ClientAPI = ClientAPI(), rangement: Rangement? = nil) {
         self.api = api
-        self.tableau = TableauModel(api: api)
+        self.tableau = TableauModel(api: api, rangement: rangement)
+        self.projets = ProjetsModel(api: api, rangement: rangement)
+        self.conseil = ConseilModel(api: api)
+        self.organisation = OrganisationModel(api: api)
+        self.historique = HistoriqueModel(api: api)
+        self.carnet = CarnetModel(api: api, rangement: rangement)
         self.chat = ChatModel(api: api)
         self.dictee = DicteeModel(api: api)
         self.appel = AppelModel(api: api)
         tableau.app = self
+        projets.app = self
+        conseil.app = self
+        organisation.app = self
+        historique.app = self
+        carnet.app = self
         chat.app = self
         dictee.app = self
         appel.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
+        tableau.restaurer()
+        if let v = rangement?.copie(VersionServeur.self, Rangement.serveur)?.valeur {
+            serveur = v
+            api.rejeuSur = v.sait("propositions-v1")
+        }
+    }
+
+    /// Le réseau de l'iPhone change. Au retour : on relit la journée et on
+    /// envoie ce qui attendait.
+    public func changerReseau(horsLigne: Bool) async {
+        guard horsLigne != self.horsLigne else { return }
+        self.horsLigne = horsLigne
+        if !horsLigne && phase == .pret { await chargerTout() }
     }
 
     /// Le texte du message en cours (pratique pour les tests).
@@ -112,12 +157,22 @@ public final class AppModel {
     }
 
     /// Au lancement : si le cookie de session est encore bon, on entre direct.
+    /// Une journée gardée sur l'iPhone s'affiche sans attendre la tour (qui
+    /// peut mettre longtemps à ne pas répondre, Tailscale coupé).
     public func demarrer() async {
+        if tableau.donnees != nil || !tableau.envoi.isEmpty { phase = .pret }
+        if tableau.donnees != nil { Mesures.partagees.noter("app.affichage", ms: Date().timeIntervalSince(lancement) * 1000) }
         do {
             _ = try await api.conversations()
             phase = .pret
             await chargerTout()
         } catch ErreurAPI.nonConnecte {
+            tableau.vider()
+            projets.vider()
+            conseil.vider()
+            organisation.vider()
+            historique.vider()
+            carnet.vider()
             phase = .connexion
         } catch {
             // Hors ligne au lancement : on montre l'app quand même, et chaque
@@ -142,6 +197,11 @@ public final class AppModel {
         await api.deconnexion()
         chat.vider()
         tableau.vider()
+        projets.vider()
+        conseil.vider()
+        organisation.vider()
+        historique.vider()
+        carnet.vider()
         onglet = .aujourdhui
         reglagesOuverts = false
         message = nil
@@ -153,6 +213,12 @@ public final class AppModel {
         async let b: Void = chat.rafraichirListe()
         async let c: Void = lireVersionServeur()
         _ = await (a, b, c)
+        async let p: Void = projets.charger()
+        async let k: Void = carnet.charger()
+        async let o: Void = organisation.charger()
+        _ = await (p, k, o)
+        // La tour répond : ce qui attendait sur l'iPhone part maintenant.
+        if !tableau.envoi.isEmpty && !tableau.erreurReseau { await tableau.envoyerEnAttente() }
         // Installée avant le Lot 0 : l'app n'a qu'un cookie. Elle demande son
         // jeton d'appareil une fois, sans redemander le mot de passe.
         if serveur?.sait("appareils") == true { try? await api.obtenirJeton(appareil: nomAppareil) }
@@ -189,6 +255,7 @@ public final class AppModel {
         if let v = try? await api.versionServeur() {
             serveur = v
             api.rejeuSur = v.sait("propositions-v1")
+            try? tableau.rangement?.garder(v, le: Date(), Rangement.serveur)
         }
     }
 
@@ -216,6 +283,66 @@ public final class AppModel {
     /// « Organiser ma journée » : une conversation neuve à chaque fois (Sam,
     /// 09/10). Le plan d'un matin n'est plus celui de l'après-midi ; la mémoire
     /// de Rémy garde le lien.
+    /// Le « + » : une tâche de plus dans Motion, qui lui trouvera un créneau.
+    /// La tour refuse un doublon (même nom déjà ouvert) et le dit.
+    @discardableResult
+    public func noterTache(_ titre: String) async -> Bool {
+        let t = titre.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        let p = Proposition(source: "motion", resume: "Noté depuis l'app", actions: [ActionProposee(type: "creer", nom: String(t.prefix(200)))])
+        do {
+            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
+            let res = r.results?.first
+            if (r.echecs ?? 0) > 0 || res?.ok == false {
+                dire("Pas ajouté à Motion : \(res?.erreur ?? "raison inconnue").")
+                return false
+            }
+            var annuler: (@MainActor () -> Void)? = nil
+            if let ledger = r.ledgerId {
+                annuler = { [weak self] in
+                    Task {
+                        guard let self else { return }
+                        do {
+                            let a = try await self.api.annuler(Proposition(source: "motion", resume: nil, actions: [], ledgerId: ledger))
+                            self.dire(a.ok == false ? "Impossible de retirer « \(t) » de Motion." : "Retirée de Motion : « \(t) ».")
+                            await self.tableau.apresGeste()
+                        } catch {
+                            self.signaler(error)
+                        }
+                    }
+                }
+            }
+            dire("Ajoutée à Motion : « \(t) ». Il lui trouve un créneau.", annuler: annuler)
+            await tableau.apresGeste()
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e); return false }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            dire("Pas ajouté à Motion : \(raison) Ton texte est toujours là.")
+            return false
+        }
+    }
+
+    /// Le « + », genre « Retenir » : Rémy garde l'idée en mémoire, sans
+    /// conversation. Au moins 30 caractères (il la distille).
+    @discardableResult
+    public func retenirNote(_ texte: String) async -> Bool {
+        let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count >= GenreCapture.minimumRetenir else {
+            dire("Encore quelques mots pour que Rémy puisse le retenir.")
+            return false
+        }
+        do {
+            dire(try await api.capturer(t, source: "note").phrase)
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e); return false }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            dire("Pas retenu : \(raison) Ton texte est toujours là.")
+            return false
+        }
+    }
+
     public func organiserJournee() async {
         if chat.envoi {
             dire("Rémy finit sa réponse, réessaie dans un instant.")
@@ -250,6 +377,14 @@ public final class AppModel {
 
     public func signaler(_ erreur: Error) {
         if let e = erreur as? ErreurAPI, e == .nonConnecte {
+            // La tour ne reconnaît plus cet appareil (déconnecté depuis la
+            // liste, peut-être perdu) : rien de ta journée ne reste dessus.
+            tableau.vider()
+            projets.vider()
+            conseil.vider()
+            organisation.vider()
+            historique.vider()
+            carnet.vider()
             phase = .connexion
             return
         }
@@ -308,6 +443,10 @@ public struct Cochee: Identifiable, Equatable, Sendable {
     /// Pas encore envoyée à Motion : pendant ces deux secondes, « Annuler »
     /// la fait revenir sans rien écrire nulle part.
     public var enAttente: Bool = false
+    /// Restée sur l'iPhone faute de réseau : elle partira au retour de Rémy.
+    public var horsLigne: Bool = false
+    /// La commande qui la porte dans la file d'envoi (son id part au serveur).
+    public var commande: String? = nil
 }
 
 /// Ce qu'est devenue une coche.
@@ -320,6 +459,8 @@ public enum IssueCoche: Equatable, Sendable {
     case echec
     /// Déjà cochée (double toucher).
     case deja
+    /// Pas de réseau : gardée sur l'iPhone, elle partira au retour de Rémy.
+    case enAttente
 }
 
 @MainActor
@@ -331,10 +472,19 @@ public final class TableauModel {
     /// Vrai quand le dernier échec vient du réseau (et non du serveur).
     public private(set) var erreurReseau = false
     public private(set) var misAJour: Date?
+    /// La journée affichée vient de l'iPhone (dernier lancement), pas encore
+    /// relue sur la tour.
+    public private(set) var copieLocale = false
     public private(set) var cochees: [Cochee] = []
+    /// La file d'envoi : chaque geste y est écrit avant de partir, et n'en
+    /// sort qu'une fois la tour l'ayant reçu.
+    public private(set) var envoi: [Commande] = []
 
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI
+    /// nil : rien sur le disque (tests, aperçus).
+    @ObservationIgnored public let rangement: Rangement?
+    @ObservationIgnored private var envoisEnCours: Set<String> = []
     /// Le temps (secondes) pendant lequel une coche s'annule sans rien envoyer.
     /// Sam l'a voulu court : « deux secondes, pas plus ».
     @ObservationIgnored public var delaiAnnulation: Double = 2
@@ -342,28 +492,75 @@ public final class TableauModel {
     /// que Motion l'aura enregistrée.
     @ObservationIgnored private var aDefaire: Set<String> = []
 
-    public init(api: ClientAPI) { self.api = api }
+    public init(api: ClientAPI, rangement: Rangement? = nil) {
+        self.api = api
+        self.rangement = rangement
+    }
 
+    /// Au lancement, avant tout réseau : la dernière journée reçue (datée) et
+    /// les coches pas encore parties. L'écran s'affiche tout de suite, même
+    /// sans Tailscale.
+    public func restaurer() {
+        guard let r = rangement else { return }
+        if donnees == nil, let c = r.copie(TableauDeBord.self, Rangement.journee) {
+            donnees = c.valeur
+            misAJour = c.le
+            copieLocale = true
+        }
+        envoi = r.copie([Commande].self, Rangement.envoi)?.valeur ?? []
+        for c in envoi {
+            guard case let .terminer(tache, titre) = c.geste, !cochees.contains(where: { $0.id == tache }) else { continue }
+            cochees.append(Cochee(id: tache, titre: titre, ledgerId: nil, enCours: false,
+                                  jour: Format.jourISO(c.creeLe), horsLigne: true, commande: c.id))
+        }
+    }
+
+    /// Les gestes qui attendent le réseau (le délai d'annulation passé).
+    public var gestesEnAttente: Int {
+        let enDelai = Set(cochees.filter(\.enAttente).compactMap(\.commande))
+        return envoi.filter { !enDelai.contains($0.id) }.count
+    }
+
+    /// La commande d'une coche encore dans la file d'envoi.
+    public func commande(de c: Cochee) -> Commande? {
+        envoi.first { $0.id == c.commande }
+    }
+
+    /// Déconnexion, ou appareil plus reconnu par la tour : rien ne reste, ni
+    /// à l'écran ni sur le disque.
     public func vider() {
         donnees = nil
         misAJour = nil
+        copieLocale = false
         erreur = nil
         erreurReseau = false
         cochees = []
         aDefaire = []
+        envoi = []
+        rangement?.effacer(Rangement.journee)
+        rangement?.effacer(Rangement.envoi)
+        rangement?.effacer(Rangement.serveur)
     }
 
     public func charger(frais: Bool = false) async {
         guard !chargement else { return }
         chargement = true
         defer { chargement = false }
+        let fin = Mesures.partagees.chrono("app.journee")
         do {
-            donnees = try await api.tableauDeBord(frais: frais)
-            misAJour = Date()
+            let d = try await api.tableauDeBord(frais: frais)
+            fin()
+            let le = Date()
+            donnees = d
+            misAJour = le
+            copieLocale = false
             erreur = nil
             erreurReseau = false
             let aujourdhui = Format.jourISO(Date())
-            cochees.removeAll { $0.jour != aujourdhui }
+            cochees.removeAll { $0.jour != aujourdhui && !$0.horsLigne }
+            // Meilleur effort : sans copie, le prochain lancement hors ligne
+            // montrera seulement qu'il n'a rien.
+            try? rangement?.garder(d, le: le, Rangement.journee)
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
             if case ErreurAPI.reseau = error { erreurReseau = true } else { erreurReseau = false }
@@ -392,14 +589,17 @@ public final class TableauModel {
     /// Marque une tâche Motion comme faite. Optimiste : elle quitte la journée
     /// à l'instant même, avec un bandeau « Annuler » de deux secondes. Pendant
     /// ce délai RIEN n'est envoyé (Motion est lent : attendre sa réponse pour
-    /// faire disparaître la ligne rendait la coche molle). Le délai passé,
-    /// l'écriture part ; si Motion refuse, la tâche revient et c'est dit.
-    /// Aucun appel IA.
+    /// faire disparaître la ligne rendait la coche molle). Le geste est écrit
+    /// sur l'iPhone dès le toucher : l'app peut être fermée pendant le délai,
+    /// ou le réseau absent, la coche partira plus tard (J1.2). Si Motion
+    /// refuse, la tâche revient et c'est dit. Aucun appel IA.
     @discardableResult
     public func terminer(id: String, titre: String) async -> IssueCoche {
         guard !cochees.contains(where: { $0.id == id }) else { return .deja }
+        let commande = Commande(geste: .terminer(tache: id, titre: titre), delai: delaiAnnulation)
         cochees.append(Cochee(id: id, titre: titre, ledgerId: nil, enCours: false,
-                              jour: Format.jourISO(Date()), enAttente: true))
+                              jour: Format.jourISO(Date()), enAttente: true, commande: commande.id))
+        ajouter(commande)
         let bandeau = app?.dire("« \(titre) » : fait.", annuler: { [weak self] in
             self?.renoncer(id)
         }, duree: delaiAnnulation)
@@ -409,12 +609,37 @@ public final class TableauModel {
         // Le délai est passé : le bandeau ne peut plus rien annuler sans écrire.
         if let bandeau, app?.message?.id == bandeau { app?.message = nil }
         cochees[i].enAttente = false
-        cochees[i].enCours = true
+        return await envoyer(commande, reprise: false)
+    }
+
+    /// Renvoie les gestes restés sur l'iPhone (réseau revenu, app relancée),
+    /// dans l'ordre. S'arrête au premier échec réseau : inutile d'insister.
+    public func envoyerEnAttente() async {
+        for c in envoi where c.partApres <= Date() {
+            if cochees.first(where: { $0.commande == c.id })?.enAttente == true { continue }
+            if await envoyer(c, reprise: true) == .enAttente { break }
+        }
+    }
+
+    /// Envoie une commande de la file. `reprise` : renvoi automatique, qui ne
+    /// répète pas « pas de réseau » à chaque essai, mais dit quand c'est parti.
+    private func envoyer(_ commande: Commande, reprise: Bool) async -> IssueCoche {
+        guard case let .terminer(id, titre) = commande.geste else { return .echec }
+        guard envoisEnCours.insert(commande.id).inserted else { return .deja }
+        defer { envoisEnCours.remove(commande.id) }
+        if let i = cochees.firstIndex(where: { $0.id == id }) {
+            cochees[i].enCours = true
+            cochees[i].horsLigne = false
+        }
         let p = Proposition(source: "motion", resume: "Coché depuis l'app",
                             actions: [ActionProposee(type: "terminer", nom: titre, id: id)])
         do {
-            // Une clé par geste : renvoyée après une coupure, la coche n'est pas refaite.
-            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
+            // La clé de la commande : renvoyée après une coupure, la coche n'est pas refaite.
+            let finGeste = Mesures.partagees.chrono("app.geste")
+            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: commande.id)
+            finGeste()
+            let defaire = envoi.first(where: { $0.id == commande.id })?.puisDefaire == true
+            retirer(commande.id)
             let res = r.results?.first
             if (r.echecs ?? 0) > 0 || res?.ok == false {
                 cochees.removeAll { $0.id == id }
@@ -426,22 +651,112 @@ public final class TableauModel {
                 cochees[j].ledgerId = r.ledgerId
                 cochees[j].enCours = false
             }
-            if aDefaire.remove(id) != nil { await annulerCoche(id) }
+            if aDefaire.remove(id) != nil || defaire {
+                await annulerCoche(id)
+            } else if reprise {
+                app?.dire("Envoyé : « \(titre) » est marqué fait.")
+            }
             return .faite
         } catch {
-            cochees.removeAll { $0.id == id }
-            aDefaire.remove(id)
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return .echec }
-            if let e = error as? ErreurAPI, case .reseau = e {
-                // Réponse perdue : la coche a peut-être été faite. On relit la
-                // liste au lieu d'affirmer que la tâche est de retour.
+            if let e = error as? ErreurAPI, case .reseau = e, !api.rejeuSur {
+                // Tour d'avant le Lot 0 : elle ignore la clé, un renvoi referait
+                // l'écriture. On relit la liste au lieu d'affirmer quoi que ce soit.
+                retirer(commande.id)
+                cochees.removeAll { $0.id == id }
+                aDefaire.remove(id)
                 app?.dire("Réseau coupé pendant la coche de « \(titre) » : je relis la liste pour vérifier.")
                 await charger(frais: true)
                 return .echec
             }
+            if let e = error as? ErreurAPI, case .reseau = e {
+                // Pas de réponse : la coche est peut-être arrivée. Elle reste
+                // sur l'iPhone et repartira avec la même clé ; la tour ne la
+                // refera pas. Un « Annuler » touché pendant l'envoi la défera
+                // une fois arrivée, même après une fermeture de l'app.
+                modifier(commande.id) {
+                    $0.tentatives += 1
+                    if aDefaire.remove(id) != nil { $0.puisDefaire = true }
+                }
+                if let j = cochees.firstIndex(where: { $0.id == id }) {
+                    cochees[j].enCours = false
+                    cochees[j].horsLigne = true
+                }
+                if !reprise { app?.dire("Pas de réseau : « \(titre) » partira dès que Rémy sera joignable.") }
+                return .enAttente
+            }
+            retirer(commande.id)
+            cochees.removeAll { $0.id == id }
+            aDefaire.remove(id)
             let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
             app?.dire("Motion n'a pas pu marquer « \(titre) » comme fait : \(raison) La tâche est de retour.")
             return .echec
+        }
+    }
+
+    // MARK: File d'envoi sur le disque
+
+    private func ajouter(_ c: Commande) {
+        envoi.append(c)
+        sauverEnvoi()
+    }
+
+    private func retirer(_ id: String) {
+        guard envoi.contains(where: { $0.id == id }) else { return }
+        envoi.removeAll { $0.id == id }
+        sauverEnvoi()
+    }
+
+    private func modifier(_ id: String, _ changement: (inout Commande) -> Void) {
+        guard let i = envoi.firstIndex(where: { $0.id == id }) else { return }
+        changement(&envoi[i])
+        sauverEnvoi()
+    }
+
+    private func sauverEnvoi() {
+        guard let r = rangement else { return }
+        if envoi.isEmpty { r.effacer(Rangement.envoi); return }
+        do {
+            try r.garder(envoi, le: Date(), Rangement.envoi)
+        } catch {
+            app?.dire("L'iPhone n'a pas pu garder ce geste : il sera perdu si l'app se ferme avant l'envoi.")
+        }
+    }
+
+    /// Après un geste réussi : la tour a déjà mis sa liste à jour (sans relire
+    /// Motion), on la relit tout de suite ; Motion recalcule le planning
+    /// derrière, une seconde lecture douce suit ~35 s plus tard.
+    public func apresGeste() async {
+        await charger()
+        relireBientot()
+    }
+
+    @ObservationIgnored private var relecture: Task<Void, Never>?
+
+    public func relireBientot(secondes: Double = 35) {
+        relecture?.cancel()
+        relecture = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(secondes * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.charger()
+        }
+    }
+
+    /// Change une ligne de la journée à l'écran tout de suite ; rend de quoi
+    /// revenir en arrière si la tour refuse.
+    func modifierLocal(_ id: String, type: String = "tache", _ f: (inout ElementJour) -> Void) -> (() -> Void)? {
+        guard var j = donnees?.journee, var items = j.items,
+              let i = items.firstIndex(where: { $0.type == type && $0.id == id }) else { return nil }
+        let avant = items[i]
+        f(&items[i])
+        j.items = items
+        donnees?.journee = j
+        return { [weak self] in
+            guard let self, var j = self.donnees?.journee, var items = j.items,
+                  let k = items.firstIndex(where: { $0.type == type && $0.id == id }) else { return }
+            items[k] = avant
+            j.items = items
+            self.donnees?.journee = j
         }
     }
 
@@ -451,6 +766,7 @@ public final class TableauModel {
     /// bandeau, comme une coche.
     @discardableResult
     public func replanifier(id: String, titre: String, echeance: Date) async -> Bool {
+        let fin = Mesures.partagees.chrono("app.geste")
         let p = Proposition(source: "motion", resume: "Replanifié depuis l'app",
                             actions: [ActionProposee(type: "modifier", nom: titre,
                                                      echeance: Format.isoAvecFuseau(echeance), id: id)])
@@ -468,7 +784,8 @@ public final class TableauModel {
                 }
             }
             _ = app?.dire("« \(titre) » : à faire d'ici \(Format.jourLong(echeance)).", annuler: annuler)
-            await charger(frais: true)
+            fin()
+            await apresGeste()
             return true
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
@@ -478,13 +795,188 @@ public final class TableauModel {
         }
     }
 
+    /// Prolonger la tâche en cours (« Gérer » : +5, +15, +30 min). La durée
+    /// part en valeur ABSOLUE (durée Motion + n) : un envoi rejoué après une
+    /// coupure ne l'allonge pas deux fois. Motion recalcule la suite ;
+    /// annulable depuis le bandeau. En ligne seulement : sans réseau, c'est dit.
+    @discardableResult
+    public func prolonger(_ e: ElementJour, de minutes: Int) async -> Bool {
+        guard let duree = e.duree else {
+            app?.dire("Motion ne donne pas de durée pour « \(e.titre) » : impossible de la prolonger d'ici.")
+            return false
+        }
+        let p = Proposition(source: "motion", resume: "Prolongé depuis l'app",
+                            actions: [ActionProposee(type: "modifier", nom: e.titre,
+                                                     duree: .nombre(Double(duree + minutes)), id: e.id)])
+        let fin = Mesures.partagees.chrono("app.geste")
+        // À l'écran tout de suite ; défait si Motion refuse.
+        let defaire = modifierLocal(e.id) {
+            $0.fin = $0.finEffective + Double(minutes) * 60_000
+            $0.duree = duree + minutes
+        }
+        do {
+            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
+            let res = r.results?.first
+            if (r.echecs ?? 0) > 0 || res?.ok == false {
+                defaire?()
+                app?.dire("Motion n'a pas pu prolonger « \(e.titre) » : \(res?.erreur ?? "raison inconnue").")
+                return false
+            }
+            fin()
+            var annuler: (@MainActor () -> Void)? = nil
+            if let ledger = r.ledgerId {
+                annuler = { [weak self] in
+                    Task { await self?.annulerReplanification(ledger, titre: e.titre) }
+                }
+            }
+            _ = app?.dire("« \(e.titre) » : +\(minutes) min. Motion recalcule la suite.", annuler: annuler)
+            await apresGeste()
+            return true
+        } catch {
+            defaire?()
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            if let er = error as? ErreurAPI, case .reseau = er {
+                app?.dire("Pas de réseau : « \(e.titre) » n'a pas été prolongée.")
+                return false
+            }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            app?.dire("Motion n'a pas pu prolonger « \(e.titre) » : \(raison)")
+            return false
+        }
+    }
+
+    /// Modifier une tâche (« Gérer » → Modifier) : nom, échéance, durée,
+    /// priorité. Motion fait foi ; annulable depuis le bandeau.
+    @discardableResult
+    public func modifier(id: String, titre: String, nouveauTitre: String?, echeance: Date?, duree: Int?, priorite: String?) async -> Bool {
+        let nom = nouveauTitre?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let action = ActionProposee(type: "modifier", nom: titre,
+                                    nouveau_nom: (nom?.isEmpty == false && nom != titre) ? nom : nil,
+                                    echeance: echeance.map { Format.isoAvecFuseau($0) },
+                                    duree: duree.map { .nombre(Double($0)) },
+                                    priorite: priorite, id: id)
+        let p = Proposition(source: "motion", resume: "Modifié depuis l'app", actions: [action])
+        let fin = Mesures.partagees.chrono("app.geste")
+        let defaire = modifierLocal(id) {
+            if let n = action.nouveau_nom { $0.titre = n }
+            if let d = duree {
+                $0.duree = d
+                $0.fin = $0.debut + Double(d) * 60_000
+            }
+            if let pr = priorite { $0.priorite = pr }
+        }
+        do {
+            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
+            let res = r.results?.first
+            if (r.echecs ?? 0) > 0 || res?.ok == false {
+                defaire?()
+                app?.dire("Motion n'a pas pu modifier « \(titre) » : \(res?.erreur ?? "raison inconnue").")
+                return false
+            }
+            fin()
+            var annuler: (@MainActor () -> Void)? = nil
+            if let ledger = r.ledgerId {
+                annuler = { [weak self] in Task { await self?.annulerReplanification(ledger, titre: titre) } }
+            }
+            _ = app?.dire("« \(action.nouveau_nom ?? titre) » : modifiée.", annuler: annuler)
+            await apresGeste()
+            return true
+        } catch {
+            defaire?()
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            app?.dire("Motion n'a pas pu modifier « \(titre) » : \(raison)")
+            return false
+        }
+    }
+
+    public var categoriesDisponibles: Bool { app?.serveur?.sait("categories-taches-v1") == true }
+
+    /// La catégorie d'une tâche (Voiture, Santé…), gardée par Remy (Sam, 18/10).
+    /// Visible tout de suite ; revient en arrière si la tour refuse.
+    @discardableResult
+    public func categoriser(id: String, titre: String, etiquettes: [String]) async -> Bool {
+        let valeur = etiquettes.isEmpty ? nil : etiquettes
+        let defaire = modifierLocal(id) { $0.etiquettes = valeur }
+        let avant = (aFaire: donnees?.journee?.aFaire, retard: donnees?.journee?.retard)
+        if let i = donnees?.journee?.aFaire?.firstIndex(where: { $0.id == id }) {
+            donnees?.journee?.aFaire?[i].etiquettes = valeur
+        }
+        if let i = donnees?.journee?.retard?.items.firstIndex(where: { $0.id == id }) {
+            donnees?.journee?.retard?.items[i].etiquettes = valeur
+        }
+        do {
+            try await api.categoriserTache(id, etiquettes)
+            return true
+        } catch {
+            defaire?()
+            donnees?.journee?.aFaire = avant.aFaire
+            donnees?.journee?.retard = avant.retard
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            app?.dire("Catégorie de « \(titre) » pas enregistrée : \((error as? LocalizedError)?.errorDescription ?? "erreur")")
+            return false
+        }
+    }
+
+    /// « Bloquée » : Motion n'a pas ce champ, Remy le garde (D12). La tâche
+    /// le montre aussitôt ; annulable.
+    @discardableResult
+    public func bloquer(id: String, titre: String, bloquee: Bool, raison: String? = nil) async -> Bool {
+        let avant = etatBloque(id)
+        poserBloque(id, bloquee, raison)
+        do {
+            try await api.marquerTache(id, bloquee: bloquee, raison: raison)
+            app?.dire(bloquee ? "« \(titre) » : en attente." : "« \(titre) » : reprise.", annuler: { [weak self] in
+                Task { await self?.bloquer(id: id, titre: titre, bloquee: avant.0, raison: avant.1) }
+            })
+            return true
+        } catch {
+            poserBloque(id, avant.0, avant.1)
+            app?.signaler(error)
+            return false
+        }
+    }
+
+    private func etatBloque(_ id: String) -> (Bool, String?) {
+        let j = donnees?.journee
+        if let e = j?.items?.first(where: { $0.id == id && !$0.estRendezVous }) { return (e.bloquee ?? false, e.raison) }
+        if let t = (j?.aFaire ?? []).first(where: { $0.id == id }) ?? j?.retard?.items.first(where: { $0.id == id }) {
+            return (t.bloquee ?? false, t.raison)
+        }
+        return (false, nil)
+    }
+
+    private func poserBloque(_ id: String, _ b: Bool, _ raison: String?) {
+        guard var j = donnees?.journee else { return }
+        j.items = j.items?.map { e in
+            guard e.id == id, !e.estRendezVous else { return e }
+            var e = e
+            e.bloquee = b
+            e.raison = b ? raison : nil
+            return e
+        }
+        let marque: (TacheResume) -> TacheResume = { t in
+            guard t.id == id else { return t }
+            var t = t
+            t.bloquee = b
+            t.raison = b ? raison : nil
+            return t
+        }
+        j.aFaire = j.aFaire?.map(marque)
+        if var r = j.retard {
+            r.items = r.items.map(marque)
+            j.retard = r
+        }
+        donnees?.journee = j
+    }
+
     private func annulerReplanification(_ ledger: String, titre: String) async {
         do {
             let r = try await api.annuler(Proposition(source: "motion", resume: nil, actions: [], ledgerId: ledger))
             _ = app?.dire(r.ok == false
                 ? "Impossible de remettre l'ancienne échéance de « \(titre) »."
                 : "« \(titre) » : ancienne échéance remise.")
-            await charger(frais: true)
+            await apresGeste()
         } catch {
             app?.signaler(error)
         }
@@ -495,8 +987,17 @@ public final class TableauModel {
     /// vient de partir) : elle est défaite dès que Motion l'a enregistrée.
     public func renoncer(_ id: String) {
         guard let i = cochees.firstIndex(where: { $0.id == id }) else { return }
-        if cochees[i].enAttente {
+        let c = cochees[i]
+        let enFile = commande(de: c)
+        if c.enAttente || (c.horsLigne && (enFile?.tentatives ?? 0) == 0) {
+            // Jamais partie : on la retire de la file, la tour n'en saura rien.
             cochees.remove(at: i)
+            if let cmd = c.commande { retirer(cmd) }
+        } else if c.horsLigne, let cmd = c.commande {
+            // Déjà tentée sans réponse : elle est peut-être arrivée. Elle
+            // repartira, puis sera défaite.
+            modifier(cmd) { $0.puisDefaire = true }
+            app?.dire("« \(c.titre) » sera rouverte dès que Rémy sera joignable.")
         } else if cochees[i].ledgerId != nil {
             Task { await annulerCoche(id) }
         } else {
@@ -652,6 +1153,60 @@ public final class ChatModel {
 
     public var lectureSeule: Bool { origine != nil }
 
+    // MARK: Non lus (Sam, 18/10)
+
+    /// Par fil, le nombre de messages qu'il avait la dernière fois que Sam
+    /// l'avait sous les yeux. Un compte, pas une heure : pas de décalage
+    /// d'horloge entre la tour et l'iPhone.
+    public private(set) var vus: [String: Int] = (UserDefaults.standard.dictionary(forKey: ChatModel.cleVus) as? [String: Int]) ?? [:]
+    nonisolated public static let cleVus = "remy.conversationsVues"
+
+    public var nonLusDisponibles: Bool { app?.serveur?.sait("non-lus-v1") == true }
+
+    /// Rémy a répondu (ou écrit, la nuit) depuis la dernière fois que Sam a regardé ce fil.
+    public func nonLu(_ c: ConversationResume) -> Bool {
+        guard nonLusDisponibles, c.origine == nil, c.dernier == "assistant", let n = c.messages else { return false }
+        if c.id == idCourant && app?.onglet == .remy { return false }
+        return n > (vus[c.id] ?? 0)
+    }
+
+    public var nombreNonLus: Int { conversations.filter { nonLu($0) }.count }
+
+    /// Le fil à l'écran est lu (retour sur l'onglet, réponse finie sous les yeux).
+    public func marquerVu() {
+        guard let id = idCourant, app?.onglet == .remy,
+              let n = conversations.first(where: { $0.id == id })?.messages else { return }
+        noterVu(id, n)
+    }
+
+    /// « Marquer comme lu » sans l'ouvrir.
+    public func noterLu(_ id: String) {
+        guard let n = conversations.first(where: { $0.id == id })?.messages else { return }
+        noterVu(id, n)
+    }
+
+    /// « Marquer comme non lu » (comme Mail) : la dernière réponse redevient à voir.
+    public func marquerNonLu(_ id: String) {
+        guard let c = conversations.first(where: { $0.id == id }), c.dernier == "assistant",
+              let n = c.messages, n > 0 else { return }
+        vus[id] = n - 1
+        UserDefaults.standard.set(vus, forKey: Self.cleVus)
+    }
+
+    private func noterVu(_ id: String, _ n: Int) {
+        guard (vus[id] ?? -1) < n else { return }
+        vus[id] = n
+        UserDefaults.standard.set(vus, forKey: Self.cleVus)
+    }
+
+    /// La première fois que la tour donne les comptes : tout ce qui existe est lu.
+    private func initialiserVus() {
+        guard UserDefaults.standard.object(forKey: Self.cleVus) == nil,
+              conversations.contains(where: { $0.messages != nil }) else { return }
+        vus = Dictionary(conversations.compactMap { c in c.messages.map { (c.id, $0) } }, uniquingKeysWith: max)
+        UserDefaults.standard.set(vus, forKey: Self.cleVus)
+    }
+
     public func vider() {
         interrompreFlux()
         conversations = []
@@ -666,12 +1221,16 @@ public final class ChatModel {
         modeRetenir = false
         titreEnAttente = nil
         fileEnvoi = []
+        vus = [:]
+        UserDefaults.standard.removeObject(forKey: Self.cleVus)
     }
 
     public func rafraichirListe() async {
         do {
             conversations = try await api.conversations()
             erreurListe = nil
+            initialiserVus()
+            marquerVu()
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
             erreurListe = (error as? LocalizedError)?.errorDescription ?? "Impossible de charger tes conversations."
@@ -713,6 +1272,7 @@ public final class ChatModel {
         titreEnAttente = nil
         modeRetenir = false
         lignes = Self.lignes(de: conv)
+        noterVu(conv.id, max(conv.messages.count, conversations.first(where: { $0.id == conv.id })?.messages ?? 0))
         reprendreSiEnCours(conv)
         if !conversations.contains(where: { $0.id == conv.id }) { await rafraichirListe() }
         await verifierAnnulations()
@@ -1190,6 +1750,30 @@ public final class ChatModel {
     /// Rémy retient le texte du composeur sans répondre ni poser de question.
     /// `source` : « note » (une idée de Sam), « chatgpt » ou « claude » (un
     /// extrait d'une autre IA — jamais présenté comme la parole de Sam).
+    public var retenirChoixDisponible: Bool { app?.serveur?.sait("retenir-choix-v1") == true }
+
+    /// Retenir seulement les infos cochées du texte (Sam, 18/10) : le reste
+    /// n'entre pas en mémoire, et le texte entier n'est pas gardé.
+    @discardableResult
+    public func retenirInfos(_ infos: [String], source: String, texte: String) async -> Bool {
+        let choisies = infos.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !choisies.isEmpty, !captureEnCours else { return false }
+        captureEnCours = true
+        defer { captureEnCours = false }
+        do {
+            let r = try await api.retenirInfos(choisies, source: source)
+            if brouillon.trimmingCharacters(in: .whitespacesAndNewlines) == texte.trimmingCharacters(in: .whitespacesAndNewlines) { brouillon = "" }
+            modeRetenir = false
+            app?.dire(r.phrase)
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            app?.dire("Pas retenu : \(raison) Ton texte est toujours là.")
+            return false
+        }
+    }
+
     public func retenir(source: String = "note") async {
         let texte = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
         guard texte.count >= 30 else {
@@ -1203,15 +1787,7 @@ public final class ChatModel {
             let r = try await api.capturer(texte, source: source)
             if brouillon.trimmingCharacters(in: .whitespacesAndNewlines) == texte { brouillon = "" }
             modeRetenir = false
-            let ajouts = r.ajouts ?? []
-            if let premier = ajouts.first {
-                let reste = ajouts.count - 1
-                app?.dire("Retenu : \(premier)" + (reste > 0 ? " — et \(reste) autre\(reste > 1 ? "s" : "") chose\(reste > 1 ? "s" : "")." : ""))
-            } else if r.memoire == false {
-                app?.dire(r.message.map { "Gardé : \($0)" } ?? "Gardé : Rémy le relira cette nuit.")
-            } else {
-                app?.dire("Rien de nouveau : Rémy le savait déjà.")
-            }
+            app?.dire(r.phrase)
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
             let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
@@ -1283,6 +1859,51 @@ public final class ChatModel {
             await app?.tableau.charger()
         } catch {
             app?.signaler(error)
+        }
+    }
+
+    // MARK: Ajuster une proposition avant de dire oui (Sam, 18/10)
+
+    public var ajustementDisponible: Bool { app?.serveur?.sait("propositions-ajustables-v1") == true }
+
+    /// Ajuste une action (rang d'origine) : seuls les champs passés changent
+    /// (`NSNull()` les vide). La tour garde la version ajustée ; rien ne part.
+    @discardableResult
+    public func ajuster(_ ligne: LigneChat, rang: Int, champs: [String: Any]) async -> Bool {
+        await envoyerAjustement(ligne, actions: [champs.merging(["rang": rang]) { a, _ in a }], convertis: [])
+    }
+
+    /// Une création proposée devient un rappel (une to-do datée) : elle sort de
+    /// la proposition, et le rappel est noté sur l'iPhone (il part à la tour).
+    @discardableResult
+    public func rangerEnRappel(_ ligne: LigneChat, rang: Int, texte: String, quand: Date?, etiquettes: [String]) async -> Bool {
+        guard await envoyerAjustement(ligne, actions: [], convertis: [rang]) else { return false }
+        guard let carnet = app?.carnet, carnet.creerRappel(texte, quand: quand, etiquettes: etiquettes) != nil else { return false }
+        app?.dire(quand.map { "Rangé en rappel, \(Format.jourSemaineCourt($0)) \(Format.heure($0))." } ?? "Rangé en rappel, sans date.")
+        return true
+    }
+
+    private func envoyerAjustement(_ ligne: LigneChat, actions: [[String: Any]], convertis: [Int]) async -> Bool {
+        guard let convId = idCourant, let pid = ligne.proposition?.id else {
+            app?.dire("Cette proposition ne peut pas être ajustée : redemande-la à Rémy.")
+            return false
+        }
+        do {
+            let r = try await api.ajusterProposition(convId: convId, propositionId: pid, actions: actions, convertis: convertis)
+            if let i = lignes.firstIndex(where: { $0.id == ligne.id }), var p = lignes[i].proposition {
+                if p.actionsOrigine == nil { p.actionsOrigine = p.actions }
+                p.actions = r.actions
+                p.ajustee = true
+                if r.statut == "converti" { p.statut = "converti" }
+                lignes[i].proposition = p
+            }
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            if let e = error as? ErreurAPI, case .serveur(409, _) = e { app?.signaler(error); await ouvrir(convId); return false }
+            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            app?.dire("Pas ajusté : \(raison)")
+            return false
         }
     }
 

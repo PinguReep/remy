@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-// « Papier & encre » — le même système que le site (public/index.html) :
-// angles droits, filets, une seule couleur de signal. Toute couleur de l'app
-// vient d'ici. Le thème suit celui de l'iPhone.
+// Direction A « Atelier » (Lot 1, J1.1, choisie par Sam le 15/10) : papier
+// chaud, titres en New York, heures en JetBrains Mono, cartes douces à bord
+// fin, une seule couleur de signal. Toute couleur de l'app vient d'ici. Le
+// thème suit celui de l'iPhone. Textes secondaires ≥ 4,5:1 sur le fond.
 
 extension Color {
     /// Une couleur qui suit le thème (clair / sombre) de l'iPhone.
@@ -21,21 +22,51 @@ extension Color {
 }
 
 enum Palette {
-    static let fond = Color(clair: 0xF2F1EC, sombre: 0x0C0C0B)
-    static let fond2 = Color(clair: 0xE8E6DF, sombre: 0x161614)
-    static let fond3 = Color(clair: 0xDDDAD1, sombre: 0x21211E)
-    static let encre = Color(clair: 0x0D0D0C, sombre: 0xEDEBE4)
-    static let encre2 = Color(clair: 0x52514C, sombre: 0xA3A199)
+    static let fond = Color(clair: 0xF4EFE6, sombre: 0x14120F)
+    /// Les cartes, posées sur le fond.
+    static let surface = Color(clair: 0xFFFCF6, sombre: 0x1F1C18)
+    static let fond2 = Color(clair: 0xEDE5D8, sombre: 0x2B2722)
+    static let fond3 = Color(clair: 0xE2D8C8, sombre: 0x342F28)
+    static let encre = Color(clair: 0x221E18, sombre: 0xF3ECE1)
+    static let encre2 = Color(clair: 0x564E43, sombre: 0xC2B9AB)
     /// Texte secondaire encore lisible au soleil (contraste ≥ 4,5:1 sur le fond).
-    static let encre3 = Color(clair: 0x67665F, sombre: 0x8A8983)
-    static let filet = Color(clair: 0xD2D0C7, sombre: 0x292926)
-    /// L'orange de la marque : des aplats et des repères, jamais du texte.
-    static let signal = Color(clair: 0xFF4F00, sombre: 0xFF5A1F)
-    static let surSignal = Color(clair: 0x0D0D0C, sombre: 0x0C0C0B)
-    static let danger = Color(clair: 0xC4150F, sombre: 0xFF5A4F)
+    static let encre3 = Color(clair: 0x6F675B, sombre: 0x9A9286)
+    static let filet = Color(clair: 0xE2D8C8, sombre: 0x342F28)
+    /// L'orange de la marque : des aplats et des repères, jamais du petit texte.
+    static let signal = Color(clair: 0xF2541B, sombre: 0xFF6A33)
+    static let surSignal = Color(clair: 0x221E18, sombre: 0x14120F)
+    static let danger = Color(clair: 0xB2361D, sombre: 0xFF8A6B)
+    /// L'ombre des cartes : chaude, à peine là.
+    static let ombre = Color(clair: 0x5C4630, sombre: 0x000000).opacity(0.10)
+
+    /// Une couleur par projet, stable d'un lancement à l'autre (même nom, même
+    /// couleur). L'urgence se dit par une forme, jamais par ces couleurs.
+    static func projet(_ nom: String?) -> Color {
+        guard let nom, !nom.isEmpty else { return encre3 }
+        let teintes: [Color] = [
+            Color(clair: 0x3D6A8A, sombre: 0x82AACB), Color(clair: 0x7B4E90, sombre: 0xBA94CF),
+            Color(clair: 0xC0603D, sombre: 0xE89878), Color(clair: 0x4F855A, sombre: 0x8EC399),
+            Color(clair: 0xA67A28, sombre: 0xDDB466), Color(clair: 0x5B7882, sombre: 0x9AB5BC),
+        ]
+        // FNV-1a : le hachage de Swift change à chaque lancement.
+        var h: UInt32 = 2_166_136_261
+        for o in nom.lowercased().utf8 { h = (h ^ UInt32(o)) &* 16_777_619 }
+        // Brassage final : sans lui, les bits bas se ressemblent et trois
+        // projets sur trois tombaient sur la même couleur.
+        h ^= h >> 16
+        h = h &* 0x7FEB_352D
+        h ^= h >> 15
+        return teintes[Int(h % UInt32(teintes.count))]
+    }
 }
 
 enum Police {
+    /// New York, le serif d'Apple : titres et voix de Rémy.
+    static func titre(_ taille: CGFloat, _ graisse: Font.Weight = .semibold, italique: Bool = false) -> Font {
+        let f = Font.system(size: taille, weight: graisse, design: .serif)
+        return italique ? f.italic() : f
+    }
+
     /// Inter, dans ses graisses embarquées.
     static func texte(_ taille: CGFloat, _ graisse: Font.Weight = .regular) -> Font {
         let nom: String
@@ -126,10 +157,10 @@ struct Pastille: View {
         Text(texte)
             .font(Police.texte(12, .semibold))
             .foregroundStyle(alerte ? Palette.danger : Palette.surSignal)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(alerte ? Color.clear : Palette.signal)
-            .overlay(Rectangle().stroke(alerte ? Palette.danger : Palette.signal, lineWidth: 1))
+            .background(alerte ? Color.clear : Palette.signal, in: Capsule())
+            .overlay(Capsule().stroke(alerte ? Palette.danger : Palette.signal, lineWidth: 1))
             .fixedSize()
     }
 }
@@ -138,7 +169,7 @@ struct Pastille: View {
 
 enum GenreBouton { case principal, discret, danger }
 
-/// Bouton : angles droits, texte en casse normale, inversion à l'appui.
+/// Bouton : angles doux, encre pleine (principal) ou papier (discret).
 struct BoutonBrut: ButtonStyle {
     var genre: GenreBouton = .discret
     var pleineLargeur = false
@@ -148,12 +179,12 @@ struct BoutonBrut: ButtonStyle {
         let appuye = configuration.isPressed
         let (fond, texte, bord): (Color, Color, Color) = {
             switch (genre, appuye) {
-            case (.principal, false): return (Palette.encre, Palette.fond, Palette.encre)
-            case (.principal, true): return (Palette.encre2, Palette.fond, Palette.encre2)
-            case (.discret, false): return (.clear, Palette.encre, Palette.encre)
-            case (.discret, true): return (Palette.encre, Palette.fond, Palette.encre)
+            case (.principal, false): return (Palette.encre, Palette.fond, .clear)
+            case (.principal, true): return (Palette.encre2, Palette.fond, .clear)
+            case (.discret, false): return (Palette.fond2, Palette.encre, .clear)
+            case (.discret, true): return (Palette.fond3, Palette.encre, .clear)
             case (.danger, false): return (.clear, Palette.danger, Palette.danger)
-            case (.danger, true): return (Palette.danger, Palette.fond, Palette.danger)
+            case (.danger, true): return (Palette.danger.opacity(0.12), Palette.danger, Palette.danger)
             }
         }()
         return configuration.label
@@ -164,8 +195,10 @@ struct BoutonBrut: ButtonStyle {
             .frame(minHeight: 48)
             .frame(maxWidth: pleineLargeur ? .infinity : nil)
             .foregroundStyle(texte)
-            .background(fond)
-            .overlay(Rectangle().stroke(bord, lineWidth: 1.5))
+            .background(fond, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(bord, lineWidth: 1.5))
+            .scaleEffect(appuye ? 0.98 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: appuye)
             .opacity(actif ? 1 : 0.4)
             .contentShape(Rectangle())
     }
@@ -248,10 +281,10 @@ struct CaseACocher: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Rectangle()
-                    .stroke(Palette.encre, lineWidth: 1.5)
-                    .background(cochee ? Palette.encre : Color.clear)
-                    .frame(width: 20, height: 20)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Palette.encre2, lineWidth: 1.5)
+                    .background(cochee ? Palette.encre : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .frame(width: 22, height: 22)
                 if cochee {
                     Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Palette.fond)
                 }
@@ -297,7 +330,7 @@ struct Squelette: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(largeurs.enumerated()), id: \.offset) { _, l in
                 GeometryReader { g in
-                    Rectangle().fill(Palette.fond3).frame(width: g.size.width * l, height: 12)
+                    Capsule().fill(Palette.fond3).frame(width: g.size.width * l, height: 12)
                 }
                 .frame(height: 12)
             }

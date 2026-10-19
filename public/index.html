@@ -1831,9 +1831,11 @@ function renderProposal(block, prop, index) {
   const el = document.createElement("div");
   const applique = prop.statut === "applique";
   const echec = prop.statut === "echec";
+  // Rangée en rappels depuis l'iPhone (18/10) : plus rien à envoyer.
+  const converti = prop.statut === "converti";
   const rates = Array.isArray(prop.annulationRatee) ? prop.annulationRatee : [];
   const echoues = Array.isArray(prop.bilan?.echoues) ? prop.bilan.echoues : [];
-  el.className = "prop" + (applique && !rates.length ? " done" : "") + (echec || rates.length ? " ko" : "");
+  el.className = "prop" + ((applique && !rates.length) || converti ? " done" : "") + (echec || rates.length ? " ko" : "");
   // `source` vient du serveur : on retombe sur Motion pour les propositions
   // enregistrées avant l'arrivée de l'agenda.
   const S = SOURCES[prop.source] || SOURCES.motion;
@@ -1844,7 +1846,9 @@ function renderProposal(block, prop, index) {
   const erreurDe = (liste, a) => liste.find((e) => e?.nom && nomsDe(a).includes(e.nom))?.erreur;
   const parLigne = prop.actions.some((a) => erreurDe(echoues, a));
   const raison = echoues.map((e) => e?.erreur).find(Boolean) || "raison inconnue";
-  const tete = rates.length
+  const tete = converti
+    ? "Rangé dans tes rappels"
+    : rates.length
     ? "Annulation incomplète"
     : prop.annulee
       ? "Annulé · tout est revenu comme avant"
@@ -1859,7 +1863,7 @@ function renderProposal(block, prop, index) {
           : S.titre;
   el.innerHTML =
     "<div class='p-head'>" + mdEscape(tete) + "</div>" +
-    (prop.resume && !applique ? "<div class='p-why'>" + mdEscape(prop.resume) + "</div>" : "") +
+    (prop.resume && !applique && !converti ? "<div class='p-why'>" + mdEscape(prop.resume) + "</div>" : "") +
     "<ul>" +
     prop.actions
       .map((a) => {
@@ -1886,6 +1890,12 @@ function renderProposal(block, prop, index) {
   const actionsRow = el.querySelector(".p-actions");
   const status = el.querySelector(".p-status");
   const redessiner = () => block.appendChild(renderProposal(block, prop, index));
+
+  if (converti) {
+    status.textContent = "Rangé depuis l'iPhone : c'est dans tes rappels.";
+    return el;
+  }
+  if (prop.ajustee && !applique && !prop.annulee) status.textContent = "Ajustée sur l'iPhone : c'est cette version qui partira.";
 
   if (applique || prop.annulee) {
     if (prop.annulee) {
@@ -2148,7 +2158,7 @@ async function openConv(id, dejaLu = null, { garderVue = false } = {}) {
       bubble.innerHTML = renderMarkdown(m.content);
       setModelChip(name, m.model, m.tier, m.usd);
       // Une proposition de planning reste visible (et annulable) après recharge.
-      if (m.proposal?.actions?.length) block.appendChild(renderProposal(block, m.proposal, i));
+      if (m.proposal?.actions?.length || m.proposal?.statut === "converti") block.appendChild(renderProposal(block, m.proposal, i));
       if (m.autorisation) block.appendChild(renderAutorisation(block, m.autorisation, i === conv.messages.length - 1));
     }
   });

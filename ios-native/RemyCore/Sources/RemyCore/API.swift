@@ -197,8 +197,25 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// `frais` : Sam a tiré pour rafraîchir — le serveur relit Motion au lieu
     /// de rendre sa copie de la dernière minute.
+    public func conseil(type: String) async throws -> ConseilTour {
+        try await json(ConseilTour.self, "api/conseil?type=\(type)", delai: 20)
+    }
+
+    public func renouvelerConseil(type: String) async throws -> ConseilTour {
+        try await json(ConseilTour.self, "api/conseil/renouveler", methode: "POST", corps: ["type": type], delai: 20)
+    }
+
+    public func mesures() async throws -> MesuresTour {
+        try await json(MesuresTour.self, "api/mesures")
+    }
+
     public func tableauDeBord(frais: Bool = false) async throws -> TableauDeBord {
         try await json(TableauDeBord.self, frais ? "api/dashboard?frais=1" : "api/dashboard", delai: 20)
+    }
+
+    /// Les projets Motion ouverts (onglet Projets), si la tour sait les lire.
+    public func projets() async throws -> ListeProjets {
+        try await json(ListeProjets.self, "api/projets", delai: 20)
     }
 
     public func etatSujet(_ id: String, etat: String) async throws {
@@ -211,6 +228,36 @@ public final class ClientAPI: @unchecked Sendable {
     public func capturer(_ texte: String, source: String = "note") async throws -> RetourCapture {
         let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
         return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["texte": texte, "source": s], delai: 90)
+    }
+
+    /// Ajuste une proposition avant de dire oui (18/10) : `actions` — les champs
+    /// changés, chacun avec son `rang` ; `convertis` — les rangs rangés en rappels.
+    /// La tour garde la version ajustée, c'est elle qui partira.
+    public func ajusterProposition(convId: String, propositionId: String, actions: [[String: Any]] = [], convertis: [Int] = []) async throws -> (actions: [ActionProposee], statut: String) {
+        struct Reponse: Decodable { var actions: [ActionProposee]; var statut: String? }
+        let p = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
+        let r = try await json(Reponse.self, "api/conversations/\(convId)/propositions/\(p)/ajuster", methode: "POST",
+                               corps: ["actions": actions, "convertis": convertis])
+        return (r.actions, r.statut ?? "en_attente")
+    }
+
+    /// La catégorie d'une tâche Motion (gardée par Remy) ; [] l'enlève.
+    public func categoriserTache(_ id: String, _ etiquettes: [String]) async throws {
+        let i = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id
+        try await envoyer("api/taches/\(i)/etiquettes", methode: "PUT", corps: ["etiquettes": etiquettes])
+    }
+
+    /// Avant « Retenir » : les infos que Rémy garderait (GLM local), à cocher.
+    public func proposerInfos(_ texte: String, source: String = "note") async throws -> [InfoProposee] {
+        struct Reponse: Decodable { var elements: [InfoProposee] }
+        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
+        return try await json(Reponse.self, "api/capture/extraire", methode: "POST", corps: ["texte": texte, "source": s], delai: 100).elements
+    }
+
+    /// Retenir seulement les infos cochées (le texte entier n'est pas gardé).
+    public func retenirInfos(_ infos: [String], source: String = "note") async throws -> RetourCapture {
+        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
+        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["choisis": infos, "source": s], delai: 90)
     }
 
     public func memoire() async throws -> Memoire {
@@ -277,9 +324,10 @@ public final class ClientAPI: @unchecked Sendable {
     /// la même coche renvoyée après une coupure n'est pas refaite). Une coupure
     /// réseau est réessayée UNE fois avec la même clé : le serveur rend alors
     /// le résultat déjà obtenu au lieu d'écrire deux fois.
-    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil) async throws -> ResultatApplication {
+    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false) async throws -> ResultatApplication {
         let actions = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p.actions))
         var corps: [String: Any] = ["actions": actions]
+        if depuisCapture { corps["origine"] = "capture" }
         if let r = p.resume { corps["resume"] = r }
         if let convId { corps["convId"] = convId }
         if let index { corps["index"] = index }

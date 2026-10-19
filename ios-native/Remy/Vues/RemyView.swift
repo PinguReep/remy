@@ -7,7 +7,8 @@ import RemyCore
 struct RemyView: View {
     @Environment(AppModel.self) private var app
     @State private var listeOuverte = false
-    @FocusState private var focus: Bool
+    /// Le clavier est sur le composeur (champ UIKit : voir ChampTexte).
+    @State private var clavier = false
 
     var body: some View {
         let chat = app.chat
@@ -18,14 +19,14 @@ struct RemyView: View {
                 Squelette(largeurs: [0.6, 0.9, 0.75]).padding(18)
                 Spacer()
             } else if chat.lignes.isEmpty {
-                AccueilRemy(focus: $focus)
+                AccueilRemy(clavier: $clavier)
             } else {
-                Fil(focus: $focus)
+                Fil(clavier: $clavier)
             }
             if let o = chat.origine {
                 BandeauImporte(origine: o)
             } else {
-                Composeur(focus: $focus)
+                Composeur(clavier: $clavier)
             }
         }
         .background(Palette.fond)
@@ -36,9 +37,38 @@ struct RemyView: View {
         }
         .onChange(of: chat.focusDemande) { _, demande in
             guard demande else { return }
-            focus = true
+            clavier = true
             chat.focusDemande = false
         }
+        .task { await demo() }
+    }
+
+    /// Captures de la CI : l'historique avec une réponse non vue (le fil de la
+    /// nuit) ; la mesure de la frappe dans le vrai écran (« perf-remy »).
+    /// Inactif sans les variables de démonstration.
+    private func demo() async {
+        let env = ProcessInfo.processInfo.environment
+        if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "perf-remy" {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await app.ouvrirConversation("c9")
+            app.onglet = .remy
+            app.chat.brouillon = MesureSaisie.dictee
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            clavier = true
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            let avant = app.chat.brouillon.count
+            var m = await Frappe().mesurer(lettres: 90)
+            m.arrivees = app.chat.brouillon.count - avant
+            let champ = "ChampTexte UIKit"
+            MesureSaisie.noter("PERF-SAISIE vrai écran, fil de \(app.chat.lignes.count) messages, \(champ) : \(m.texte)")
+            app.dire("\(champ) · \(m.texte)")
+            return
+        }
+        guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "conversations" else { return }
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        await app.chat.rafraichirListe()
+        app.chat.marquerNonLu("c2")
+        listeOuverte = true
     }
 }
 
@@ -48,37 +78,38 @@ private struct EnTeteRemy: View {
 
     var body: some View {
         let chat = app.chat
-        let titre = chat.idCourant == nil ? "" : chat.titre
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                BoutonEnTete(titre: "Conversations", symbole: "list.bullet") { listeOuverte = true }
-                Spacer()
-                // Parler à Rémy à voix haute, comme au téléphone.
-                BoutonEnTete(titre: "Appel", symbole: "phone") {
-                    Haptique.leger()
-                    app.appel.decrocher()
-                }
-                .disabled(chat.origine != nil)
-                .accessibilityLabel("Appeler Rémy")
-                BoutonEnTete(titre: "Nouvelle", symbole: "square.and.pencil") {
-                    Haptique.leger()
-                    chat.nouvelle()
-                }
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 52)
-            if !titre.isEmpty {
+        let titre = chat.idCourant == nil ? "Nouvelle conversation" : chat.titre
+        HStack(spacing: 10) {
+            MarqueRemy(taille: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Rémy").font(Police.titre(22)).foregroundStyle(Palette.encre)
                 Text(titre)
-                    .font(Police.texte(13, .medium))
+                    .font(Police.texte(13))
                     .foregroundStyle(Palette.encre2)
                     .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 8)
                     .accessibilityLabel("Conversation : \(titre)")
             }
+            Spacer(minLength: 6)
+            // Une réponse que Sam n'a pas vue : pastille rouge (Sam, 18/10).
+            BoutonRond(symbole: "text.bubble", libelle: "Conversations", pastille: chat.nombreNonLus, pastilleRouge: true) {
+                Haptique.leger()
+                listeOuverte = true
+            }
+            // Parler à Rémy à voix haute, comme au téléphone.
+            BoutonRond(symbole: "phone", libelle: "Appeler Rémy") {
+                Haptique.leger()
+                app.appel.decrocher()
+            }
+            .disabled(chat.origine != nil)
+            BoutonRond(symbole: "square.and.pencil", libelle: "Nouvelle conversation") {
+                Haptique.leger()
+                chat.nouvelle()
+            }
         }
-        .overlay(alignment: .bottom) { Filet(couleur: Palette.encre) }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Filet() }
     }
 }
 
@@ -101,11 +132,12 @@ private struct BandeauSession: View {
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.fond2)
-            .overlay(alignment: .bottom) { Filet() }
+            .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
         }
     }
 }
@@ -113,7 +145,7 @@ private struct BandeauSession: View {
 /// Écran vide : ce que Rémy sait faire, en boutons.
 private struct AccueilRemy: View {
     @Environment(AppModel.self) private var app
-    var focus: FocusState<Bool>.Binding
+    @Binding var clavier: Bool
 
     var body: some View {
         let chat = app.chat
@@ -121,49 +153,79 @@ private struct AccueilRemy: View {
             .filter { $0.origine == nil }
             .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Qu'est-ce que je peux faire pour toi ?")
-                    .font(Police.texte(28, .heavy))
-                    .tracking(-1)
-                    .foregroundStyle(Palette.encre)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 4)
-                if chat.conversations.isEmpty && chat.erreurListe == nil {
-                    Text("Je suis Rémy, ton directeur de cabinet. Je vois ton agenda et tes tâches, et je t'aide à t'organiser. Écris-moi comme à quelqu'un.")
-                        .font(Police.texte(16))
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 12) {
+                    MarqueRemy(taille: 44)
+                    Text("Qu'est-ce qu'on règle ?")
+                        .font(Police.titre(28))
+                        .foregroundStyle(Palette.encre)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(chat.conversations.isEmpty && chat.erreurListe == nil
+                         ? "Je suis Rémy, ton directeur de cabinet. Je vois ton agenda et tes tâches, et je t'aide à t'organiser. Écris-moi comme à quelqu'un."
+                         : "Un conseil, un arbitrage, un changement de planning. Je dis toujours ce que je modifie, et tu gardes le dernier mot.")
+                        .font(Police.texte(15))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 8)
                 }
-                Button("Organiser ma journée") {
-                    Haptique.leger()
-                    Task { await app.organiserJournee() }
-                }
-                .buttonStyle(BoutonBrut(genre: .principal, pleineLargeur: true))
-                Button("Qu'est-ce qui est en retard ?") {
-                    Haptique.leger()
-                    Task { await chat.envoyer(Brouillons.retards) }
-                }
-                .buttonStyle(BoutonBrut(pleineLargeur: true))
-                .disabled(chat.envoi)
-                Button("Noter une idée") {
-                    chat.modeRetenir = true
-                    focus.wrappedValue = true
-                }
-                .buttonStyle(BoutonBrut(pleineLargeur: true))
-                if let d = derniere {
-                    LienTexte(titre: "Reprendre « \(d.title) »") {
-                        Task { await app.ouvrirConversation(d.id) }
+                VStack(spacing: 10) {
+                    suggestion("Organiser ma journée", symbole: "sun.max") {
+                        Task { await app.organiserJournee() }
                     }
-                    .lineLimit(1)
-                    .padding(.top, 4)
+                    suggestion("Qu'est-ce qui est en retard ?", symbole: "clock.badge.exclamationmark") {
+                        Task { await chat.envoyer(Brouillons.retards) }
+                    }
+                    .disabled(chat.envoi)
+                    suggestion("Noter une idée", symbole: "lightbulb") {
+                        chat.modeRetenir = true
+                        clavier = true
+                    }
+                }
+                if let d = derniere {
+                    Button {
+                        Haptique.leger()
+                        Task { await app.ouvrirConversation(d.id) }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
+                            Text("Reprendre « \(d.title) »").font(Police.texte(14)).lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(Palette.encre2)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 22)
             .padding(.top, 28)
             .padding(.bottom, 20)
         }
+        .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func suggestion(_ titre: String, symbole: String, _ faire: @escaping () -> Void) -> some View {
+        Button {
+            Haptique.leger()
+            faire()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: symbole)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Palette.signal)
+                    .frame(width: 22)
+                Text(titre).font(Police.texte(15, .medium)).foregroundStyle(Palette.encre).multilineTextAlignment(.leading)
+                Spacer(minLength: 6)
+                Image(systemName: "arrow.up.left").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.encre3)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.filet, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
     }
 }
 
@@ -178,7 +240,7 @@ private struct FinDuFil: PreferenceKey {
 
 private struct Fil: View {
     @Environment(AppModel.self) private var app
-    var focus: FocusState<Bool>.Binding
+    @Binding var clavier: Bool
     /// Sam est en bas du fil : la réponse qui s'écrit le suit. S'il remonte
     /// lire (Sam, 09/10 : impossible pendant une réponse, l'écran revenait en
     /// bas à chaque mot), on le laisse lire jusqu'à ce qu'il redescende.
@@ -209,7 +271,7 @@ private struct Fil: View {
             // le clavier. Le toucher est « simultané » : boutons, liens et menus
             // des messages continuent de répondre.
             .scrollDismissesKeyboard(.immediately)
-            .simultaneousGesture(TapGesture().onEnded { focus.wrappedValue = false })
+            .simultaneousGesture(TapGesture().onEnded { clavier = false })
             .defaultScrollAnchor(.bottom)
             .coordinateSpace(name: "fil")
             .background(GeometryReader { zone in
@@ -245,10 +307,13 @@ private struct LigneMessage: View {
                 Spacer(minLength: 48)
                 Text(ligne.texte)
                     .font(Police.texte(16))
+                    .lineSpacing(2)
                     .foregroundStyle(Palette.fond)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 11)
-                    .background(Palette.encre)
+                    .background(Palette.encre, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20,
+                                                                          bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .contextMenu { BoutonCopier(texte: ligne.texte) }
             }
             .padding(.bottom, 22)
@@ -280,8 +345,8 @@ private struct LigneMessage: View {
                 if let e = ligne.erreur {
                     Text(e).font(Police.texte(15)).foregroundStyle(Palette.danger)
                     if ligne.question != nil {
-                        Button("Réessayer") { Task { await app.chat.reessayer(ligne) } }
-                            .buttonStyle(BoutonBrut())
+                        BoutonA(titre: "Réessayer", symbole: "arrow.clockwise", principal: false, hauteur: 44) { Task { await app.chat.reessayer(ligne) } }
+                            .frame(width: 150)
                             .disabled(app.chat.envoi)
                     }
                 }
@@ -339,7 +404,7 @@ struct TexteRemy: View {
                     enLigne(t)
                 case .puce(let t):
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Rectangle().fill(Palette.encre).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { d in d[.bottom] + 5 }
+                        Circle().fill(Palette.signal).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { d in d[.bottom] + 5 }
                         enLigne(t)
                     }
                 case .numero(let n, let t):
@@ -352,8 +417,7 @@ struct TexteRemy: View {
                         .font(Police.mono(13))
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Palette.fond2)
-                        .overlay(alignment: .leading) { Rectangle().fill(Palette.encre).frame(width: 3) }
+                        .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 case .espace:
                     Color.clear.frame(height: 6)
                 }
@@ -380,35 +444,104 @@ private struct PropositionView: View {
     let ligne: LigneChat
     let p: Proposition
     @State private var enCours = false
+    @State private var ajustement: DemandeAjustement?
+
+    /// Sam peut régler une ligne (date, durée, catégorie, rappel) avant de dire oui.
+    private var ajustable: Bool {
+        p.ajustable && !p.echouee && !ligne.enCours && p.id != nil && app.chat.ajustementDisponible
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(entete)
-                .font(Police.texte(15, .semibold))
-                .foregroundStyle(p.appliquee ? Palette.encre : Palette.fond)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(p.appliquee ? Palette.fond2 : Palette.encre)
-            if !p.appliquee, let r = p.resume, !r.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: symbole)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(couleur)
+                Text(entete)
+                    .font(Police.texte(15, .semibold))
+                    .foregroundStyle(Palette.encre)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if p.ajustee == true && !p.appliquee && !p.convertie {
+                    Text("ajustée par toi")
+                        .font(Police.texte(12, .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Palette.fond2, in: Capsule())
+                        .fixedSize()
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+            if !p.appliquee, !p.convertie, let r = p.resume, !r.isEmpty {
                 Text(r)
                     .font(Police.texte(15))
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
-                    .padding(.top, 12)
+                    .padding(.top, 4)
             }
             ForEach(Array(p.actions.enumerated()), id: \.offset) { i, a in
-                LigneAction(action: a,
-                            versAgenda: p.versAgenda,
-                            erreur: erreurAffichee(a),
-                            barree: estDefaite(a),
-                            premiere: i == 0 && (p.appliquee || (p.resume ?? "").isEmpty))
+                let ligneAction = LigneAction(action: a,
+                                              versAgenda: p.versAgenda,
+                                              erreur: erreurAffichee(a),
+                                              barree: estDefaite(a),
+                                              premiere: i == 0 && (p.appliquee || (p.resume ?? "").isEmpty),
+                                              ajustable: ajustable && peutAjuster(a))
+                if ajustable && peutAjuster(a) {
+                    Button {
+                        Haptique.leger()
+                        ajustement = DemandeAjustement(ligne: ligne, rang: a.rang ?? i, action: a, versAgenda: p.versAgenda)
+                    } label: { ligneAction.contentShape(Rectangle()) }
+                    .buttonStyle(AppuiLigne())
+                    .accessibilityHint("Régler la date, la durée ou la catégorie avant de dire oui")
+                } else {
+                    ligneAction
+                }
+            }
+            if p.rangeesEnRappels > 0 && !p.convertie {
+                Label(p.rangeesEnRappels > 1 ? "\(p.rangeesEnRappels) lignes rangées dans tes rappels" : "1 ligne rangée dans tes rappels",
+                      systemImage: "bell")
+                    .font(Police.texte(14))
+                    .foregroundStyle(Palette.encre2)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .top) { if !p.actions.isEmpty { Filet() } }
             }
             pied
         }
-        .overlay(Rectangle().stroke(Palette.encre, lineWidth: 1.5))
+        .sheet(item: $ajustement) { AjusterAction(demande: $0) }
+        .task {
+            // Captures de la CI : la feuille « Ajuster » sur la première ligne.
+            let env = ProcessInfo.processInfo.environment
+            guard env["REMY_DEMO_MDP"] != nil, ["ajuster", "ajuster-rappel"].contains(env["REMY_DEMO_ECRAN"] ?? ""),
+                  ajustable, let a = p.actions.first, peutAjuster(a) else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            ajustement = DemandeAjustement(ligne: ligne, rang: a.rang ?? 0, action: a, versAgenda: p.versAgenda)
+        }
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(p.appliquee || p.convertie ? Palette.filet : Palette.signal.opacity(0.5), lineWidth: 1))
         .padding(.top, 12)
+    }
+
+    /// Une création ou une modification ; pas « Marquer fait » ni « Supprimer ».
+    private func peutAjuster(_ a: ActionProposee) -> Bool { a.verbe == "creer" || a.verbe == "modifier" }
+
+    private var symbole: String {
+        if p.convertie { return "bell.fill" }
+        if p.echouee || !(p.annulationRatee ?? []).isEmpty { return "exclamationmark.triangle.fill" }
+        if !p.appliquee { return "sparkles" }
+        if p.annulee == true { return "arrow.uturn.backward.circle.fill" }
+        return p.nombreEchecs == 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
+    }
+
+    private var couleur: Color {
+        if p.convertie { return Palette.encre2 }
+        if p.echouee || !(p.annulationRatee ?? []).isEmpty { return Palette.danger }
+        if !p.appliquee { return Palette.signal }
+        return Palette.encre2
     }
 
     /// « Pas défait : … » après une annulation incomplète, sinon « Pas fait : … ».
@@ -426,6 +559,7 @@ private struct PropositionView: View {
     }
 
     private var entete: String {
+        if p.convertie { return "Rangé dans tes rappels" }
         if p.echouee {
             // La raison est sous chaque ligne quand elle est connue ligne par ligne.
             let parLigne = p.actions.contains { p.erreur(pour: $0) != nil }
@@ -441,21 +575,22 @@ private struct PropositionView: View {
 
     @ViewBuilder
     private var pied: some View {
-        if !p.appliquee {
+        if p.convertie {
+            EmptyView()
+        } else if !p.appliquee {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Button("Non merci") { agir { await app.chat.ecarter(ligne) } }
-                        .buttonStyle(BoutonBrut(pleineLargeur: true))
-                    Button(enCours ? "…" : p.echouee ? "Réessayer" : "Oui, fais-le") {
+                    BoutonA(titre: "Non merci", principal: false, hauteur: 46) { agir { await app.chat.ecarter(ligne) } }
+                    BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : "Oui, fais-le", hauteur: 46) {
                         agir {
                             if await app.chat.appliquer(ligne) { Haptique.succes() }
                         }
                     }
-                    .buttonStyle(BoutonBrut(genre: .principal, pleineLargeur: true))
                     // Tant que Rémy écrit, la proposition n'est pas enregistrée.
                     .disabled(ligne.enCours)
                 }
-                Text("Pour changer un détail, réponds-le simplement à Rémy.")
+                Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
+                               : "Pour changer un détail, réponds-le simplement à Rémy.")
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -478,9 +613,11 @@ private struct PropositionView: View {
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                Button(enCours ? "…" : "Annuler") { agir { await app.chat.annuler(ligne) } }
-                    .buttonStyle(BoutonBrut())
-                    .disabled(enCours)
+                BoutonA(titre: enCours ? "…" : "Annuler", symbole: "arrow.uturn.backward", principal: false, hauteur: 44) {
+                    agir { await app.chat.annuler(ligne) }
+                }
+                .frame(width: 130)
+                .disabled(enCours)
             }
             .padding(14)
             .overlay(alignment: .top) { Filet() }
@@ -503,6 +640,15 @@ private struct PropositionView: View {
     }
 }
 
+/// Une ligne touchable dans une carte : elle s'éclaire sous le doigt, sans bouger.
+private struct AppuiLigne: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Palette.fond2 : .clear)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 /// « Chercher sur le web ? » (V8) : la recherche passe par Claude (Anthropic),
 /// rien ne part sans ce tap. La carte dit ce qui partirait.
 private struct AutorisationView: View {
@@ -512,13 +658,16 @@ private struct AutorisationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(a.titre)
-                .font(Police.texte(15, .semibold))
-                .foregroundStyle(a.enAttente ? Palette.fond : Palette.encre)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(a.enAttente ? Palette.encre : Palette.fond2)
+            HStack(spacing: 8) {
+                Image(systemName: "globe").font(.system(size: 14, weight: .semibold)).foregroundStyle(a.enAttente ? Palette.signal : Palette.encre2)
+                Text(a.titre)
+                    .font(Police.texte(15, .semibold))
+                    .foregroundStyle(Palette.encre)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             if a.enAttente {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Partira : \(a.partira).")
@@ -526,10 +675,8 @@ private struct AutorisationView: View {
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
-                        Button("Non, sans le web") { repondre(false) }
-                            .buttonStyle(BoutonBrut(pleineLargeur: true))
-                        Button("Chercher") { repondre(true) }
-                            .buttonStyle(BoutonBrut(genre: .principal, pleineLargeur: true))
+                        BoutonA(titre: "Non, sans le web", principal: false, hauteur: 46) { repondre(false) }
+                        BoutonA(titre: "Chercher", symbole: "magnifyingglass", hauteur: 46) { repondre(true) }
                     }
                     // Rémy répond (ici ou à cette question) : on attend la fin.
                     .disabled(app.chat.envoi || ligne.enCours)
@@ -538,7 +685,8 @@ private struct AutorisationView: View {
                 .overlay(alignment: .top) { Filet() }
             }
         }
-        .overlay(Rectangle().stroke(Palette.encre, lineWidth: 1.5))
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(a.enAttente ? Palette.signal.opacity(0.5) : Palette.filet, lineWidth: 1))
         .padding(.top, 12)
     }
 
@@ -550,11 +698,13 @@ private struct AutorisationView: View {
 }
 
 private struct LigneAction: View {
+    @Environment(AppModel.self) private var app
     let action: ActionProposee
     let versAgenda: Bool
     let erreur: String?
     let barree: Bool
     let premiere: Bool
+    var ajustable = false
 
     private var verbe: String {
         switch action.verbe {
@@ -568,12 +718,13 @@ private struct LigneAction: View {
     var body: some View {
         let d = Format.detailAction(action, versAgenda: versAgenda)
         HStack(alignment: .firstTextBaseline, spacing: 10) {
+            let teinte = action.verbe == "supprimer" ? Palette.danger : Palette.encre
             Text(verbe)
                 .font(Police.texte(12, .semibold))
-                .foregroundStyle(action.verbe == "supprimer" ? Palette.danger : Palette.encre)
-                .padding(.horizontal, 6)
+                .foregroundStyle(teinte)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .overlay(Rectangle().stroke(action.verbe == "supprimer" ? Palette.danger : Palette.encre, lineWidth: 1))
+                .background(teinte.opacity(0.1), in: Capsule())
                 .fixedSize()
             VStack(alignment: .leading, spacing: 3) {
                 Text(action.libelle)
@@ -583,6 +734,14 @@ private struct LigneAction: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if !d.isEmpty {
                     Text(d).font(Police.texte(14)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                } else if ajustable, action.verbe == "creer", !versAgenda {
+                    Text("Sans date : Motion la case quand il peut")
+                        .font(Police.texte(14)).foregroundStyle(Palette.encre3).fixedSize(horizontal: false, vertical: true)
+                }
+                if !categories.isEmpty {
+                    Text(categories.joined(separator: " · "))
+                        .font(Police.texte(12, .semibold))
+                        .foregroundStyle(Palette.encre2)
                 }
                 if let erreur {
                     Text(erreur)
@@ -592,9 +751,25 @@ private struct LigneAction: View {
                 }
             }
             Spacer(minLength: 0)
+            if ajustable {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Palette.signal)
+                    .frame(width: 32, height: 32)
+                    .background(Palette.signal.opacity(0.1), in: Circle())
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+                    .accessibilityHidden(true)
+            }
         }
         .padding(14)
+        .frame(minHeight: 44)
         .overlay(alignment: .top) { if !premiere { Filet() } }
+    }
+
+    /// Les noms des catégories choisies (seules celles qui existent encore).
+    private var categories: [String] {
+        let ids = Set(action.etiquettes ?? [])
+        return app.organisation.etiquettes.filter { ids.contains($0.id) }.map(\.nom)
     }
 }
 
@@ -610,18 +785,18 @@ private struct BandeauImporte: View {
             Text("Conversation importée de \(origine.nom) : on ne peut que la lire.")
                 .font(Police.texte(14))
                 .foregroundStyle(Palette.encre2)
-            Button("Continuer avec Rémy") {
+            BoutonA(titre: "Continuer avec Rémy", symbole: "arrow.right", hauteur: 46) {
                 Task {
                     await app.nouveauFil(titre: "Suite · " + titre,
                                          message: "Reprenons ce que j'avais commencé ailleurs, dans « \(titre) » : où est-ce que ça nous mène ?")
                 }
             }
-            .buttonStyle(BoutonBrut(genre: .principal, pleineLargeur: true))
             .disabled(app.chat.envoi)
         }
         .padding(14)
-        .background(Palette.fond2)
-        .overlay(alignment: .top) { Filet(couleur: Palette.encre) }
+        .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
@@ -629,13 +804,15 @@ private struct BandeauImporte: View {
 
 private struct Composeur: View {
     @Environment(AppModel.self) private var app
-    var focus: FocusState<Bool>.Binding
+    @Binding var clavier: Bool
     /// Un lien fait lire une page web à Rémy : ça coûte un peu plus.
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @State private var collageLong = false
     @State private var lienAConfirmer: String?
     /// Écrit pendant que Rémy répond : l'interrompre, ou envoyer après ?
     @State private var choixEnvoi: String?
+    /// « Retenir » un long texte : Rémy propose, Sam coche (18/10).
+    @State private var aRetenir: DemandeRetenir?
 
     var body: some View {
         @Bindable var chat = app.chat
@@ -656,7 +833,7 @@ private struct Composeur: View {
                     BoutonTexte("Plutôt en parler") { chat.modeRetenir = false }
                 }
             } else if collageLong {
-                bande("Long texte ? Rémy peut juste le retenir.") {
+                bande("Long texte ? Rémy peut en retenir des infos, sans répondre.") {
                     Menu {
                         Button("C'est une réponse de ChatGPT") { retenirCollage("chatgpt") }
                         Button("C'est une réponse de Claude") { retenirCollage("claude") }
@@ -695,9 +872,12 @@ private struct Composeur: View {
                     saisie(chat, retenir: retenir)
                 }
             }
-            .overlay(Rectangle().stroke(dictee.enregistre ? Palette.signal : Palette.encre, lineWidth: 1.5))
+            .background(Palette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(dictee.enregistre ? Palette.signal : Palette.filet, lineWidth: dictee.enregistre ? 1.5 : 1))
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
             .confirmationDialog(
                 "Rémy répond encore",
                 isPresented: Binding(get: { choixEnvoi != nil }, set: { if !$0 { choixEnvoi = nil } }),
@@ -714,7 +894,6 @@ private struct Composeur: View {
             }
         }
         .background(Palette.fond)
-        .overlay(alignment: .top) { Filet() }
         .onChange(of: chat.brouillon) { ancien, nouveau in
             // Un gros bloc arrivé d'un coup, c'est un collage : peut-être une
             // réponse d'une autre IA à garder, pas une question.
@@ -725,6 +904,16 @@ private struct Composeur: View {
             if nouveau.isEmpty { collageLong = false }
         }
         .onChange(of: chat.idCourant) { _, _ in collageLong = false }
+        .sheet(item: $aRetenir) { d in RetenirInfosVue(demande: d) }
+        .task {
+            // Captures de la CI : un long collage, et ce que Rémy en retiendrait.
+            let env = ProcessInfo.processInfo.environment
+            guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "retenir" else { return }
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            let t = "Je veux lancer la démo de la boutique avant la fin du mois. Hugo s'occupe des contrats et moi du produit. ChatGPT me conseille une facturation à l'usage plutôt qu'un abonnement. Je préfère travailler le matin et garder mes soirées libres. Il faut aussi que je pense au cadeau de Léa pour le 14 mars."
+            app.chat.brouillon = t
+            aRetenir = DemandeRetenir(texte: t, source: "chatgpt")
+        }
         .confirmationDialog(
             "Rémy va lire ce lien",
             isPresented: Binding(get: { lienAConfirmer != nil }, set: { if !$0 { lienAConfirmer = nil } }),
@@ -748,21 +937,22 @@ private struct Composeur: View {
     private func saisie(_ modele: ChatModel, retenir: Bool) -> some View {
         @Bindable var chat = modele
         let vide = chat.brouillon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        HStack(alignment: .bottom, spacing: 0) {
-            TextField(retenir ? "Ton idée, en quelques phrases…" : "Écris à Rémy…", text: $chat.brouillon, axis: .vertical)
-                .font(Police.texte(16))
-                .lineLimit(1...6)
-                .focused(focus)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
+        HStack(alignment: .bottom, spacing: 2) {
+            // UIKit et non TextField(axis: .vertical) : mesuré le 18/10 dans cet
+            // écran (fil de 60 messages, dictée de 2 min dans le champ), 96,6 ms
+            // par image et 429 images sautées pour 90 lettres avec le champ
+            // SwiftUI, 17,6 ms avec celui-ci (CI, « perf-remy »).
+            ChampTexte(texte: $chat.brouillon, actif: $clavier, invite: retenir ? "Ton idée, en quelques phrases…" : "Écris à Rémy…")
+                .padding(.leading, 16)
+                .padding(.vertical, 13)
             Button {
                 Haptique.leger()
                 Task { await app.dictee.commencer() }
             } label: {
                 Image(systemName: "mic")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Palette.encre)
-                    .frame(width: 50, height: 50)
+                    .foregroundStyle(Palette.encre2)
+                    .frame(width: 44, height: 48)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -771,14 +961,20 @@ private struct Composeur: View {
             if retenir {
                 Button {
                     Haptique.leger()
-                    Task { await chat.retenir() }
+                    // Une idée courte part telle quelle ; un long texte passe par le choix des infos.
+                    if chat.retenirChoixDisponible && chat.brouillon.count >= 280 {
+                        aRetenir = DemandeRetenir(texte: chat.brouillon, source: "note")
+                    } else {
+                        Task { await chat.retenir() }
+                    }
                 } label: {
                     Text(chat.captureEnCours ? "…" : "Retenir")
-                        .font(Police.texte(16, .semibold))
+                        .font(Police.texte(15, .semibold))
                         .foregroundStyle(vide || chat.captureEnCours ? Palette.encre3 : Palette.fond)
                         .padding(.horizontal, 16)
-                        .frame(minHeight: 50)
-                        .background(vide || chat.captureEnCours ? Palette.fond3 : Palette.encre)
+                        .frame(minHeight: 40)
+                        .background(vide || chat.captureEnCours ? Palette.fond3 : Palette.encre, in: Capsule())
+                        .padding(4)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -789,10 +985,11 @@ private struct Composeur: View {
                     Task { await chat.arreter() }
                 } label: {
                     Image(systemName: chat.arretEnCours ? "ellipsis" : "stop.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Palette.fond)
-                        .frame(width: 50, height: 50)
-                        .background(Palette.encre)
+                        .frame(width: 40, height: 40)
+                        .background(Palette.encre, in: Circle())
+                        .padding(4)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -801,10 +998,12 @@ private struct Composeur: View {
             } else {
                 Button(action: envoyer) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundStyle(Palette.surSignal)
-                        .frame(width: 50, height: 50)
-                        .background(vide ? Palette.fond3 : Palette.signal)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(vide ? Palette.encre3 : Palette.surSignal)
+                        .frame(width: 40, height: 40)
+                        .background(vide ? Palette.fond3 : Palette.signal, in: Circle())
+                        .padding(4)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(vide)
@@ -824,7 +1023,9 @@ private struct Composeur: View {
         }
         .padding(.leading, 14)
         .padding(.trailing, 6)
-        .background(Palette.fond2)
+        .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     private func texteFile(_ file: [String]) -> String {
@@ -877,13 +1078,17 @@ private struct Composeur: View {
 
     private func retenirCollage(_ source: String) {
         collageLong = false
+        if app.chat.retenirChoixDisponible {
+            aRetenir = DemandeRetenir(texte: app.chat.brouillon, source: source)
+            return
+        }
         Task { await app.chat.retenir(source: source) }
     }
 }
 
 /// Pendant la dictée : ✕ pour annuler (rien ne part), la durée qui avance,
 /// ✓ pour transcrire. Comme sur le site : impossible d'envoyer par accident.
-private struct BarreEnregistrement: View {
+struct BarreEnregistrement: View {
     @Environment(AppModel.self) private var app
     let debut: Date
     @Environment(\.accessibilityReduceMotion) private var reduire
@@ -905,7 +1110,7 @@ private struct BarreEnregistrement: View {
             TimelineView(.periodic(from: debut, by: 0.5)) { ctx in
                 let s = max(0, Int(ctx.date.timeIntervalSince(debut)))
                 HStack(spacing: 10) {
-                    Rectangle()
+                    Circle()
                         .fill(Palette.signal)
                         .frame(width: 10, height: 10)
                         .opacity(reduire || s % 2 == 0 ? 1 : 0.35)
@@ -928,10 +1133,11 @@ private struct BarreEnregistrement: View {
                 Task { await app.dictee.valider() }
             } label: {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Palette.fond)
-                    .frame(width: 50, height: 50)
-                    .background(Palette.encre)
+                    .frame(width: 40, height: 40)
+                    .background(Palette.encre, in: Circle())
+                    .padding(5)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -991,7 +1197,19 @@ struct ConversationsView: View {
                             .frame(minHeight: 44)
                     }
                     .listRowBackground(Palette.fond)
-                    ForEach(principales) { c in ligne(c) }
+                    // Sam, 18/10 : aujourd'hui, les sept derniers jours, avant.
+                    ForEach(PeriodeFil.allCases, id: \.self) { periode in
+                        let fils = principales.filter { PeriodeFil.de($0, maintenant: maintenant) == periode }
+                        if !fils.isEmpty {
+                            Section {
+                                ForEach(fils) { c in ligne(c) }
+                            } header: {
+                                TitreSection(texte: periode.rawValue, compte: fils.count)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 6)
+                            }
+                        }
+                    }
                     if !anciennes.isEmpty {
                         DisclosureGroup(isExpanded: $anciennesOuvertes) {
                             ForEach(anciennes) { c in ligne(c) }
@@ -1062,6 +1280,7 @@ struct ConversationsView: View {
 
     private func ligne(_ c: ConversationResume) -> some View {
         let courante = c.id == app.chat.idCourant
+        let nonLu = app.chat.nonLu(c)
         return Button {
             if courante {
                 // Déjà ouvert (peut-être en pleine réponse) : on y retourne.
@@ -1075,13 +1294,18 @@ struct ConversationsView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                if courante { Rectangle().fill(Palette.signal).frame(width: 3, height: 22) }
+                // Une réponse pas encore vue : un point rouge, comme une notification.
+                Circle()
+                    .fill(nonLu ? Color.red : courante ? Palette.signal : Color.clear)
+                    .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.title)
-                        .font(Police.texte(16, courante ? .semibold : .regular))
+                        .font(Police.texte(16, courante || nonLu ? .semibold : .regular))
                         .foregroundStyle(Palette.encre)
                         .lineLimit(2)
-                    if let o = c.origine {
+                    if nonLu {
+                        Text("Nouvelle réponse de Rémy").font(Police.texte(13, .medium)).foregroundStyle(Color.red)
+                    } else if let o = c.origine {
                         Text("Importée de \(o.nom)").font(Police.texte(13)).foregroundStyle(Palette.encre3)
                     }
                 }
@@ -1092,13 +1316,19 @@ struct ConversationsView: View {
                 }
                 Text(Format.relatif(c.updatedAt)).font(Police.mono(12)).foregroundStyle(Palette.encre3)
             }
-            .frame(minHeight: 48)
+            .frame(minHeight: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityHint(nonLu ? "Nouvelle réponse de Rémy" : "")
         .listRowBackground(Palette.fond)
         .listRowSeparatorTint(Palette.filet)
         .contextMenu {
+            if nonLu {
+                Button { app.chat.noterLu(c.id) } label: { Label("Marquer comme lu", systemImage: "envelope.open") }
+            } else if !courante && c.dernier == "assistant" && app.chat.nonLusDisponibles {
+                Button { app.chat.marquerNonLu(c.id) } label: { Label("Marquer comme non lu", systemImage: "envelope.badge") }
+            }
             Button { nouveauTitre = c.title; aRenommer = c } label: { Label("Renommer", systemImage: "pencil") }
             Button { Task { await app.chat.epingler(c) } } label: {
                 Label(c.pinned == true ? "Désépingler" : "Épingler", systemImage: c.pinned == true ? "pin.slash" : "pin")
