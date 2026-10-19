@@ -16,6 +16,9 @@ struct ChampTexte: UIViewRepresentable {
     var invite: String
     var taille: CGFloat = 16
     var lignesMax: Int = 6
+    /// « Corriger la dictée » dans le menu d'une sélection (19/10) : les mots
+    /// surlignés, et leur place dans le texte (sans les espaces autour).
+    var corriger: ((String, NSRange) -> Void)? = nil
 
     private var police: UIFont { UIFont(name: "Inter-Regular", size: taille) ?? .systemFont(ofSize: taille) }
 
@@ -102,6 +105,23 @@ struct ChampTexte: UIViewRepresentable {
 
         func textViewDidEndEditing(_ v: UITextView) {
             if parent.actif { parent.actif = false }
+        }
+
+        /// Une sélection de quelques mots propose « Corriger la dictée » en premier.
+        func textView(_ v: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]) -> UIMenu? {
+            guard let corriger = parent.corriger, range.length > 0 else { return nil }
+            let texte = v.text as NSString
+            guard range.location + range.length <= texte.length else { return nil }
+            let brut = texte.substring(with: range)
+            let mot = brut.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !mot.isEmpty, mot.count <= 80 else { return nil }
+            // La place des seuls mots, sans les espaces sélectionnés autour.
+            let debut = (brut as NSString).range(of: mot).location
+            let place = NSRange(location: range.location + debut, length: (mot as NSString).length)
+            let action = UIAction(title: "Corriger la dictée", image: UIImage(systemName: "waveform")) { _ in
+                corriger(mot, place)
+            }
+            return UIMenu(children: [action] + suggestedActions)
         }
     }
 }

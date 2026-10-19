@@ -274,6 +274,12 @@ public final class ClientAPI: @unchecked Sendable {
         return (r.actions, r.statut ?? "en_attente")
     }
 
+    /// Un mot mal transcrit : la tour le transmet à Dictée Locale, qui l'apprend.
+    public func corrigerDictee(entendu: String, voulu: String) async throws {
+        struct Reponse: Decodable { var ok: Bool? }
+        _ = try await json(Reponse.self, "api/dictee/correction", methode: "POST", corps: ["entendu": entendu, "voulu": voulu])
+    }
+
     /// La catégorie d'une tâche Motion (gardée par Remy) ; [] l'enlève.
     public func categoriserTache(_ id: String, _ etiquettes: [String]) async throws {
         let i = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id

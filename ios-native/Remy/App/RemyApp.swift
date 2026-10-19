@@ -166,7 +166,7 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "conversations", "retenir":
+        case "conversations", "retenir", "corriger-dictee":
             app.chat.fermer()
             app.onglet = .remy
         case "remy-fil", "ajuster", "ajuster-rappel":

@@ -189,6 +189,7 @@ jobs:
           capture 5f-ajuster-clair light ajuster c10
           capture 5g-ajuster-rappel-sombre dark ajuster-rappel c10
           capture 5h-categorie-tache-clair light categorie
+          capture 5i-corriger-dictee-clair light corriger-dictee
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
