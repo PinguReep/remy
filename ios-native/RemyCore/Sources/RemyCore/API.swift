@@ -228,6 +228,11 @@ public final class ClientAPI: @unchecked Sendable {
         try await envoyer("api/conversations/\(id)", methode: "DELETE")
     }
 
+    /// Résumer le début du fil (GLM local) : jusqu'à quelques minutes.
+    public func compacter(_ id: String) async throws -> RetourCompactage {
+        try await json(RetourCompactage.self, "api/conversations/\(id)/compacter", methode: "POST", corps: [:], delai: 300)
+    }
+
     // MARK: Tableau de bord, sujets, capture, mémoire
 
     /// `frais` : Sam a tiré pour rafraîchir — le serveur relit Motion au lieu

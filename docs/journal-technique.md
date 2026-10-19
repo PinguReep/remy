@@ -190,6 +190,14 @@ notes privées, sur la tour.
   `<base>/incidents.jsonl` (300 derniers) : étapes, durées, tailles, modèle,
   débit, erreur technique bornée — jamais le contenu. `GET /api/incidents[/:code]`,
   et sur la tour `node scripts/incident.mjs [code]`.
+- **Compactage** (`compactage-v1`, `lib/compactage.js`) : le début d'un long
+  fil est résumé par GLM (jamais Claude) dans `conv.compactage` `{ jusqua,
+  resume }` ; le modèle relit le résumé (dans la consigne) puis les messages
+  depuis `jusqua` (toujours un message de l'utilisateur ; les 6 derniers sont
+  gardés en entier). Rien n'est effacé. Automatique après une réponse qui a
+  rempli 70 % du contexte (90 k jetons si la taille est inconnue), circuit
+  `compactage` coupable ; à la demande : `POST /api/conversations/:id/compacter`.
+  Coût journalisé (`kind: "compaction"`).
 
 ## App iPhone
 

@@ -99,6 +99,10 @@ struct ReglagesView: View {
                         circuit("conseil", c, titre: "Conseil réfléchi",
                                 detail: "GLM, sur tes machines, prépare le conseil du moment en arrière-plan. Coupé : conseil calculé sur l'iPhone, sans IA.")
                     }
+                    if let r = reglages, let c = r.circuits?["compactage"] {
+                        circuit("compactage", c, titre: "Compacter les longues conversations",
+                                detail: "Dès 70 % du contexte, GLM résume le début du fil (rien n'est effacé). Coupé : seulement à la demande, depuis la jauge.")
+                    }
                     if d?.systeme?.reflexion == false {
                         info("Préparation de nuit désactivée : « Rémy a remarqué » restera vide.", symbole: "moon.zzz")
                     }
@@ -297,11 +301,21 @@ struct ReglagesView: View {
             defer { changementSecours = false }
             do {
                 reglages = try await app.api.changerCircuit(id, actif: actif)
-                app.dire(actif ? "Réflexion de la nuit allumée." : "Réflexion de la nuit coupée : Rémy ne travaillera plus la nuit.")
+                app.dire(Self.annonce(id, actif))
                 Haptique.succes()
             } catch {
                 app.signaler(error)
             }
+        }
+    }
+
+    /// Ce que dit le bandeau après un changement de circuit.
+    static func annonce(_ id: String, _ actif: Bool) -> String {
+        switch id {
+        case "nuit": return actif ? "Réflexion de la nuit allumée." : "Réflexion de la nuit coupée : Rémy ne travaillera plus la nuit."
+        case "conseil": return actif ? "Conseil réfléchi allumé." : "Conseil réfléchi coupé : le conseil se calcule sur l'iPhone."
+        case "compactage": return actif ? "Compactage automatique allumé." : "Compactage automatique coupé : à la demande seulement."
+        default: return actif ? "Circuit allumé." : "Circuit coupé."
         }
     }
 

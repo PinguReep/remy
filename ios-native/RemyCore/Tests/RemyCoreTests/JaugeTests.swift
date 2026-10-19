@@ -94,6 +94,32 @@ final class JaugeTests: XCTestCase {
         XCTAssertEqual(JaugeContexte.secondes(65), "1 min 05")
     }
 
+    func testCompacterResumeLeDebutSansRienEffacer() async throws {
+        let json = #"{"id":"c1","title":"x","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"},{"role":"assistant","content":"d"}]}"#
+        FauxServeur.reponses = [
+            "POST /api/conversations/c1/compacter": [(200, #"{"compacte":true,"resumes":2,"compactage":{"jusqua":2,"a":1760900000000,"resume":"## Dit plus tôt
+- a, b"}}"#)],
+            "GET /api/conversations": [(200, "[]")],
+            "GET /api/journal": [(200, "[]")],
+        ]
+        let a = app()
+        let conv = try JSONDecoder().decode(Conversation.self, from: Data(json.utf8))
+        await a.chat.ouvrir(conv)
+        XCTAssertNil(a.chat.compactage)
+        let ok = await a.chat.compacter()
+        XCTAssertTrue(ok)
+        XCTAssertEqual(a.chat.compactage?.jusqua, 2)
+        XCTAssertEqual(a.chat.lignes.count, 4, "rien n'est effacé")
+        a.chat.fermer()
+        XCTAssertNil(a.chat.compactage)
+    }
+
+    func testUnCompactageIllisibleNEmpechePasDOuvrirLeFil() throws {
+        let json = #"{"id":"c1","title":"x","messages":[],"compactage":{"jusqua":"six"}}"#
+        let conv = try JSONDecoder().decode(Conversation.self, from: Data(json.utf8))
+        XCTAssertEqual(conv.compactage?.jusqua, 0)
+    }
+
     func testLaMesureSurvitAuRechargement() throws {
         let json = #"{"id":"c1","title":"x","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b","mesures":{"jetons":50,"tps":25,"decodeMs":2000,"contexte":8000,"fenetre":65536,"fenetreSource":"reglage"}}]}"#
         let conv = try JSONDecoder().decode(Conversation.self, from: Data(json.utf8))
