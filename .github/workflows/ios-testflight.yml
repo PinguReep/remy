@@ -53,7 +53,14 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # Facultatif : l'adresse de la tour, inscrite dans l'app à la compilation
+      # (sinon l'app la demande une fois). Jamais dans le dépôt, qui est public.
+      REMY_ADRESSE_TOUR: ${{ secrets.REMY_ADRESSE_TOUR }}
     steps:
+      - name: Numéro de build
+        # Les builds 1 à 15 venaient de l'ancien dépôt : on continue à partir de 16.
+        run: echo "BUILD=$((15 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
       - name: Secrets présents ?
         run: |
           manque=""
@@ -103,7 +110,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+            CURRENT_PROJECT_VERSION=$BUILD REMY_ADRESSE_TOUR="$REMY_ADRESSE_TOUR"
 
       - name: Export .ipa
         working-directory: ios-native
@@ -137,7 +144,7 @@ jobs:
         run: |
           {
             echo "### TestFlight"
-            echo "- Build : **${{ github.run_number }}**"
+            echo "- Build : **$BUILD**"
             echo "- Commit : \`${GITHUB_SHA::7}\` (${{ github.ref_name }})"
             echo "- Retour arrière : app TestFlight → Rémy → Builds précédents"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -146,12 +153,12 @@ jobs:
         if: always()
         run: |
           cd ios-native/build
-          [ -d Remy.xcarchive ] && ditto -c -k --keepParent Remy.xcarchive "Remy-${{ github.run_number }}.xcarchive.zip" || true
+          [ -d Remy.xcarchive ] && ditto -c -k --keepParent Remy.xcarchive "Remy-$BUILD.xcarchive.zip" || true
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: archive-ios-${{ github.run_number }}
+          name: archive-ios-${{ env.BUILD }}
           path: ios-native/build/Remy-*.xcarchive.zip
           retention-days: 90
           if-no-files-found: ignore

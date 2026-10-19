@@ -40,7 +40,12 @@ jours (artefact `archive-ios-<build>`).
    « Team ID » (10 caractères).
 3. **4 secrets GitHub** : https://github.com/PinguReep/remy/settings/secrets/actions
    - `ASC_KEY_ID`, `ASC_ISSUER_ID`, `APPLE_TEAM_ID`
-   - `ASC_KEY_P8` : le .p8 encodé en base64 (`base64 -i AuthKey_XXXX.p8` sur Mac)
+   - `ASC_KEY_P8` : le .p8 encodé en base64 (`base64 -i AuthKey_XXXX.p8` sur Mac ;
+     sous Windows : `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`)
+   - facultatif, `REMY_ADRESSE_TOUR` : l'adresse de ta tour
+     (`https://<tour>.<tailnet>.ts.net:8444`), inscrite dans l'app à la
+     compilation. Sans lui, l'app la demande une fois au premier lancement et la
+     garde sur l'iPhone. Elle n'est jamais écrite dans le dépôt, qui est public.
 4. **Lancer le workflow une fois** (Actions → « iOS → TestFlight » → Run workflow) :
    il enregistre le Bundle ID `com.pingureep.remy` chez Apple.
 5. **Créer la fiche de l'app** : App Store Connect → Apps → ＋ → Nouvelle app →
