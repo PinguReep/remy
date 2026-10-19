@@ -42,6 +42,10 @@ jobs:
   ios:
     name: Tests iOS
     uses: ./.github/workflows/ios-native.yml
+    # Tests, intégration et compilation complets ; captures réduites au démarrage
+    # (les 70 écrans ont été vérifiés sur la PR) : ~10 min au lieu de ~40.
+    with:
+      essentiel: true
 
   build:
     name: Archive et envoi
