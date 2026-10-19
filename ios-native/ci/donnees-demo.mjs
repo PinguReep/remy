@@ -54,6 +54,14 @@ w("conversations.json", {
           ] } },
       ],
     },
+    // Un tableau dans une réponse (19/10 : il s'affichait en lignes de « | ») — capture « 5k ».
+    {
+      id: "c12", title: "Comparatif des offres", createdAt: now - 900 * H, updatedAt: now - 900 * H,
+      messages: [
+        { role: "user", content: "Tu peux me comparer les trois formules de la boutique ?" },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Voici le comparatif :\n\n| Formule | Prix / mois | Rendez-vous | Délai |\n|:--|--:|:--:|:--|\n| Essentiel | 49 € | — | 1 semaine |\n| **Boutique** | 89 € | ✓ | 2 semaines |\n| Boutique + relances SMS | 129 € | ✓ | 3 semaines, selon le volume de contacts |\n\n---\nLa formule **Boutique** couvre l'essentiel ; les relances SMS se justifient au-delà de 200 clients." },
+      ],
+    },
     { id: "c8", title: "23/09/2026 · Nocturne", createdAt: now - 600 * H, updatedAt: now - 599 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
     { id: "c7", title: "Idées de cadeaux pour Léa", createdAt: now - 300 * H, updatedAt: now - 299 * H, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] },
     { id: "c3", title: "Budget tennis 2027", createdAt: now - 30 * H, updatedAt: now - 28 * H, messages: [{ role: "user", content: "x" }] },

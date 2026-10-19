@@ -591,6 +591,10 @@ struct TexteRemy: View {
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                case .tableau(let entetes, let lignes):
+                    TableauRemy(entetes: entetes, lignes: lignes)
+                case .trait:
+                    Rectangle().fill(Palette.filet).frame(height: 1).padding(.vertical, 6)
                 case .espace:
                     Color.clear.frame(height: 6)
                 }
@@ -607,6 +611,57 @@ struct TexteRemy: View {
             .foregroundStyle(Palette.encre)
             .tint(Palette.encre)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Un tableau de Rémy (19/10 : il s'affichait en lignes de « | »). En-têtes en
+/// gras, lignes alternées ; trop large pour l'écran, il défile de côté sans
+/// pousser la conversation.
+struct TableauRemy: View {
+    let entetes: [String]
+    let lignes: [[String]]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(entetes.enumerated()), id: \.offset) { _, e in
+                        cellule(e, gras: true)
+                    }
+                }
+                .background(Palette.fond2)
+                ForEach(Array(lignes.enumerated()), id: \.offset) { i, l in
+                    Divider().overlay(Palette.filet).gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        ForEach(Array(l.enumerated()), id: \.offset) { _, c in
+                            cellule(c, gras: false)
+                        }
+                    }
+                    .background(i % 2 == 1 ? Palette.fond2.opacity(0.45) : Color.clear)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.filet, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(.vertical, 4)
+        .contextMenu { BoutonCopier(texte: texteBrut) }
+    }
+
+    private func cellule(_ t: String, gras: Bool) -> some View {
+        let attr = (try? AttributedString(markdown: t, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(t)
+        return Text(attr)
+            .font(Police.texte(14, gras ? .semibold : .regular))
+            .foregroundStyle(Palette.encre)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 64, maxWidth: 220, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+    }
+
+    /// Pour « Copier » : le tableau en texte, une ligne par rangée.
+    private var texteBrut: String {
+        ([entetes] + lignes).map { $0.joined(separator: " | ") }.joined(separator: "\n")
     }
 }
 
