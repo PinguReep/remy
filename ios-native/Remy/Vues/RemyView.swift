@@ -365,7 +365,11 @@ private struct LigneMessage: View {
                         .contentShape(Rectangle())
                         .contextMenu { BoutonCopier(texte: ligne.texte) }
                 }
-                if let s = ligne.statut {
+                if !ligne.etapes.isEmpty, ligne.enCours || app.chat.lignes.last?.id == ligne.id {
+                    // Ce que fait Rémy (19/10) ; la dernière réponse garde son
+                    // résumé pour savoir pourquoi elle a pris du temps.
+                    BarreEtapes(ligne: ligne)
+                } else if let s = ligne.statut {
                     HStack(spacing: 8) {
                         Curseur(taille: 7)
                         Text(s).font(Police.texte(14)).foregroundStyle(Palette.encre2)
@@ -388,6 +392,141 @@ private struct LigneMessage: View {
                 if let a = ligne.autorisation { AutorisationView(ligne: ligne, a: a) }
             }
             .padding(.bottom, 30)
+        }
+    }
+}
+
+/// La petite barre sous la réponse : l'étape en cours et le chrono ; un appui
+/// déroule les étapes, leur durée et un extrait de la réflexion. Le texte ne
+/// change qu'au rythme des étapes (la réflexion, toutes les 1,5 s au plus) :
+/// lisible à l'œil nu.
+struct BarreEtapes: View {
+    let ligne: LigneChat
+    // Ouverte d'office pour la capture de la CI seulement.
+    @State private var ouverte = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "etapes"
+
+    var body: some View {
+        let etapes = ligne.etapes
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                Haptique.leger()
+                withAnimation(.snappy(duration: 0.25)) { ouverte.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    if ligne.enCours {
+                        Curseur(taille: 7)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.encre3)
+                    }
+                    Image(systemName: Self.icone(ligne.enCours ? etapes.last?.cle : nil))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .frame(width: 18)
+                    Text(ligne.enCours ? (etapes.last?.texte ?? "") : "Réponse en \(Self.duree(total(etapes)))")
+                        .font(Police.texte(14))
+                        .foregroundStyle(Palette.encre2)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                        .animation(.easeOut(duration: 0.2), value: etapes.last?.texte)
+                    Spacer(minLength: 4)
+                    if ligne.enCours, let debut = ligne.debutEtapes {
+                        TimelineView(.periodic(from: debut, by: 1)) { ctx in
+                            Text("\(max(0, Int(ctx.date.timeIntervalSince(debut)))) s")
+                                .font(Police.mono(13, .medium))
+                                .foregroundStyle(Palette.encre3)
+                                .monospacedDigit()
+                        }
+                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Palette.encre3)
+                        .rotationEffect(.degrees(ouverte ? 180 : 0))
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 34)
+                .background(Palette.fond2, in: Capsule())
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ligne.enCours ? (etapes.last?.texte ?? "Rémy travaille") : "Réponse en \(Self.duree(total(etapes)))")
+            .accessibilityHint(ouverte ? "Masque les étapes" : "Montre ce que Rémy a fait")
+            if ouverte {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(etapes.enumerated()), id: \.element.id) { i, e in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 8) {
+                                Image(systemName: Self.icone(e.cle))
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Palette.encre3)
+                                    .frame(width: 18)
+                                Text(e.texte)
+                                    .font(Police.texte(13))
+                                    .foregroundStyle(Palette.encre2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 4)
+                                Text(dureeEtape(i))
+                                    .font(Police.mono(12))
+                                    .foregroundStyle(Palette.encre3)
+                                    .monospacedDigit()
+                            }
+                            if let d = e.detail, !d.isEmpty {
+                                Text("« \(d) »")
+                                    .font(Police.texte(12).italic())
+                                    .foregroundStyle(Palette.encre3)
+                                    .lineLimit(3)
+                                    .padding(.leading, 26)
+                                    .contentTransition(.opacity)
+                                    .animation(.easeOut(duration: 0.2), value: d)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Palette.fond2.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    /// Durée totale de la réponse (iPhone), ou à défaut la dernière étape (tour).
+    private func total(_ etapes: [EtapeReponse]) -> Int {
+        if let d = ligne.debutEtapes, let f = ligne.finEtapes { return Int(f.timeIntervalSince(d) * 1000) }
+        return etapes.last?.t ?? 0
+    }
+
+    private func dureeEtape(_ i: Int) -> String {
+        if let ms = ligne.etapes.duree(de: i) { return Self.duree(ms) }
+        if ligne.enCours { return "en cours" }
+        guard let d = ligne.debutEtapes, let f = ligne.finEtapes else { return "" }
+        return Self.duree(max(0, Int(f.timeIntervalSince(d) * 1000) - ligne.etapes[i].t))
+    }
+
+    /// « 0,4 s », « 12 s », « 1 min 05 »
+    static func duree(_ ms: Int) -> String {
+        if ms < 10_000 { return String(format: "%.1f s", Double(ms) / 1000).replacingOccurrences(of: ".", with: ",") }
+        let s = ms / 1000
+        return s < 60 ? "\(s) s" : String(format: "%d min %02d", s / 60, s % 60)
+    }
+
+    static func icone(_ cle: String?) -> String {
+        switch cle {
+        case "contexte": return "tray.full"
+        case "choix": return "arrow.triangle.branch"
+        case "modele": return "cpu"
+        case "reflexion": return "brain"
+        case "motion": return "list.bullet.rectangle"
+        case "web": return "globe"
+        case "navigateur": return "safari"
+        case "proposition": return "calendar.badge.plus"
+        case "budget": return "hourglass"
+        case "secours": return "exclamationmark.triangle"
+        case "ecrit": return "pencil"
+        case nil: return "clock"
+        default: return "circle.dotted"
         }
     }
 }
@@ -971,6 +1110,24 @@ private struct Composeur: View {
         .task {
             // Captures de la CI : un long collage, et ce que Rémy en retiendrait.
             let env = ProcessInfo.processInfo.environment
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "etapes" {
+                // Captures de la CI : une réponse en cours, barre d'étapes ouverte.
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: "Tu peux me trouver un créneau pour la vidange demain ?"))
+                var l = LigneChat(deToi: false, texte: "", enCours: true, question: "créneau")
+                l.etapes = [
+                    EtapeReponse(cle: "contexte", texte: "Rémy relit sa mémoire, ton planning et ton agenda…", t: 0),
+                    EtapeReponse(cle: "choix", texte: "Rémy choisit comment te répondre…", t: 380),
+                    EtapeReponse(cle: "modele", texte: "Rémy interroge son modèle local…", t: 420),
+                    EtapeReponse(cle: "motion", texte: "Rémy parcourt ton Motion…", t: 2100),
+                    EtapeReponse(cle: "reflexion", texte: "Rémy réfléchit…",
+                                 detail: "…demain 9 h est libre, mais le garage ouvre à 8 h 30 : je propose 8 h 30 et je garde 9 h en repli", t: 3900),
+                ]
+                l.statut = l.etapes.last?.texte
+                l.debutEtapes = Date().addingTimeInterval(-9)
+                app.chat.montrerPourCapture(l)
+                return
+            }
             if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "corriger-dictee" {
                 // Captures de la CI : un mot mal compris, surligné, et la bulle.
                 try? await Task.sleep(nanoseconds: 3_500_000_000)
