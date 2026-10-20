@@ -5,7 +5,7 @@ public enum Format {
     public static var fuseau = TimeZone(identifier: "Europe/Paris") ?? .current
     public static let locale = Locale(identifier: "fr_FR")
 
-    static var calendrier: Calendar {
+    public static var calendrier: Calendar {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = fuseau
         c.locale = locale
@@ -40,6 +40,15 @@ public enum Format {
 
     /// « mercredi 23 septembre »
     public static func jourLong(_ d: Date) -> String { formateur("EEEE d MMMM").string(from: d) }
+
+    /// « 15 octobre », « 1er novembre »
+    public static func jourMois(_ d: Date) -> String {
+        let jour = calendrier.component(.day, from: d)
+        return (jour == 1 ? "1er" : String(jour)) + " " + formateur("MMMM").string(from: d)
+    }
+
+    /// « jeudi »
+    public static func jourSemaine(_ d: Date) -> String { formateur("EEEE").string(from: d) }
 
     /// « 23 sept. »
     public static func jourCourt(_ d: Date) -> String { formateur("d MMM").string(from: d) }
@@ -86,6 +95,14 @@ public enum Format {
         f.locale = locale
         f.numberStyle = .decimal
         return f.string(from: NSNumber(value: n)) ?? String(n)
+    }
+
+    /// Depuis quand date une copie : « de 10:40 », « d'hier, 18:02 », « du 13 oct., 18:02 ».
+    public static func depuis(_ d: Date, maintenant: Date = Date()) -> String {
+        let debut = debutDuJour(maintenant)
+        if d >= debut { return "de " + heure(d) }
+        if d >= debut.addingTimeInterval(-86_400) { return "d'hier, " + heure(d) }
+        return "du " + jourCourt(d) + ", " + heure(d)
     }
 
     /// Pour la liste des conversations : l'heure aujourd'hui, « Hier », sinon la date.

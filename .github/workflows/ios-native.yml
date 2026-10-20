@@ -28,6 +28,11 @@ on:
       - ".github/workflows/ios-native.yml"
       - ".github/actions/outils-ios/**"
   workflow_call:
+    inputs:
+      essentiel:
+        description: "Envoi TestFlight : tests et compilation, mais seulement les captures qui prouvent que l'app démarre (les autres ont été faites sur la PR)"
+        type: boolean
+        default: false
   workflow_dispatch:
 
 concurrency:
@@ -38,7 +43,7 @@ jobs:
   build:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 90
     env:
       TZ: Europe/Paris
     steps:
@@ -62,6 +67,7 @@ jobs:
           GOOGLE_CLIENT_ID=x GOOGLE_CLIENT_SECRET=y \
           GOOGLE_API_URL=http://127.0.0.1:9995/calendar/v3 GOOGLE_TOKEN_URL=http://127.0.0.1:9995/token \
           DICTEE_LOCALE_URL=http://127.0.0.1:9997 \
+          REMY_GLM_URL=http://127.0.0.1:9994/v1 REMY_CERVEAU=cloud REMY_PLANIF=off \
           CRON_SECRET=ci REMY_ENV=test PORT=3000 nohup node server.js > serveur.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:3000/api/health > /dev/null
@@ -88,10 +94,14 @@ jobs:
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 \
             | grep -E "error:|warning: .*Remy/|BUILD (SUCCEEDED|FAILED)" || true
-          test -d build/Build/Products/Debug-iphonesimulator/Remy.app
+          # L'exécutable, pas seulement le dossier : un échec de compilation laisse
+          # un Remy.app vide, que l'installation refusait bien plus loin.
+          test -f build/Build/Products/Debug-iphonesimulator/Remy.app/Remy
 
       - name: Lancer et capturer
         working-directory: ios-native
+        env:
+          ESSENTIEL: ${{ inputs.essentiel && '1' || '' }}
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "
           import json,sys
@@ -116,11 +126,16 @@ jobs:
           # Le micro (dictée, mode appel) : accordé d'avance, sinon l'alerte
           # système masquerait les captures.
           xcrun simctl privacy "$UDID" grant microphone com.pingureep.remy || true
+          # Sans quoi le premier clavier affiche l'astuce « Speed up your typing… ».
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
           mkdir -p captures
           capture() { # nom apparence écran
             xcrun simctl ui "$UDID" appearance "$2"
             xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
-            if [ "$3" = "connexion" ]; then
+            if [ "$3" = "adresse" ]; then
+              # Premier lancement sans adresse de tour connue : l'app la demande.
+              xcrun simctl launch "$UDID" com.pingureep.remy
+            elif [ "$3" = "connexion" ]; then
               SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 xcrun simctl launch "$UDID" com.pingureep.remy
             else
               SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 SIMCTL_CHILD_REMY_DEMO_MDP=demo-demo-demo \
@@ -138,19 +153,140 @@ jobs:
               exit 1
             fi
           }
+          if [ "$ESSENTIEL" = "1" ]; then
+            # Envoi TestFlight : ce code a déjà eu toutes ses captures sur la PR
+            # (31 min sur 36). Ici, de quoi prouver que l'app démarre, se connecte
+            # et ne plante pas (chaque capture le vérifie).
+            capture 0-adresse-tour-clair light adresse
+            capture 2-aujourdhui-clair light aujourdhui
+            capture 4-remy-clair light remy
+            ls -la captures
+            exit 0
+          fi
+          capture 0-adresse-tour-clair light adresse
           capture 1-connexion-sombre dark connexion
           capture 2-aujourdhui-clair light aujourdhui
           capture 3-aujourdhui-sombre dark aujourdhui
           capture 3b-journee-clair light aujourdhui journee
-          capture 3c-remarque-sombre dark aujourdhui remarque
+          capture 3c-boite-sombre dark boite
           capture 3d-connaissance-clair light aujourdhui connaissance
+          capture 3e-gerer-clair light gerer
+          capture 3f-journee-etendue-clair light journee-etendue
+          capture 3g-capture-clair light capture
+          capture 3h-projets-clair light projets
+          capture 3i-projets-sombre dark projets
+          capture 3j-liste-clair light liste
+          capture 3k-rappels-sombre dark rappels
+          capture 3l-capture-liste-clair light capture-liste
+          capture 3m-capture-rappel-sombre dark capture-rappel
+          capture 3n-modifier-clair light modifier
+          capture 3o-a-traiter-sombre dark aujourdhui a-traiter
+          capture 3p-conseil-clair light conseil
+          capture 3q-conseil-sombre dark conseil
+          capture 3r-activite-clair light activite
+          capture 3s-rendez-vous-sombre dark rendez-vous
+          capture 3t-et-maintenant-clair light et-maintenant
+          capture 3u-choix-tache-sombre dark choix-tache
+          capture 3v-capture-plusieurs-clair light capture-plusieurs
+          capture 3w-capture-projet-sombre dark capture-projet
+          capture 3x-filtre-rappels-clair light filtre
+          capture 3y-onboarding-rappels-clair light onboarding
+          capture 3z-onboarding-rappels-2-sombre dark onboarding-2
+          capture 3za-historique-clair light historique
+          capture 3zb-projet-motion-sombre dark noeud motion:p1
+          capture 3zc-sous-projet-clair light noeud d-site
           capture 4-remy-clair light remy
           capture 4b-remy-sombre dark remy
           capture 4c-recherche-web-sombre dark remy-fil c6
           capture 5-remy-vide-clair light remy-vide
+          capture 5b-conversations-clair light conversations
+          capture 5c-conversations-sombre dark conversations
+          capture 5d-retenir-clair light retenir
+          capture 5e-proposition-clair light remy-fil c10
+          capture 5f-ajuster-clair light ajuster c10
+          capture 5g-ajuster-rappel-sombre dark ajuster-rappel c10
+          capture 5h-categorie-tache-clair light categorie
+          capture 5i-corriger-dictee-clair light corriger-dictee
+          capture 5j-etapes-sombre dark etapes
+          capture 5k-tableau-clair light remy-fil c12
+          capture 5l-jauge-clair light jauge
+          capture 5m-erreur-sombre dark erreur
+          capture 5n-regle-clair light regle
+          capture 6b-lieux-clair light lieux
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
+          capture 8b-vocal-en-attente-sombre dark vocal-en-attente
+          # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
+          # dictée). Les chiffres sortent dans le journal et sur la capture.
+          xcrun simctl ui "$UDID" appearance light
+          xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
+          SIMCTL_CHILD_REMY_DEMO_ECRAN=perf-saisie \
+            xcrun simctl launch --stdout="$PWD/perf-saisie.log" --stderr="$PWD/perf-saisie.log" "$UDID" com.pingureep.remy
+          for i in $(seq 1 60); do grep -q "dictée de 2 min" perf-saisie.log 2>/dev/null && [ "$(grep -c PERF-SAISIE perf-saisie.log)" -ge 3 ] && break; sleep 1; done
+          sleep 1
+          xcrun simctl io "$UDID" screenshot captures/8b-mesure-frappe-clair.png
+          # Dans le vrai écran (fil de 60 messages, composeur réel) : garde-fou
+          # de régression (le 18/10, le champ SwiftUI y faisait 96,6 ms par image).
+          for champ in uikit; do
+            xcrun simctl terminate "$UDID" com.pingureep.remy 2>/dev/null || true
+            SIMCTL_CHILD_REMY_BASE_URL=http://127.0.0.1:3000 SIMCTL_CHILD_REMY_DEMO_MDP=demo-demo-demo \
+            SIMCTL_CHILD_REMY_DEMO_ECRAN=perf-remy SIMCTL_CHILD_REMY_DEMO_ANCRE=$champ \
+              xcrun simctl launch --stdout="$PWD/perf-remy-$champ.log" --stderr="$PWD/perf-remy-$champ.log" "$UDID" com.pingureep.remy
+            for i in $(seq 1 40); do grep -q PERF-SAISIE "perf-remy-$champ.log" 2>/dev/null && break; sleep 1; done
+            xcrun simctl io "$UDID" screenshot "captures/8c-mesure-vrai-ecran-$champ.png"
+            cat "perf-remy-$champ.log" >> perf-saisie.log
+          done
+          grep PERF-SAISIE perf-saisie.log | while read -r l; do echo "::notice::$l"; done
+          grep -q PERF-SAISIE perf-saisie.log || echo "::warning::Mesure de la frappe : pas de résultat"
+          # Petit écran (iPhone SE, sinon le plus petit disponible) : textes
+          # longs, défilement, zones tactiles.
+          PETIT=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          ios=sorted([(k,v) for k,v in d.items() if 'iOS' in k], key=lambda kv: kv[0])
+          for k,v in reversed(ios):
+              iphones=[x for x in v if x['name'].startswith('iPhone')]
+              for motif in (' SE', ' mini', 'e'):
+                  petits=[x for x in iphones if motif in x['name'] or (motif=='e' and x['name'].split()[-1].endswith('e'))]
+                  if petits:
+                      print(petits[-1]['udid']); sys.exit()
+          ")
+          if [ -n "$PETIT" ] && [ "$PETIT" != "$UDID" ]; then
+            echo "Petit écran : $PETIT"
+            xcrun simctl boot "$PETIT" || true
+            xcrun simctl bootstatus "$PETIT" -b
+            xcrun simctl status_bar "$PETIT" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4
+            xcrun simctl install "$PETIT" build/Build/Products/Debug-iphonesimulator/Remy.app
+            GRAND=$UDID
+            UDID=$PETIT
+            capture 10-petit-aujourdhui-clair light aujourdhui
+            capture 10b-petit-suite-clair light aujourdhui journee
+            capture 10c-petit-gerer-sombre dark gerer
+            capture 10d-petit-capture-clair light capture
+            capture 10e-petit-projets-sombre dark projets
+            capture 10f-petit-liste-sombre dark liste
+            capture 10g-petit-capture-rappel-clair light capture-rappel
+            capture 10h-petit-conseil-clair light conseil
+            capture 10i-petit-activite-sombre dark activite
+            capture 10j-petit-capture-plusieurs-clair light capture-plusieurs
+            capture 10k-petit-onboarding-2-sombre dark onboarding-2
+            capture 10l-petit-sous-projet-clair light noeud d-site
+            capture 10m-petit-remy-clair light remy
+            capture 10n-petit-retenir-sombre dark retenir
+            capture 10o-petit-ajuster-sombre dark ajuster c10
+            UDID=$GRAND
+            xcrun simctl shutdown "$PETIT" || true
+          else
+            echo "::warning::Aucun petit iPhone dans ce runtime : captures petit écran sautées"
+          fi
+          # J1.2 : la tour s'éteint. L'app relancée montre la journée gardée sur
+          # l'iPhone, datée, et une coche faite à ce moment attend le réseau.
+          pkill -f "node serve[r].js" || true
+          sleep 1
+          capture 9-tour-coupee-clair light aujourdhui
+          capture 9b-coche-en-attente-clair light cocher
+          capture 9c-coche-en-attente-sombre dark aujourdhui
           ls -la captures
 
       - name: Captures en JPEG réduit

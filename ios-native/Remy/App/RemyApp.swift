@@ -4,31 +4,61 @@ import RemyCore
 
 @main
 struct RemyApp: App {
-    @State private var app: AppModel
+    /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
+    @State private var app: AppModel?
+    /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
+    /// prototype sur données fictives, sans serveur (captures de la CI).
+    @State private var proto: ProtoEtat?
+    private let reseau = SurveillanceReseau()
     /// « auto » suit l'iPhone ; « clair » ou « sombre » forcent l'apparence.
     @AppStorage("theme") private var theme = "auto"
 
     init() {
         // REMY_BASE_URL : pour la CI et les essais sur un serveur de démo.
-        // Par défaut, l'app parle au serveur de production.
+        // Sinon, l'adresse de la tour gardée sur l'iPhone (ou posée à la compilation).
         let env = ProcessInfo.processInfo.environment
-        let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.urlProduction
-        let modele = AppModel(api: ClientAPI(base: base))
+        let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.adresseTour
+        let modele = base.map(Self.modele)
+        _app = State(initialValue: modele)
+        _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
+        if let modele { reseau.demarrer(modele) }
+    }
+
+    private static func modele(_ base: URL) -> AppModel {
+        // La journée et les gestes pas encore envoyés restent sur l'iPhone (J1.2).
+        let modele = AppModel(api: ClientAPI(base: base), rangement: Rangement.parDefaut())
         modele.nomAppareil = UIDevice.current.name
         // Un seul micro pour la dictée et l'appel : l'un coupe l'autre.
         let micro = MicroiPhone()
+        micro.coupure = { [weak modele] in modele?.dictee.interrompre() }
         modele.dictee.micro = micro
         modele.appel.micro = micro
         modele.appel.voix = VoixiPhone()
-        _app = State(initialValue: modele)
+        // iOS relance l'app en arrière-plan pour une visite : le capteur doit
+        // être là dès le lancement (coupé tant que Sam ne l'a pas allumé).
+        CapteurLocalisation.partage.brancher(modele.lieux)
+        return modele
     }
 
     var body: some Scene {
         WindowGroup {
-            RacineView()
-                .environment(app)
+            if let proto {
+                ProtoRacine(etat: proto)
+            } else if let app {
+                RacineView()
+                    .environment(app)
+                    .tint(Palette.encre)
+                    .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+            } else {
+                AdresseTourVue { url in
+                    ClientAPI.retenirAdresse(url)
+                    let m = Self.modele(url)
+                    reseau.demarrer(m)
+                    app = m
+                }
                 .tint(Palette.encre)
                 .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+            }
         }
     }
 }
@@ -39,6 +69,10 @@ struct RacineView: View {
     var body: some View {
         ZStack {
             Palette.fond.ignoresSafeArea()
+            if ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "perf-saisie" {
+                // CI : mesure de la frappe, sans tour ni connexion.
+                MesureSaisie()
+            } else {
             switch app.phase {
             case .demarrage:
                 Wordmark(taille: 44)
@@ -49,10 +83,11 @@ struct RacineView: View {
                 OngletsView()
                     .transition(.opacity)
             }
+            }
         }
         // Au-dessus de la barre d'onglets, et du composeur dans l'onglet Rémy.
         .overlay(alignment: .bottom) {
-            ToastView(marge: app.phase != .pret ? 24 : app.onglet == .remy ? 150 : 72)
+            ToastView(marge: app.phase != .pret ? 24 : app.onglet == .remy ? 176 : 96)
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
@@ -135,10 +170,13 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "remy-fil":
+        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle":
+            app.chat.fermer()
+            app.onglet = .remy
+        case "remy-fil", "ajuster", "ajuster-rappel":
             // Un fil précis (REMY_DEMO_ANCRE = son identifiant).
             if let id = env["REMY_DEMO_ANCRE"] { await app.ouvrirConversation(id) }
-        case "appel", "dictee":
+        case "appel", "dictee", "vocal-en-attente":
             if let c = app.chat.conversations.first(where: { $0.origine == nil && $0.pinned == true })
                 ?? app.chat.conversations.first {
                 await app.ouvrirConversation(c.id)
@@ -148,10 +186,24 @@ enum Demo {
                 app.appel.decrocher()
             } else {
                 await app.dictee.commencer()
+                if env["REMY_DEMO_ECRAN"] == "vocal-en-attente" {
+                    // Le micro coupé en pleine dictée : le vocal attend « Renvoyer ».
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    app.dictee.interrompre()
+                }
             }
-        case "reglages":
+        case "reglages", "lieux":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
+        case "projets", "liste", "rappels", "filtre", "noeud":
+            app.onglet = .projets
+        case "cocher":
+            // J1.2, tour coupée : la coche reste sur l'iPhone et le dit.
+            app.onglet = .aujourdhui
+            if let t = app.tableau.journee?.aFaire?.first ?? app.tableau.journee?.retard?.items.first {
+                app.tableau.delaiAnnulation = 0
+                await app.tableau.terminer(id: t.id, titre: t.titre)
+            }
         default:
             app.onglet = .aujourdhui
         }

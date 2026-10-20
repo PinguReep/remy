@@ -37,13 +37,24 @@ targets:
         # (feuilles, alertes, menus). Le design de Rémy est plat et à angles
         # droits : on garde l'apparence classique, cohérente avec le site.
         UIDesignRequiresCompatibility: true
+        # L'adresse de la tour, posée à la compilation (secret de la CI) ; vide :
+        # l'app la demande une fois. Jamais écrite dans le dépôt.
+        RemyAdresseTour: $(REMY_ADRESSE_TOUR)
         # HTTP autorisé UNIQUEMENT vers le réseau local (serveur de démo de la
         # CI, serveur de dev) ; la production reste en HTTPS obligatoire.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         # Dictée et mode appel : l'audio part vers la tour (Dictée Locale) pour
         # être transcrit, puis il est effacé — jamais conservé.
+        # Import des rappels de l'iPhone (J1.5) : lus sur l'iPhone, envoyés à la
+        # tour, nulle part ailleurs ; rien n'est effacé côté Apple.
+        NSRemindersFullAccessUsageDescription: "Pour reprendre tes rappels dans Rémy : ils sont lus sur l'iPhone et envoyés à ta tour, nulle part ailleurs. Rien n'est effacé dans l'app Rappels."
         NSMicrophoneUsageDescription: "Rémy t'écoute quand tu dictes un message ou que tu l'appelles. L'audio part seulement vers ta tour pour être transcrit, puis il est effacé."
+        # Localisation (20/10) : visites et trajets, envoyés à la tour seulement ;
+        # les adresses y sont traduites, rien ne part chez Apple ni ailleurs.
+        NSLocationWhenInUseUsageDescription: "Pour que Rémy sache où tu en es dans ta journée (à la maison, à la salle, sur la route). Tes positions vont seulement à ta tour."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Pour reconnaître tes arrivées et départs même app fermée (iOS les détecte, presque sans batterie). Tes positions vont seulement à ta tour, gardées 90 jours."
+        NSMotionUsageDescription: "Pour savoir quand tu es en voiture, et que Rémy ne t'envoie rien de long à lire au volant. Rien ne quitte ta tour."
         UILaunchScreen:
           UIColorName: Fond
         UISupportedInterfaceOrientations:
@@ -61,6 +72,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pingureep.remy
         PRODUCT_NAME: Remy
+        REMY_ADRESSE_TOUR: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"

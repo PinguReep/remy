@@ -14,6 +14,9 @@
 # Retour arrière : app TestFlight → Rémy → « Builds précédents » → installer le
 # build voulu (docs/ios.md). Chaque exécution garde l'archive et les dSYM.
 #
+# Retours TestFlight : Run workflow avec « retours_seulement » et le certificat
+# (base64 -w0 cert.pem) ; voir scripts/retours-testflight/ et le job « retours ».
+#
 # Secrets GitHub (Settings → Secrets and variables → Actions) :
 #   ASC_KEY_ID     — ID de la clé API App Store Connect (rôle Admin : la
 #                    signature de distribution dans le cloud l'exige)
@@ -29,22 +32,44 @@ on:
   push:
     tags: ["ios-v*"]
   workflow_dispatch:
+    inputs:
+      retours_seulement:
+        description: "Ne lancer QUE la collecte des retours TestFlight (ni tests ni envoi)"
+        type: boolean
+        default: false
+      cle_publique:
+        # Une entrée n'est JAMAIS confidentielle : elle s'affiche en clair dans le
+        # journal (en-tête « env: » de l'étape). Ici c'est un certificat, public.
+        description: "Certificat du destinataire : base64 -w0 cert.pem (RSA-4096, public)"
+        type: string
+        required: false
+        default: ""
 
+# File d'attente : avec le groupe unique actuel « testflight », un run en
+#    attente est ANNULÉ quand un autre arrive ; une collecte pourrait donc annuler
+#    un envoi TestFlight en attente (et inversement). Groupe à part pour la collecte :
 concurrency:
-  group: testflight
+  group: ${{ inputs.retours_seulement && 'testflight-retours' || 'testflight' }}
   cancel-in-progress: false
 
 jobs:
   serveur:
     name: Tests serveur
+    if: ${{ !inputs.retours_seulement }}
     uses: ./.github/workflows/serveur.yml
 
   ios:
     name: Tests iOS
+    if: ${{ !inputs.retours_seulement }}
     uses: ./.github/workflows/ios-native.yml
+    # Tests, intégration et compilation complets ; captures réduites au démarrage
+    # (les 70 écrans ont été vérifiés sur la PR) : ~10 min au lieu de ~40.
+    with:
+      essentiel: true
 
   build:
     name: Archive et envoi
+    if: ${{ !inputs.retours_seulement }}
     needs: [serveur, ios]
     runs-on: macos-26
     timeout-minutes: 45
@@ -53,7 +78,14 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # Facultatif : l'adresse de la tour, inscrite dans l'app à la compilation
+      # (sinon l'app la demande une fois). Jamais dans le dépôt, qui est public.
+      REMY_ADRESSE_TOUR: ${{ secrets.REMY_ADRESSE_TOUR }}
     steps:
+      - name: Numéro de build
+        # Les builds 1 à 15 venaient de l'ancien dépôt : on continue à partir de 16.
+        run: echo "BUILD=$((15 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
       - name: Secrets présents ?
         run: |
           manque=""
@@ -78,6 +110,15 @@ jobs:
       - name: Enregistrer le Bundle ID (idempotent)
         run: node scripts/asc-register-bundle.mjs
 
+      # Chaque build tourne sur une machine neuve : la signature automatique y crée
+      # un certificat « Apple Development » dont la clé meurt avec elle, et Apple en
+      # plafonne le nombre (build 14 refusé le 15/10/2026). On révoque ceux de la CI
+      # — jamais un certificat de distribution, jamais un fait à la main — avant
+      # d'archiver. Un échec ici n'arrête rien : l'archive dira si ça bloque.
+      - name: Certificats de développement laissés par la CI
+        continue-on-error: true
+        run: node scripts/asc-certificats.mjs --nettoyer
+
       - name: Générer le projet
         working-directory: ios-native
         run: |
@@ -94,7 +135,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+            CURRENT_PROJECT_VERSION=$BUILD REMY_ADRESSE_TOUR="$REMY_ADRESSE_TOUR"
 
       - name: Export .ipa
         working-directory: ios-native
@@ -128,7 +169,7 @@ jobs:
         run: |
           {
             echo "### TestFlight"
-            echo "- Build : **${{ github.run_number }}**"
+            echo "- Build : **$BUILD**"
             echo "- Commit : \`${GITHUB_SHA::7}\` (${{ github.ref_name }})"
             echo "- Retour arrière : app TestFlight → Rémy → Builds précédents"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -137,12 +178,89 @@ jobs:
         if: always()
         run: |
           cd ios-native/build
-          [ -d Remy.xcarchive ] && ditto -c -k --keepParent Remy.xcarchive "Remy-${{ github.run_number }}.xcarchive.zip" || true
+          [ -d Remy.xcarchive ] && ditto -c -k --keepParent Remy.xcarchive "Remy-$BUILD.xcarchive.zip" || true
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: archive-ios-${{ github.run_number }}
+          name: archive-ios-${{ env.BUILD }}
           path: ios-native/build/Remy-*.xcarchive.zip
           retention-days: 90
           if-no-files-found: ignore
+
+  retours:
+    name: Retours TestFlight (chiffrés)
+    # Lancé à la main seulement : soit en mode « retours seulement » (échoue
+    # clairement si le certificat manque), soit à côté d'un envoi si un certificat
+    # est fourni. Jamais sur un push de tag. Ne dépend d'aucun autre job.
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.retours_seulement || inputs.cle_publique != '') }}
+    # ubuntu-latest passe à Ubuntu 26.04 en novembre 2026 (OpenSSL et Python
+    # changeront) ; mettre ubuntu-24.04 pour figer l'image.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash          # bash --noprofile --norc -eo pipefail ; jamais de set -x
+    steps:
+      - name: Refus du journal de débogage
+        # Quiconque peut relancer un run peut cocher « Enable debug logging »
+        # (ACTIONS_STEP_DEBUG / ACTIONS_RUNNER_DEBUG) : la collecte refuse alors de tourner.
+        run: |
+          if [ "${RUNNER_DEBUG:-}" = 1 ]; then
+            echo "::error::journal de débogage actif : collecte refusée (relancer sans debug)."
+            exit 1
+          fi
+
+      - name: Scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/retours-testflight
+
+      - name: Certificat du destinataire
+        # Vérifié AVANT la collecte : pas de données récupérées pour rien.
+        env:
+          CLE_PUBLIQUE: ${{ inputs.cle_publique }}
+        run: bash scripts/retours-testflight/chiffrer.sh --verifier
+
+      - name: Collecte (sortie standard jetée)
+        # Le script n'imprime que des compteurs et des messages d'erreur fixes ; le
+        # jeton JWT ne quitte pas le processus (rien à masquer avec ::add-mask::).
+        # Pas de pip : sans le module cryptography, la signature passe par openssl.
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: python3 -I scripts/retours-testflight/recuperer_retours.py --sortie "$RUNNER_TEMP/clair" > /dev/null
+
+      - name: Chiffrement
+        env:
+          CLE_PUBLIQUE: ${{ inputs.cle_publique }}
+        run: bash scripts/retours-testflight/chiffrer.sh --supprimer-clair "$RUNNER_TEMP/clair" "$RUNNER_TEMP/colis/colis.p7m"
+
+      - name: Artefact chiffré
+        id: colis
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colis
+          path: ${{ runner.temp }}/colis/colis.p7m
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Résumé
+        env:
+          ARTEFACT: ${{ steps.colis.outputs.artifact-id }}
+        run: |
+          {
+            echo "### Retours TestFlight (chiffrés)"
+            echo "- Artefact \`colis\` n° $ARTEFACT, rétention 1 jour"
+            echo "- Récupérer : \`gh run download $GITHUB_RUN_ID -R $GITHUB_REPOSITORY -n colis\`"
+            echo "- Puis supprimer : \`gh api -X DELETE repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTEFACT\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nettoyage du clair
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/clair" "$RUNNER_TEMP/colis"

@@ -10,13 +10,18 @@ struct ReglagesView: View {
     @Environment(\.openURL) private var ouvrirURL
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @AppStorage("theme") private var theme = "auto"
+    @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
     @State private var memoire = false
     @State private var appareilsOuverts = false
+    @State private var reglesOuvertes = false
+    @State private var lieuxOuverts = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
     @State private var reglages: Reglages?
     @State private var changementSecours = false
+    @State private var prototypes = false
+    @State private var mesures = false
 
     var body: some View {
         let d = app.tableau.donnees
@@ -27,6 +32,7 @@ struct ReglagesView: View {
                     ligne("Ouvrir le site", sous: "Le site te redemandera le mot de passe.", symbole: "safari") {
                         ouvrirURL(app.api.base)
                     }
+                    ligne("Temps de réponse", sous: "Ce que prend chaque étape, iPhone et tour", symbole: "speedometer") { mesures = true }
                     if let c = d?.couts {
                         info("Coût des 30 derniers jours", valeur: Format.usd(c.jours30), symbole: "creditcard")
                     }
@@ -44,6 +50,24 @@ struct ReglagesView: View {
                             Text("Comme l'iPhone").tag("auto")
                             Text("Clair").tag("clair")
                             Text("Sombre").tag("sombre")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .foregroundStyle(Palette.encre)
+                    .padding(.vertical, 12)
+                    .overlay(alignment: .bottom) { Filet() }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 14) {
+                            Image(systemName: "hand.tap").font(.system(size: 18)).frame(width: 26)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Appui pour agrandir le planning").font(Police.texte(16, .medium))
+                                Text("Plus long si ça s'ouvre sans le vouloir.")
+                                    .font(Police.texte(13))
+                                    .foregroundStyle(Palette.encre2)
+                            }
+                        }
+                        Picker("Appui pour agrandir le planning", selection: $appuiMs) {
+                            ForEach(Gestes.choix, id: \.self) { Text("\($0) ms").tag($0) }
                         }
                         .pickerStyle(.segmented)
                     }
@@ -73,13 +97,39 @@ struct ReglagesView: View {
                     if let r = reglages, let nuit = r.circuits?["nuit"] {
                         circuitNuit(nuit)
                     }
+                    if let r = reglages, let c = r.circuits?["conseil"] {
+                        circuit("conseil", c, titre: "Conseil réfléchi",
+                                detail: "GLM, sur tes machines, prépare le conseil du moment en arrière-plan. Coupé : conseil calculé sur l'iPhone, sans IA.")
+                    }
+                    if let r = reglages, let c = r.circuits?["compactage"] {
+                        circuit("compactage", c, titre: "Compacter les longues conversations",
+                                detail: "Dès 70 % du contexte, GLM résume le début du fil (rien n'est effacé). Coupé : seulement à la demande, depuis la jauge.")
+                    }
                     if d?.systeme?.reflexion == false {
                         info("Préparation de nuit désactivée : « Rémy a remarqué » restera vide.", symbole: "moon.zzz")
+                    }
+                    if app.lieux.disponible {
+                        ligne("Localisation", sous: app.lieux.active ? (app.lieux.enPause ? "En pause" : "Allumée : ta tour sait où tu en es") : "Coupée", symbole: "location") {
+                            lieuxOuverts = true
+                        }
+                    }
+                    if app.chat.reglesDisponibles {
+                        ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
+                            reglesOuvertes = true
+                        }
+                    }
+                    if let r = reglages, let c = r.circuits?["regles"] {
+                        circuit("regles", c, titre: "Vérifier les règles",
+                                detail: "Toutes les 3 h, sans IA : Rémy relit ton agenda et Motion pour te proposer les tâches de tes règles.")
                     }
                     if app.serveur?.sait("appareils") == true {
                         ligne("Appareils connectés", sous: "Déconnecte un iPhone perdu ou prêté.", symbole: "iphone") {
                             appareilsOuverts = true
                         }
+                    }
+                    ligne("Prototypes de design", sous: "Lot 1 : deux directions à essayer, sur des données fictives.",
+                          symbole: "paintpalette") {
+                        prototypes = true
                     }
                     ligne("Se déconnecter", symbole: "rectangle.portrait.and.arrow.right", couleur: Palette.danger, fleche: false) {
                         deconnexion = true
@@ -100,6 +150,7 @@ struct ReglagesView: View {
             .background(Palette.fond)
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $mesures) { MesuresView() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fermer") { fermer() }.font(Police.texte(16, .semibold))
@@ -110,15 +161,28 @@ struct ReglagesView: View {
         .overlay(alignment: .bottom) { ToastView(marge: 24, annoncer: false) }
         .sheet(isPresented: $memoire) { MemoireView() }
         .sheet(isPresented: $appareilsOuverts) { AppareilsView() }
+        .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
+        .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
+        .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
+        }
+        .task {
+            // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "lieux" else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            app.lieux.montrerPourCapture(LieuxDemo.vue())
+            lieuxOuverts = true
         }
         .confirmationDialog("Se déconnecter de Rémy ?", isPresented: $deconnexion, titleVisibility: .visible) {
             Button("Se déconnecter", role: .destructive) { Task { await app.deconnecter() } }
             Button("Annuler", role: .cancel) {}
         } message: {
-            Text("Il faudra retaper le mot de passe pour revenir.")
+            let attente = app.tableau.gestesEnAttente + app.carnet.enAttente.count
+            Text("Il faudra retaper le mot de passe pour revenir."
+                 + (attente == 0 ? "" : attente == 1 ? " Un changement pas encore envoyé sera perdu."
+                                                     : " \(attente) changements pas encore envoyés seront perdus."))
         }
     }
 
@@ -228,16 +292,20 @@ struct ReglagesView: View {
     /// Réflexion de la nuit (J0.9) : Rémy relit et prépare le briefing pendant
     /// que Sam dort. Coupable d'un geste ; la tour peut la forcer.
     private func circuitNuit(_ c: Circuit) -> some View {
+        circuit("nuit", c, titre: "Réflexion de la nuit", detail: "Rémy relit tes échanges et prépare le briefing du matin.")
+    }
+
+    private func circuit(_ id: String, _ c: Circuit, titre: String, detail: String) -> some View {
         let force = c.forceParLaTour == true
         return Toggle(isOn: Binding(
             get: { c.actif },
-            set: { nouveau in changerCircuit("nuit", nouveau) }
+            set: { nouveau in changerCircuit(id, nouveau) }
         )) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Réflexion de la nuit").font(Police.texte(16, .medium))
+                Text(titre).font(Police.texte(16, .medium))
                 Text(force
-                     ? "Réglée sur la tour (REMY_CIRCUIT_NUIT) : à changer là-bas."
-                     : "Rémy relit tes échanges et prépare le briefing du matin.")
+                     ? "Réglé sur la tour (REMY_CIRCUIT_\(id.uppercased())) : à changer là-bas."
+                     : detail)
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -258,11 +326,22 @@ struct ReglagesView: View {
             defer { changementSecours = false }
             do {
                 reglages = try await app.api.changerCircuit(id, actif: actif)
-                app.dire(actif ? "Réflexion de la nuit allumée." : "Réflexion de la nuit coupée : Rémy ne travaillera plus la nuit.")
+                app.dire(Self.annonce(id, actif))
                 Haptique.succes()
             } catch {
                 app.signaler(error)
             }
+        }
+    }
+
+    /// Ce que dit le bandeau après un changement de circuit.
+    static func annonce(_ id: String, _ actif: Bool) -> String {
+        switch id {
+        case "nuit": return actif ? "Réflexion de la nuit allumée." : "Réflexion de la nuit coupée : Rémy ne travaillera plus la nuit."
+        case "conseil": return actif ? "Conseil réfléchi allumé." : "Conseil réfléchi coupé : le conseil se calcule sur l'iPhone."
+        case "compactage": return actif ? "Compactage automatique allumé." : "Compactage automatique coupé : à la demande seulement."
+        case "regles": return actif ? "Vérification des règles allumée." : "Vérification des règles coupée : Rémy ne propose plus leurs tâches."
+        default: return actif ? "Circuit allumé." : "Circuit coupé."
         }
     }
 

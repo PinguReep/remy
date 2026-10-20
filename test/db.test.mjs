@@ -40,9 +40,11 @@ test.after(() => {
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
+const DERNIERE = dbm.MIGRATIONS.at(-1).version;
+
 test("créée et migrée au premier accès ; l'ancien journal importé une fois", () => {
   const d = dbm.db();
-  assert.equal(dbm.versionSchema(d), 1);
+  assert.equal(dbm.versionSchema(d), DERNIERE);
   const lignes = d.prepare("SELECT id, source, etat, annule FROM journal ORDER BY ts").all();
   assert.deepEqual(lignes.map((l) => [l.id, l.source, l.etat, l.annule]), [
     ["l1", "motion", "appliquee", 0],
@@ -56,30 +58,32 @@ test("créée et migrée au premier accès ; l'ancien journal importé une fois"
 });
 
 test("une base qui a vécu est copiée avant une nouvelle migration", () => {
-  dbm.MIGRATIONS.push({ version: 2, nom: "essai", sql: "CREATE TABLE essai (x INTEGER);" });
+  const v = DERNIERE + 1;
+  dbm.MIGRATIONS.push({ version: v, nom: "essai", sql: "CREATE TABLE essai (x INTEGER);" });
   try {
     dbm.fermer();
     const d = dbm.db();
-    assert.equal(dbm.versionSchema(d), 2);
+    assert.equal(dbm.versionSchema(d), v);
     const copies = fs.readdirSync(path.join(base, "migrations"));
     assert.equal(copies.length, 1);
-    assert.match(copies[0], /^remy-avant-v2-\d+\.db$/);
+    assert.match(copies[0], new RegExp(`^remy-avant-v${v}-\\d+\\.db$`));
   } finally {
     dbm.MIGRATIONS.pop();
   }
 });
 
 test("une migration qui échoue ne laisse rien à moitié", () => {
-  dbm.MIGRATIONS.push({ version: 3, nom: "cassée", sql: "CREATE TABLE ok3 (x INTEGER); CREATE TABLE ok3 (x INTEGER);" });
+  const v = DERNIERE + 2;
+  dbm.MIGRATIONS.push({ version: v, nom: "cassée", sql: "CREATE TABLE ok3 (x INTEGER); CREATE TABLE ok3 (x INTEGER);" });
   try {
     dbm.fermer();
-    assert.throws(() => dbm.db(), /Migration 3 .* échouée/);
+    assert.throws(() => dbm.db(), new RegExp(`Migration ${v} .* échouée`));
     dbm.fermer();
   } finally {
     dbm.MIGRATIONS.pop();
   }
   const d = dbm.db();
-  assert.equal(dbm.versionSchema(d), 2);
+  assert.equal(dbm.versionSchema(d), DERNIERE + 1);
   assert.equal(d.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'ok3'").get().n, 0);
 });
 

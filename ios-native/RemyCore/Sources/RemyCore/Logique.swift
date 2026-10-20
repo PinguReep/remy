@@ -120,6 +120,11 @@ public enum BlocTexte: Equatable, Sendable {
     case puce(String)
     case numero(Int, String)
     case code(String)
+    /// Un tableau markdown (« | a | b | » + ligne « |---|---| ») : en-têtes et
+    /// lignes, toutes ramenées au nombre de colonnes des en-têtes.
+    case tableau(entetes: [String], lignes: [[String]])
+    /// « --- » seul sur sa ligne : un trait.
+    case trait
     case espace
 }
 
@@ -128,8 +133,34 @@ public enum Markdown {
         var sortie: [BlocTexte] = []
         var code: [String]? = nil
         var numero = 0
-        for brute in texte.components(separatedBy: "\n") {
+        let lignesTexte = texte.components(separatedBy: "\n")
+        var i = 0
+        while i < lignesTexte.count {
+            let brute = lignesTexte[i]
+            i += 1
             let ligne = brute.trimmingCharacters(in: .whitespaces)
+            // Un tableau : une ligne à « | », suivie de sa ligne de séparation.
+            if code == nil, ligne.contains("|"), i < lignesTexte.count,
+               estSeparation(lignesTexte[i].trimmingCharacters(in: .whitespaces)) {
+                let entetes = cellules(ligne)
+                var lignes: [[String]] = []
+                i += 1
+                while i < lignesTexte.count {
+                    let l = lignesTexte[i].trimmingCharacters(in: .whitespaces)
+                    guard l.contains("|"), !l.isEmpty else { break }
+                    var c = cellules(l)
+                    if c.count < entetes.count { c += Array(repeating: "", count: entetes.count - c.count) }
+                    lignes.append(Array(c.prefix(entetes.count)))
+                    i += 1
+                }
+                sortie.append(.tableau(entetes: entetes, lignes: lignes))
+                numero = 0
+                continue
+            }
+            if code == nil, ligne.range(of: #"^(-{3,}|\*{3,}|_{3,})$"#, options: .regularExpression) != nil {
+                sortie.append(.trait)
+                continue
+            }
             if ligne.hasPrefix("```") {
                 if let c = code { sortie.append(.code(c.joined(separator: "\n"))); code = nil }
                 else { code = [] }
@@ -158,5 +189,59 @@ public enum Markdown {
         if let c = code { sortie.append(.code(c.joined(separator: "\n"))) }
         while sortie.last == .espace { sortie.removeLast() }
         return sortie
+    }
+
+    /// « |---|:---:| » (deux colonnes au moins, ou une seule entourée de « | »).
+    static func estSeparation(_ l: String) -> Bool {
+        guard l.contains("-"), l.contains("|") || l.hasPrefix(":") else { return false }
+        let c = cellules(l)
+        return !c.isEmpty && c.allSatisfy { $0.range(of: #"^:?-{1,}:?$"#, options: .regularExpression) != nil }
+    }
+
+    /// Les cellules d'une ligne de tableau, sans les « | » du bord ; « \| » reste un caractère.
+    static func cellules(_ l: String) -> [String] {
+        var t = l
+        if t.hasPrefix("|") { t.removeFirst() }
+        if t.hasSuffix("|") && !t.hasSuffix("\\|") { t.removeLast() }
+        var sortie: [String] = []
+        var courant = ""
+        var echappe = false
+        for ch in t {
+            if echappe { courant.append(ch); echappe = false; continue }
+            if ch == "\\" { echappe = true; continue }
+            if ch == "|" { sortie.append(courant.trimmingCharacters(in: .whitespaces)); courant = ""; continue }
+            courant.append(ch)
+        }
+        sortie.append(courant.trimmingCharacters(in: .whitespaces))
+        return sortie
+    }
+
+    /// Le texte tel qu'on le lit, sans la syntaxe markdown : pour sélectionner
+    /// et copier une partie d'une réponse (Sam, 19/10).
+    public static func enClair(_ texte: String) -> String {
+        var lignes: [String] = []
+        for b in blocs(texte) {
+            switch b {
+            case .titre(let t), .paragraphe(let t): lignes.append(sansStyle(t))
+            case .puce(let t): lignes.append("• " + sansStyle(t))
+            case .numero(let n, let t): lignes.append("\(n). " + sansStyle(t))
+            case .code(let c): lignes.append(c)
+            case .tableau(let entetes, let rangs):
+                lignes.append(([entetes] + rangs).map { $0.map(sansStyle).joined(separator: " · ") }.joined(separator: "\n"))
+            case .trait: lignes.append("—")
+            case .espace: lignes.append("")
+            }
+        }
+        return lignes.joined(separator: "\n")
+    }
+
+    /// « **gras** », « *italique* », « `code` », « [lien](url) » → leur texte.
+    static func sansStyle(_ t: String) -> String {
+        var s = t
+        s = s.replacingOccurrences(of: #"\[([^\]]+)\]\(([^)\s]+)\)"#, with: "$1 ($2)", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(\*\*|__)(.+?)\1"#, with: "$2", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])"#, with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"`([^`]+)`"#, with: "$1", options: .regularExpression)
+        return s
     }
 }

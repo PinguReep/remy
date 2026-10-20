@@ -209,9 +209,73 @@ final class DicteeTests: XCTestCase {
         a.chat.brouillon = "Début"
         await a.dictee.commencer()
         await a.dictee.valider()
-        XCTAssertEqual(a.toast, msg)
+        XCTAssertEqual(a.toast, "Ton vocal n'est pas parti — \(msg) Il t'attend : touche « Renvoyer ».")
         XCTAssertEqual(a.chat.brouillon, "Début")
         XCTAssertEqual(a.dictee.etat, .repos)
+        XCTAssertEqual(a.dictee.enAttente.map(\.raison), [msg], "le vocal n'est pas perdu")
+    }
+
+    /// 19/10 : un vocal de 2 min parti « dans le vent ». Il attend, on le
+    /// renvoie quand la tour est revenue : le texte arrive, le vocal s'efface.
+    func testUnVocalPasPartiSeRenvoie() async throws {
+        FauxServeur.reponses = ["POST /api/transcribe": [
+            (502, #"{"error":"transcribe","message":"Dictée Locale ne répond pas."}"#),
+            (200, #"{"text":"une longue idée"}"#),
+        ]]
+        let micro = FauxMicro()
+        micro.enregistrement = Enregistrement(audio: Data(count: 9000), duree: 161)
+        let a = app(micro)
+        await a.dictee.commencer()
+        await a.dictee.valider()
+        let v = try XCTUnwrap(a.dictee.enAttente.first)
+        XCTAssertEqual(v.duree, "2:41")
+        a.chat.brouillon = "Ce que j'ai écrit entre-temps"
+        await a.dictee.renvoyer(v.id)
+        XCTAssertEqual(a.chat.brouillon, "Ce que j'ai écrit entre-temps une longue idée", "à la fin du champ, à relire")
+        XCTAssertFalse(FauxServeur.recues.contains { $0.hasSuffix("/messages") }, "jamais envoyé à Rémy tout seul")
+        XCTAssertTrue(a.dictee.enAttente.isEmpty, "transcrit : plus rien n'est gardé")
+        XCTAssertEqual(FauxServeur.recues.filter { $0 == "POST /api/transcribe" }.count, 2)
+    }
+
+    func testUnVocalEnAttenteSeJette() async throws {
+        FauxServeur.reponses = ["POST /api/transcribe": [(502, #"{"error":"transcribe","message":"Hors d'atteinte."}"#)]]
+        let a = app(FauxMicro())
+        await a.dictee.commencer()
+        await a.dictee.valider()
+        let v = try XCTUnwrap(a.dictee.enAttente.first)
+        a.dictee.jeter(v.id)
+        XCTAssertTrue(a.dictee.enAttente.isEmpty)
+        XCTAssertEqual(a.toast, "Vocal jeté : rien n'est parti.")
+    }
+
+    /// iPhone verrouillé ou appel pendant la dictée : le vocal ne part pas tout
+    /// seul, et ce qui a été dit n'est pas perdu.
+    func testUnMicroCoupeGardeLeVocal() async {
+        let micro = FauxMicro()
+        let a = app(micro)
+        await a.dictee.commencer()
+        a.dictee.interrompre()
+        XCTAssertEqual(a.dictee.etat, .repos)
+        XCTAssertEqual(a.dictee.enAttente.count, 1)
+        XCTAssertTrue(FauxServeur.recues.isEmpty, "rien n'est parti tout seul")
+        XCTAssertEqual(micro.libere, 1)
+    }
+
+    func testUnVocalLongALeTempsDEtreTranscrit() {
+        XCTAssertEqual(ClientAPI.delaiTranscription(3), 123)
+        XCTAssertEqual(ClientAPI.delaiTranscription(180), 300, "3 min : 5 min de patience, plus 90 s")
+        XCTAssertGreaterThan(ClientAPI.delaiTranscription(900), 900)
+        XCTAssertEqual(DicteeModel(api: ClientAPI(base: URL(string: "https://remy.test")!)).dureeMax, 900, "15 min avant l'arrêt")
+    }
+
+    func testLaDeconnexionOublieLesVocaux() async {
+        FauxServeur.reponses = ["POST /api/transcribe": [(502, #"{"error":"x","message":"Hors d'atteinte."}"#)]]
+        let a = app(FauxMicro())
+        await a.dictee.commencer()
+        await a.dictee.valider()
+        XCTAssertEqual(a.dictee.enAttente.count, 1)
+        await a.deconnecter()
+        XCTAssertTrue(a.dictee.enAttente.isEmpty)
     }
 
     func testAnnulerNEnvoieRien() async {
