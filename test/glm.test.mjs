@@ -53,7 +53,7 @@ test("texte en flux, réflexion signalée mais jamais montrée, jeton envoyé", 
   const r = await glmProvider.stream({ system: [{ text: "sys" }], messages: [{ role: "user", content: "salut" }], onText: (t) => (vu += t), onTool: (i) => signaux.push(i.type) });
   assert.equal(vu, "Bonjour");
   assert.equal(r.text, "Bonjour");
-  assert.equal(r.model, "glm-5.3");
+  assert.equal(r.model, "GLM-5.3-Flash", "le libellé suit le modèle servi");
   assert.deepEqual(r.usage.input_tokens, 12);
   assert.deepEqual(signaux, ["reflexion"]);
   assert.equal(recus[0].auth, "Bearer jeton-de-test");
