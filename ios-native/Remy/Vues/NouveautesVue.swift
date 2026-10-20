@@ -54,8 +54,8 @@ struct NouveautesFeuille: View {
                     .tag(i)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: pages.count > 1 ? .always : .never))
-            .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+            // Le compteur « 1/5 » suffit : les points blancs se perdaient sur le fond clair.
+            .tabViewStyle(.page(indexDisplayMode: .never))
 
             Button {
                 Haptique.leger()
