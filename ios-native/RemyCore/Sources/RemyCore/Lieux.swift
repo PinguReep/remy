@@ -286,6 +286,10 @@ public final class LieuxModel {
         if let d = try? JSONEncoder().encode(enAttente) { reglages.set(d, forKey: Self.cleFile) }
     }
 
-    /// Captures de la CI seulement.
-    public func montrerPourCapture(_ v: VueLieux) { vue = v }
+    /// Captures de la CI seulement : allumée en mémoire, rien d'enregistré
+    /// (sinon les lancements suivants demanderaient l'autorisation d'iOS).
+    public func montrerPourCapture(_ v: VueLieux) {
+        active = v.actif
+        vue = v
+    }
 }
