@@ -242,6 +242,14 @@ notes privées, sur la tour.
   erreur) propose « Sélectionner le texte » — le message dans un `UITextView`
   en lecture seule, la vraie sélection d'iOS. Une erreur montre son code et
   « Copier le diagnostic » (l'incident de la tour, en JSON).
+- Localisation (`RemyCore/Lieux.swift`, `App/Localisation.swift`) : coupée
+  par défaut. Les visites d'iOS (`startMonitoringVisits`, presque sans
+  batterie, l'app est réveillée) et les trajets en voiture relus dans
+  l'historique des mouvements (segments « automotive » ≥ 3 min, arrêts de
+  moins de 3 min fusionnés) partent vers `POST /api/lieux/evenements`. Pas de
+  GPS continu, pas de géocodage sur l'iPhone. File persistée (UserDefaults,
+  500 au plus) : hors ligne, tout attend la tour. « Pause 2 h » n'enregistre
+  rien. La feuille Réglages › Localisation lit `GET /api/lieux`.
 
 ## CI
 
