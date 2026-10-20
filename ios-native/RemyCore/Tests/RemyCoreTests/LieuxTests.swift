@@ -79,6 +79,14 @@ final class LieuxTests: XCTestCase {
         XCTAssertNil(a.lieux.pauseJusqua)
     }
 
+    func testLaDemoDesCapturesNeLaisseRienDerriereElle() {
+        let a = app()
+        a.lieux.montrerPourCapture(VueLieux(actif: true, etat: EtatLieux(ou: "inconnu", depuis: nil, lieu: nil),
+                                            aujourdhui: [], lieux: [], geocodage: nil))
+        XCTAssertTrue(a.lieux.active)
+        XCTAssertFalse(app().lieux.active, "au lancement suivant, la localisation est toujours coupée")
+    }
+
     func testLaVueDeLaTourSeLit() async {
         let json = #"{"actif":true,"jours":90,"etat":{"ou":"lieu","depuis":1760950000000,"lieu":{"id":"lieu-1","nom":"Salle de sport","adresse":"3 Avenue du Port, 99001 Villefictive"}},"aujourdhui":[{"id":"v1","arrivee":1760950000000,"depart":null,"lieu":{"id":"lieu-1","nom":"Salle de sport","adresse":null}}],"lieux":[{"id":"lieu-1","nom":"Salle de sport","adresse":"3 Avenue du Port, 99001 Villefictive","lat":45.71,"lon":4.82,"rayon":80,"source":"sam","visites":4,"derniere":1760950000000}],"geocodage":{"pret":true,"adresses":3,"departements":["99"],"importeA":1760900000000}}"#
         FauxServeur.reponses = ["GET /api/lieux": [(200, json)], "POST /api/lieux": [(200, json)]]

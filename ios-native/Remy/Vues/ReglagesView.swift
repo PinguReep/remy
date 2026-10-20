@@ -172,7 +172,6 @@ struct ReglagesView: View {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
             guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "lieux" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            app.lieux.activer(true)
             app.lieux.montrerPourCapture(LieuxDemo.vue())
             lieuxOuverts = true
         }
