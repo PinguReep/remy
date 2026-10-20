@@ -144,7 +144,7 @@ if (-not (Test-Path $envFile)) {
     "PORT=$Port",
     'HOST=127.0.0.1',
     "REMY_VAULT=$vault",
-    '# Cerveau : GLM-5.3 sur les Sparks, en direct sur le LAN.',
+    '# Cerveau : le modèle local des Sparks, en direct sur le LAN (Rémy suit celui qu''elles chargent).',
     'REMY_GLM_URL=http://192.168.1.50:8888/v1',
     '# Claude (recherche web, secours) passe par le CLI Claude Code : abonnement Max, pas de clé API.',
     'REMY_PROVIDER=claude-code',

@@ -87,6 +87,16 @@ final class LieuxTests: XCTestCase {
         XCTAssertFalse(app().lieux.active, "au lancement suivant, la localisation est toujours coupée")
     }
 
+    func testUnCommerceReconnuSeLitCommeUneSupposition() throws {
+        let json = #"{"actif":true,"jours":90,"etat":{"ou":"lieu","depuis":1760950000000,"lieu":{"id":"lieu-2","nom":null,"adresse":"3 Avenue du Port, 99001 Villefictive","commerce":{"nom":"Salon Lumière","type":"coiffeur","distance":4,"osm":"node/1"}}},"aujourdhui":[],"lieux":[{"id":"lieu-2","nom":null,"adresse":"3 Avenue du Port, 99001 Villefictive","lat":45.7,"lon":4.8,"rayon":80,"source":"auto","visites":1,"derniere":1760950000000,"commerce":{"nom":"Salon Lumière","type":"coiffeur","distance":4}}],"geocodage":{"pret":true},"commerces":{"pret":true,"commerces":6,"departements":["99"]}}"#
+        let v = try JSONDecoder().decode(VueLieux.self, from: Data(json.utf8))
+        XCTAssertTrue(v.etat.phrase.hasPrefix("Sans doute Salon Lumière (coiffeur), depuis "))
+        XCTAssertEqual(v.lieux.first?.commerce?.libelle, "Salon Lumière (coiffeur)")
+        XCTAssertEqual(v.commerces?.pret, true)
+        XCTAssertEqual(CommerceProche(nom: nil, type: "pharmacie").libelle, "pharmacie (sans nom)")
+        XCTAssertEqual(CommerceProche(nom: "Coiffeur du Port", type: "coiffeur").libelle, "Coiffeur du Port")
+    }
+
     func testLaVueDeLaTourSeLit() async {
         let json = #"{"actif":true,"jours":90,"etat":{"ou":"lieu","depuis":1760950000000,"lieu":{"id":"lieu-1","nom":"Salle de sport","adresse":"3 Avenue du Port, 99001 Villefictive"}},"aujourdhui":[{"id":"v1","arrivee":1760950000000,"depart":null,"lieu":{"id":"lieu-1","nom":"Salle de sport","adresse":null}}],"lieux":[{"id":"lieu-1","nom":"Salle de sport","adresse":"3 Avenue du Port, 99001 Villefictive","lat":45.71,"lon":4.82,"rayon":80,"source":"sam","visites":4,"derniere":1760950000000}],"geocodage":{"pret":true,"adresses":3,"departements":["99"],"importeA":1760900000000}}"#
         FauxServeur.reponses = ["GET /api/lieux": [(200, json)], "POST /api/lieux": [(200, json)]]
