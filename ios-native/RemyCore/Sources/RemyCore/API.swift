@@ -411,6 +411,33 @@ public final class ClientAPI: @unchecked Sendable {
         try await envoyer("api/conversations/\(convId)/propositions/\(pid)/refus", methode: "POST", corps: [:])
     }
 
+    // MARK: Localisation (lieux-v1)
+
+    public func lieux() async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux")
+    }
+
+    func envoyerEvenementsLieux(_ e: [EvenementLieu]) async throws -> RetourEvenementsLieux {
+        let corps = try JSONSerialization.jsonObject(with: JSONEncoder().encode(["evenements": e])) as? [String: Any]
+        return try await json(RetourEvenementsLieux.self, "api/lieux/evenements", methode: "POST", corps: corps)
+    }
+
+    public func nommerLieu(nom: String, lat: Double, lon: Double) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux", methode: "POST", corps: ["nom": nom, "lat": lat, "lon": lon])
+    }
+
+    public func renommerLieu(_ id: String, nom: String) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/\(id)", methode: "PATCH", corps: ["nom": nom])
+    }
+
+    public func supprimerLieu(_ id: String) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/\(id)", methode: "DELETE")
+    }
+
+    public func effacerHistoriqueLieux() async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/historique", methode: "DELETE")
+    }
+
     // MARK: Règles de Rémy (regles-v1)
 
     /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.

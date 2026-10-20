@@ -133,6 +133,12 @@ struct OngletsView: View {
         }
         .task(id: scene) {
             guard scene == .active else { return }
+            // La localisation (20/10) : capteurs rebranchés, positions en attente envoyées.
+            if app.lieux.disponible {
+                CapteurLocalisation.partage.brancher(app.lieux)
+                await CapteurLocalisation.partage.controlerMouvements()
+                await app.lieux.envoyer()
+            }
             // De retour au premier plan : la journée a pu changer (et le jour aussi).
             if app.tableau.misAJour.map({ Date().timeIntervalSince($0) > 60 }) ?? true {
                 await app.chargerTout()

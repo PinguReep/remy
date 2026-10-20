@@ -14,6 +14,7 @@ struct ReglagesView: View {
     @State private var memoire = false
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
+    @State private var lieuxOuverts = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -107,6 +108,11 @@ struct ReglagesView: View {
                     if d?.systeme?.reflexion == false {
                         info("Préparation de nuit désactivée : « Rémy a remarqué » restera vide.", symbole: "moon.zzz")
                     }
+                    if app.lieux.disponible {
+                        ligne("Localisation", sous: app.lieux.active ? (app.lieux.enPause ? "En pause" : "Allumée : ta tour sait où tu en es") : "Coupée", symbole: "location") {
+                            lieuxOuverts = true
+                        }
+                    }
                     if app.chat.reglesDisponibles {
                         ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
                             reglesOuvertes = true
@@ -156,10 +162,19 @@ struct ReglagesView: View {
         .sheet(isPresented: $memoire) { MemoireView() }
         .sheet(isPresented: $appareilsOuverts) { AppareilsView() }
         .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
+        .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
+        }
+        .task {
+            // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "lieux" else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            app.lieux.activer(true)
+            app.lieux.montrerPourCapture(LieuxDemo.vue())
+            lieuxOuverts = true
         }
         .confirmationDialog("Se déconnecter de Rémy ?", isPresented: $deconnexion, titleVisibility: .visible) {
             Button("Se déconnecter", role: .destructive) { Task { await app.deconnecter() } }
