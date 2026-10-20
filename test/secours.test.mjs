@@ -64,7 +64,7 @@ process.env.REMY_BROWSE = "off";
 process.env.OPENAI_API_KEY = "cle-de-test"; // une clé cloud de dictée existe…
 
 const { routeApi } = await import("../lib/routes.js");
-const { fournisseurDeFond, SECOURS_COUPE } = await import("../lib/providers.js");
+const { fournisseurDeFond, SECOURS_COUPE, PRIVE_DE_FOND } = await import("../lib/providers.js");
 const { transcribeProvider } = await import("../lib/transcribe.js");
 
 const remy = http.createServer(async (req, res) => {
@@ -182,5 +182,19 @@ test("dictée : pas de cloud quand le cerveau est local, sauf TRANSCRIPTION_CLOU
     assert.equal(transcribeProvider()?.name, "dictee-locale");
   } finally {
     delete process.env.DICTEE_LOCALE_URL;
+  }
+});
+
+test("tâche de fond avec matière privée (imports) : jamais Claude, même secours activé", async () => {
+  process.env.REMY_SECOURS_CLOUD = "on";
+  try {
+    appelsClaude = 0;
+    await assert.rejects(fournisseurDeFond().complete({ prive: true, system: "s", prompt: "p", maxTokens: 10 }), { message: PRIVE_DE_FOND });
+    assert.equal(appelsClaude, 0, "rien n'est parti chez Claude");
+    // La même tâche sans matière privée, elle, a bien droit au secours.
+    await fournisseurDeFond().complete({ system: "s", prompt: "p", maxTokens: 10 });
+    assert.equal(appelsClaude, 1);
+  } finally {
+    delete process.env.REMY_SECOURS_CLOUD;
   }
 });

@@ -52,6 +52,28 @@ public protocol Voix: AnyObject {
 
 // MARK: - Dictée
 
+/// Un vocal qui n'est pas parti (tour injoignable, Dictée Locale éteinte,
+/// micro coupé par le verrouillage ou un appel). Gardé en mémoire seulement,
+/// jamais sur le disque : l'app fermée, il disparaît.
+public struct VocalEnAttente: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let enregistrement: Enregistrement
+    /// Pourquoi il n'est pas parti, dit comme Sam doit le lire.
+    public var raison: String
+
+    public init(enregistrement: Enregistrement, raison: String, id: UUID = UUID()) {
+        self.id = id
+        self.enregistrement = enregistrement
+        self.raison = raison
+    }
+
+    /// « 2:41 »
+    public var duree: String {
+        let s = Int(enregistrement.duree.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
 @MainActor
 @Observable
 public final class DicteeModel {
@@ -62,14 +84,19 @@ public final class DicteeModel {
     }
 
     public private(set) var etat: Etat = .repos
+    /// Les vocaux qui ne sont pas partis : « Renvoyer » ou « Jeter ». Un vocal
+    /// de deux minutes ne se perd plus sur un délai dépassé.
+    public private(set) var enAttente: [VocalEnAttente] = []
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI
     /// Branché par l'app (AVAudioRecorder) ; nil dans un environnement sans micro.
     @ObservationIgnored public var micro: Micro?
-    /// Le serveur refuse au-delà de 4 Mo : à ~3 minutes, la dictée s'arrête et
-    /// part d'elle-même.
-    @ObservationIgnored public var dureeMax: Double = 180
+    /// Plafond d'un vocal : passé 15 minutes, la dictée s'arrête et se
+    /// transcrit (la tour accepte ~24 Mo ; l'AAC mono en fait bien moins).
+    @ObservationIgnored public var dureeMax: Double = 900
     @ObservationIgnored private var prise = 0
+    /// Où va le texte dicté (le « + ») ; nil : le composeur de Rémy.
+    @ObservationIgnored public var destination: ((String) -> Void)?
 
     public init(api: ClientAPI) { self.api = api }
 
@@ -106,11 +133,12 @@ public final class DicteeModel {
         prise += 1
         let p = prise
         etat = .enregistrement(debut: Date())
-        // Garde-fou : passé le plafond, la dictée part toute seule.
+        // Garde-fou : passé le plafond, la dictée s'arrête et se transcrit.
         let plafond = dureeMax
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(plafond * 1_000_000_000))
             guard let self, self.prise == p, self.enregistre else { return }
+            self.app?.dire("\(Int(plafond / 60)) minutes : j'arrête l'enregistrement là et je transcris. Continue dans un nouveau vocal.")
             await self.valider()
         }
     }
@@ -140,19 +168,63 @@ public final class DicteeModel {
             app?.dire("Trop court : rien n'est parti.")
             return
         }
+        await transcrire(e, id: nil)
+    }
+
+    /// Le micro coupé de l'extérieur (iPhone verrouillé, appel, Siri) : ce qui
+    /// est enregistré ne part pas tout seul et ne se perd pas, il attend.
+    public func interrompre() {
+        guard enregistre, let micro else { return }
+        let e = micro.arreter()
+        micro.liberer()
+        etat = .repos
+        guard let e, e.duree >= 0.5, e.audio.count >= 1000 else { return }
+        garder(e, raison: "Le micro a été coupé (iPhone verrouillé ou appel) : ce que tu as dit jusque-là est gardé.", id: nil)
+        app?.dire("Vocal coupé : il t'attend au-dessus du champ, touche « Renvoyer ».")
+    }
+
+    /// Retente la transcription d'un vocal en attente.
+    public func renvoyer(_ id: UUID) async {
+        guard etat == .repos, let v = enAttente.first(where: { $0.id == id }) else { return }
+        await transcrire(v.enregistrement, id: id)
+    }
+
+    /// Oublie un vocal en attente : rien ne part.
+    public func jeter(_ id: UUID, sansMessage: Bool = false) {
+        enAttente.removeAll { $0.id == id }
+        if !sansMessage { app?.dire("Vocal jeté : rien n'est parti.") }
+    }
+
+    /// Déconnexion : rien de la session ne reste en mémoire.
+    func oublierEnAttente() { enAttente = [] }
+
+    private func garder(_ e: Enregistrement, raison: String, id: UUID?) {
+        if let id, let i = enAttente.firstIndex(where: { $0.id == id }) {
+            enAttente[i].raison = raison
+        } else {
+            enAttente.append(VocalEnAttente(enregistrement: e, raison: raison))
+        }
+    }
+
+    private func transcrire(_ e: Enregistrement, id: UUID?) async {
         etat = .transcription
         defer { etat = .repos }
         do {
+            let finDictee = Mesures.partagees.chrono("app.dictee")
             let texte = try await api.transcrire(audio: e.audio, duree: e.duree)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            finDictee()
+            if let id { enAttente.removeAll { $0.id == id } }
             guard !texte.isEmpty else {
                 app?.dire("Je n'ai rien entendu — réessaie plus près du micro.")
                 return
             }
-            app?.chat.ajouterDictee(texte)
+            if let destination { destination(texte) } else { app?.chat.ajouterDictee(texte) }
         } catch {
+            let raison = (error as? LocalizedError)?.errorDescription ?? "Transcription impossible."
+            garder(e, raison: raison, id: id)
             if let x = error as? ErreurAPI, x == .nonConnecte { app?.signaler(x); return }
-            app?.dire((error as? LocalizedError)?.errorDescription ?? "Transcription impossible — réessaie.")
+            app?.dire("Ton vocal n'est pas parti — \(raison) Il t'attend : touche « Renvoyer ».")
         }
     }
 }
@@ -224,7 +296,7 @@ public struct DetecteurParole: Sendable {
 public enum Parole {
     public static func pourVoix(_ texte: String) -> String {
         var t = Marqueurs.retirer(texte)
-        t = remplacer(t, #"\*\(interrompu\)\*"#, "")
+        t = remplacer(t, #"\*\((interrompu|coupée : réponse trop longue)\)\*"#, "")
         t = remplacer(t, #"```[\s\S]*?```"#, " (code) ")
         t = remplacer(t, #"\[([^\]]+)\]\((https?://[^)\s]+)\)"#, "$1")
         t = remplacer(t, #"https?://\S+"#, "(lien)")

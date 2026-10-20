@@ -9,8 +9,15 @@ Tout ce qui concerne la personne que Rémy accompagne reste sur sa machine (la
 « tour »), jamais dans ce dépôt, ses PR, ses captures ou ses journaux de CI :
 
 - mémoire, conversations, rappels : le coffre Obsidian (`REMY_VAULT`) et sa base `.remy/` ;
-- secrets et réglages personnels : `%USERPROFILE%\.remy\remy.env` ;
-- vision, roadmap, notes privées : `%USERPROFILE%\.remy\prive\` (jamais lus par les sessions cloud).
+- secrets et réglages personnels : `%USERPROFILE%\.remy\remy.env` — dont `REMY_PRENOM`
+  et `REMY_VOCABULAIRE`, lus par `lib/profil.js` ;
+- vision, roadmap, notes privées : `%USERPROFILE%\.remy\prive\` (`REMY_PRIVE`, jamais
+  lus par les sessions cloud) ;
+- l'adresse de la tour : jamais dans le code. L'app iPhone la demande une fois
+  (ou la reçoit à la compilation, secret `REMY_ADRESSE_TOUR`).
+
+Dans les consignes envoyées aux modèles, le prénom s'écrit `${PRENOM}` (jamais en
+dur) ; dans les commentaires et les tests, le prénom fictif « Sam ».
 
 Dans le code, les tests et la démo : uniquement du fictif (Sam, Léa, Hugo, la
 boutique de bougies…), aucune adresse réelle (tour, tailnet, réseau local). En
@@ -59,6 +66,15 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
    (Anthropic, Motion, Whisper, GLM) puis sonder la prod après déploiement — y
    compris les chemins imbriqués `/api/x/y`. Aucune affirmation de succès sans
    preuve exécutée.
+7. **Retours des testeurs avant chaque build** : avant tout envoi TestFlight,
+   relever les plantages et captures partagés depuis TestFlight
+   (`docs/ios.md`, « Retours des testeurs »), les analyser et corriger ce qui
+   peut l'être dans ce build.
+8. **Builds TestFlight sans attendre** (accord permanent du 19/10) : dès qu'une
+   modification de l'app est prête et que la CI est verte, lancer le build
+   TestFlight sans demander. Un build ne change rien sur l'iPhone tant qu'il
+   n'est pas installé ; une fonction que la tour ne connaît pas encore reste
+   cachée (capacités). La mise à jour de la tour, elle, reste à son geste.
 
 ## Pièges connus
 
@@ -72,3 +88,8 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
   l'empreinte avec `ssh`) ; un `.sh` envoyé sur Linux doit être en LF.
 - Installeur de la tour : PowerShell **administrateur** (la tâche planifiée
   « Rémy » est créée ainsi ; sans ces droits, « Accès refusé » au remplacement).
+
+## Mémoire entre les runs
+
+- `docs/journal-technique.md` : décisions techniques non triviales (quoi +
+  pourquoi), sans rien de personnel. À compléter à chaque décision.

@@ -28,6 +28,18 @@ build → **Installer**. Le numéro de build et le commit de chaque envoi sont d
 le résumé de l'exécution du workflow ; l'archive et ses dSYM y sont gardés 90
 jours (artefact `archive-ios-<build>`).
 
+## Retours des testeurs (plantages, captures)
+
+« Partager des commentaires » dans TestFlight envoie le retour chez Apple. Le
+job `retours` de `ios-testflight.yml` les relève par l'API App Store Connect
+(mêmes secrets que l'envoi), sans tests ni envoi : **Run workflow** avec
+`retours_seulement` coché et `cle_publique` = `base64 -w0 cert.pem` (certificat
+RSA-4096 du destinataire, public). Le dépôt étant public, rien ne sort en clair :
+le journal ne montre que des compteurs, l'artefact `colis` est chiffré (CMS,
+AES-256-GCM + RSA-OAEP) et gardé un jour. Déchiffrer avec la clé privée :
+`bash scripts/retours-testflight/dechiffrer.sh colis.p7m prive.pem retours`.
+Les e-mails des testeurs et les URL signées des images ne sont jamais écrits.
+
 ## Mise en place (une fois)
 
 1. **Clé API App Store Connect** : App Store Connect → Utilisateurs et accès →
@@ -40,7 +52,12 @@ jours (artefact `archive-ios-<build>`).
    « Team ID » (10 caractères).
 3. **4 secrets GitHub** : https://github.com/PinguReep/remy/settings/secrets/actions
    - `ASC_KEY_ID`, `ASC_ISSUER_ID`, `APPLE_TEAM_ID`
-   - `ASC_KEY_P8` : le .p8 encodé en base64 (`base64 -i AuthKey_XXXX.p8` sur Mac)
+   - `ASC_KEY_P8` : le .p8 encodé en base64 (`base64 -i AuthKey_XXXX.p8` sur Mac ;
+     sous Windows : `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`)
+   - facultatif, `REMY_ADRESSE_TOUR` : l'adresse de ta tour
+     (`https://<tour>.<tailnet>.ts.net:8444`), inscrite dans l'app à la
+     compilation. Sans lui, l'app la demande une fois au premier lancement et la
+     garde sur l'iPhone. Elle n'est jamais écrite dans le dépôt, qui est public.
 4. **Lancer le workflow une fois** (Actions → « iOS → TestFlight » → Run workflow) :
    il enregistre le Bundle ID `com.pingureep.remy` chez Apple.
 5. **Créer la fiche de l'app** : App Store Connect → Apps → ＋ → Nouvelle app →
@@ -81,5 +98,9 @@ tag) avant l'échéance.
 
 - Bundle ID `com.pingureep.remy` · iOS 17 minimum · iPhone uniquement.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
-- Signature : automatique dans le cloud via la clé API, aucun certificat à gérer.
+- Signature : automatique via la clé API. Chaque build crée un certificat de
+  développement sur une machine jetable ; le workflow TestFlight révoque ces
+  certificats « Created via API » avant d'archiver (`scripts/asc-certificats.mjs`),
+  sinon Apple refuse au-delà de son plafond. Lister sans rien toucher :
+  `node scripts/asc-certificats.mjs` (avec les variables ASC_*).
 - Numéro de build = numéro d'exécution du workflow (toujours croissant).

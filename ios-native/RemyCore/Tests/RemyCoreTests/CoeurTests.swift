@@ -207,6 +207,37 @@ final class LogiqueTests: XCTestCase {
         ])
     }
 
+    /// 19/10 : un tableau de Rémy s'affichait en lignes brutes de « | ».
+    func testUnTableauMarkdownDevientUnTableau() {
+        let t = """
+        Voici le comparatif :
+
+        | Option | Prix | **Délai** |
+        |:-------|-----:|:---:|
+        | Site seul | 80 € | 1 sem. |
+        | Site + RDV | 120 €
+        | Tout \\| compris | 200 € | 2 sem. | en trop |
+
+        ---
+        Fin.
+        """
+        XCTAssertEqual(Markdown.blocs(t), [
+            .paragraphe("Voici le comparatif :"), .espace,
+            .tableau(entetes: ["Option", "Prix", "**Délai**"], lignes: [
+                ["Site seul", "80 €", "1 sem."],
+                ["Site + RDV", "120 €", ""],
+                ["Tout | compris", "200 €", "2 sem."],
+            ]),
+            .espace, .trait, .paragraphe("Fin."),
+        ])
+    }
+
+    func testDesBarresDansUnePhraseNeFontPasUnTableau() {
+        XCTAssertEqual(Markdown.blocs("Choix : A | B\nEt la suite."), [.paragraphe("Choix : A | B"), .paragraphe("Et la suite.")])
+        // En cours d'écriture : l'en-tête seul reste du texte jusqu'à sa ligne de séparation.
+        XCTAssertEqual(Markdown.blocs("| A | B |"), [.paragraphe("| A | B |")])
+    }
+
     func testTableauDeBordReelSeDecode() throws {
         let json = """
         {"maintenant":1790152200000,"briefing":{"text":"- a","generatedAt":1790127610506,"items":[{"id":"e53fd37418","texte":"a","etat":"ouvert","depuis":null}]},

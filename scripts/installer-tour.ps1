@@ -34,6 +34,15 @@ $app = Join-Path $base 'app'
 $envFile = Join-Path $base 'remy.env'
 $log = Join-Path $base 'remy.log'
 
+# Remplacer la tâche planifiée demande un PowerShell administrateur quand elle a
+# été créée depuis l'un d'eux. Le 15/10/2026, l'« Accès refusé » arrivait APRÈS
+# l'arrêt de Rémy et le laissait arrêté : vérifié avant de toucher à quoi que ce soit.
+$estAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+  [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $estAdmin -and (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
+  throw "Relance cette commande dans un PowerShell ouvert en administrateur (clic droit > Exécuter en tant qu'administrateur) : la tâche « $taskName » ne se remplace pas sans. Rien n'a été changé, Rémy tourne toujours."
+}
+
 function Stop-Remy {
   if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -142,7 +151,13 @@ if (-not (Test-Path $envFile)) {
     "SESSION_SECRET=$(& $rand)",
     "GOOGLE_REDIRECT_URI=$url/api/google/callback",
     '',
-    '# --- À remplir par Sam ---',
+    '# --- À remplir ---',
+    '# Toi (jamais dans le dépôt public) : ton prénom tel que Rémy l''emploie, et les mots',
+    '# que tu dictes souvent (proches, projets), séparés par des virgules.',
+    'REMY_PRENOM=',
+    'REMY_VOCABULAIRE=',
+    '# Tes notes privées (vision, roadmap…) : %USERPROFILE%\.remy\prive par défaut.',
+    '# REMY_PRIVE=',
     '# Mot de passe : node scripts\hash-password.js "ton-mot-de-passe" puis colle le hash ici.',
     'APP_PASSWORD_HASH=',
     '# Motion : app Motion > Settings > API.',
@@ -175,8 +190,19 @@ if (-not (Test-Path $envFile)) {
 
 # 3. Tâche planifiée.
 Stop-Remy
-if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-  Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+# Une tâche créée depuis un PowerShell administrateur ne se supprime pas depuis un
+# PowerShell normal (« Accès refusé », 15/10/2026). Rémy vient d'être arrêté :
+# l'installeur ne doit jamais s'interrompre ici en le laissant arrêté. La tâche
+# existante lance le même lanceur (réécrit ci-dessous) : on la garde.
+$tacheGardee = $false
+$existante = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if ($existante) {
+  try {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+  } catch {
+    $tacheGardee = $true
+    Write-Warning "Tâche « $taskName » non remplacée (droits administrateur) : je garde l'existante. Pour la réenregistrer un jour, relance l'installeur dans un PowerShell administrateur."
+  }
 }
 $node = (Get-Command node).Source
 # Lanceur : node au premier plan de ce script (cmd.exe sous conhost --headless se
@@ -197,9 +223,27 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
   -StartWhenAvailable -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal `
-  -Settings $settings -Description "Rémy, assistant personnel, en 127.0.0.1:$Port (publié par Tailscale Serve)" | Out-Null
-Start-ScheduledTask -TaskName $taskName
+if (-not $tacheGardee) {
+  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal `
+    -Settings $settings -Description "Rémy, assistant personnel, en 127.0.0.1:$Port (publié par Tailscale Serve)" | Out-Null
+}
+# La tâche gardée doit lancer CE lanceur ; sinon (ou si elle refuse de démarrer),
+# Rémy est lancé directement, de la même façon, jusqu'à la prochaine session.
+$parTache = -not $tacheGardee -or (($existante.Actions | ForEach-Object { $_.Arguments }) -join ' ').Contains('run-remy.ps1')
+$demarre = $false
+if ($parTache) {
+  try {
+    Start-ScheduledTask -TaskName $taskName
+    $demarre = $true
+  } catch {
+    Write-Warning "La tâche « $taskName » refuse de démarrer ($($_.Exception.Message.Trim()))."
+  }
+}
+if (-not $demarre) {
+  Start-Process -FilePath 'conhost.exe' -WorkingDirectory $app -WindowStyle Hidden `
+    -ArgumentList "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runner`""
+  Write-Warning "Rémy lancé directement (sans la tâche planifiée) : il ne redémarrera pas tout seul après une coupure. Relance l'installeur dans un PowerShell administrateur pour réparer la tâche."
+}
 
 # 4. Publication au tailnet seulement.
 $serve = (& tailscale serve status --json | Out-String)
@@ -219,6 +263,14 @@ foreach ($i in 1..20) {
 if (-not $ok) { throw "Rémy ne répond pas en 127.0.0.1:$Port — voir $log" }
 # (`tag --points-at` n'écrit rien sur stderr : sous PowerShell 5.1, une ligne
 # d'erreur d'un programme arrêterait l'installeur.)
+# 6. Garder les sessions Claude Code (effacées au bout de 30 jours sinon) : Rémy
+#    en apprendra. Ne touche qu'à « cleanupPeriodDays » ; jamais bloquant.
+try {
+  & (Join-Path $PSScriptRoot 'claude-retention.ps1')
+} catch {
+  Write-Output "Claude Code : rétention non réglée ($($_.Exception.Message)) — scripts\claude-retention.ps1 à la main."
+}
+
 $tagInstalle = & git -C $app tag --points-at HEAD | Select-Object -First 1
 $installe = (& git -C $app rev-parse HEAD).Trim()
 Write-Output "Rémy tourne : $(if ($tagInstalle) { "$tagInstalle = " })$installe — $url"

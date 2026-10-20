@@ -349,6 +349,69 @@ test("429 de Motion au milieu d'une écriture : attente de Retry-After, puis une
 
 // En dernier : après une lecture ratée, Motion n'est plus relu pendant une
 // minute (protection du quota) — les tests suivants en pâtiraient.
+// --- Ajuster une proposition avant de dire oui (Sam, 18/10) ---------------------
+
+test("proposition ajustée (date, durée, catégorie) : c'est la version ajustée qui part, et la catégorie reste", async () => {
+  motion.taches.clear();
+  const { categoriesTaches, ecrireEtiquette } = await import("../lib/carnet.js");
+  ecrireEtiquette("et-pro", { nom: "Professionnel" });
+  await proposition("aj1", [{ type: "creer", nom: "Acheter abonnement Claude Code pour Tom", duree: 10 }]);
+  const pid = "p-aj1";
+  // Le type et la cible ne bougent jamais ; « id » glissé est ignoré.
+  const r = await post(`/api/conversations/aj1/propositions/${pid}/ajuster`, {
+    actions: [{ rang: 0, type: "supprimer", id: "autre", nom: "Abonnement Claude Code (Tom)", echeance: "2026-10-22T18:00:00+02:00", duree: 15, priorite: "high", etiquettes: ["et-pro"] }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.actions[0].type, "creer");
+  assert.equal(r.body.actions[0].id, undefined);
+  assert.equal(r.body.actions[0].priorite, "HIGH");
+  const lue = (await lireConv("aj1")).messages[1].proposal;
+  assert.equal(lue.ajustee, true);
+  assert.equal(lue.actions[0].nom, "Abonnement Claude Code (Tom)");
+  assert.equal(lue.actionsOrigine[0].nom, "Acheter abonnement Claude Code pour Tom", "l'originale reste");
+  // « Oui » : la requête ne compte pas, la version ajustée de la tour, si.
+  const a = await post("/api/motion/apply", { convId: "aj1", index: 1, propositionId: pid, actions: [{ type: "creer", nom: "Injecté" }] });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  const creee = [...motion.taches.values()].find((t) => t.name === "Abonnement Claude Code (Tom)");
+  assert.ok(creee, "créée sous le nom ajusté");
+  assert.equal(creee.duration, 15);
+  assert.ok(![...motion.taches.values()].some((t) => t.name === "Injecté"));
+  assert.deepEqual(categoriesTaches().get(creee.id), ["et-pro"], "la catégorie suit la tâche créée");
+  // Plus ajustable une fois appliquée.
+  assert.equal((await post(`/api/conversations/aj1/propositions/${pid}/ajuster`, { actions: [] })).status, 409);
+});
+
+test("une action rangée en rappel sort de la proposition ; tout rangé : plus rien à envoyer", async () => {
+  await proposition("aj2", [{ type: "creer", nom: "Acheter le cadeau" }, { type: "creer", nom: "Préparer le pitch", duree: 60 }]);
+  const r = await post("/api/conversations/aj2/propositions/p-aj2/ajuster", { convertis: [0] });
+  assert.deepEqual(r.body.actions.map((x) => [x.nom, x.rang]), [["Préparer le pitch", 1]], "le rang d'origine suit l'action");
+  // Un second ajustement s'ajoute au premier : la ligne rangée ne revient pas.
+  const d = await post("/api/conversations/aj2/propositions/p-aj2/ajuster", { actions: [{ rang: 1, duree: 90 }] });
+  assert.deepEqual(d.body.actions.map((x) => [x.nom, x.duree]), [["Préparer le pitch", 90]]);
+  const tout = await post("/api/conversations/aj2/propositions/p-aj2/ajuster", { convertis: [1] });
+  assert.equal(tout.body.statut, "converti");
+  assert.equal((await lireConv("aj2")).messages[1].proposal.statut, "converti");
+  const a = await post("/api/motion/apply", { convId: "aj2", index: 1, propositionId: "p-aj2", actions: [] });
+  assert.equal(a.status, 409);
+  // Une action qui n'est pas une création ne se range pas en rappel.
+  await proposition("aj3", [{ type: "terminer", id: "k9", nom: "Payer la facture" }]);
+  const t = await post("/api/conversations/aj3/propositions/p-aj3/ajuster", { convertis: [0] });
+  assert.deepEqual(t.body.actions.map((x) => x.type), ["terminer"]);
+});
+
+test("une tâche se catégorise depuis l'app, et la journée le dit", async () => {
+  const c = await import("../lib/carnet.js");
+  c.ecrireEtiquette("et-voiture", { nom: "Voiture" });
+  const r = await fetch(`${base}/api/taches/t-garage/etiquettes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ etiquettes: ["et-voiture", "et-voiture", "inexistante"] }) });
+  assert.equal(r.status, 200);
+  const j = c.avecCategories({ items: [{ type: "tache", id: "t-garage" }, { type: "rdv", id: "t-garage" }], aFaire: [{ id: "t-garage" }], retard: { total: 0, items: [] } });
+  assert.deepEqual(j.items[0].etiquettes, ["et-voiture"], "une étiquette qui n'existe pas est écartée");
+  assert.equal(j.items[1].etiquettes, undefined, "un rendez-vous n'a pas de catégorie");
+  assert.deepEqual(j.aFaire[0].etiquettes, ["et-voiture"]);
+  await fetch(`${base}/api/taches/t-garage/etiquettes`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ etiquettes: [] }) });
+  assert.equal(c.categoriesTaches().has("t-garage"), false);
+});
+
 test("Motion illisible : rien n'est créé à l'aveugle, et c'est dit", async () => {
   motion.taches.clear();
   motion.pannes.push({ methode: "GET", chemin: /^\/tasks$/, code: 500, fois: 5 });

@@ -23,9 +23,42 @@ public enum ErreurAPI: Error, LocalizedError, Equatable {
 /// Parle au même serveur que le site : mêmes routes /api, même session par
 /// cookie (gardé par le système entre deux lancements).
 public final class ClientAPI: @unchecked Sendable {
-    /// Rémy tourne sur la tour depuis le 08/10/2026, publié par Tailscale Serve :
-    /// joignable seulement quand le VPN Tailscale de l'iPhone est actif.
-    public static let urlProduction = URL(string: "https://ma-tour.exemple.ts.net:8444")!
+    /// L'adresse de la tour (publiée par Tailscale Serve : joignable seulement
+    /// quand le VPN Tailscale de l'iPhone est actif). Jamais écrite dans le code
+    /// (dépôt public) : posée à la compilation (`RemyAdresseTour`, depuis un
+    /// secret de la CI) ou saisie une fois dans l'app, puis gardée sur l'iPhone.
+    public static var adresseTour: URL? {
+        if let s = UserDefaults.standard.string(forKey: cleAdresseTour), let u = normaliserAdresse(s) { return u }
+        if let s = Bundle.main.object(forInfoDictionaryKey: "RemyAdresseTour") as? String, let u = normaliserAdresse(s) { return u }
+        return nil
+    }
+
+    public static let cleAdresseTour = "remy.adresseTour"
+
+    public static func retenirAdresse(_ url: URL?) {
+        if let url { UserDefaults.standard.set(url.absoluteString, forKey: cleAdresseTour) }
+        else { UserDefaults.standard.removeObject(forKey: cleAdresseTour) }
+    }
+
+    /// « ma-tour.mon-tailnet.ts.net:8444 » → « https://ma-tour.mon-tailnet.ts.net:8444 ».
+    /// Rien d'autre qu'un hôte et un port : pas de chemin, pas de « http » vers
+    /// l'extérieur (le mot de passe y passerait en clair).
+    public static func normaliserAdresse(_ texte: String) -> URL? {
+        var t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !t.contains("$(") else { return nil }
+        if !t.contains("://") { t = "https://" + t }
+        while t.hasSuffix("/") { t.removeLast() }
+        guard let c = URLComponents(string: t), let hote = c.host, !hote.isEmpty, hote.contains(".") || hote == "localhost",
+              c.path.isEmpty, c.query == nil, c.user == nil else { return nil }
+        let local = hote == "localhost" || hote == "127.0.0.1"
+        let schema = c.scheme?.lowercased()
+        guard schema == "https" || (schema == "http" && local) else { return nil }
+        var propre = URLComponents()
+        propre.scheme = schema
+        propre.host = hote.lowercased()
+        propre.port = c.port
+        return propre.url
+    }
 
     public let base: URL
     private let session: URLSession
@@ -41,7 +74,7 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// `coffre` : par défaut le Keychain ; avec une session fournie (tests,
     /// aperçus), la mémoire — un test ne touche jamais au vrai trousseau.
-    public init(base: URL = ClientAPI.urlProduction, session: URLSession? = nil,
+    public init(base: URL = ClientAPI.adresseTour ?? URL(string: "http://localhost:3000")!, session: URLSession? = nil,
                 build: String? = Bundle.main.infoDictionary?["CFBundleVersion"] as? String,
                 coffre: CoffreJeton? = nil) {
         self.base = base
@@ -95,7 +128,9 @@ public final class ClientAPI: @unchecked Sendable {
         let obj = (try? JSONSerialization.jsonObject(with: donnees)) as? [String: Any]
         // Un mot de passe refusé n'est pas une session expirée.
         if http.statusCode == 401 && (obj?["error"] as? String) != "bad_password" { throw ErreurAPI.nonConnecte }
-        let message = (obj?["message"] as? String) ?? (obj?["error"] as? String) ?? "Erreur \(http.statusCode) — réessaie."
+        var message = (obj?["message"] as? String) ?? (obj?["error"] as? String) ?? "Erreur \(http.statusCode) — réessaie."
+        // Le code d'incident de la tour : Sam peut le transmettre tel quel.
+        if let code = obj?["code"] as? String, code.hasPrefix("R-") { message += " (code \(code))" }
         throw ErreurAPI.serveur(http.statusCode, message)
     }
 
@@ -193,12 +228,43 @@ public final class ClientAPI: @unchecked Sendable {
         try await envoyer("api/conversations/\(id)", methode: "DELETE")
     }
 
+    /// Résumer le début du fil (GLM local) : jusqu'à quelques minutes.
+    public func compacter(_ id: String) async throws -> RetourCompactage {
+        try await json(RetourCompactage.self, "api/conversations/\(id)/compacter", methode: "POST", corps: [:], delai: 300)
+    }
+
     // MARK: Tableau de bord, sujets, capture, mémoire
 
     /// `frais` : Sam a tiré pour rafraîchir — le serveur relit Motion au lieu
     /// de rendre sa copie de la dernière minute.
+    public func conseil(type: String) async throws -> ConseilTour {
+        try await json(ConseilTour.self, "api/conseil?type=\(type)", delai: 20)
+    }
+
+    public func renouvelerConseil(type: String) async throws -> ConseilTour {
+        try await json(ConseilTour.self, "api/conseil/renouveler", methode: "POST", corps: ["type": type], delai: 20)
+    }
+
+    public func mesures() async throws -> MesuresTour {
+        try await json(MesuresTour.self, "api/mesures")
+    }
+
+    /// Un incident de la tour (code d'erreur), en JSON lisible, prêt à copier.
+    public func diagnostic(_ code: String) async throws -> String {
+        let d = try await brut("api/incidents/\(code)")
+        guard let obj = try? JSONSerialization.jsonObject(with: d),
+              let joli = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+              let s = String(data: joli, encoding: .utf8) else { throw ErreurAPI.illisible }
+        return s
+    }
+
     public func tableauDeBord(frais: Bool = false) async throws -> TableauDeBord {
         try await json(TableauDeBord.self, frais ? "api/dashboard?frais=1" : "api/dashboard", delai: 20)
+    }
+
+    /// Les projets Motion ouverts (onglet Projets), si la tour sait les lire.
+    public func projets() async throws -> ListeProjets {
+        try await json(ListeProjets.self, "api/projets", delai: 20)
     }
 
     public func etatSujet(_ id: String, etat: String) async throws {
@@ -211,6 +277,42 @@ public final class ClientAPI: @unchecked Sendable {
     public func capturer(_ texte: String, source: String = "note") async throws -> RetourCapture {
         let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
         return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["texte": texte, "source": s], delai: 90)
+    }
+
+    /// Ajuste une proposition avant de dire oui (18/10) : `actions` — les champs
+    /// changés, chacun avec son `rang` ; `convertis` — les rangs rangés en rappels.
+    /// La tour garde la version ajustée, c'est elle qui partira.
+    public func ajusterProposition(convId: String, propositionId: String, actions: [[String: Any]] = [], convertis: [Int] = []) async throws -> (actions: [ActionProposee], statut: String) {
+        struct Reponse: Decodable { var actions: [ActionProposee]; var statut: String? }
+        let p = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
+        let r = try await json(Reponse.self, "api/conversations/\(convId)/propositions/\(p)/ajuster", methode: "POST",
+                               corps: ["actions": actions, "convertis": convertis])
+        return (r.actions, r.statut ?? "en_attente")
+    }
+
+    /// Un mot mal transcrit : la tour le transmet à Dictée Locale, qui l'apprend.
+    public func corrigerDictee(entendu: String, voulu: String) async throws {
+        struct Reponse: Decodable { var ok: Bool? }
+        _ = try await json(Reponse.self, "api/dictee/correction", methode: "POST", corps: ["entendu": entendu, "voulu": voulu])
+    }
+
+    /// La catégorie d'une tâche Motion (gardée par Remy) ; [] l'enlève.
+    public func categoriserTache(_ id: String, _ etiquettes: [String]) async throws {
+        let i = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id
+        try await envoyer("api/taches/\(i)/etiquettes", methode: "PUT", corps: ["etiquettes": etiquettes])
+    }
+
+    /// Avant « Retenir » : les infos que Rémy garderait (GLM local), à cocher.
+    public func proposerInfos(_ texte: String, source: String = "note") async throws -> [InfoProposee] {
+        struct Reponse: Decodable { var elements: [InfoProposee] }
+        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
+        return try await json(Reponse.self, "api/capture/extraire", methode: "POST", corps: ["texte": texte, "source": s], delai: 100).elements
+    }
+
+    /// Retenir seulement les infos cochées (le texte entier n'est pas gardé).
+    public func retenirInfos(_ infos: [String], source: String = "note") async throws -> RetourCapture {
+        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
+        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["choisis": infos, "source": s], delai: 90)
     }
 
     public func memoire() async throws -> Memoire {
@@ -242,6 +344,13 @@ public final class ClientAPI: @unchecked Sendable {
 
     public func versionServeur() async throws -> VersionServeur {
         try await json(VersionServeur.self, "api/version", delai: 10)
+    }
+
+    /// Une tour Rémy répond-elle à cette adresse ? Avant toute session, la tour
+    /// ne dit que `api` et `appMin` (ni version ni commit) : c'est assez.
+    public func tourRepond(delai: TimeInterval = 8) async throws {
+        struct Presence: Decodable { let api: Int }
+        _ = try await json(Presence.self, "api/version", delai: delai)
     }
 
     public func reglages() async throws -> Reglages {
@@ -277,9 +386,10 @@ public final class ClientAPI: @unchecked Sendable {
     /// la même coche renvoyée après une coupure n'est pas refaite). Une coupure
     /// réseau est réessayée UNE fois avec la même clé : le serveur rend alors
     /// le résultat déjà obtenu au lieu d'écrire deux fois.
-    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil) async throws -> ResultatApplication {
+    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false) async throws -> ResultatApplication {
         let actions = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p.actions))
         var corps: [String: Any] = ["actions": actions]
+        if depuisCapture { corps["origine"] = "capture" }
         if let r = p.resume { corps["resume"] = r }
         if let convId { corps["convId"] = convId }
         if let index { corps["index"] = index }
@@ -299,6 +409,57 @@ public final class ClientAPI: @unchecked Sendable {
     public func refuser(convId: String, propositionId: String) async throws {
         let pid = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
         try await envoyer("api/conversations/\(convId)/propositions/\(pid)/refus", methode: "POST", corps: [:])
+    }
+
+    // MARK: Localisation (lieux-v1)
+
+    public func lieux() async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux")
+    }
+
+    func envoyerEvenementsLieux(_ e: [EvenementLieu]) async throws -> RetourEvenementsLieux {
+        let corps = try JSONSerialization.jsonObject(with: JSONEncoder().encode(["evenements": e])) as? [String: Any]
+        return try await json(RetourEvenementsLieux.self, "api/lieux/evenements", methode: "POST", corps: corps)
+    }
+
+    public func nommerLieu(nom: String, lat: Double, lon: Double) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux", methode: "POST", corps: ["nom": nom, "lat": lat, "lon": lon])
+    }
+
+    public func renommerLieu(_ id: String, nom: String) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/\(id)", methode: "PATCH", corps: ["nom": nom])
+    }
+
+    public func supprimerLieu(_ id: String) async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/\(id)", methode: "DELETE")
+    }
+
+    public func effacerHistoriqueLieux() async throws -> VueLieux {
+        try await json(VueLieux.self, "api/lieux/historique", methode: "DELETE")
+    }
+
+    // MARK: Règles de Rémy (regles-v1)
+
+    /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.
+    public func validerRegle(convId: String, propositionId: String) async throws {
+        let pid = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
+        try await envoyer("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST", corps: [:])
+    }
+
+    public func regles() async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles").regles
+    }
+
+    public func reglerRegle(_ id: String, actif: Bool) async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles/\(id)", methode: "PATCH", corps: ["actif": actif]).regles
+    }
+
+    public func supprimerRegle(_ id: String) async throws -> [RegleRemy] {
+        try await json(ListeRegles.self, "api/regles/\(id)", methode: "DELETE").regles
+    }
+
+    public func verifierRegles() async throws -> BilanRegles {
+        try await json(BilanRegles.self, "api/regles/verifier", methode: "POST", corps: [:], delai: 60)
     }
 
     /// Défait une proposition appliquée. « Déjà annulé » (409) est un succès :
@@ -327,10 +488,17 @@ public final class ClientAPI: @unchecked Sendable {
     /// journal des coûts (0 $ en local).
     public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double) async throws -> String {
         let d = String(format: "%.1f", max(0, duree))
-        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio, delai: 90,
-                                     typeCorps: "application/octet-stream")
+        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio,
+                                     delai: Self.delaiTranscription(duree), typeCorps: "application/octet-stream")
         guard let t = try? JSONDecoder().decode(Texte.self, from: donnees) else { throw ErreurAPI.illisible }
         return t.text ?? ""
+    }
+
+    /// Le temps laissé à la tour pour transcrire : il grandit avec le vocal
+    /// (un vocal long se transcrit puis se relit sur la tour). Toujours un
+    /// peu plus que la tour ne s'en laisse : c'est elle qui dit ce qui coince.
+    public static func delaiTranscription(_ duree: Double) -> TimeInterval {
+        120 + max(0, duree)
     }
 
     // MARK: Message en flux
