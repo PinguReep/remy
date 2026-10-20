@@ -85,7 +85,7 @@ struct BoutonJauge: View {
 
     static func lu(_ j: JaugeContexte) -> String {
         if let f = j.fraction { return "\(JaugeContexte.pourcent(f)) utilisés" }
-        if let c = j.contexte { return "\(JaugeContexte.jetons(c)) jetons utilisés" }
+        if let c = j.contexte { return "\(JaugeContexte.jetons(c)) tokens utilisés" }
         return "pas encore mesuré"
     }
 }
@@ -177,7 +177,7 @@ struct ContexteVue: View {
                 }
             VStack(alignment: .leading, spacing: 4) {
                 if let c = j.contexte {
-                    Text("\(JaugeContexte.jetons(c)) jetons")
+                    Text("\(JaugeContexte.jetons(c)) tokens")
                         .font(Police.titre(24))
                         .foregroundStyle(Palette.encre)
                     Text(j.fenetre.map { "sur \(JaugeContexte.jetons($0)) que Rémy peut avoir en tête" } ?? "taille maximale inconnue")
@@ -310,7 +310,7 @@ struct ContexteVue: View {
             }
             if let m = j.moyenne, j.reponsesMesurees > 1 {
                 ligne("Moyenne du fil", JaugeContexte.tps(m.tps),
-                      detail: "sur \(j.reponsesMesurees) réponses · \(JaugeContexte.jetons(m.jetons)) jetons"
+                      detail: "sur \(j.reponsesMesurees) réponses · \(JaugeContexte.jetons(m.jetons)) tokens"
                         + (m.premier.map { " · premier mot après \(JaugeContexte.secondes($0)) en moyenne" } ?? ""))
             }
             if j.derniere == nil && direct == nil {
@@ -341,10 +341,10 @@ struct ContexteVue: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// « 1 830 jetons en 43 s · premier mot après 2,1 s »
+    /// « 1 830 tokens en 43 s · premier mot après 2,1 s »
     static func detail(_ d: JaugeContexte.Debit) -> String {
         let n = d.jetons.formatted(.number.locale(Locale(identifier: "fr_FR")))
-        var s = "\(n) jetons en \(JaugeContexte.secondes(d.secondes))"
+        var s = "\(n) tokens en \(JaugeContexte.secondes(d.secondes))"
         if let p = d.premier { s += " · premier mot après \(JaugeContexte.secondes(p))" }
         if d.estime { s += " · estimé" }
         return s
