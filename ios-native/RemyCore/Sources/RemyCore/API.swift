@@ -438,6 +438,17 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(VueLieux.self, "api/lieux/historique", methode: "DELETE")
     }
 
+    // MARK: Modèle local (modeles-v1)
+
+    public func modelesLocaux() async throws -> ModelesLocaux {
+        try await json(ModelesLocaux.self, "api/modeles")
+    }
+
+    /// `id` nil : suivre le modèle que les Sparks chargent.
+    public func choisirModeleLocal(_ id: String?) async throws -> ModelesLocaux {
+        try await json(ModelesLocaux.self, "api/modeles", methode: "PUT", corps: ["id": id.map { $0 as Any } ?? NSNull()])
+    }
+
     // MARK: Règles de Rémy (regles-v1)
 
     /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.

@@ -15,6 +15,7 @@ struct ReglagesView: View {
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
     @State private var lieuxOuverts = false
+    @State private var modelesOuverts = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -99,14 +100,20 @@ struct ReglagesView: View {
                     }
                     if let r = reglages, let c = r.circuits?["conseil"] {
                         circuit("conseil", c, titre: "Conseil réfléchi",
-                                detail: "GLM, sur tes machines, prépare le conseil du moment en arrière-plan. Coupé : conseil calculé sur l'iPhone, sans IA.")
+                                detail: "Le modèle local, sur tes machines, prépare le conseil du moment en arrière-plan. Coupé : conseil calculé sur l'iPhone, sans IA.")
                     }
                     if let r = reglages, let c = r.circuits?["compactage"] {
                         circuit("compactage", c, titre: "Compacter les longues conversations",
-                                detail: "Dès 70 % du contexte, GLM résume le début du fil (rien n'est effacé). Coupé : seulement à la demande, depuis la jauge.")
+                                detail: "Dès 70 % du contexte, le modèle local résume le début du fil (rien n'est effacé). Coupé : seulement à la demande, depuis la jauge.")
                     }
                     if d?.systeme?.reflexion == false {
                         info("Préparation de nuit désactivée : « Rémy a remarqué » restera vide.", symbole: "moon.zzz")
+                    }
+                    if app.modeles.disponible {
+                        ligne("Modèle", sous: app.modeles.vue?.actif.map { "\($0.libelle), sur tes Sparks" } ?? "Le modèle local avec lequel Rémy répond",
+                              symbole: "cpu") {
+                            modelesOuverts = true
+                        }
                     }
                     if app.lieux.disponible {
                         ligne("Localisation", sous: app.lieux.active ? (app.lieux.enPause ? "En pause" : "Allumée : ta tour sait où tu en es") : "Coupée", symbole: "location") {
@@ -163,10 +170,18 @@ struct ReglagesView: View {
         .sheet(isPresented: $appareilsOuverts) { AppareilsView() }
         .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
+        .sheet(isPresented: $modelesOuverts) { ModelesVue() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
+        }
+        .task { await app.modeles.charger() }
+        .task {
+            // Captures de la CI : l'écran Modèle, sur le serveur de démo.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "modeles" else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            modelesOuverts = true
         }
         .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
