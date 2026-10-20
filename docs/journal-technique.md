@@ -271,6 +271,13 @@ notes privées, sur la tour.
   GPS continu, pas de géocodage sur l'iPhone. File persistée (UserDefaults,
   500 au plus) : hors ligne, tout attend la tour. « Pause 2 h » n'enregistre
   rien. La feuille Réglages › Localisation lit `GET /api/lieux`.
+- Nouveautés (`RemyCore/Nouveautes.swift`, `NouveautesVue`, 21/10) : un
+  catalogue d'entrées par « série » (une par mise à jour, pas le numéro de
+  build, que les collectes de retours consomment). Au premier lancement du
+  système, seules celles de la dernière série sont nouvelles. Une entrée ne
+  s'ouvre que si la tour a sa capacité ; vue = fermée (finie, « Plus tard » ou
+  balayée), gardée dans les UserDefaults. Jamais en démo, jamais par-dessus une
+  dictée, un appel ou les réglages.
 - Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
