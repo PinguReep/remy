@@ -8,11 +8,9 @@ import FoundationNetworking
 /// survit au hors-ligne, une visite complétée à son départ.
 @MainActor
 final class LieuxTests: XCTestCase {
-    var reglages: UserDefaults!
-
-    override func setUp() {
-        reglages = UserDefaults(suiteName: "lieux-tests-\(UUID().uuidString)")
-    }
+    // Une instance par test (XCTest) : chaque test a ses propres réglages.
+    // Paresseux : sous Linux, XCTest crée l'instance hors de l'acteur principal.
+    lazy var reglages = UserDefaults(suiteName: "lieux-tests-\(UUID().uuidString)")!
 
     func app() -> AppModel {
         let conf = URLSessionConfiguration.ephemeral
@@ -24,7 +22,7 @@ final class LieuxTests: XCTestCase {
         return a
     }
 
-    let arrivee = Date(timeIntervalSince1970: 1_760_950_000)
+    var arrivee: Date { Date(timeIntervalSince1970: 1_760_950_000) }
 
     func testCoupeeParDefautRienNePart() async {
         let a = app()

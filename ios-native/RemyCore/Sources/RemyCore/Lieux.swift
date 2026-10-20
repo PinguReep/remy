@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // MARK: - La localisation (Sam, 20/10)
 //
@@ -46,6 +47,19 @@ public struct LieuTour: Codable, Equatable, Identifiable, Sendable {
     public var visites: Int?
     public var derniere: Millis?
 
+    public init(id: String, nom: String?, adresse: String?, lat: Double, lon: Double, rayon: Int? = nil,
+                source: String? = nil, visites: Int? = nil, derniere: Millis? = nil) {
+        self.id = id
+        self.nom = nom
+        self.adresse = adresse
+        self.lat = lat
+        self.lon = lon
+        self.rayon = rayon
+        self.source = source
+        self.visites = visites
+        self.derniere = derniere
+    }
+
     /// Ce qu'on lit : son nom, sinon son adresse.
     public var affiche: String { nom ?? adresse ?? "Lieu sans adresse connue" }
 }
@@ -55,10 +69,22 @@ public struct EtatLieux: Codable, Equatable, Sendable {
         public var id: String?
         public var nom: String?
         public var adresse: String?
+
+        public init(id: String?, nom: String?, adresse: String?) {
+            self.id = id
+            self.nom = nom
+            self.adresse = adresse
+        }
     }
     public var ou: String            // lieu | voiture | inconnu
     public var depuis: Millis?
     public var lieu: Ici?
+
+    public init(ou: String, depuis: Millis?, lieu: Ici?) {
+        self.ou = ou
+        self.depuis = depuis
+        self.lieu = lieu
+    }
 
     /// « Salle de sport, depuis 18:42 », « En voiture, depuis 8:05 », « — ».
     public var phrase: String {
@@ -75,12 +101,25 @@ public struct VisiteTour: Codable, Equatable, Identifiable, Sendable {
     public var arrivee: Millis
     public var depart: Millis?
     public var lieu: EtatLieux.Ici?
+
+    public init(id: String, arrivee: Millis, depart: Millis?, lieu: EtatLieux.Ici?) {
+        self.id = id
+        self.arrivee = arrivee
+        self.depart = depart
+        self.lieu = lieu
+    }
 }
 
 public struct GeocodageTour: Codable, Equatable, Sendable {
     public var pret: Bool
     public var adresses: Int?
     public var departements: [String]?
+
+    public init(pret: Bool, adresses: Int?, departements: [String]?) {
+        self.pret = pret
+        self.adresses = adresses
+        self.departements = departements
+    }
 }
 
 public struct VueLieux: Codable, Equatable, Sendable {
