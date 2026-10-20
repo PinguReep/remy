@@ -34,6 +34,9 @@ struct RemyApp: App {
         modele.dictee.micro = micro
         modele.appel.micro = micro
         modele.appel.voix = VoixiPhone()
+        // iOS relance l'app en arrière-plan pour une visite : le capteur doit
+        // être là dès le lancement (coupé tant que Sam ne l'a pas allumé).
+        CapteurLocalisation.partage.brancher(modele.lieux)
         return modele
     }
 
@@ -189,7 +192,7 @@ enum Demo {
                     app.dictee.interrompre()
                 }
             }
-        case "reglages":
+        case "reglages", "lieux":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud":

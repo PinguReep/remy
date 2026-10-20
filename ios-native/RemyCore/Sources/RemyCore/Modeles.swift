@@ -98,6 +98,8 @@ public final class AppModel {
     /// branchés par l'app : le cœur ne connaît pas AVFoundation).
     public let dictee: DicteeModel
     public let appel: AppelModel
+    /// La localisation (lieux-v1, 20/10) : coupée par défaut.
+    public let lieux: LieuxModel
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -106,7 +108,7 @@ public final class AppModel {
 
     /// `rangement` : où garder la journée et les gestes pas encore envoyés
     /// (nil : rien sur le disque, pour les tests et les aperçus).
-    public init(api: ClientAPI = ClientAPI(), rangement: Rangement? = nil) {
+    public init(api: ClientAPI = ClientAPI(), rangement: Rangement? = nil, reglages: UserDefaults = .standard) {
         self.api = api
         self.tableau = TableauModel(api: api, rangement: rangement)
         self.projets = ProjetsModel(api: api, rangement: rangement)
@@ -117,6 +119,7 @@ public final class AppModel {
         self.chat = ChatModel(api: api)
         self.dictee = DicteeModel(api: api)
         self.appel = AppelModel(api: api)
+        self.lieux = LieuxModel(api: api, reglages: reglages)
         tableau.app = self
         projets.app = self
         conseil.app = self
@@ -126,6 +129,7 @@ public final class AppModel {
         chat.app = self
         dictee.app = self
         appel.app = self
+        lieux.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }

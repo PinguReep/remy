@@ -50,6 +50,11 @@ targets:
         # tour, nulle part ailleurs ; rien n'est effacé côté Apple.
         NSRemindersFullAccessUsageDescription: "Pour reprendre tes rappels dans Rémy : ils sont lus sur l'iPhone et envoyés à ta tour, nulle part ailleurs. Rien n'est effacé dans l'app Rappels."
         NSMicrophoneUsageDescription: "Rémy t'écoute quand tu dictes un message ou que tu l'appelles. L'audio part seulement vers ta tour pour être transcrit, puis il est effacé."
+        # Localisation (20/10) : visites et trajets, envoyés à la tour seulement ;
+        # les adresses y sont traduites, rien ne part chez Apple ni ailleurs.
+        NSLocationWhenInUseUsageDescription: "Pour que Rémy sache où tu en es dans ta journée (à la maison, à la salle, sur la route). Tes positions vont seulement à ta tour."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Pour reconnaître tes arrivées et départs même app fermée (iOS les détecte, presque sans batterie). Tes positions vont seulement à ta tour, gardées 90 jours."
+        NSMotionUsageDescription: "Pour savoir quand tu es en voiture, et que Rémy ne t'envoie rien de long à lire au volant. Rien ne quitte ta tour."
         UILaunchScreen:
           UIColorName: Fond
         UISupportedInterfaceOrientations:
