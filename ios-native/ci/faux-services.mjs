@@ -113,7 +113,10 @@ http.createServer((req, res) => {
   let corps = "";
   req.on("data", (c) => (corps += c));
   req.on("end", () => {
-    if (req.url.endsWith("/models")) return res.end(JSON.stringify({ data: [{ id: "GLM-faux-CI" }] }));
+    // Deux modèles servis, pour l'écran Réglages › Modèle.
+    if (req.url.endsWith("/models")) {
+      return res.end(JSON.stringify({ data: [{ id: "DeepSeek-V4.1-Flash-1017", max_model_len: 1048576 }, { id: "zai-org/GLM-5.3-FP8", max_model_len: 131072 }] }));
+    }
     if (!req.url.endsWith("/chat/completions")) {
       res.statusCode = 404;
       return res.end("{}");

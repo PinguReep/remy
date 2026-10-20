@@ -200,7 +200,7 @@ enum ConseilAffiche {
     static func source(glm: ConseilTour.Texte?, tour: ConseilTour?, disponible: Bool, tourne: Bool) -> String {
         if let g = glm {
             let quand = g.genereA.map { " · \(Format.depuis($0.date).replacingOccurrences(of: "de ", with: "à "))" } ?? ""
-            return "Réfléchi par Rémy (GLM, sur tes machines)" + quand + (tourne ? " · il réfléchit à nouveau…" : "")
+            return "Réfléchi par Rémy (sur tes machines)" + quand + (tourne ? " · il réfléchit à nouveau…" : "")
         }
         if tourne { return "Calculé sur l'iPhone en attendant : Rémy réfléchit…" }
         if !disponible { return "Calculé sur l'iPhone, sans IA (le conseil réfléchi arrivera avec la mise à jour de ta tour)." }
