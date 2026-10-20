@@ -16,6 +16,7 @@ struct ReglagesView: View {
     @State private var reglesOuvertes = false
     @State private var lieuxOuverts = false
     @State private var modelesOuverts = false
+    @State private var nouveautesOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -134,6 +135,9 @@ struct ReglagesView: View {
                             appareilsOuverts = true
                         }
                     }
+                    ligne("Nouveautés", sous: nouveautesSous, symbole: "sparkles") {
+                        nouveautesOuvertes = true
+                    }
                     ligne("Prototypes de design", sous: "Lot 1 : deux directions à essayer, sur des données fictives.",
                           symbole: "paintpalette") {
                         prototypes = true
@@ -171,6 +175,7 @@ struct ReglagesView: View {
         .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .sheet(isPresented: $modelesOuverts) { ModelesVue() }
+        .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
@@ -179,9 +184,10 @@ struct ReglagesView: View {
         .task { await app.modeles.charger() }
         .task {
             // Captures de la CI : l'écran Modèle, sur le serveur de démo.
-            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "modeles" else { return }
+            let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"]
+            guard ecran == "modeles" || ecran == "nouveautes-liste" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            modelesOuverts = true
+            if ecran == "modeles" { modelesOuverts = true } else { nouveautesOuvertes = true }
         }
         .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
@@ -379,6 +385,12 @@ struct ReglagesView: View {
     private func joursActifs(_ a: Activite?) -> Int? {
         guard let a, !a.jours.isEmpty else { return nil }
         return a.jours.suffix(14).filter { $0.messages > 0 || $0.actif == true }.count
+    }
+
+    /// « 2 nouvelles », sinon de quoi revoir les tutoriels.
+    private var nouveautesSous: String {
+        let n = app.nouveautes.historique.filter { app.nouveautes.estNouvelle($0) && app.nouveautes.existe($0) }.count
+        return n > 0 ? "\(n) nouvelle\(n > 1 ? "s" : "") à découvrir" : "Les tutoriels des mises à jour, à revoir"
     }
 
     private var version: String {

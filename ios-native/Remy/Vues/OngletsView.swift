@@ -113,6 +113,10 @@ struct OngletsView: View {
         .sheet(isPresented: $app.reglagesOuverts) { ReglagesView() }
         .sheet(isPresented: $ui.captureOuverte) { CaptureView().environment(ui) }
         .sheet(isPresented: $ui.boiteOuverte) { BoiteView() }
+        // Les nouveautés d'une mise à jour (21/10), une fois : Réglages › Nouveautés pour revoir.
+        .sheet(item: Binding(get: { app.nouveautes.affichees }, set: { if $0 == nil { app.nouveautes.fermer() } })) { lot in
+            NouveautesFeuille(lot: lot) { app.nouveautes.fermer() }
+        }
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
@@ -145,6 +149,12 @@ struct OngletsView: View {
             } else {
                 await app.tableau.envoyerEnAttente()
             }
+            // Le tutoriel d'une mise à jour : après le chargement, jamais par-dessus
+            // une dictée, un appel ou les réglages ; jamais en démo (captures de la CI).
+            if ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == nil {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                if !app.reglagesOuverts, app.dictee.etat == .repos, !app.appel.actif { app.nouveautes.verifier() }
+            }
             while !Task.isCancelled {
                 await app.api.signeDeVie()
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
@@ -176,6 +186,7 @@ extension OngletsView {
             }
             ui.choixDemo = 15
         case "journee-etendue": ui.journeeEtendue = true
+        case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"

@@ -102,6 +102,8 @@ public final class AppModel {
     public let lieux: LieuxModel
     /// Le modèle local que Rémy utilise (modeles-v1, 20/10).
     public let modeles: ModelesModel
+    /// Les mini tutoriels des mises à jour (21/10).
+    public let nouveautes: NouveautesModel
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -123,6 +125,7 @@ public final class AppModel {
         self.appel = AppelModel(api: api)
         self.lieux = LieuxModel(api: api, reglages: reglages)
         self.modeles = ModelesModel(api: api)
+        self.nouveautes = NouveautesModel(reglages: reglages)
         tableau.app = self
         projets.app = self
         conseil.app = self
@@ -134,6 +137,7 @@ public final class AppModel {
         appel.app = self
         lieux.app = self
         modeles.app = self
+        nouveautes.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
