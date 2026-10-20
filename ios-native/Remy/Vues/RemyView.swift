@@ -544,7 +544,7 @@ struct BarreEtapes: View {
                             .fixedSize()
                             .contentTransition(.numericText())
                             .animation(.easeOut(duration: 0.25), value: d)
-                            .accessibilityLabel("\(Int(d.rounded())) jetons par seconde")
+                            .accessibilityLabel("\(Int(d.rounded())) tokens par seconde")
                     }
                     if ligne.enCours, let debut = ligne.debutEtapes {
                         TimelineView(.periodic(from: debut, by: 1)) { ctx in
@@ -567,7 +567,7 @@ struct BarreEtapes: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(ligne.enCours
-                ? (etapes.last?.texte ?? "Rémy travaille") + (ligne.debit.map { ", \(Int($0.rounded())) jetons par seconde" } ?? "")
+                ? (etapes.last?.texte ?? "Rémy travaille") + (ligne.debit.map { ", \(Int($0.rounded())) tokens par seconde" } ?? "")
                 : "Réponse en \(Self.duree(total(etapes)))" + vitesseFinale)
             .accessibilityHint(ouverte ? "Masque les étapes" : "Montre ce que Rémy a fait")
             if ouverte {
