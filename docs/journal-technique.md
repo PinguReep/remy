@@ -209,6 +209,18 @@ notes privées, sur la tour.
   3 jours avant → une proposition Motion ordinaire dans le fil « Règles de
   Rémy » (`systeme: "regles"`), une seule fois par événement (`regles_vues`).
   `GET/PATCH/DELETE /api/regles`, `POST /api/regles/verifier`.
+- **Localisation** (`lieux-v1`, `lib/lieux.js`, migration 7) : l'iPhone envoie
+  des visites (arrivée puis départ, même identifiant) et des trajets en
+  voiture — jamais de trace continue. Chaque visite est rattachée à un lieu :
+  nommé par l'utilisateur, nommé d'après un rendez-vous de l'agenda dont le
+  lieu cite la rue de la visite, ou créé avec son adresse. Adresses traduites
+  sur la tour (`lib/geocodage.js`, `<base>/geo.db`, R*Tree) à partir de la Base
+  Adresse Nationale (`scripts/geo-importer.mjs`, départements de
+  `REMY_GEO_DEPARTEMENTS`, dans remy.env). 90 jours (`REMY_LIEUX_JOURS`) puis
+  effacé (job `lieux-purge`) ; `DELETE /api/lieux/historique` efface tout sauf
+  les lieux nommés. La consigne « Où est … » (lieu actuel, journée, tâches
+  Motion liées au lieu) n'est donnée qu'à GLM, jamais à Claude (ni en secours,
+  ni pour une recherche avec contexte). `REMY_LIEUX=off` coupe tout.
 
 ## App iPhone
 
