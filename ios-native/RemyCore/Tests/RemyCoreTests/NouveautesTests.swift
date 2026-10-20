@@ -42,7 +42,9 @@ final class NouveautesTests: XCTestCase {
 
     func testUneMiseAJourSuivanteMontreSeulementSaNouveaute() {
         let r = suite()
-        let a = app(["modeles-v1"], reglages: r)
+        // L'AppModel (pour les capacités) a ses propres réglages : il range déjà
+        // les « vues » du vrai catalogue, celles du catalogue d'essai restent à part.
+        let a = app(["modeles-v1"], reglages: suite())
         let p = Nouveaute.Page(symbole: "star", titre: "T", texte: "Texte")
         let ancien = [Nouveaute(id: "a", serie: 1, date: "", titre: "A", capacite: nil, pages: [p]),
                       Nouveaute(id: "b", serie: 2, date: "", titre: "B", capacite: nil, pages: [p])]
