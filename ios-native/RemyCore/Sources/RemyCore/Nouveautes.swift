@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "deja-la", serie: 3, date: "24 oct.", titre: "Moins de bruit, rien de perdu", capacite: "deja-la-v1", pages: [
+            .init(symbole: "checkmark.seal", titre: "Déjà là n'est pas un échec",
+                  texte: "Une tâche déjà dans Motion, un article déjà sur ta liste, un rappel déjà noté : Rémy ne le recrée pas et te le dit, sans alerte. Ta capture se ferme ; ton brouillon reste si tu la fermes avant."),
+            .init(symbole: "clock.arrow.circlepath", titre: "Les vieilles propositions",
+                  texte: "Une proposition de plus de 7 jours, ou dont la date est passée, est marquée sur sa carte : « Oui » te demande de confirmer, ou d'ajuster la ligne d'abord."),
+            .init(symbole: "line.3.horizontal.decrease.circle", titre: "Tout l'historique",
+                  texte: "Historique : filtre les échouées, les annulées ou les « déjà là », et « Plus ancien » remonte au-delà des derniers jours. Les articles pris ne bloquent plus jamais une liste."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

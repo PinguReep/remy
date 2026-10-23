@@ -386,9 +386,12 @@ public final class ClientAPI: @unchecked Sendable {
     /// la même coche renvoyée après une coupure n'est pas refaite). Une coupure
     /// réseau est réessayée UNE fois avec la même clé : le serveur rend alors
     /// le résultat déjà obtenu au lieu d'écrire deux fois.
-    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false) async throws -> ResultatApplication {
+    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false,
+                          confirmer: Bool = false) async throws -> ResultatApplication {
         let actions = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p.actions))
         var corps: [String: Any] = ["actions": actions]
+        // Proposition périmée (ancienne ou date passée) : Sam a confirmé.
+        if confirmer { corps["confirmer"] = true }
         if depuisCapture { corps["origine"] = "capture" }
         if let r = p.resume { corps["resume"] = r }
         if let convId { corps["convId"] = convId }

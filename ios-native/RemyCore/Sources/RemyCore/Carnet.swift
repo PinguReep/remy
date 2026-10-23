@@ -100,6 +100,52 @@ public enum OperationCarnet: Codable, Sendable, Equatable {
     case supprimerElement(liste: String, id: String)
     case rappels([Rappel])
     case supprimerRappel(id: String)
+    /// « Retirer les pris » en une requête (tour carnet-lot-v1, 24/10).
+    case retirerElements(liste: String, ids: [String])
+
+    /// La même écriture, avec des identifiants remplacés (un doublon que la
+    /// tour a fondu dans l'article ou le rappel existant).
+    func remplacant(_ par: [String: String]) -> OperationCarnet {
+        guard !par.isEmpty else { return self }
+        let m = { (i: String) in par[i] ?? i }
+        switch self {
+        case let .elements(liste, e): return .elements(liste: liste, e.map { var x = $0; x.id = m(x.id); return x })
+        case let .supprimerElement(liste, id): return .supprimerElement(liste: liste, id: m(id))
+        case let .rappels(r): return .rappels(r.map { var x = $0; x.id = m(x.id); return x })
+        case let .supprimerRappel(id): return .supprimerRappel(id: m(id))
+        case let .retirerElements(liste, ids): return .retirerElements(liste: liste, ids: ids.map(m))
+        default: return self
+        }
+    }
+}
+
+/// Un nouvel article ou rappel que la tour n'a pas recréé : il existait déjà
+/// (`existant`), encore à faire (24/10).
+public struct DejaLaCarnet: Codable, Sendable, Equatable {
+    public var id: String
+    public var existant: String
+    public var texte: String?
+}
+
+struct RetourCarnet: Codable { var dejaLa: [DejaLaCarnet]? }
+
+/// « Payer le LOYER ! » et « payer le loyer » : la même chose (comme la tour :
+/// sans accents ni casse, seuls lettres et chiffres comptent).
+public func cleTexte(_ s: String) -> String {
+    let sans = String(String.UnicodeScalarView(s.decomposedStringWithCanonicalMapping.unicodeScalars.filter { !(0x300...0x36F).contains($0.value) }))
+    var sortie = ""
+    var espace = false
+    for u in sans.lowercased().unicodeScalars {
+        let garde = (u.value >= 0x61 && u.value <= 0x7A) || (u.value >= 0x30 && u.value <= 0x39)
+        if garde {
+            if espace && !sortie.isEmpty { sortie.append(" ") }
+            espace = false
+            sortie.unicodeScalars.append(u)
+        } else {
+            espace = true
+        }
+    }
+    return sortie
 }
 
 /// Ce que l'iPhone garde du carnet.
@@ -200,20 +246,34 @@ public final class CarnetModel {
     }
 
     /// « tomates, lait, œufs » : un article par morceau. Rend les articles
-    /// créés (pour « Annuler »).
+    /// créés (pour « Annuler ») ; ceux déjà à prendre sont dits, pas recréés.
     @discardableResult
     public func ajouter(_ textes: [String], a liste: Liste) -> [ElementListe] {
-        guard let i = listes.firstIndex(where: { $0.id == liste.id }) else { return [] }
+        let n = noter(textes, dans: liste)
+        if !n.dejaLa.isEmpty {
+            app?.dire("Déjà dans ta liste : " + n.dejaLa.map { "« \($0) »" }.joined(separator: ", ") + ".")
+        }
+        return n.nouveaux
+    }
+
+    /// Comme `ajouter`, sans message : rend les nouveaux et ceux qui étaient
+    /// déjà à prendre (texte normalisé, même liste, pas encore pris).
+    public func noter(_ textes: [String], dans liste: Liste) -> (nouveaux: [ElementListe], dejaLa: [String]) {
+        guard let i = listes.firstIndex(where: { $0.id == liste.id }) else { return ([], []) }
         let base = (listes[i].elements.compactMap(\.ordre).max() ?? 0) + 1
-        let nouveaux = textes
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .enumerated()
-            .map { ElementListe(texte: String($0.element.prefix(300)), ordre: base + $0.offset) }
-        guard !nouveaux.isEmpty else { return [] }
+        var ouverts = Set(listes[i].elements.filter { !$0.fait }.map { cleTexte($0.texte) })
+        var nouveaux: [ElementListe] = []
+        var deja: [String] = []
+        for t in textes.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }) where !t.isEmpty {
+            let k = cleTexte(t)
+            if !k.isEmpty && ouverts.contains(k) { deja.append(t); continue }
+            ouverts.insert(k)
+            nouveaux.append(ElementListe(texte: String(t.prefix(300)), ordre: base + nouveaux.count))
+        }
+        guard !nouveaux.isEmpty else { return ([], deja) }
         listes[i].elements.append(contentsOf: nouveaux)
         ecrire(.elements(liste: liste.id, nouveaux))
-        return nouveaux
+        return (nouveaux, deja)
     }
 
     /// Retire des articles sans message (l'« Annuler » d'un ajout).
@@ -265,8 +325,13 @@ public final class CarnetModel {
         let coches = listes[i].elements.filter(\.fait)
         guard !coches.isEmpty else { return }
         listes[i].elements.removeAll(where: \.fait)
-        for e in coches { ecrire(.supprimerElement(liste: liste.id, id: e.id), envoyerTout: false) }
-        Task { await envoyer() }
+        if app?.serveur?.sait("carnet-lot-v1") == true {
+            // Une requête pour tous (avant : une par article, 405 à J+30).
+            ecrire(.retirerElements(liste: liste.id, ids: coches.map(\.id)))
+        } else {
+            for e in coches { ecrire(.supprimerElement(liste: liste.id, id: e.id), envoyerTout: false) }
+            Task { await envoyer() }
+        }
         app?.dire("\(coches.count) article\(coches.count > 1 ? "s" : "") coché\(coches.count > 1 ? "s" : "") retiré\(coches.count > 1 ? "s" : "").", annuler: { [weak self] in
             guard let self, let k = self.listes.firstIndex(where: { $0.id == liste.id }) else { return }
             self.listes[k].elements.append(contentsOf: coches)
@@ -276,15 +341,35 @@ public final class CarnetModel {
 
     // MARK: Rappels
 
+    /// Un rappel ; s'il est déjà noté et pas fait, c'est l'existant qui est
+    /// rendu (et dit), daté s'il ne l'était pas (24/10 : « payer le loyer » ×14).
     @discardableResult
     public func creerRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil) -> Rappel? {
+        guard let n = noterRappel(texte, quand: quand, etiquettes: etiquettes) else { return nil }
+        if n.dejaLa { app?.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».") }
+        return n.rappel
+    }
+
+    /// Comme `creerRappel`, sans message.
+    public func noterRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil) -> (rappel: Rappel, dejaLa: Bool)? {
         let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
+        let k = cleTexte(t)
+        if !k.isEmpty, let i = rappels.firstIndex(where: { !$0.fait && cleTexte($0.texte) == k }) {
+            if rappels[i].quand == nil, let q = quand {
+                rappels[i].quand = q.millis
+                let r = rappels[i]
+                trierRappels()
+                ecrire(.rappels([r]))
+                return (r, true)
+            }
+            return (rappels[i], true)
+        }
         let r = Rappel(texte: String(t.prefix(300)), quand: quand?.millis, source: "remy", etiquettes: etiquettes?.isEmpty == false ? etiquettes : nil)
         rappels.append(r)
         trierRappels()
         ecrire(.rappels([r]))
-        return r
+        return (r, false)
     }
 
     /// Les rappels à trier (Sam, 18/10) : il y note dans la journée ce qu'il
@@ -402,7 +487,8 @@ public final class CarnetModel {
         var refus: String?
         while let op = enAttente.first {
             do {
-                try await api.appliquer(op)
+                let deja = try await api.appliquer(op)
+                if !deja.isEmpty { fondre(deja, op) }
             } catch ErreurAPI.reseau {
                 return
             } catch ErreurAPI.nonConnecte {
@@ -419,6 +505,35 @@ public final class CarnetModel {
             envoiEnCours = false
             await charger()
         }
+    }
+
+    /// La tour a fondu un nouvel article ou rappel dans l'existant (une copie
+    /// de l'iPhone pas à jour) : la copie suit, et ce qui attend dans la file
+    /// vise l'existant (cocher le doublon coche l'original).
+    func fondre(_ deja: [DejaLaCarnet], _ op: OperationCarnet) {
+        let par = Dictionary(deja.map { ($0.id, $0.existant) }, uniquingKeysWith: { a, _ in a })
+        switch op {
+        case let .elements(liste, _):
+            if let i = listes.firstIndex(where: { $0.id == liste }) {
+                for d in deja {
+                    if listes[i].elements.contains(where: { $0.id == d.existant }) { listes[i].elements.removeAll { $0.id == d.id } }
+                    else if let j = listes[i].elements.firstIndex(where: { $0.id == d.id }) { listes[i].elements[j].id = d.existant }
+                }
+            }
+        case .rappels:
+            for d in deja {
+                if rappels.contains(where: { $0.id == d.existant }) { rappels.removeAll { $0.id == d.id } }
+                else if let j = rappels.firstIndex(where: { $0.id == d.id }) { rappels[j].id = d.existant }
+            }
+        default:
+            break
+        }
+        // La première de la file est celle qui vient de partir : on ne touche qu'aux suivantes.
+        if enAttente.count > 1 {
+            enAttente = [enAttente[0]] + enAttente.dropFirst().map { $0.remplacant(par) }
+        }
+        sauverFile()
+        garder()
     }
 
     private func garder() {
@@ -455,10 +570,13 @@ extension ClientAPI {
     }
 
     /// Une écriture du carnet (idempotente : rejouable sans double effet).
-    public func appliquer(_ op: OperationCarnet) async throws {
+    /// Rend les nouveaux articles ou rappels que la tour n'a pas recréés.
+    @discardableResult
+    public func appliquer(_ op: OperationCarnet) async throws -> [DejaLaCarnet] {
         func corps<T: Encodable>(_ v: T) throws -> [String: Any] {
             (try JSONSerialization.jsonObject(with: JSONEncoder().encode(v)) as? [String: Any]) ?? [:]
         }
+        func deja(_ d: Data) -> [DejaLaCarnet] { (try? JSONDecoder().decode(RetourCarnet.self, from: d))?.dejaLa ?? [] }
         switch op {
         case let .liste(id, nom, ordre):
             var c: [String: Any] = ["nom": nom]
@@ -468,15 +586,18 @@ extension ClientAPI {
             try await brut("api/listes/\(chemin(id))", methode: "DELETE")
         case let .elements(liste, elements):
             let c = ["elements": try elements.map { try corps($0) }]
-            try await brut("api/listes/\(chemin(liste))/elements", methode: "POST", corps: JSONSerialization.data(withJSONObject: c))
+            return deja(try await brut("api/listes/\(chemin(liste))/elements", methode: "POST", corps: JSONSerialization.data(withJSONObject: c)))
         case let .supprimerElement(liste, id):
             try await brut("api/listes/\(chemin(liste))/elements/\(chemin(id))", methode: "DELETE")
         case let .rappels(r):
             let c = ["rappels": try r.map { try corps($0) }]
-            try await brut("api/rappels", methode: "POST", corps: JSONSerialization.data(withJSONObject: c), delai: 60)
+            return deja(try await brut("api/rappels", methode: "POST", corps: JSONSerialization.data(withJSONObject: c), delai: 60))
         case let .supprimerRappel(id):
             try await brut("api/rappels/\(chemin(id))", methode: "DELETE")
+        case let .retirerElements(liste, ids):
+            try await brut("api/listes/\(chemin(liste))/retirer", methode: "POST", corps: JSONSerialization.data(withJSONObject: ["ids": ids]))
         }
+        return []
     }
 
     /// « Bloquée » (ou débloquée) : vit dans Remy, Motion n'a pas ce champ (D12).

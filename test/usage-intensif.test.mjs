@@ -209,6 +209,8 @@ test("péremption : âge réglable, date passée, et une ancienne carte sans dat
   assert.equal(ecriture.peremption({ creeA: m - 60 * JOUR, actions: [] }, { maintenant: m, jours: 90 }), null, "réglable");
   assert.match(ecriture.peremption({ creeA: m, actions: [{ type: "creer", nom: "Abonnement", echeance: "2026-10-26" }] }, { maintenant: m }), /L'échéance de « Abonnement » est passée/);
   assert.equal(ecriture.peremption({ creeA: m, actions: [{ type: "creer", nom: "Ce soir", echeance: "2026-11-23" }] }, { maintenant: m }), null, "une échéance du jour court jusqu'au soir");
+  assert.equal(ecriture.peremption({ creeA: m, actions: [{ type: "creer", nom: "Ce matin", echeance: "2026-11-23T07:00:00Z" }] }, { maintenant: m }), null, "due ce matin : Motion la place encore");
+  assert.match(ecriture.peremption({ creeA: m, actions: [{ type: "creer", nom: "Hier", echeance: "2026-11-22T21:00:00Z" }] }, { maintenant: m }), /L'échéance de « Hier » est passée/);
   assert.match(ecriture.peremption({ creeA: m, actions: [{ type: "creer", titre: "Dentiste", debut: "2026-11-20T09:00:00Z" }] }, { maintenant: m }), /Le début de « Dentiste » est passé/);
   // Sans creeA (cartes d'avant le 24/10) : le fil inactif depuis 30 jours suffit.
   assert.match(ecriture.peremption({ actions: [] }, { conv: { updatedAt: m - 30 * JOUR }, maintenant: m }), /plus de 30 jours/);

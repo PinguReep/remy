@@ -306,6 +306,11 @@ public final class AppModel {
         do {
             let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
             let res = r.results?.first
+            if r.toutDejaLa {
+                // Déjà là n'est pas un échec : la feuille se ferme (24/10).
+                dire("Déjà dans Motion : « \(t) ».")
+                return true
+            }
             if (r.echecs ?? 0) > 0 || res?.ok == false {
                 dire("Pas ajouté à Motion : \(res?.erreur ?? "raison inconnue").")
                 return false
@@ -1936,20 +1941,27 @@ public final class ChatModel {
     /// ce qui déclenche la vibration de réussite). L'identifiant de la
     /// proposition rend l'application idempotente : un second tap, ou le même
     /// « Oui » sur le site, rend le même résultat sans rien refaire.
+    /// `confirmer` : Sam a vu que la proposition est périmée (ancienne ou date
+    /// passée) et la veut quand même (24/10).
     @discardableResult
-    public func appliquer(_ ligne: LigneChat) async -> Bool {
+    public func appliquer(_ ligne: LigneChat, confirmer: Bool = false) async -> Bool {
         guard let p = ligne.proposition else { return false }
         do {
-            let r = try await api.appliquer(p, convId: idCourant, index: ligne.indexMessage)
+            let r = try await api.appliquer(p, convId: idCourant, index: ligne.indexMessage, confirmer: confirmer)
             let bilan = r.bilan
             if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {
                 lignes[i].proposition?.statut = r.statut
                 lignes[i].proposition?.ledgerId = r.ledgerId
                 lignes[i].proposition?.bilan = bilan
                 lignes[i].proposition?.annulee = false
+                lignes[i].proposition?.perimee = nil
+                lignes[i].proposition?.raisonPeremption = nil
             }
             let echecs = bilan.echoues?.count ?? 0
-            if echecs == 0 {
+            if r.toutDejaLa {
+                // Pas un échec : tout y était déjà.
+                app?.dire(p.versAgenda ? "Déjà dans ton agenda : rien à ajouter." : "Déjà dans ton planning : rien à ajouter.")
+            } else if echecs == 0 {
                 let ou = p.versAgenda ? " dans ton agenda" : bilan.espace.map { " dans « \($0) »" } ?? " dans ton planning"
                 app?.dire("C'est fait\(ou).")
             } else if echecs >= p.actions.count {
@@ -1960,6 +1972,15 @@ public final class ChatModel {
             // L'accueil reflète le changement tout de suite (lecture, aucun appel IA).
             await app?.tableau.charger()
             return echecs == 0
+        } catch ErreurAPI.serveur(409, let m) where m.contains("confirme pour l'appliquer") {
+            // Périmée (la tour l'a vu avant la carte) : rien n'est écrit, la
+            // carte le dit et « Oui » demandera de confirmer.
+            if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {
+                lignes[i].proposition?.perimee = true
+                lignes[i].proposition?.raisonPeremption = m
+            }
+            app?.dire("Rien n'a été fait : \(m)")
+            return false
         } catch ErreurAPI.serveur(let code, let m) where code == 502 || code == 503 {
             // Motion ou Google n'a rien pu écrire : la carte le dit et reste retentable.
             if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {

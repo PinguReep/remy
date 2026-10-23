@@ -796,6 +796,8 @@ private struct PropositionView: View {
     let p: Proposition
     @State private var enCours = false
     @State private var ajustement: DemandeAjustement?
+    /// « Oui » sur une proposition périmée : confirmer ou ajuster d'abord (24/10).
+    @State private var confirmerPerimee = false
 
     /// Sam peut régler une ligne (date, durée, catégorie, rappel) avant de dire oui.
     private var ajustable: Bool {
@@ -834,6 +836,15 @@ private struct PropositionView: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
             }
+            if !p.appliquee, !p.convertie, !p.refusee, p.perimee == true {
+                // Ancienne, ou une date est passée : « Oui » demandera de confirmer.
+                Label(p.raisonPeremption ?? "Proposition ancienne : vérifie-la avant de dire oui.", systemImage: "clock.arrow.circlepath")
+                    .font(Police.texte(14, .medium))
+                    .foregroundStyle(Palette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+            }
             ForEach(Array(p.actions.enumerated()), id: \.offset) { i, a in
                 let ligneAction = LigneAction(action: a,
                                               versAgenda: p.versAgenda,
@@ -864,6 +875,14 @@ private struct PropositionView: View {
             pied
         }
         .sheet(item: $ajustement) { AjusterAction(demande: $0) }
+        .confirmationDialog("Proposition ancienne", isPresented: $confirmerPerimee, titleVisibility: .visible) {
+            Button("Appliquer quand même") {
+                agir { if await app.chat.appliquer(ligne, confirmer: true) { Haptique.succes() } }
+            }
+            Button("Pas maintenant", role: .cancel) {}
+        } message: {
+            Text((p.raisonPeremption ?? "Elle date un peu.") + (ajustable ? " Touche une ligne pour la régler d'abord." : ""))
+        }
         .task {
             // Captures de la CI : la feuille « Ajuster » sur la première ligne.
             let env = ProcessInfo.processInfo.environment
@@ -919,6 +938,7 @@ private struct PropositionView: View {
         if !p.appliquee { return p.versAgenda ? "Rémy propose de changer ton agenda" : "Rémy propose de changer ton planning" }
         if !(p.annulationRatee ?? []).isEmpty { return "Annulation incomplète" }
         if p.annulee == true { return "Annulé : tout est revenu comme avant." }
+        if p.toutDejaLa { return p.versAgenda ? "Déjà dans ton agenda : rien à ajouter" : "Déjà dans ton planning : rien à ajouter" }
         let echecs = p.nombreEchecs
         if echecs == 0 { return p.versAgenda ? "C'est fait dans ton agenda" : "C'est fait dans ton planning" }
         return echecs >= p.actions.count ? "Rien n'a pu être fait" : "En partie fait"
@@ -933,6 +953,8 @@ private struct PropositionView: View {
                 HStack(spacing: 8) {
                     BoutonA(titre: "Non merci", principal: false, hauteur: 46) { agir { await app.chat.ecarter(ligne) } }
                     BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : "Oui, fais-le", hauteur: 46) {
+                        // Périmée : jamais appliquée en silence.
+                        if p.perimee == true { confirmerPerimee = true; return }
                         agir {
                             if await app.chat.appliquer(ligne) { Haptique.succes() }
                         }
@@ -957,6 +979,8 @@ private struct PropositionView: View {
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .top) { Filet() }
+        } else if p.toutDejaLa {
+            EmptyView()
         } else if p.annulee != true, p.ledgerId != nil, p.nombreEchecs < p.actions.count {
             HStack(spacing: 8) {
                 Text(ou)

@@ -328,6 +328,10 @@ public struct Proposition: Codable, Equatable, Sendable {
     public var ajustee: Bool?
     /// Ce que Rémy avait proposé, avant ajustement (la tour l'envoie).
     public var actionsOrigine: [ActionProposee]?
+    /// Ancienne, ou une date est passée (24/10) : « Oui » demande de confirmer.
+    public var perimee: Bool?
+    /// Pourquoi, en mots (« Proposée il y a 60 jours. L'échéance… »).
+    public var raisonPeremption: String?
 
     public init(id: String? = nil, source: String?, resume: String?, actions: [ActionProposee], statut: String? = nil,
                 ledgerId: String? = nil, index: Int? = nil, bilan: Bilan? = nil, annulee: Bool? = nil) {
@@ -361,6 +365,17 @@ public struct Proposition: Codable, Equatable, Sendable {
     /// Nombre d'actions ratées d'après le bilan (0 si inconnu).
     public var nombreEchecs: Int { bilan?.echoues?.count ?? 0 }
 
+    /// Tout existait déjà (Motion ou l'agenda) : rien d'écrit, rien de raté.
+    public var toutDejaLa: Bool {
+        guard appliquee, let d = bilan?.dejaLa, !d.isEmpty else { return false }
+        return (bilan?.faits ?? []).isEmpty && nombreEchecs == 0
+    }
+
+    /// Cette action existait déjà (anti-doublon de la tour).
+    public func dejaLa(_ a: ActionProposee) -> Bool {
+        (bilan?.dejaLa ?? []).contains { $0 == a.libelle || $0 == a.nom || $0 == a.titre }
+    }
+
     /// L'erreur d'une action précise, retrouvée par son nom dans le bilan.
     public func erreur(pour a: ActionProposee) -> String? {
         bilan?.echoues?.first { $0.nom == a.libelle || $0.nom == a.nom || $0.nom == a.titre }?.erreur
@@ -376,11 +391,14 @@ public struct Bilan: Codable, Equatable, Sendable {
     public var faits: [String]?
     public var echoues: [Echec]?
     public var espace: String?
+    /// Déjà là (anti-doublon) : ni fait, ni raté (24/10).
+    public var dejaLa: [String]?
 
-    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil) {
+    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil, dejaLa: [String]? = nil) {
         self.faits = faits
         self.echoues = echoues
         self.espace = espace
+        self.dejaLa = dejaLa
     }
 }
 
@@ -487,17 +505,29 @@ public struct ResultatApplication: Codable, Sendable {
     public var rejoue: Bool?
 
     /// Le statut de la carte après application, dans le vocabulaire de la conversation.
-    public var statut: String { etat == "echouee" ? "echec" : "applique" }
+    public var statut: String { etat == "echouee" && !toutDejaLa ? "echec" : "applique" }
+
+    /// Rien d'écrit parce que tout existait déjà (« deja_la », ou une tour
+    /// d'avant le 24/10 qui le comptait comme un échec).
+    public var toutDejaLa: Bool {
+        let r = results ?? []
+        return etat == "deja_la" || (!r.isEmpty && r.allSatisfy(\.estDejaLa))
+    }
 
     /// Le bilan au même format que celui que le serveur range dans la conversation.
     public var bilan: Bilan {
         let r = results ?? []
+        let deja = r.filter(\.estDejaLa).compactMap { $0.nom ?? $0.titre }
         return Bilan(
-            faits: r.filter { $0.ok == true }.compactMap { $0.nom ?? $0.titre },
-            echoues: r.filter { $0.ok != true }.map { Echec(nom: $0.nom ?? $0.titre, erreur: $0.erreur) },
-            espace: r.first { $0.ok == true && $0.espace != nil }?.espace
+            faits: r.filter { $0.ok == true && !$0.estDejaLa }.compactMap { $0.nom ?? $0.titre },
+            echoues: r.filter { $0.ok != true && !$0.estDejaLa }.map { Echec(nom: $0.nom ?? $0.titre, erreur: $0.erreur) },
+            espace: r.first { $0.ok == true && $0.espace != nil }?.espace,
+            dejaLa: deja.isEmpty ? nil : deja
         )
     }
+
+    /// Échecs réels, sans les doublons évités.
+    public var vraisEchecs: Int { bilan.echoues?.count ?? 0 }
 }
 
 public struct ResultatAction: Codable, Sendable {
@@ -506,6 +536,16 @@ public struct ResultatAction: Codable, Sendable {
     public var nom: String?
     public var titre: String?
     public var erreur: String?
+    /// Déjà dans Motion ou dans l'agenda : rien n'a été créé (24/10).
+    public var dejaLa: Bool?
+    public var note: String?
+
+    /// Une tour d'avant le 24/10 rend un doublon comme un échec : relu ici.
+    public var estDejaLa: Bool {
+        if dejaLa == true { return true }
+        guard ok == false, let e = erreur else { return false }
+        return e.contains("existe déjà dans Motion") || e.contains("déjà dans ton agenda")
+    }
 }
 
 /// Réponse de /api/motion/undo et /api/google/undo.
