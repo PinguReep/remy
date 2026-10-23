@@ -267,6 +267,34 @@ notes privées, sur la tour.
   réflexion (mémorisé par modèle), et `nettoyerSortie` la retire de toute façon
   à la fin, avec les jetons `<｜…｜>` de DeepSeek. Ses appels d'outils écrits en
   texte sont exécutés comme ceux de GLM (des propositions).
+- **Activité du PC** (`activite-pc-v1`, `lib/activite-pc.js`, migration 9,
+  24/10) : ActivityWatch tourne sur la tour (`REMY_ACTIVITYWATCH_URL`, défaut
+  `http://127.0.0.1:5600`, API REST `/api/0`) ; Rémy le LIT seulement. Job
+  `activite-pc-releve` toutes les 20 min (sans IA, dès que l'app l'a allumée) :
+  ce qui est nouveau depuis le curseur, jusqu'à 5 min avant maintenant (l'absence
+  n'est décidée qu'après 3 min d'inactivité, datée en arrière), une tranche par
+  jour (heure de la tour), totaux et curseur écrits dans la même transaction —
+  une coupure ne compte jamais deux fois. Temps actif = fenêtre au premier plan
+  ∩ « not-afk », moins « afk » (l'absence l'emporte sur un chevauchement) ;
+  segments qui se chevauchent : le plus récent l'emporte. Gardé (table
+  `activite_pc`) : secondes par jour × application (exécutable sans `.exe`) et
+  par domaine pour le navigateur (extension aw-watcher-web, domaine seul, jamais
+  le chemin, onglets privés ignorés). **Les titres de fenêtres ne sont jamais
+  écrits** (test : absents du fichier de la base). Catégories par table
+  (`CATEGORIES`, sans IA), réglables (`REMY_ACTIVITE_CATEGORIES=appli=jeux,…` ou
+  `categories` depuis l'API) ; `REMY_ACTIVITE_EXCLURE` + exclusions de l'app :
+  jamais comptées (ce qui l'était s'efface). Premier allumage : depuis minuit ;
+  rallumée après une coupure voulue, ou après « tout effacer » : à partir de
+  maintenant (le passé d'ActivityWatch n'est pas relu) ; après une panne de la
+  tour, 7 jours rattrapés au plus. ActivityWatch absent : `joignable: false` et
+  un message avec quoi faire, un seul avertissement au journal, réessai au
+  relevé suivant. 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
+  `GET/PUT/DELETE /api/activite-pc`, `POST /api/activite-pc/collecte`.
+  La note « Activité du PC » (aujourd'hui et 7 jours par catégorie, présentée
+  comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude.
+  `REMY_ACTIVITE_PC=off` coupe tout. Il n'existe pas encore d'analyse
+  hebdomadaire où ranger les totaux de la semaine : ils sont dans la vue
+  (`semaine`, `parJour`) et dans la note du modèle local.
 
 ## App iPhone
 
@@ -306,11 +334,18 @@ notes privées, sur la tour.
 - Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
+- Réglages › Activité du PC (`RemyCore/ActivitePC.swift`, `ActivitePCVue`,
+  24/10) : visible si la tour a `activite-pc-v1`. Interrupteur (le premier
+  relevé se fait pendant la requête, 8 s au plus), état d'ActivityWatch avec
+  quoi faire, aujourd'hui et 7 jours par catégorie (barres), applis de la
+  semaine (glisser = ne plus compter), sites par domaine, exclusions, « Tout
+  effacer » confirmé. Tirer pour rafraîchir = relever maintenant.
 
 ## CI
 
 - `ios-native.yml` : build, tests du cœur, intégration contre `server.js` avec de
-  faux services (Motion, Google, GLM, dictée), captures (dont iPhone SE).
+  faux services (Motion, Google, GLM, dictée, ActivityWatch sur :9993), captures
+  (dont iPhone SE).
 - `ios-testflight.yml` : n'envoie qu'après tous les tests verts ; nettoie avant
   chaque archive les certificats de développement créés par l'API (plafond Apple).
 - `serveur.yml` : `npm test` sur Ubuntu et Windows, et syntaxe des scripts
