@@ -138,6 +138,10 @@ test("Sam nomme un lieu, le renomme, le supprime ; « tout effacer » garde ses 
   assert.ok(v.aujourdhui.length >= 2);
   assert.equal(v.geocodage.pret, true);
   await envoyer("DELETE", "/api/lieux/historique");
+  // Une visite en cours au moment d'effacer : son départ, livré plus tard par
+  // iOS avec le même identifiant, ne la fait pas revenir.
+  const tard = lieux.recevoir([{ type: "visite", id: "v2", arrivee: maintenant - 2 * H, depart: maintenant - 60_000, lat: 45.70003, lon: 4.80004, precision: 10 }]);
+  assert.equal(tard.ecartes, 1);
   const apres = await (await fetch(`${base}/api/lieux`)).json();
   assert.equal(apres.aujourdhui.length, 0);
   assert.deepEqual(apres.lieux.map((l) => l.nom), ["Chez moi"], "le lieu nommé reste, sans visite");

@@ -155,10 +155,13 @@ public struct GeocodageTour: Codable, Equatable, Sendable {
 public struct CommercesTour: Codable, Equatable, Sendable {
     public var pret: Bool
     public var commerces: Int?
+    /// Importée avant les règles du 23/10 (piscines privées, limites gonflées).
+    public var aRefaire: Bool?
 
-    public init(pret: Bool, commerces: Int?) {
+    public init(pret: Bool, commerces: Int?, aRefaire: Bool? = nil) {
         self.pret = pret
         self.commerces = commerces
+        self.aRefaire = aRefaire
     }
 }
 
