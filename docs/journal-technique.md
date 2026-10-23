@@ -4,6 +4,31 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-24 — Feuille de partage : texte, lien, image vers la tour
+
+- Texte et lien : la capture existante (`POST /api/capture`), source
+  `partage` (nouvelle ; une tour plus ancienne la lit comme `note`). Le lien
+  part avec son titre et le mot facultatif de Sam ; la tour refusant les
+  textes de moins de 30 caractères, l'extension le dit avant d'envoyer
+  (« ajoute un mot pour lui ») au lieu d'essuyer un 400.
+- Image : aucune route existante ne prenait d'image (`analyser` et `extraire`
+  lisent du texte), d'où `POST /api/capture/image` (capacité `partage-v1`).
+  L'iPhone réduit l'image (ImageIO, 1600 px, JPEG sous 1,5 Mo) et lit son
+  texte lui-même (Vision, hors ligne) : la tour ne voit jamais d'appel à un
+  service d'image. Elle vérifie le format dans les octets (JPEG/PNG, 3 Mo au
+  plus), range l'image dans le coffre (`Captures/Images`, affichée dans la
+  note de capture, nommée comme l'image pour que deux images du même jour ne
+  s'écrasent pas) et distille le texte lu + le mot de Sam comme une capture,
+  avec le **modèle local seulement** (`prive`) : une capture d'écran peut
+  montrer n'importe quoi. Sans texte, l'image est rangée sans appel au modèle.
+- Tour pas encore à jour (404 sur la route d'image) : le texte lu part seul
+  par la capture, et le reçu le dit ; sans texte, « mets ta tour à jour ».
+- Erreurs (`EchecPartage`) : pas connecté (« Ouvre Rémy une fois »), 401
+  (« reconnecte-toi »), tour injoignable (« vérifie Tailscale »), refus de la
+  tour (son message). Toujours « Copier » (texte et image au presse-papiers).
+  Le reçu reprend celui de la capture : « J'ai compris. Classé. » + ce que
+  Rémy en a retenu.
+
 ## 2026-10-24 — Extensions iPhone : un trousseau partagé, pas de groupe d'app
 
 - Deux extensions embarquées dans l'app : `RemyWidgets` (WidgetKit,

@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "partage", serie: 3, date: "24 oct.", titre: "Partager vers Rémy", capacite: nil, pages: [
+            .init(symbole: "square.and.arrow.up", titre: "Depuis n'importe quelle app",
+                  texte: "Un texte, un lien, une capture d'écran : Partager › Rémy. Ajoute un mot si tu veux, puis « Envoyer à Rémy » : il le lit, le classe et te dit ce qu'il en a retenu."),
+            .init(symbole: "ellipsis.circle", titre: "Rémy n'est pas dans la liste ?",
+                  texte: "Fais défiler la rangée d'apps jusqu'à « Plus », touche « Modifier », puis le « + » à côté de Rémy : il passe dans tes favoris, en tête de la feuille de partage."),
+            .init(symbole: "text.viewfinder", titre: "Les captures d'écran",
+                  texte: "Ton iPhone lit lui-même le texte de l'image ; Rémy n'apprend que de ce texte, avec le modèle local de ta tour. L'image est rangée dans ton coffre (Captures)."),
+        ]),
         Nouveaute(id: "widget-capture", serie: 3, date: "24 oct.", titre: "Capturer depuis l'écran d'accueil", capacite: nil, pages: [
             .init(symbole: "plus.square", titre: "Le widget « Capturer »",
                   texte: "Appui long sur l'écran d'accueil › « + » › Rémy. Un toucher sur le widget ouvre directement la capture : une idée, une tâche, un rappel. Il existe aussi en rond pour l'écran verrouillé."),

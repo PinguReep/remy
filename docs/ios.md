@@ -103,6 +103,15 @@ tag) avant l'échéance.
   lisent l'adresse de la tour et le jeton dans un trousseau partagé
   (`keychain-access-groups`, pas de groupe d'app) : `TrousseauPartage` dans le
   cœur. Liens `remy://capture`, `remy://aujourdhui|remy|projets` (`LienRemy`).
+- Feuille de partage (24/10) : Partager › Rémy depuis n'importe quelle app.
+  Un texte ou un lien part par la capture (source `partage`) ; une image est
+  réduite sur l'iPhone (1600 px, JPEG ≤ 1,5 Mo), son texte lu par Vision sur
+  l'appareil, puis envoyée à `POST /api/capture/image` (rangée dans le coffre,
+  `Captures/Images` ; le texte lu est distillé par le modèle local seulement).
+  Préparation et erreurs dans le cœur (`EnvoiPartage`, testées sous Linux) ;
+  l'extension ne fait que lire les pièces jointes (`LecturePartage`) et
+  afficher la feuille (`FeuillePartage`). Pour l'avoir en tête de la feuille
+  de partage : rangée d'apps › « Plus » › « Modifier » › « + » à côté de Rémy.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

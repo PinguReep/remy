@@ -90,6 +90,16 @@ test("une capture d'écran avec du texte : gardée même sans modèle local, jam
   assert.match(captures[0].apercu, /Ce que Sam en dit : à ne pas oublier/);
 });
 
+test("deux images du même jour gardent chacune leur note", async () => {
+  const a = await envoyer({ image: JPEG });
+  const b = await envoyer({ image: JPEG });
+  assert.notEqual(a.corps.image, b.corps.image);
+  for (const r of [a, b]) {
+    const nom = path.posix.basename(r.corps.image).replace(/\.jpg$/, ".md");
+    assert.match(fs.readFileSync(path.join(vault, "Captures", nom), "utf8"), new RegExp(r.corps.image.replace(/[.]/g, "\\.")));
+  }
+});
+
 test("une image refusée le dit en clair (format, poids, rien reçu)", async () => {
   const gif = await envoyer({ image: "R0lGODlhAQABAAAAACw=" });
   assert.equal(gif.status, 415);
