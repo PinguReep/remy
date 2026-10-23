@@ -23,6 +23,9 @@ extension TableauModel {
             app?.dire("« \(titre) » commencée. Motion sera prévenu quand tu la termines.", annuler: { [weak self] in
                 Task { await self?.arreter(id: id, titre: titre) }
             })
+            if let e = donnees?.journee?.items?.first(where: { $0.type == "tache" && $0.id == id }) {
+                await surCommencee?(e)
+            }
             return true
         } catch {
             defaire()

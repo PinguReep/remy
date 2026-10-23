@@ -518,6 +518,9 @@ public final class TableauModel {
     /// La file d'envoi : chaque geste y est écrit avant de partir, et n'en
     /// sort qu'une fois la tour l'ayant reçu.
     public private(set) var envoi: [Commande] = []
+    /// Une tâche vient d'être commencée (« Commencer », où que ce soit) :
+    /// l'app y démarre l'activité en direct (24/10).
+    @ObservationIgnored public var surCommencee: (@MainActor (ElementJour) async -> Void)?
 
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI

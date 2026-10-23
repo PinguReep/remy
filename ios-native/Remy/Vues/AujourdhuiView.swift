@@ -307,6 +307,20 @@ private struct CarteMaintenant: View {
             BoutonA(titre: "Préparer avec Rémy", symbole: "bubble.left", principal: false) {
                 demander(Brouillons.rendezVous(e), Fils.journee(Date()))
             }
+        case .suivant(let e) where e.type == "tache" && peutCommencer:
+            // « Commencer » : la tâche passe en cours tout de suite, et
+            // l'activité en direct démarre (écran verrouillé, Dynamic Island).
+            entete(e.titre, projet: e.projet, etat: "À VENIR")
+            detail(avenir(e))
+            HStack(spacing: 10) {
+                BoutonA(titre: "Commencer", symbole: "play.fill") {
+                    Haptique.leger()
+                    Task { await app.tableau.commencer(id: e.id, titre: e.titre, duree: e.duree ?? e.dureeTotale) }
+                }
+                BoutonA(titre: "En parler", symbole: "bubble.left", principal: false) {
+                    demander(Brouillons.tache(e.titre), Fils.journee(Date()))
+                }
+            }
         case .suivant(let e):
             entete(e.titre, projet: e.projet, etat: "À VENIR")
             detail(avenir(e))
@@ -316,7 +330,15 @@ private struct CarteMaintenant: View {
         case .aFaire(let t, let total):
             entete(t.titre, projet: t.projet, etat: "À FAIRE AUJOURD'HUI")
             if total > 1 { detail("et \(total - 1) autre\(total > 2 ? "s" : "") tâche\(total > 2 ? "s" : "") aujourd'hui") }
-            BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+            HStack(spacing: 10) {
+                BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+                if peutCommencer {
+                    BoutonA(titre: "Commencer", symbole: "play.fill", principal: false) {
+                        Haptique.leger()
+                        Task { await app.tableau.commencer(id: t.id, titre: t.titre, duree: t.duree) }
+                    }
+                }
+            }
         case .rienDePrevu(let retards):
             TitreSection(texte: "Temps libre")
             Text("Plus rien de prévu").font(Police.titre(26)).foregroundStyle(Palette.encre)
@@ -342,6 +364,9 @@ private struct CarteMaintenant: View {
             detail("Rien à afficher pour le moment.")
         }
     }
+
+    /// « Commencer » vit sur la tour (taches-etat-v2) : caché sans elle.
+    private var peutCommencer: Bool { app.serveur?.sait("taches-etat-v2") == true }
 
     /// La tâche en cours : le gros chiffre du temps restant, rapporté au temps
     /// attribué (Sam, 15/10 : « 50 min sur 1 h 30 »), la barre du temps,

@@ -11,6 +11,8 @@ struct ReglagesView: View {
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @AppStorage("theme") private var theme = "auto"
     @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
+    @AppStorage(ActiviteEnDirect.cleActive) private var activiteActive = true
+    @AppStorage(ActiviteEnDirect.cleAuto) private var activiteAuto = true
     @State private var memoire = false
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
@@ -89,6 +91,7 @@ struct ReglagesView: View {
                     .padding(.vertical, 10)
                     .frame(minHeight: 60)
                     .overlay(alignment: .bottom) { Filet() }
+                    activiteEnDirect
                     if let r = reglages, r.rechercheWeb != nil {
                         rechercheWeb(r)
                         if r.rechercheWeb == true { contexteCloud(r) }
@@ -650,6 +653,56 @@ struct MemoireView: View {
             } catch {
                 app.signaler(error)
             }
+        }
+    }
+}
+
+// MARK: - Activité en direct (24/10)
+
+extension ReglagesView {
+    /// La tâche en cours sur l'écran verrouillé et dans la Dynamic Island.
+    /// Coupée : plus aucune activité ; « Démarrer seule » coupé : seulement
+    /// avec « Commencer ».
+    @ViewBuilder
+    var activiteEnDirect: some View {
+        let autorisee = ActiviteEnDirect.partagee.autorisee
+        Toggle(isOn: $activiteActive) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Activité en direct").font(Police.texte(16, .medium))
+                Text(autorisee
+                     ? "La tâche en cours sur l'écran verrouillé et dans la Dynamic Island, avec Terminer et +15 min."
+                     : "Coupées dans les réglages de l'iPhone (Rémy › Activités en direct) : rien ne s'affichera.")
+                    .font(Police.texte(13))
+                    .foregroundStyle(Palette.encre2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Palette.signal)
+        .foregroundStyle(Palette.encre)
+        .padding(.vertical, 10)
+        .frame(minHeight: 60)
+        .overlay(alignment: .bottom) { Filet() }
+        .onChange(of: activiteActive) { _, actif in
+            Task {
+                if actif { await ActiviteEnDirect.partagee.suivre() } else { await ActiviteEnDirect.partagee.toutArreter() }
+            }
+        }
+        if activiteActive {
+            Toggle(isOn: $activiteAuto) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Démarrer seule").font(Police.texte(16, .medium))
+                    Text("Quand une tâche commence pendant que l'app est ouverte. Coupé : seulement avec « Commencer ».")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.signal)
+            .foregroundStyle(Palette.encre)
+            .padding(.vertical, 10)
+            .padding(.leading, 40)
+            .frame(minHeight: 60)
+            .overlay(alignment: .bottom) { Filet() }
         }
     }
 }

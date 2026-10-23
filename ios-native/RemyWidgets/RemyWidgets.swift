@@ -2,14 +2,38 @@ import WidgetKit
 import SwiftUI
 import RemyCore
 
-// Les widgets de Rémy (24/10). Pour l'instant un seul, sans réseau : « + »
-// qui ouvre la capture (remy://capture). Les widgets qui lisent la tour passent
-// par TrousseauPartage.systeme.client() (lecture seule du trousseau partagé).
+// Les widgets de Rémy (24/10) : « Capturer » (sans réseau), « Maintenant »
+// (lit la tour par le trousseau partagé), l'activité en direct de la tâche en
+// cours, et sur iOS 18 le contrôle « Capturer » du Centre de contrôle.
 
+/// Le point d'entrée choisit le paquet selon la version d'iOS : les contrôles
+/// n'existent qu'à partir d'iOS 18.
 @main
+struct PointEntreeWidgets {
+    static func main() {
+        if #available(iOS 18.0, *) {
+            WidgetsRemy18.main()
+        } else {
+            WidgetsRemy.main()
+        }
+    }
+}
+
 struct WidgetsRemy: WidgetBundle {
     var body: some Widget {
         WidgetCapture()
+        WidgetMaintenant()
+        WidgetActiviteTache()
+    }
+}
+
+@available(iOS 18.0, *)
+struct WidgetsRemy18: WidgetBundle {
+    var body: some Widget {
+        WidgetCapture()
+        WidgetMaintenant()
+        WidgetActiviteTache()
+        ControleCapture()
     }
 }
 
