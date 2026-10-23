@@ -5412,13 +5412,24 @@ if ("serviceWorker" in navigator) {
 }
 
 // ---------- Init ----------
+// La conversation s'ouvre sur le fil du jour (24/10) : le plus récent touché
+// aujourd'hui. Sinon un écran neuf — avant, c'était le premier de la liste
+// (l'épinglé, ou un fil de la semaine dernière) et chaque question s'y empilait.
+// Le dernier fil reste à un geste dans la liste.
+function filDuJour(convs) {
+  return (convs || [])
+    .filter((c) => !c.origine && !c.systeme && (c.updatedAt || 0) >= minuitLocal())
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
+}
+
 async function init() {
   if (window.innerWidth <= 720) $("#sidebar").classList.add("hidden");
   try {
     const convs = await api.list();
     await refreshList();
     showToday(true);
-    if (convs.length) openConv(convs[0].id, null, { garderVue: true });
+    const duJour = filDuJour(convs);
+    if (duJour) openConv(duJour.id, null, { garderVue: true });
     else showChat(false);
     loadBriefing();
     probeStt();
