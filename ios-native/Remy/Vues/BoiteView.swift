@@ -68,7 +68,7 @@ extension BoiteView {
 }
 
 /// Un sujet de la nuit : en parler, c'est fait, laisser tomber — ou le rouvrir.
-private struct CarteSujet: View {
+struct CarteSujet: View {
     @Environment(AppModel.self) private var app
     let sujet: Sujet
     let generatedAt: Millis?

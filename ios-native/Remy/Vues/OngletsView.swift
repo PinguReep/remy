@@ -33,6 +33,9 @@ final class EtatInterface {
     var analyseDemo = false
     var filtreDemo = false
     var onboardingDemo: Int?
+    /// Le rendez-vous quotidien (24/10) : briefing du matin, bilan du soir.
+    var briefingOuvert = false
+    var bilanOuvert = false
 }
 
 enum ModeConseil: Equatable { case detail, pourquoi }
@@ -113,6 +116,7 @@ struct OngletsView: View {
         .sheet(isPresented: $app.reglagesOuverts) { ReglagesView() }
         .sheet(isPresented: $ui.captureOuverte) { CaptureView().environment(ui) }
         .sheet(isPresented: $ui.boiteOuverte) { BoiteView() }
+        .modifier(RendezVousQuotidien(ui: ui))
         // Les nouveautés d'une mise à jour (21/10), une fois : Réglages › Nouveautés pour revoir.
         .sheet(item: Binding(get: { app.nouveautes.affichees }, set: { if $0 == nil { app.nouveautes.fermer() } })) { lot in
             NouveautesFeuille(lot: lot) { app.nouveautes.fermer() }
@@ -163,6 +167,43 @@ struct OngletsView: View {
                 if app.tableau.gestesEnAttente > 0 { await app.tableau.envoyerEnAttente() }
             }
         }
+    }
+}
+
+/// Le rendez-vous quotidien branché sur les onglets (24/10) : ses feuilles,
+/// ses notifications reprogrammées quand la tour l'a recalculé ou que Sam
+/// change ses heures, et la notification touchée qui ouvre le bon écran.
+private struct RendezVousQuotidien: ViewModifier {
+    @Environment(AppModel.self) private var app
+    let ui: EtatInterface
+    @State private var route = RouteRituel.partagee
+    @AppStorage(ReglagesRituel.cleMatin) private var matin = false
+    @AppStorage(ReglagesRituel.cleHeureMatin) private var heureMatin = ReglagesRituel.heureMatinParDefaut
+    @AppStorage(ReglagesRituel.cleSoir) private var soir = false
+    @AppStorage(ReglagesRituel.cleHeureSoir) private var heureSoir = ReglagesRituel.heureSoirParDefaut
+
+    func body(content: Content) -> some View {
+        @Bindable var ui = ui
+        content
+            .sheet(isPresented: $ui.briefingOuvert) { BriefingVue() }
+            .sheet(isPresented: $ui.bilanOuvert) { BilanVue() }
+            .task(id: cle) {
+                await Notifications.planifierRituel(app.rituel.donnees, prepareA: app.rituel.le, reglages: .lire())
+                FondRituel.programmer()
+            }
+            .onChange(of: route.demande) { _, d in ouvrir(d) }
+            .onAppear { ouvrir(route.demande) }
+    }
+
+    private var cle: String {
+        "\(app.rituel.le?.timeIntervalSince1970 ?? 0)-\(matin)-\(heureMatin)-\(soir)-\(heureSoir)"
+    }
+
+    private func ouvrir(_ demande: String?) {
+        guard let demande else { return }
+        route.demande = nil
+        app.onglet = .aujourdhui
+        if demande == "soir" { ui.bilanOuvert = true } else { ui.briefingOuvert = true }
     }
 }
 
@@ -226,6 +267,8 @@ extension OngletsView {
         case "noeud":
             ui.cheminProjets = [.noeud(env["REMY_DEMO_ANCRE"] ?? "motion:p1")]
         case "boite": ui.boiteOuverte = true
+        case "briefing": ui.briefingOuvert = true
+        case "bilan": ui.bilanOuvert = true
         default: break
         }
     }

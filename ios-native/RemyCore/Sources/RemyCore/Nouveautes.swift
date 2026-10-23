@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "rituel", serie: 3, date: "24 oct.", titre: "Ton rendez-vous quotidien", capacite: "rituel-v1", pages: [
+            .init(symbole: "sunrise", titre: "Le matin, trois lignes",
+                  texte: "Ce qui compte aujourd'hui, pourquoi, et ce qui est menacé, dans une notification à l'heure que tu choisis. Calculé par ta tour, sans IA. Coupé tant que tu ne l'allumes pas."),
+            .init(symbole: "exclamationmark.triangle", titre: "Les échéances menacées",
+                  texte: "En haut d'Aujourd'hui : une tâche qui ne tiendra plus son échéance, avant qu'elle soit en retard, avec l'action utile (repousser, ou demander à Rémy)."),
+            .init(symbole: "moon.stars", titre: "Le soir, 30 secondes",
+                  texte: "Fait, glissé, et tout ce qui reste vers demain d'un geste (annulable). Une ligne sur ta journée si tu veux : Rémy la relit la nuit. Réglages › Rendez-vous quotidien."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
