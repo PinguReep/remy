@@ -531,6 +531,34 @@ struct ReglagesRituelVue: View {
     }
 }
 
+/// Réglages › Capture : où va une pensée sans action claire (24/10).
+struct ReglageCapture: View {
+    @AppStorage(GenreCapture.cleParDefaut) private var parDefaut = "idees"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                Image(systemName: "tray.and.arrow.down").font(.system(size: 18)).frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Une pensée sans action claire").font(Police.texte(16, .medium))
+                    Text("« Appeler le garage » reste une tâche Motion ; « un clip en noir » va où tu choisis.")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Picker("Une pensée sans action claire", selection: $parDefaut) {
+                Text("Dans les Idées").tag("idees")
+                Text("Dans Motion").tag("motion")
+            }
+            .pickerStyle(.segmented)
+        }
+        .foregroundStyle(Palette.encre)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Filet() }
+    }
+}
+
 /// Les outils du constructeur, rangés à part (24/10) : utiles pour comprendre
 /// ce que fait Rémy, pas pour la journée.
 enum Diagnostic {
