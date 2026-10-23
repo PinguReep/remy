@@ -28,6 +28,9 @@ struct RemyApp: App {
         // La journée et les gestes pas encore envoyés restent sur l'iPhone (J1.2).
         let modele = AppModel(api: ClientAPI(base: base), rangement: Rangement.parDefaut())
         modele.nomAppareil = UIDevice.current.name
+        // Widgets et feuille de partage (24/10) : l'adresse de la tour est
+        // recopiée dans le trousseau partagé au démarrage et à la connexion.
+        modele.partage = .systeme
         // Un seul micro pour la dictée et l'appel : l'un coupe l'autre.
         let micro = MicroiPhone()
         micro.coupure = { [weak modele] in modele?.dictee.interrompre() }
@@ -49,9 +52,12 @@ struct RemyApp: App {
                     .environment(app)
                     .tint(Palette.encre)
                     .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+                    // remy://capture (widget) ou remy://projets… : LienRemy.
+                    .onOpenURL { url in _ = app.ouvrir(url) }
             } else {
                 AdresseTourVue { url in
                     ClientAPI.retenirAdresse(url)
+                    TrousseauPartage.systeme.publier(url)
                     let m = Self.modele(url)
                     reseau.demarrer(m)
                     app = m

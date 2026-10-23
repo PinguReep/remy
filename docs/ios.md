@@ -59,7 +59,8 @@ Les e-mails des testeurs et les URL signées des images ne sont jamais écrits.
      compilation. Sans lui, l'app la demande une fois au premier lancement et la
      garde sur l'iPhone. Elle n'est jamais écrite dans le dépôt, qui est public.
 4. **Lancer le workflow une fois** (Actions → « iOS → TestFlight » → Run workflow) :
-   il enregistre le Bundle ID `com.pingureep.remy` chez Apple.
+   il enregistre les Bundle ID `com.pingureep.remy`, `com.pingureep.remy.widgets`
+   et `com.pingureep.remy.partage` (app, widgets, feuille de partage) chez Apple.
 5. **Créer la fiche de l'app** : App Store Connect → Apps → ＋ → Nouvelle app →
    iOS · Nom « Rémy » · Bundle ID `com.pingureep.remy` · SKU `remy-001`. C'est la
    seule étape qu'Apple ne laisse pas automatiser.
@@ -97,6 +98,11 @@ tag) avant l'échéance.
 ## Notes techniques
 
 - Bundle ID `com.pingureep.remy` · iOS 17 minimum · iPhone uniquement.
+- Extensions (24/10) : `RemyWidgets` (`com.pingureep.remy.widgets`) et
+  `RemyPartage` (`com.pingureep.remy.partage`), même version que l'app. Elles
+  lisent l'adresse de la tour et le jeton dans un trousseau partagé
+  (`keychain-access-groups`, pas de groupe d'app) : `TrousseauPartage` dans le
+  cœur. Liens `remy://capture`, `remy://aujourdhui|remy|projets` (`LienRemy`).
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

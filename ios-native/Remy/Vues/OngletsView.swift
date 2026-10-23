@@ -121,6 +121,9 @@ struct OngletsView: View {
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
         .task { await demo() }
+        // Un lien remy://capture (widget) : la capture s'ouvre, une autre
+        // feuille fermée d'abord (iOS n'en présente qu'une à la fois).
+        .task(id: app.lien) { await ouvrirLien() }
         // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert.
         .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
@@ -167,6 +170,27 @@ struct OngletsView: View {
 }
 
 extension OngletsView {
+    /// Le lien n'est retiré qu'à la fin : changer `app.lien` annule cette tâche
+    /// (task(id:)), et l'attente avec.
+    fileprivate func ouvrirLien() async {
+        guard app.lien == .capture else { return }
+        let ouverte = app.reglagesOuverts || ui.choixTache || ui.historiqueOuvert || ui.boiteOuverte
+            || ui.filtreDemo || ui.onboardingDemo != nil || ui.modifier != nil || app.nouveautes.affichees != nil
+        app.reglagesOuverts = false
+        ui.choixTache = false
+        ui.historiqueOuvert = false
+        ui.boiteOuverte = false
+        ui.filtreDemo = false
+        ui.onboardingDemo = nil
+        ui.modifier = nil
+        if app.nouveautes.affichees != nil { app.nouveautes.fermer() }
+        ui.gerer = nil
+        // La feuille fermée doit finir de descendre avant d'en présenter une autre.
+        if ouverte { try? await Task.sleep(nanoseconds: 450_000_000) }
+        ui.captureOuverte = true
+        app.lien = nil
+    }
+
     /// Captures de la CI : ouvre le panneau demandé une fois la journée chargée.
     /// Inactif sans les variables d'environnement de démonstration.
     fileprivate func demo() async {
