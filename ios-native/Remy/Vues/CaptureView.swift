@@ -114,6 +114,7 @@ struct CaptureView: View {
                         .foregroundStyle(Palette.encre)
                         .lineLimit(1...6)
                         .focused($focus)
+                        .accessibilityIdentifier("capture.champ")
                     if micro {
                         bouton("mic", "Dicter") {
                             focus = false
@@ -157,6 +158,7 @@ struct CaptureView: View {
                                 choisi = (choisi == g) ? nil : g
                             }
                             .id(g)
+                            .accessibilityIdentifier("capture.genre." + g.rawValue)
                         }
                     }
                 }
@@ -190,6 +192,7 @@ struct CaptureView: View {
                 }
             }
             BoutonA(titre: envoi ? "…" : action, symbole: "arrow.up") { Task { await noter() } }
+                .accessibilityIdentifier("capture.valider")
                 .disabled(!pret)
                 .opacity(pret ? 1 : 0.45)
         }

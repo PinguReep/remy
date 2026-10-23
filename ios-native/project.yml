@@ -78,3 +78,37 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+  # Parcours du quotidien joués sur le simulateur (XCUITest) contre la tour de
+  # démo : .github/workflows/ios-parcours.yml, à la demande. Rien de cette cible
+  # n'entre dans l'app livrée.
+  RemyParcours:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: RemyParcours
+        excludes:
+          - "*.mjs"
+          - "*.py"
+          - "*.md"
+    dependencies:
+      - target: Remy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pingureep.remy.parcours
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Remy
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+schemes:
+  # Le schéma « Remy » reste créé automatiquement (build, TestFlight) ; celui-ci
+  # ne sert qu'aux parcours.
+  RemyParcours:
+    build:
+      targets:
+        Remy: all
+        RemyParcours: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - name: RemyParcours
