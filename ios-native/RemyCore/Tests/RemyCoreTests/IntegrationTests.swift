@@ -70,6 +70,26 @@ final class IntegrationTests: XCTestCase {
             let apres = try await app.api.listes()
             XCTAssertFalse(apres.contains { $0.id == l.id })
         }
+        // Activité du PC (24/10) : allumée, la tour relit le faux ActivityWatch de la CI.
+        if v.sait("activite-pc-v1") {
+            let allumee = await app.activitePC.activer(true)
+            XCTAssertTrue(allumee, app.toast ?? "")
+            let a = try XCTUnwrap(app.activitePC.vue, "vue de l'activité décodée")
+            XCTAssertTrue(a.actif)
+            XCTAssertEqual(a.activitywatch.joignable, true, a.activitywatch.message ?? "")
+            XCTAssertNil(a.probleme)
+            XCTAssertEqual(a.semaine.parJour?.count, 7)
+            let exclue = await app.activitePC.exclure("Discord.exe")
+            XCTAssertTrue(exclue, app.toast ?? "")
+            XCTAssertEqual(app.activitePC.vue?.exclusions, ["discord"])
+            XCTAssertFalse(app.activitePC.vue?.semaine.applis.contains { $0.nom == "discord" } ?? true)
+            // Rien ne reste derrière (les captures suivent ce test).
+            _ = await app.activitePC.retirerExclusion("discord")
+            _ = await app.activitePC.toutEffacer()
+            _ = await app.activitePC.activer(false)
+            XCTAssertEqual(app.activitePC.vue?.actif, false)
+            XCTAssertEqual(app.activitePC.vue?.exclusions, [])
+        }
         // Lot 1 : état de Motion, mesures et conseil, tels que la tour les rend.
         if v.sait("motion-etat-v1") { XCTAssertNotNil(t.journee?.motion, "journee.motion lu") }
         if v.sait("mesures-v1") {

@@ -66,7 +66,7 @@ jobs:
           MOTION_API_KEY=faux MOTION_BASE_URL=http://127.0.0.1:9998/v1 \
           GOOGLE_CLIENT_ID=x GOOGLE_CLIENT_SECRET=y \
           GOOGLE_API_URL=http://127.0.0.1:9995/calendar/v3 GOOGLE_TOKEN_URL=http://127.0.0.1:9995/token \
-          DICTEE_LOCALE_URL=http://127.0.0.1:9997 \
+          DICTEE_LOCALE_URL=http://127.0.0.1:9997 REMY_ACTIVITYWATCH_URL=http://127.0.0.1:9993 \
           REMY_GLM_URL=http://127.0.0.1:9994/v1 REMY_CERVEAU=cloud REMY_PLANIF=off \
           CRON_SECRET=ci REMY_ENV=test PORT=3000 nohup node server.js > serveur.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
@@ -216,6 +216,7 @@ jobs:
           capture 6c-modele-sombre dark modeles
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
+          capture 6f-activite-pc-clair light activite-pc
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
