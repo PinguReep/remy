@@ -30,6 +30,15 @@ test("une source inventée retombe sur « note » plutôt que d'être crue", () 
   for (const s of SOURCES) assert.equal(nettoyerCapture(LONG, { source: s }).capture.source, s);
 });
 
+test("Siri : quelques mots dictés suffisent, mais pas rien", () => {
+  // « Noter dans Rémy » (24/10) : Sam dicte exprès, 30 caractères seraient trop.
+  assert.equal(nettoyerCapture("Appeler Paul", { source: "siri" }).capture.source, "siri");
+  assert.ok(!nettoyerCapture("ok", { source: "siri" }).capture);
+  // Les autres sources gardent leur minimum.
+  assert.ok(!nettoyerCapture("Appeler Paul", { source: "note" }).capture);
+  assert.ok(!nettoyerCapture("Appeler Paul", { source: "constructor" }).capture);
+});
+
 test("un texte démesuré est coupé et le signale", () => {
   const { capture } = nettoyerCapture("a".repeat(80_000));
   assert.ok(capture.texte.length <= 60_000);
