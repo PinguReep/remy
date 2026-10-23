@@ -14,7 +14,7 @@ final class NouveautesTests: XCTestCase {
 
     func testLePremierLancementNeMontreQueLaDerniereMiseAJour() {
         let r = suite()
-        let a = app(["modeles-v1", "lieux-v1", "jauge-v1", "compactage-v1", "regles-v1"], reglages: r)
+        let a = app(["modeles-v1", "lieux-v1", "jauge-v1", "compactage-v1", "regles-v1", "activite-pc-v1"], reglages: r)
         a.nouveautes.verifier()
         let derniere = Nouveautes.catalogue.map(\.serie).max()!
         XCTAssertEqual(Set(a.nouveautes.affichees?.entrees.map(\.serie) ?? []), [derniere], "l'historique ne s'impose pas")
@@ -29,6 +29,8 @@ final class NouveautesTests: XCTestCase {
 
     func testUneFonctionQueLaTourNeConnaitPasNestPasPresentee() {
         let r = suite()
+        // Tout le reste déjà vu : seules « lieux » et « modele » restent à montrer.
+        r.set(Nouveautes.catalogue.map(\.id).filter { $0 != "lieux" && $0 != "modele" }, forKey: NouveautesModel.cleVues)
         let a = app(["lieux-v1"], reglages: r)
         a.nouveautes.verifier()
         XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["lieux"], "le modèle attend la mise à jour de la tour")
@@ -68,10 +70,12 @@ final class NouveautesTests: XCTestCase {
         let lot = a.nouveautes.lot(pour: jauge)
         XCTAssertEqual(lot.entrees, [jauge])
         XCTAssertNil(a.nouveautes.affichees, "revoir ne passe pas par la feuille du lancement")
-        let modele = Nouveautes.catalogue.first { $0.id == "modele" }!
-        XCTAssertTrue(a.nouveautes.estNouvelle(modele))
-        a.nouveautes.marquerVues(a.nouveautes.lot(pour: modele))
-        XCTAssertFalse(a.nouveautes.estNouvelle(modele))
+        // Une nouveauté de la dernière mise à jour (les précédentes sont déjà « vues »).
+        let derniere = Nouveautes.catalogue.map(\.serie).max()!
+        let recente = Nouveautes.catalogue.first { $0.serie == derniere }!
+        XCTAssertTrue(a.nouveautes.estNouvelle(recente))
+        a.nouveautes.marquerVues(a.nouveautes.lot(pour: recente))
+        XCTAssertFalse(a.nouveautes.estNouvelle(recente))
     }
 
     func testLeCatalogueResteCourt() {
