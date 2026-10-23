@@ -302,6 +302,20 @@ test("le relevé passe par le moteur de jobs", async () => {
   assert.equal(j?.etat, "fait", JSON.stringify(faits));
 });
 
+test("la semaine et les 7 jours d'avant, par catégorie (pour une analyse hebdomadaire, sans IA)", async () => {
+  const il_y_a_10_jours = pc.jourDe(Date.now() - 10 * 86_400_000);
+  db().prepare("INSERT INTO activite_pc (jour, type, nom, secondes) VALUES (?, 'app', 'steam', 7200), (?, 'app', 'code', 3600)").run(il_y_a_10_jours, il_y_a_10_jours);
+  const b = pc.bilanSemaine();
+  // (Discord a été exclu plus haut : son temps déjà compté s'est effacé.)
+  assert.equal(b.semaine.total, ATTENDU.code + ATTENDU.chrome, "la semaine ne compte pas les 7 jours d'avant");
+  assert.equal(b.precedente.total, 3 * 3600);
+  assert.deepEqual(b.precedente.categories.map((c) => [c.id, c.secondes]), [["jeux", 7200], ["developpement", 3600]]);
+  const v = await lire();
+  assert.equal(v.semainePrecedente.total, 3 * 3600);
+  assert.match(pc.noteActivitePC(), /Ces 7 jours : développement 2 h 30, navigateur 30 min \(les 7 jours d'avant : 3 h au total\)/);
+  db().prepare("DELETE FROM activite_pc WHERE jour = ?").run(il_y_a_10_jours);
+});
+
 test("au-delà de 90 jours, tout s'efface ; « tout effacer » ne relit pas le passé", async () => {
   const vieux = pc.jourDe(Date.now() - 91 * 86_400_000);
   db().prepare("INSERT INTO activite_pc (jour, type, nom, secondes) VALUES (?, 'app', 'code', 3600)").run(vieux);

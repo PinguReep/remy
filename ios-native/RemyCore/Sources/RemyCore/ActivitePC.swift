@@ -138,11 +138,14 @@ public struct VueActivitePC: Codable, Equatable, Sendable {
     public var jours: Int?
     public var aujourdhui: BilanActivite
     public var semaine: BilanActivite
+    /// Les 7 jours d'avant (total et catégories), pour comparer.
+    public var semainePrecedente: BilanActivite?
     public var exclusions: [String]
     public var exclusionsTour: [String]
 
     public init(actif: Bool, coupeParLaTour: Bool = false, activitywatch: EtatActivityWatch, derniereCollecte: Millis?, releveMin: Int? = 20,
-                jours: Int? = 90, aujourdhui: BilanActivite, semaine: BilanActivite, exclusions: [String] = [], exclusionsTour: [String] = []) {
+                jours: Int? = 90, aujourdhui: BilanActivite, semaine: BilanActivite, semainePrecedente: BilanActivite? = nil,
+                exclusions: [String] = [], exclusionsTour: [String] = []) {
         self.actif = actif
         self.coupeParLaTour = coupeParLaTour
         self.activitywatch = activitywatch
@@ -151,12 +154,13 @@ public struct VueActivitePC: Codable, Equatable, Sendable {
         self.jours = jours
         self.aujourdhui = aujourdhui
         self.semaine = semaine
+        self.semainePrecedente = semainePrecedente
         self.exclusions = exclusions
         self.exclusionsTour = exclusionsTour
     }
 
     enum CodingKeys: String, CodingKey {
-        case actif, coupeParLaTour, activitywatch, derniereCollecte, releveMin, jours, aujourdhui, semaine, exclusions, exclusionsTour
+        case actif, coupeParLaTour, activitywatch, derniereCollecte, releveMin, jours, aujourdhui, semaine, semainePrecedente, exclusions, exclusionsTour
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -168,6 +172,7 @@ public struct VueActivitePC: Codable, Equatable, Sendable {
         jours = try? c.decodeIfPresent(Int.self, forKey: .jours)
         aujourdhui = (try? c.decodeIfPresent(BilanActivite.self, forKey: .aujourdhui)) ?? .vide
         semaine = (try? c.decodeIfPresent(BilanActivite.self, forKey: .semaine)) ?? .vide
+        semainePrecedente = try? c.decodeIfPresent(BilanActivite.self, forKey: .semainePrecedente)
         exclusions = (try? c.decodeIfPresent([String].self, forKey: .exclusions)) ?? []
         exclusionsTour = (try? c.decodeIfPresent([String].self, forKey: .exclusionsTour)) ?? []
     }
@@ -183,6 +188,15 @@ public struct VueActivitePC: Codable, Equatable, Sendable {
             return aw.message ?? "ActivityWatch répond, mais un de ses guetteurs ne tourne pas : relance aw-qt sur la tour."
         }
         return nil
+    }
+
+    /// « Les 7 jours d'avant : 11 h 30 (2 h 50 de plus cette semaine) » ; nil
+    /// sans rien à comparer.
+    public var comparaison: String? {
+        guard let avant = semainePrecedente?.total, avant >= 60, semaine.total >= 60 else { return nil }
+        let ecart = semaine.total - avant
+        let suite = abs(ecart) < 60 ? "autant cette semaine" : "\(ActivitePC.duree(abs(ecart))) de \(ecart > 0 ? "plus" : "moins") cette semaine"
+        return "Les 7 jours d'avant : \(ActivitePC.duree(avant)) (\(suite))."
     }
 
     /// « Relevé à 14:20 », « Premier relevé dans 20 min au plus ».

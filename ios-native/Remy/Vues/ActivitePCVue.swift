@@ -20,7 +20,7 @@ struct ActivitePCVue: View {
                     if v.actif {
                         etat(v)
                         bilan("Aujourd'hui", v.aujourdhui, vide: "Rien encore aujourd'hui : le temps compte quand tu es devant le PC. \(v.releve).")
-                        bilan("Ces 7 jours", v.semaine, vide: "Pas encore assez de relevés pour la semaine.")
+                        bilan("Ces 7 jours", v.semaine, vide: "Pas encore assez de relevés pour la semaine.", pied: v.comparaison)
                         applis(v)
                     }
                     exclusions(v)
@@ -143,7 +143,7 @@ struct ActivitePCVue: View {
     }
 
     @ViewBuilder
-    private func bilan(_ titre: String, _ b: BilanActivite, vide: String) -> some View {
+    private func bilan(_ titre: String, _ b: BilanActivite, vide: String, pied: String? = nil) -> some View {
         Section {
             if b.total < 60 {
                 Text(vide).font(Police.texte(14)).foregroundStyle(Palette.encre2)
@@ -160,6 +160,10 @@ struct ActivitePCVue: View {
                 if b.total >= 60 {
                     Text(ActivitePC.duree(b.total)).monospacedDigit()
                 }
+            }
+        } footer: {
+            if let pied {
+                Text(pied).font(Police.texte(12))
             }
         }
     }
@@ -298,6 +302,7 @@ enum ActivitePCDemo {
                                     domaines: [DureeDomaine(nom: "developer.example.org", secondes: 150 * 60), DureeDomaine(nom: "video.example", secondes: 95 * 60)])
         return VueActivitePC(actif: true, activitywatch: EtatActivityWatch(joignable: true, version: "v0.13.2", fenetre: true, afk: true, web: true),
                              derniereCollecte: maintenant - 8 * 60_000, aujourdhui: aujourdhui, semaine: semaine,
+                             semainePrecedente: BilanActivite(total: 1_540 * 60, categories: [], applis: []),
                              exclusions: ["lecteur-de-mots-de-passe"], exclusionsTour: [])
     }
 }
