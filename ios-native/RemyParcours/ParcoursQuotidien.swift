@@ -151,7 +151,7 @@ final class ParcoursQuotidien: ParcoursBase {
             constat("Tâche datée : forcée en « Tâche », l'échéance dite (vendredi) n'apparaît nulle part et n'est pas transmise à Motion (noterTache crée la tâche sans échéance, Modeles.swift:305).",
                     siFaux: texte("échéance").exists || texte("avant vendredi").exists)
             try toucher(ident("capture.valider"), "Ajouter à Motion")
-            try etape("ajoutee", attendu: [texte("Ajoutée à Motion")], delai: 15)
+            try confirmationApresFeuille("Ajoutée à Motion", champ: champ)
         }
     }
 
@@ -166,7 +166,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try saisir("Bananes, farine et levure", dans: champ)
             try etape("genre-liste", attendu: [texte("Courses")])
             try toucher(ident("capture.valider"), "Ajouter à la liste")
-            try etape("ajoutes", attendu: [texte("3 articles dans « Courses »")], delai: 10)
+            try confirmationApresFeuille("3 articles dans « Courses »", champ: champ)
             try toucher(onglet("projets"), "onglet Projets")
             let courses = boutonContenant("Courses,")
             try etape("projets", attendu: [courses])
@@ -222,8 +222,12 @@ final class ParcoursQuotidien: ParcoursBase {
             try saisir("Il faut que je prepare la facture Ondine avant vendredi", dans: composeur)
             try toucher(bouton("Envoyer"), "Envoyer")
             try etape("message-parti", attendu: [texte("prepare la facture Ondine")], delai: 8)
-            try etape("proposition", attendu: [bouton("Oui, fais-le")], delai: 45)
-            try toucher(bouton("Oui, fais-le"), "Oui, fais-le")
+            let oui = bouton("Oui, fais-le")
+            try etape("proposition", attendu: [oui], delai: 45)
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            constat("La proposition arrive sous le clavier : « Oui, fais-le » n'est pas visible sans défiler (le fil ne descend pas jusqu'au bas de la carte, clavier ouvert).",
+                    siFaux: oui.isHittable)
+            try toucher(oui, "Oui, fais-le")
             try etape("faite", attendu: [texte("C'est fait")], delai: 20)
         }
     }
@@ -247,7 +251,7 @@ final class ParcoursQuotidien: ParcoursBase {
             balayerVersLeHaut()
             try etape("bas-de-l-accueil")
             try toucher(onglet("projets"), "onglet Projets")
-            try etape("projets", attendu: [texte("Où tu mets ton énergie")])
+            try etape("projets", attendu: [texteI("Où tu mets ton énergie")])
             let semaine = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", "semaine")).firstMatch
             constat("Pas de vue « semaine » : ni l'accueil ni Projets ne montrent les jours à venir ; il faut demander à Rémy.",
                     siFaux: semaine.exists)
@@ -287,8 +291,9 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("genre-rappel", attendu: [texte("Créer le rappel")])
             try toucher(ident("capture.valider"), "Créer le rappel")
             // La première fois, iOS demande l'autorisation des notifications.
+            capturer("demande-notifications")
             accepterAlerteSysteme(6)
-            try etape("rappel-cree", absent: [champ], delai: 10)
+            try confirmationApresFeuille("Rappel : demain", champ: champ)
             try toucher(onglet("projets"), "onglet Projets")
             try toucher(bouton("Tout voir"), "Tout voir (rappels)")
             try etape("dans-les-rappels", attendu: [texte("Appeler le plombier")])
@@ -301,7 +306,7 @@ final class ParcoursQuotidien: ParcoursBase {
             lancer()
             try attendreAccueil()
             try toucher(onglet("projets"), "onglet Projets")
-            try etape("projets", attendu: [texte("Où tu mets ton énergie")])
+            try etape("projets", attendu: [texteI("Où tu mets ton énergie")])
             auditerCibles("Projets")
             constat("Pas de recherche dans le carnet (listes, rappels, projets) : seule la liste des conversations a un champ « Chercher ».",
                     siFaux: app.searchFields.firstMatch.exists)
@@ -394,22 +399,21 @@ final class ParcoursQuotidien: ParcoursBase {
             // D'abord la taille normale, pour comparer.
             lancer()
             try attendreAccueil()
-            let titreTache = texte("Finaliser la démo de la boutique")
-            let restantes = texte("min restantes")
-            try etape("taille-normale", attendu: [titreTache, restantes])
+            // Le titre de la carte (serif) et un libellé courant (Inter) : l'onglet.
+            let titreTache = nomme(app.staticTexts.matching(NSPredicate(format: "label == %@", "Finaliser la démo de la boutique")).firstMatch, "titre de la carte")
+            try etape("taille-normale", attendu: [titreTache, onglet("aujourdhui")])
             let hTitre = titreTache.frame.height
-            let hTexte = restantes.frame.height
+            let hOnglet = onglet("aujourdhui").frame.height
             app.terminate()
             lancer(arguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
             try attendreAccueil()
-            try etape("tres-grand", attendu: [texte("Finaliser la démo de la boutique")])
-            let hTitreG = texte("Finaliser la démo de la boutique").frame.height
-            let hTexteG = texte("min restantes").frame.height
-            noter(String(format: "hauteur titre de tâche %.0f → %.0f pt ; « min restantes » %.0f → %.0f pt", hTitre, hTitreG, hTexte, hTexteG))
-            constat("Dynamic Type : les titres (serif, Police.titre en taille fixe) ne grandissent pas avec le réglage de l'iPhone, contrairement au texte courant.",
-                    siFaux: hTitreG > hTitre * 1.3)
-            constat("Dynamic Type : le bouton « Terminer » n'est plus touchable sans défiler.",
-                    siFaux: ident("maintenant.terminer").isHittable)
+            try etape("tres-grand", attendu: [titreTache])
+            let hTitreG = titreTache.frame.height
+            let hOngletG = onglet("aujourdhui").frame.height
+            noter(String(format: "titre de la carte (serif) %.0f → %.0f pt ; onglet « Aujourd'hui » (Inter) %.0f → %.0f pt", hTitre, hTitreG, hOnglet, hOngletG))
+            constat("Dynamic Type incohérent : les titres en serif (Police.titre, taille fixe) ne bougent pas, le texte courant (Inter) grandit sans plafond et se casse en plein mot (« restant/es », « Aujour/d'hui ») ou se tronque (« Boutiqu… »).",
+                    siFaux: hTitreG > hTitre * 1.3 || hOngletG < hOnglet * 1.3)
+            if !ident("maintenant.terminer").isHittable { noter("au plus grand, « Terminer » demande de défiler") }
             balayerVersLeHaut()
             try etape("defile")
             try toucher(ident("noter"), "+")
@@ -424,7 +428,7 @@ final class ParcoursQuotidien: ParcoursBase {
     private func ouvrirConversation(_ titre: String) throws {
         try toucher(onglet("remy"), "onglet Rémy")
         try toucher(bouton("Conversations"), "Conversations")
-        let fil = boutonContenant(titre)
+        let fil = nomme(app.collectionViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", titre)).firstMatch, "ligne « \(titre) »")
         try etape("conversations", attendu: [app.navigationBars["Conversations"]])
         if !fil.waitForExistence(timeout: 3) || !fil.isHittable {
             // Plus bas dans la liste : Sam cherche par son titre.
