@@ -36,6 +36,26 @@ public struct EvenementLieu: Codable, Equatable, Sendable {
     }
 }
 
+/// Le commerce où Sam se trouve sans doute (OpenStreetMap, sur la tour) : une
+/// supposition, pour un lieu qu'il n'a pas nommé.
+public struct CommerceProche: Codable, Equatable, Sendable {
+    public var nom: String?
+    public var type: String
+    public var distance: Int?
+
+    public init(nom: String?, type: String, distance: Int? = nil) {
+        self.nom = nom
+        self.type = type
+        self.distance = distance
+    }
+
+    /// « Salon Lumière (coiffeur) », « pharmacie (sans nom) ».
+    public var libelle: String {
+        guard let nom, !nom.isEmpty else { return "\(type) (sans nom)" }
+        return nom.lowercased().contains(type) ? nom : "\(nom) (\(type))"
+    }
+}
+
 public struct LieuTour: Codable, Equatable, Identifiable, Sendable {
     public var id: String
     public var nom: String?
@@ -46,9 +66,10 @@ public struct LieuTour: Codable, Equatable, Identifiable, Sendable {
     public var source: String?
     public var visites: Int?
     public var derniere: Millis?
+    public var commerce: CommerceProche?
 
     public init(id: String, nom: String?, adresse: String?, lat: Double, lon: Double, rayon: Int? = nil,
-                source: String? = nil, visites: Int? = nil, derniere: Millis? = nil) {
+                source: String? = nil, visites: Int? = nil, derniere: Millis? = nil, commerce: CommerceProche? = nil) {
         self.id = id
         self.nom = nom
         self.adresse = adresse
@@ -58,6 +79,7 @@ public struct LieuTour: Codable, Equatable, Identifiable, Sendable {
         self.source = source
         self.visites = visites
         self.derniere = derniere
+        self.commerce = commerce
     }
 
     /// Ce qu'on lit : son nom, sinon son adresse.
@@ -69,11 +91,18 @@ public struct EtatLieux: Codable, Equatable, Sendable {
         public var id: String?
         public var nom: String?
         public var adresse: String?
+        public var commerce: CommerceProche?
 
-        public init(id: String?, nom: String?, adresse: String?) {
+        public init(id: String?, nom: String?, adresse: String?, commerce: CommerceProche? = nil) {
             self.id = id
             self.nom = nom
             self.adresse = adresse
+            self.commerce = commerce
+        }
+
+        /// Son nom, sinon « sans doute Salon Lumière (coiffeur) », sinon son adresse.
+        public var lisible: String? {
+            nom ?? commerce.map { "Sans doute \($0.libelle)" } ?? adresse
         }
     }
     public var ou: String            // lieu | voiture | inconnu
@@ -90,7 +119,7 @@ public struct EtatLieux: Codable, Equatable, Sendable {
     public var phrase: String {
         switch ou {
         case "voiture": return "En voiture" + (depuis.map { ", depuis \(Format.heure($0))" } ?? "")
-        case "lieu": return (lieu?.nom ?? lieu?.adresse ?? "Un lieu sans adresse connue") + (depuis.map { ", depuis \(Format.heure($0))" } ?? "")
+        case "lieu": return (lieu?.lisible ?? "Un lieu sans adresse connue") + (depuis.map { ", depuis \(Format.heure($0))" } ?? "")
         default: return "Pas de position récente"
         }
     }
@@ -122,6 +151,17 @@ public struct GeocodageTour: Codable, Equatable, Sendable {
     }
 }
 
+/// La base des commerces de la tour (OpenStreetMap), si elle est importée.
+public struct CommercesTour: Codable, Equatable, Sendable {
+    public var pret: Bool
+    public var commerces: Int?
+
+    public init(pret: Bool, commerces: Int?) {
+        self.pret = pret
+        self.commerces = commerces
+    }
+}
+
 public struct VueLieux: Codable, Equatable, Sendable {
     public var actif: Bool
     public var jours: Int?
@@ -129,14 +169,17 @@ public struct VueLieux: Codable, Equatable, Sendable {
     public var aujourdhui: [VisiteTour]
     public var lieux: [LieuTour]
     public var geocodage: GeocodageTour?
+    public var commerces: CommercesTour?
 
-    public init(actif: Bool, jours: Int? = 90, etat: EtatLieux, aujourdhui: [VisiteTour], lieux: [LieuTour], geocodage: GeocodageTour?) {
+    public init(actif: Bool, jours: Int? = 90, etat: EtatLieux, aujourdhui: [VisiteTour], lieux: [LieuTour], geocodage: GeocodageTour?,
+                commerces: CommercesTour? = nil) {
         self.actif = actif
         self.jours = jours
         self.etat = etat
         self.aujourdhui = aujourdhui
         self.lieux = lieux
         self.geocodage = geocodage
+        self.commerces = commerces
     }
 }
 

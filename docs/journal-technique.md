@@ -221,6 +221,27 @@ notes privées, sur la tour.
   les lieux nommés. La consigne « Où est … » (lieu actuel, journée, tâches
   Motion liées au lieu) n'est donnée qu'à GLM, jamais à Claude (ni en secours,
   ni pour une recherche avec contexte). `REMY_LIEUX=off` coupe tout.
+- **Commerces** (`lib/commerces.js`, `<base>/commerces.db`) : un lieu sans nom
+  près d'un commerce connu devient « sans doute Salon Lumière (coiffeur) », pour
+  Rémy comme dans l'app — une supposition, jusqu'à ce que l'utilisateur le nomme.
+  Données d'OpenStreetMap (ODbL) importées par `scripts/commerces-importer.mjs` :
+  une requête Overpass par département de `REMY_GEO_DEPARTEMENTS` (seuls les
+  numéros partent, jamais une position), `out bb` (les surfaces gardent leurs
+  limites : on est « dans » le supermarché sans être en son centre), `out center`
+  si le serveur refuse. Tout est téléchargé avant de remplacer la base, en une
+  transaction : un import interrompu garde l'ancienne. Rapprochement à la
+  lecture (R*Tree, 60 m) : un nouvel import vaut tout de suite. Sirene (INSEE)
+  écarté pour l'instant : ~4 Go de fichiers nationaux à croiser chaque mois,
+  positions à l'adresse seulement.
+- **Modèle local** (`lib/glm.js`, 20/10) : les Sparks changent de modèle. Rémy
+  envoie le modèle choisi dans l'app (`PUT /api/modeles`), sinon
+  `REMY_GLM_MODEL`, chacun tant que `/v1/models` le sert, sinon le premier servi.
+  La réflexion est demandée sous ses deux noms (`enable_thinking` pour GLM et
+  Qwen, `thinking` pour DeepSeek) ; un serveur qui ne la range pas à part la
+  rend dans le texte, close par `</think>` : le texte attend alors la fin de la
+  réflexion (mémorisé par modèle), et `nettoyerSortie` la retire de toute façon
+  à la fin, avec les jetons `<｜…｜>` de DeepSeek. Ses appels d'outils écrits en
+  texte sont exécutés comme ceux de GLM (des propositions).
 
 ## App iPhone
 
@@ -250,6 +271,16 @@ notes privées, sur la tour.
   GPS continu, pas de géocodage sur l'iPhone. File persistée (UserDefaults,
   500 au plus) : hors ligne, tout attend la tour. « Pause 2 h » n'enregistre
   rien. La feuille Réglages › Localisation lit `GET /api/lieux`.
+- Nouveautés (`RemyCore/Nouveautes.swift`, `NouveautesVue`, 21/10) : un
+  catalogue d'entrées par « série » (une par mise à jour, pas le numéro de
+  build, que les collectes de retours consomment). Au premier lancement du
+  système, seules celles de la dernière série sont nouvelles. Une entrée ne
+  s'ouvre que si la tour a sa capacité ; vue = fermée (finie, « Plus tard » ou
+  balayée), gardée dans les UserDefaults. Jamais en démo, jamais par-dessus une
+  dictée, un appel ou les réglages.
+- Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
+  « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
+  Claude n'est pas dans la liste, exprès (V8).
 
 ## CI
 

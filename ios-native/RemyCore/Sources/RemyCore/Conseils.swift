@@ -69,7 +69,7 @@ public final class ConseilModel {
             if (c.conseil?.genereA ?? 0) > avant || c.enCours != true { break }
         }
         if (tour(type)?.conseil?.genereA ?? 0) <= avant {
-            app?.dire(tour(type)?.raison ?? "GLM n'a pas répondu à temps : le conseil précédent reste affiché.")
+            app?.dire(tour(type)?.raison ?? "Le modèle local n'a pas répondu à temps : le conseil précédent reste affiché.")
         }
     }
 

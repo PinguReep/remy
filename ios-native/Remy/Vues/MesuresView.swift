@@ -24,9 +24,9 @@ struct MesuresView: View {
         ("motion.attente_quota", "Attente du quota Motion (12/min)"),
         ("motion.ecriture", "Écrire dans Motion (geste complet)"),
         ("google.jour", "Lire l'agenda Google du jour"),
-        ("glm.premier_jeton", "GLM : premier mot d'une réponse"),
-        ("glm.complete", "GLM : réponse courte complète"),
-        ("conseil.glm", "Conseil réfléchi par GLM"),
+        ("glm.premier_jeton", "Modèle local : premier mot d'une réponse"),
+        ("glm.complete", "Modèle local : réponse courte complète"),
+        ("conseil.glm", "Conseil réfléchi par le modèle local"),
         ("dictee", "Dictée locale (transcription)"),
         ("capture", "Classer une capture"),
     ]

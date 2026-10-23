@@ -42,6 +42,13 @@ process.env.REMY_DATA_DIR = dossier;
 process.env.REMY_GLM_URL = `http://127.0.0.1:${glm.address().port}/v1`;
 process.env.REMY_BROWSE = "off";
 process.env.REMY_PRENOM = "Sam";
+// Les visites du test (jusqu'à 5 h en arrière) doivent tomber « aujourd'hui »
+// quelle que soit l'heure : un fuseau où il est 14 h (sinon, échec entre
+// minuit et 5 h, heure de Paris).
+{
+  const h = ((14 - new Date().getUTCHours() + 36) % 24) - 12; // heures à ajouter à UTC, -12..11
+  process.env.REMY_TZ = h === 0 ? "Etc/UTC" : `Etc/GMT${h > 0 ? "-" : "+"}${Math.abs(h)}`;
+}
 
 const geo = await import("../lib/geocodage.js");
 const lieux = await import("../lib/lieux.js");
