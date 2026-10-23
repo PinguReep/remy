@@ -133,6 +133,43 @@ notes privées, sur la tour.
   `Projets/` dans le coffre, bloc « Projets » dans le chat (conversation passée
   en privé).
 
+## 2026-10-24 — Ce qui casse à J+30 (usage intensif simulé)
+
+Une tour de démo isolée a rejoué 30 jours d'usage intensif (669 captures, 457
+articles, 169 rappels). La tour tient (ni fuite ni dérive) ; c'est
+l'accumulation qui casse. Corrigé :
+
+- **Plafonds du carnet** : ils ne comptent que ce qui reste à faire (articles à
+  prendre, rappels pas faits). Une coche n'est jamais refusée (avant : 409 à
+  500 lignes, dont 405 « pris »). Purge **douce** (récupérable) des pris de
+  plus de 7 jours et des rappels faits de plus de 30 jours : job `carnet-purge`
+  la nuit, et quand une liste grossit. « Retirer les pris » en une requête
+  (`POST /api/listes/:id/retirer`, `carnet-lot-v1`).
+- **Doublons à l'entrée** : même clé que l'anti-doublon de Motion (sans
+  accents ni casse, lettres et chiffres seulement), même liste, pas fait →
+  rien de recréé. L'iPhone vérifie sur sa copie ; la tour aussi (copie pas à
+  jour, deuxième appareil) et rend `dejaLa: [{id, existant}]`. L'iPhone fond
+  alors le fantôme dans l'existant, et les écritures encore en file visent
+  l'existant (cocher le doublon coche l'original).
+- **« Déjà dans Motion »** : `ok: true, dejaLa: true`, état `deja_la`, plus
+  jamais compté comme échec. Les cartes rouges et lignes d'historique d'avant
+  sont relues ainsi (texte « existe déjà dans Motion »), côté tour comme côté app.
+- **Propositions périmées** (`propositions-perimees-v1`) : plus vieilles que
+  `peremptionJours` (réglage, 7 par défaut) ou dont une date est passée (un
+  rendez-vous dès son heure, une échéance les jours d'avant). La carte le dit ;
+  « Oui » rend 409 `perimee` tant que Sam n'a pas confirmé (`confirmer: true`).
+  L'âge vient de `creeA` (nouvelles cartes) ou, à défaut, du dernier message du
+  fil (une borne sûre). Un ajustement remet la carte à neuf.
+- **Règles** : une règle identique (même tâche, un mot en commun) est rendue
+  telle quelle ou complétée de ses mots nouveaux ; une seule action par
+  événement et par tâche, même avec des doublons d'avant.
+- **Historique** (`historique-v2`) : `?avant=<ts>&filtre=echouee|annulee|deja_la`,
+  réponse `{ entrees, suite }` ; une page lit au plus 5 000 lignes.
+- **Rangement des rappels** : les 60 plus récents (avant : les 60 premiers par
+  date), un exemplaire par texte.
+- **Brouillon du « + »** : gardé sur l'iPhone (UserDefaults, une semaine),
+  effacé dès que la capture est rangée.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
