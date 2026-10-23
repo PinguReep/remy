@@ -226,13 +226,38 @@ notes privées, sur la tour.
   Rémy comme dans l'app — une supposition, jusqu'à ce que l'utilisateur le nomme.
   Données d'OpenStreetMap (ODbL) importées par `scripts/commerces-importer.mjs` :
   une requête Overpass par département de `REMY_GEO_DEPARTEMENTS` (seuls les
-  numéros partent, jamais une position), `out bb` (les surfaces gardent leurs
-  limites : on est « dans » le supermarché sans être en son centre), `out center`
-  si le serveur refuse. Tout est téléchargé avant de remplacer la base, en une
-  transaction : un import interrompu garde l'ancienne. Rapprochement à la
-  lecture (R*Tree, 60 m) : un nouvel import vaut tout de suite. Sirene (INSEE)
-  écarté pour l'instant : ~4 Go de fichiers nationaux à croiser chaque mois,
-  positions à l'adresse seulement.
+  numéros partent, jamais une position ; ni les lieux privés ni les piscines
+  sans nom ne sont téléchargés), `out geom` (les surfaces gardent leur vrai
+  contour, trous et multipolygones compris : on est « dans » le supermarché
+  sans être en son centre, pas dans l'école voisine parce qu'elle est en biais),
+  `out center` si le serveur refuse (des points, jamais « dedans »). Tout est
+  téléchargé avant de remplacer la base, en une transaction (tables refaites à
+  neuf) : un import interrompu garde l'ancienne. Rapprochement à la lecture
+  (R*Tree, puis contour) : un nouvel import vaut tout de suite.
+  Prudence (23/10, premier import réel) : plutôt rien qu'un faux « sans doute ».
+  Le plus proche doit être nommé, à 20 m au plus et 8 m plus près que le
+  suivant, nommé ou non — ou seul à 35 m avec 15 m d'avance ; dans une grande
+  surface, seuls comptent ceux qui y sont, et on n'y est « à coup sûr » que si
+  la boutique mitoyenne n'est pas plus près que l'avance demandée. Une surface
+  compte à la précision de son mur (5 à 15 m), jamais de l'extérieur pour une
+  école, un hôpital ou un lieu de culte ; un petit commerce en point, à 8 m +
+  1,5 × la précision au plus. La précision de la visite iOS élargit l'avance
+  demandée ; inconnue ou au-delà de 50 m, rien. Plusieurs étages sous les pieds
+  (centre commercial cartographié niveau par niveau) : seulement le bâtiment.
+  Le centre de la boîte d'un site, d'une surface immense ou d'un contour cassé
+  n'est jamais la réponse. Un lieu où l'on a dormi (3 h du matin) ou passé 4 h
+  dans la journée (bureau, chez un proche) n'est pas un commerce ; une visite
+  au départ perdu s'arrête à l'arrivée suivante ; un lieu d'agenda couvre 30 m.
+  Une réponse Overpass coupée (HTTP 200 + « runtime error ») n'est jamais
+  importée. Une base d'un format antérieur ne donne rien tant que l'import
+  n'est pas refait (l'app le signale). Mesuré sur un vrai centre-ville (4 300
+  éléments) : un « sans doute » (faux) pour 13 % des habitations à position
+  exacte (33 % avant), 13 % à 10 m près, 5 % à 30 m près ; un commerce d'en
+  face pris pour la grande
+  surface où l'on est : 1 % (15 % avant) ; devant un commerce à 10 m près, le
+  bon dans 35 % des cas, un autre dans 2 %. Sirene (INSEE) écarté pour
+  l'instant : ~4 Go de fichiers nationaux à croiser chaque mois, positions à
+  l'adresse seulement.
 - **Modèle local** (`lib/glm.js`, 20/10) : les Sparks changent de modèle. Rémy
   envoie le modèle choisi dans l'app (`PUT /api/modeles`), sinon
   `REMY_GLM_MODEL`, chacun tant que `/v1/models` le sert, sinon le premier servi.
