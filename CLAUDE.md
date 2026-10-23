@@ -75,6 +75,11 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
    TestFlight sans demander. Un build ne change rien sur l'iPhone tant qu'il
    n'est pas installé ; une fonction que la tour ne connaît pas encore reste
    cachée (capacités). La mise à jour de la tour, elle, reste à son geste.
+9. **Un mini tutoriel par nouveauté visible** (demande du 21/10) : toute
+   mise à jour de l'app qui apporte une fonction qu'on voit ajoute son entrée
+   dans `RemyCore/Nouveautes.swift` (série suivante, 1 à 3 pages courtes, la
+   capacité de la tour qui la porte). Elle s'ouvre une fois au lancement
+   suivant, en demi-feuille, et reste dans Réglages › Nouveautés.
 
 ## Pièges connus
 

@@ -63,7 +63,7 @@ struct LieuxVue: View {
                         Section("Aujourd'hui") {
                             ForEach(v.aujourdhui) { visite in
                                 HStack {
-                                    Text(visite.lieu?.nom ?? visite.lieu?.adresse ?? "Lieu sans adresse connue")
+                                    Text(visite.lieu?.lisible ?? "Lieu sans adresse connue")
                                         .font(Police.texte(15))
                                         .foregroundStyle(Palette.encre)
                                     Spacer(minLength: 8)
@@ -84,13 +84,19 @@ struct LieuxVue: View {
                         }
                         ForEach(v.lieux) { l in
                             Button {
-                                nouveauNom = l.nom ?? ""
+                                // Un commerce reconnu : son nom est proposé, Sam confirme.
+                                nouveauNom = l.nom ?? l.commerce?.nom ?? ""
                                 aRenommer = l
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(l.affiche).font(Police.texte(15, l.nom == nil ? .regular : .medium)).foregroundStyle(Palette.encre)
                                     if l.nom != nil, let a = l.adresse {
                                         Text(a).font(Police.texte(13)).foregroundStyle(Palette.encre2)
+                                    }
+                                    if l.nom == nil, let c = l.commerce {
+                                        Text("Sans doute : \(c.libelle)")
+                                            .font(Police.texte(13, .medium))
+                                            .foregroundStyle(Palette.signal)
                                     }
                                     Text(sousTitre(l)).font(Police.texte(12)).foregroundStyle(Palette.encre3)
                                 }
@@ -105,6 +111,11 @@ struct LieuxVue: View {
                     Section {
                         if v.geocodage?.pret != true {
                             Text("Ta tour n'a pas encore sa base d'adresses : les lieux restent sans adresse. Sur la tour : scripts/geo-importer.mjs.")
+                                .font(Police.texte(13))
+                                .foregroundStyle(Palette.encre2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if v.commerces != nil, v.commerces?.pret != true {
+                            Text("Ta tour ne connaît pas encore les commerces autour de toi (coiffeur, drive, salle…). Sur la tour : scripts/commerces-importer.mjs.")
                                 .font(Police.texte(13))
                                 .foregroundStyle(Palette.encre2)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -219,7 +230,8 @@ enum LieuxDemo {
         let salle = LieuTour(id: "l1", nom: "Salle de sport", adresse: "3 Avenue du Port, 99001 Villefictive", lat: 0, lon: 0, rayon: 80, source: "sam", visites: 12, derniere: maintenant - 0.5 * h)
         let maison = LieuTour(id: "l2", nom: "Maison", adresse: "12 Rue des Lilas, 99001 Villefictive", lat: 0, lon: 0, rayon: 80, source: "sam", visites: 40, derniere: maintenant - 3 * h)
         let coiffeur = LieuTour(id: "l3", nom: "Coiffeur", adresse: "8 Place du Marché, 99002 Bourg-Fictif", lat: 0, lon: 0, rayon: 80, source: "agenda", visites: 1, derniere: maintenant - 26 * h)
-        let inconnu = LieuTour(id: "l4", nom: nil, adresse: "21 Chemin des Vignes, 99002 Bourg-Fictif", lat: 0, lon: 0, rayon: 80, source: "auto", visites: 3, derniere: maintenant - 50 * h)
+        let inconnu = LieuTour(id: "l4", nom: nil, adresse: "21 Chemin des Vignes, 99002 Bourg-Fictif", lat: 0, lon: 0, rayon: 80, source: "auto", visites: 3, derniere: maintenant - 50 * h,
+                               commerce: CommerceProche(nom: "Boulangerie des Vignes", type: "boulangerie", distance: 12))
         let ici = { (l: LieuTour) in EtatLieux.Ici(id: l.id, nom: l.nom, adresse: l.adresse) }
         return VueLieux(actif: true, jours: 90,
                         etat: EtatLieux(ou: "lieu", depuis: maintenant - 0.5 * h, lieu: ici(salle)),
@@ -228,6 +240,7 @@ enum LieuxDemo {
                             VisiteTour(id: "v2", arrivee: maintenant - 0.5 * h, depart: nil, lieu: ici(salle)),
                         ],
                         lieux: [salle, maison, coiffeur, inconnu],
-                        geocodage: GeocodageTour(pret: true, adresses: 1_200_000, departements: ["99"]))
+                        geocodage: GeocodageTour(pret: true, adresses: 1_200_000, departements: ["99"]),
+                        commerces: CommercesTour(pret: true, commerces: 48_000))
     }
 }
