@@ -1,0 +1,378 @@
+import XCTest
+import Network
+
+/// Le banc des parcours : lance l'app contre la tour de démo (comme les
+/// captures de la CI), compte les gestes, chronomètre et capture chaque étape.
+/// Données fictives seulement ; aucune vraie tour, aucune vraie clé.
+enum Banc {
+    private static let env = ProcessInfo.processInfo.environment
+    /// Passées par xcodebuild (préfixe TEST_RUNNER_), sinon les valeurs de la CI.
+    static var tour: String { env["REMY_PARCOURS_TOUR"] ?? "http://127.0.0.1:3000" }
+    static var mdp: String { env["REMY_PARCOURS_MDP"] ?? "demo-demo-demo" }
+    static var portPilote: UInt16 { UInt16(env["REMY_PARCOURS_PILOTE"] ?? "") ?? 3099 }
+    /// La même tour, sous un autre nom : un trousseau vierge (jeton rangé par hôte).
+    static var tourAutreNom: String { tour.replacingOccurrences(of: "127.0.0.1", with: "localhost") }
+}
+
+/// Le pilote de la tour de démo (ios-native/RemyParcours/tour-pilote.mjs) :
+/// remettre les données d'origine, couper ou relancer la tour en plein parcours.
+/// En TCP brut (Network) : l'ATS du lanceur de tests ne s'en mêle pas.
+enum Pilote {
+    @discardableResult
+    static func demander(_ chemin: String, delai: TimeInterval = 90) -> String {
+        let fini = DispatchSemaphore(value: 0)
+        let recu = Tampon()
+        let connexion = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: Banc.portPilote)!, using: .tcp)
+        connexion.stateUpdateHandler = { etat in
+            switch etat {
+            case .ready:
+                let requete = "POST \(chemin) HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                connexion.send(content: Data(requete.utf8), completion: .contentProcessed { _ in })
+                func lire() {
+                    connexion.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { donnees, _, termine, erreur in
+                        if let donnees { recu.ajouter(donnees) }
+                        if termine || erreur != nil {
+                            connexion.cancel()
+                            fini.signal()
+                        } else {
+                            lire()
+                        }
+                    }
+                }
+                lire()
+            case .failed, .cancelled:
+                fini.signal()
+            default:
+                break
+            }
+        }
+        connexion.start(queue: .global())
+        _ = fini.wait(timeout: .now() + delai)
+        connexion.cancel()
+        return recu.texte
+    }
+
+    /// Les données de démo d'origine, la journée recalée sur maintenant.
+    static func reinitialiser() {
+        let r = demander("/reinitialiser")
+        if !r.contains("200") { print("PARCOURS|pilote|réinitialisation sans réponse : \(r.prefix(120))") }
+    }
+
+    static func couperTour() { demander("/couper") }
+    static func relancerTour() { demander("/relancer") }
+}
+
+private final class Tampon: @unchecked Sendable {
+    private let verrou = NSLock()
+    private var donnees = Data()
+    func ajouter(_ d: Data) { verrou.lock(); donnees.append(d); verrou.unlock() }
+    var texte: String { verrou.lock(); defer { verrou.unlock() }; return String(decoding: donnees, as: UTF8.self) }
+}
+
+/// Une vérification ratée : le parcours s'arrête proprement (capture et
+/// mesures gardées), sans exception Objective-C.
+struct ArretParcours: Error {}
+
+/// La base de chaque parcours.
+class ParcoursBase: XCTestCase {
+    var app: XCUIApplication!
+    private var identifiant = "P00"
+    private var titre = ""
+    private var debut = Date()
+    private var dernier = Date()
+    private var gestes = 0
+    private var gestesEtape = 0
+    private var numero = 0
+    private var etapes: [[String: Any]] = []
+    private var constats: [String] = []
+
+    override func setUp() {
+        super.setUp()
+        // Les vérifications lèvent ArretParcours : la suite ne court pas après un écran faux.
+        continueAfterFailure = true
+    }
+
+    // MARK: Déroulé
+
+    /// Joue un parcours : réinitialise la tour, puis écrit ses mesures quoi qu'il arrive.
+    @MainActor
+    func jouer(_ id: String, _ titre: String, reinitialiser: Bool = true, _ corps: () throws -> Void) {
+        identifiant = id
+        self.titre = titre
+        if reinitialiser { Pilote.reinitialiser() }
+        debut = Date()
+        dernier = debut
+        do {
+            try corps()
+        } catch is ArretParcours {
+            // Déjà signalé par XCTFail, capture prise.
+        } catch {
+            XCTFail("\(id) : \(error)")
+        }
+        conclure()
+    }
+
+    /// Lance l'app. `connecte` : connexion automatique (mot de passe de démo) et
+    /// aucun tutoriel par-dessus, comme pour les captures de la CI.
+    @MainActor
+    func lancer(connecte: Bool = true, base: String? = Banc.tour, arguments: [String] = [], ecran: String = "parcours") {
+        app = XCUIApplication()
+        if let base { app.launchEnvironment["REMY_BASE_URL"] = base }
+        if connecte {
+            app.launchEnvironment["REMY_DEMO_MDP"] = Banc.mdp
+            // Écran inconnu de l'app : elle reste sur Aujourd'hui, sans tutoriel.
+            app.launchEnvironment["REMY_DEMO_ECRAN"] = ecran
+        }
+        app.launchArguments += arguments
+        app.launch()
+    }
+
+    /// Attend l'accueil connecté (la barre d'onglets, stable). Les données de démo
+    /// sont neuves à chaque parcours : le jeton gardé ne vaut plus, l'app se
+    /// reconnecte seule (mot de passe de démo) ; si elle n'y arrive pas, le banc
+    /// tape le mot de passe — hors gestes de Sam.
+    @MainActor
+    func attendreAccueil(_ delai: TimeInterval = 40) throws {
+        let mdp = app.secureTextFields["Mot de passe"]
+        let fin = Date().addingTimeInterval(delai)
+        var vuMdp: Date?
+        var stable = 0
+        while Date() < fin {
+            if mdp.exists {
+                stable = 0
+                if vuMdp == nil { vuMdp = Date() }
+                // La connexion automatique part 0,8 s après le lancement : on lui laisse sa chance.
+                if let v = vuMdp, Date().timeIntervalSince(v) > 4, mdp.isHittable {
+                    mdp.tap()
+                    mdp.typeText(Banc.mdp + "\n")
+                    vuMdp = nil
+                }
+            } else if onglet("aujourdhui").exists {
+                vuMdp = nil
+                stable += 1
+                if stable >= 4 { break }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        try etape("accueil", attendu: [onglet("aujourdhui")], delai: 5)
+    }
+
+    /// Une étape : attend ce que l'écran doit montrer, capture, note gestes et temps.
+    @MainActor
+    func etape(_ nom: String, attendu: [XCUIElement] = [], absent: [XCUIElement] = [], delai: TimeInterval = 12) throws {
+        var manque: [String] = []
+        for e in attendu where !e.waitForExistence(timeout: delai) {
+            manque.append(e.description)
+        }
+        for e in absent where !attendreDisparition(e, delai: delai) {
+            manque.append("encore là : " + e.description)
+        }
+        capturer(nom + (manque.isEmpty ? "" : "-ECHEC"))
+        if !manque.isEmpty {
+            XCTFail("\(identifiant) · \(nom) : l'écran ne montre pas ce qu'il doit.\n" + manque.joined(separator: "\n"))
+            throw ArretParcours()
+        }
+    }
+
+    /// Un défaut de l'app vu par le parcours : signalé comme attendu (le test reste
+    /// vert) et noté dans le résumé. Ce n'est pas au parcours de corriger l'app.
+    @MainActor
+    func constat(_ note: String, siFaux condition: Bool) {
+        guard !condition else { return }
+        constats.append(note)
+        capturer("constat")
+        XCTExpectFailure("Constat d'ergonomie : \(note)") {
+            XCTFail(note)
+        }
+    }
+
+    /// Une remarque mesurée (pas un échec) : elle va dans le résumé.
+    func noter(_ remarque: String) {
+        constats.append("note : " + remarque)
+    }
+
+    @MainActor
+    func capturer(_ nom: String) {
+        numero += 1
+        let maintenant = Date()
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        let propre = nom.replacingOccurrences(of: " ", with: "-")
+        a.name = "\(identifiant)-\(String(format: "%02d", numero))-\(propre)"
+        a.lifetime = .keepAlways
+        add(a)
+        etapes.append([
+            "etape": propre,
+            "numero": numero,
+            "gestes": gestesEtape,
+            "gestesCumules": gestes,
+            "secondes": (maintenant.timeIntervalSince(dernier) * 10).rounded() / 10,
+            "secondesCumulees": (maintenant.timeIntervalSince(debut) * 10).rounded() / 10,
+        ])
+        print("PARCOURS|\(identifiant)|\(propre)|gestes \(gestes)|\(String(format: "%.1f", maintenant.timeIntervalSince(debut))) s")
+        gestesEtape = 0
+        dernier = maintenant
+    }
+
+    @MainActor
+    private func conclure() {
+        let ok = testRun?.hasSucceeded ?? true
+        let mesures: [String: Any] = [
+            "id": identifiant,
+            "titre": titre,
+            "test": name,
+            "reussi": ok,
+            "gestes": gestes,
+            "secondes": (Date().timeIntervalSince(debut) * 10).rounded() / 10,
+            "etapes": etapes,
+            "constats": constats,
+        ]
+        if let json = try? JSONSerialization.data(withJSONObject: mesures, options: [.prettyPrinted, .sortedKeys]) {
+            let a = XCTAttachment(data: json, uniformTypeIdentifier: "public.json")
+            a.name = "\(identifiant)-mesures"
+            a.lifetime = .keepAlways
+            add(a)
+        }
+        print("PARCOURS|\(identifiant)|FIN|\(ok ? "réussi" : "échec")|gestes \(gestes)|\(String(format: "%.1f", Date().timeIntervalSince(debut))) s|constats \(constats.count)")
+    }
+
+    // MARK: Gestes (comptés)
+
+    @MainActor
+    func toucher(_ e: XCUIElement, delai: TimeInterval = 10, _ quoi: String = "") throws {
+        guard e.waitForExistence(timeout: delai) else {
+            capturer("introuvable-" + (quoi.isEmpty ? "element" : quoi))
+            XCTFail("\(identifiant) : introuvable \(quoi) \(e.description)")
+            throw ArretParcours()
+        }
+        if !e.isHittable { _ = attendreTouchable(e, delai: 3) }
+        compter()
+        if e.isHittable {
+            e.tap()
+        } else {
+            // Partiellement couvert (clavier, barre) : toucher son centre.
+            e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+    }
+
+    @MainActor
+    func appuiLong(_ e: XCUIElement, duree: TimeInterval = 0.8) throws {
+        guard e.waitForExistence(timeout: 10) else {
+            XCTFail("\(identifiant) : introuvable pour l'appui long \(e.description)")
+            throw ArretParcours()
+        }
+        compter()
+        e.press(forDuration: duree)
+    }
+
+    /// Une saisie compte pour un geste (le toucher du champ en est un autre).
+    @MainActor
+    func saisir(_ texte: String, dans e: XCUIElement) throws {
+        guard e.waitForExistence(timeout: 10) else {
+            XCTFail("\(identifiant) : champ introuvable \(e.description)")
+            throw ArretParcours()
+        }
+        compter()
+        e.typeText(texte)
+    }
+
+    @MainActor
+    func balayerVersLeHaut(_ e: XCUIElement? = nil) {
+        compter()
+        (e ?? (app as XCUIElement)).swipeUp()
+    }
+
+    @MainActor
+    func balayerVersLeBas(_ e: XCUIElement? = nil) {
+        compter()
+        (e ?? (app as XCUIElement)).swipeDown()
+    }
+
+    /// Tirer l'écran vers le bas, franchement, pour rafraîchir.
+    @MainActor
+    func tirerPourRafraichir() {
+        compter()
+        let haut = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28))
+        haut.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+    }
+
+    func compter() {
+        gestes += 1
+        gestesEtape += 1
+    }
+
+    /// Fait défiler jusqu'à ce que l'élément soit touchable (au plus `essais` balayages).
+    @MainActor
+    func amener(_ e: XCUIElement, dans conteneur: XCUIElement? = nil, essais: Int = 6) {
+        var n = 0
+        while n < essais && !(e.exists && e.isHittable) {
+            balayerVersLeHaut(conteneur)
+            n += 1
+        }
+    }
+
+    // MARK: Requêtes
+
+    @MainActor
+    func onglet(_ nom: String) -> XCUIElement { app.buttons["onglet.\(nom)"] }
+
+    /// Un bouton par son libellé exact, ou terminé par lui (« Coche, Terminer »).
+    @MainActor
+    func bouton(_ libelle: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR label ENDSWITH %@", libelle, libelle, ", " + libelle)).firstMatch
+    }
+
+    /// Un bouton dont le libellé contient ce texte.
+    @MainActor
+    func boutonContenant(_ texte: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", texte)).firstMatch
+    }
+
+    /// N'importe quel élément dont le libellé contient ce texte.
+    @MainActor
+    func texte(_ t: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", t)).firstMatch
+    }
+
+    /// Sans tenir compte de la casse (les titres de section sont en capitales).
+    @MainActor
+    func texteI(_ t: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch
+    }
+
+    @MainActor
+    func ident(_ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    @MainActor
+    func attendreDisparition(_ e: XCUIElement, delai: TimeInterval) -> Bool {
+        let fin = Date().addingTimeInterval(delai)
+        while e.exists && Date() < fin { RunLoop.current.run(until: Date().addingTimeInterval(0.25)) }
+        return !e.exists
+    }
+
+    @MainActor
+    func attendreTouchable(_ e: XCUIElement, delai: TimeInterval) -> Bool {
+        let fin = Date().addingTimeInterval(delai)
+        while !(e.exists && e.isHittable) && Date() < fin { RunLoop.current.run(until: Date().addingTimeInterval(0.25)) }
+        return e.exists && e.isHittable
+    }
+
+    /// Les alertes système (notifications…) : accepter si elles apparaissent.
+    @MainActor
+    func accepterAlerteSysteme(_ delai: TimeInterval = 3) {
+        let tremplin = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for libelle in ["Allow", "Autoriser", "OK"] {
+            let b = tremplin.buttons[libelle]
+            if b.waitForExistence(timeout: libelle == "Allow" ? delai : 0.5) {
+                compter()
+                b.tap()
+                return
+            }
+        }
+    }
+
+    /// Le clavier, s'il couvre l'écran.
+    @MainActor
+    var clavier: XCUIElement { app.keyboards.firstMatch }
+}

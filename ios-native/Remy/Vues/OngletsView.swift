@@ -266,6 +266,7 @@ struct BarreOnglets: View {
             .padding(.trailing, 18)
             .offset(y: -24)
             .accessibilityLabel("Noter quelque chose")
+            .accessibilityIdentifier("noter")
         }
     }
 
@@ -310,5 +311,15 @@ struct BarreOnglets: View {
         .buttonStyle(.plain)
         .accessibilityLabel(o == .remy && app.chat.nombreNonLus > 0 ? "\(titre), \(app.chat.nombreNonLus) réponse\(app.chat.nombreNonLus > 1 ? "s" : "") non vue\(app.chat.nombreNonLus > 1 ? "s" : "")" : titre)
         .accessibilityAddTraits(actif ? .isSelected : [])
+        // Les parcours (ios-native/RemyParcours) retrouvent l'onglet quel que soit son libellé.
+        .accessibilityIdentifier("onglet." + Self.cle(o))
+    }
+
+    private static func cle(_ o: AppModel.Onglet) -> String {
+        switch o {
+        case .aujourdhui: return "aujourdhui"
+        case .remy: return "remy"
+        case .projets: return "projets"
+        }
     }
 }
