@@ -220,6 +220,12 @@ jobs:
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
           capture 8b-vocal-en-attente-sombre dark vocal-en-attente
+          # Feuille de partage (24/10), montrée dans l'app contre la tour de
+          # démo : un lien (comme Safari), une image lue par Vision puis
+          # envoyée (reçu), une tour injoignable (Copier, Réessayer).
+          capture 9a-partage-lien-clair light partage-lien
+          capture 9b-partage-image-sombre dark partage-image
+          capture 9c-partage-erreur-clair light partage-erreur
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
           xcrun simctl ui "$UDID" appearance light
