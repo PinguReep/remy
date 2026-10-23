@@ -32,7 +32,7 @@ enum Notifications {
         let aVenir = rappels
             .filter { !$0.fait && ($0.quand.map { $0.date > maintenant } ?? false) }
             .sorted { ($0.quand ?? 0) < ($1.quand ?? 0) }
-            .prefix(60)
+            .prefix(54) // iOS en garde 64 : la place du rendez-vous quotidien reste libre
         for rappel in aVenir {
             guard let q = rappel.quand else { continue }
             let contenu = UNMutableNotificationContent()
@@ -44,5 +44,52 @@ enum Notifications {
                                                 trigger: UNCalendarNotificationTrigger(dateMatching: quand, repeats: false))
             try? await centre.add(requete)
         }
+    }
+
+    // MARK: Le rendez-vous quotidien (24/10)
+
+    /// Jours programmés d'avance : au-delà, il faut que l'app (ou iOS en
+    /// arrière-plan) ait relu la tour.
+    static let joursRituel = 4
+
+    /// Reprogramme le briefing du matin et le bilan du soir aux heures
+    /// choisies. Chaque notification porte le contenu préparé pour SON jour ;
+    /// sans contenu pour ce jour-là, elle invite à ouvrir Rémy plutôt que
+    /// d'inventer. Rien si c'est coupé ou si iOS refuse les notifications.
+    static func planifierRituel(_ r: RituelTour?, prepareA: Date?, reglages: ReglagesRituel) async {
+        let centre = UNUserNotificationCenter.current()
+        let ids = (0..<joursRituel).flatMap { ["rituel-matin-\($0)", "rituel-soir-\($0)"] }
+        centre.removePendingNotificationRequests(withIdentifiers: ids)
+        let etat = await centre.notificationSettings()
+        guard [.authorized, .provisional, .ephemeral].contains(etat.authorizationStatus) else { return }
+        let maintenant = Date()
+        if reglages.matin {
+            for (i, quand) in Rituel.prochains(minutes: reglages.heureMatin, apres: maintenant, nombre: joursRituel).enumerated() {
+                let b = r.flatMap { Rituel.briefing(pour: quand, dans: $0) }
+                let n = Rituel.notificationMatin(b, prepareA: prepareA, declenchement: quand)
+                await ajouter(centre, id: "rituel-matin-\(i)", titre: n.titre, sousTitre: n.sousTitre, corps: n.corps, quand: quand, quoi: "matin")
+            }
+        }
+        if reglages.soir {
+            for (i, quand) in Rituel.prochains(minutes: reglages.heureSoir, apres: maintenant, nombre: joursRituel).enumerated() {
+                let n = Rituel.notificationSoir(r?.soir, declenchement: quand)
+                await ajouter(centre, id: "rituel-soir-\(i)", titre: n.titre, sousTitre: nil, corps: n.corps, quand: quand, quoi: "soir")
+            }
+        }
+    }
+
+    private static func ajouter(_ centre: UNUserNotificationCenter, id: String, titre: String, sousTitre: String?,
+                                corps: String, quand: Date, quoi: String) async {
+        let contenu = UNMutableNotificationContent()
+        contenu.title = titre
+        if let sousTitre { contenu.subtitle = sousTitre }
+        contenu.body = corps
+        contenu.sound = .default
+        contenu.userInfo = ["rituel": quoi]
+        contenu.threadIdentifier = "rituel"
+        let composantes = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: quand)
+        let requete = UNNotificationRequest(identifier: id, content: contenu,
+                                            trigger: UNCalendarNotificationTrigger(dateMatching: composantes, repeats: false))
+        try? await centre.add(requete)
     }
 }

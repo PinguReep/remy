@@ -4,6 +4,8 @@ import RemyCore
 
 @main
 struct RemyApp: App {
+    /// Notifications du rendez-vous quotidien et rafraîchissement en arrière-plan (24/10).
+    @UIApplicationDelegateAdaptor(DelegueApp.self) private var delegue
     /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
     @State private var app: AppModel?
     /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
