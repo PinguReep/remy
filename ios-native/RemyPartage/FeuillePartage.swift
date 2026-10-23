@@ -138,7 +138,7 @@ struct FeuillePartage: View {
 
     private var chargement: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TitreSection(texte: "Ce qui part")
+            EnTetePartage(texte: "Ce qui part")
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(0..<3, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 4).fill(Teinte.fond3)
@@ -160,9 +160,9 @@ struct FeuillePartage: View {
     private var formulaire: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                TitreSection(texte: "Ce qui part")
+                EnTetePartage(texte: "Ce qui part")
                 CarteApercu(contenu: modele.contenu, apercu: modele.apercu)
-                TitreSection(texte: "Un mot pour Rémy ?")
+                EnTetePartage(texte: "Un mot pour Rémy ?")
                 TextField("Facultatif : pourquoi tu le gardes, quoi en faire…", text: $modele.mot, axis: .vertical)
                     .lineLimit(1...5)
                     .font(.system(size: 16))
@@ -344,7 +344,7 @@ struct CarteApercu: View {
 // MARK: - Éléments (repris du design de l'app, en polices système)
 
 /// Titre de section : capitales espacées.
-struct TitreSection: View {
+struct EnTetePartage: View {
     let texte: String
     var body: some View {
         Text(texte.uppercased(with: Locale(identifier: "fr_FR")))

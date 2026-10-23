@@ -112,6 +112,10 @@ tag) avant l'échéance.
   l'extension ne fait que lire les pièces jointes (`LecturePartage`) et
   afficher la feuille (`FeuillePartage`). Pour l'avoir en tête de la feuille
   de partage : rangée d'apps › « Plus » › « Modifier » › « + » à côté de Rémy.
+  En CI, la feuille est montrée dans l'app (`REMY_DEMO_ECRAN=partage-lien`,
+  `partage-image`, `partage-erreur`, `Remy/App/DemoPartage.swift`) : l'extension
+  ne se lance pas en ligne de commande, mais la lecture des pièces jointes,
+  Vision et l'envoi à la tour de démo tournent pour de vrai.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces
