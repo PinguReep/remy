@@ -86,6 +86,12 @@ test("le briefing de demain se prépare la veille, et une journée vide le dit",
   const vide = briefingMatin({ pour: MATIN, maintenant: MATIN });
   assert.equal(vide.compte, "Journée libre : aucun rendez-vous ni échéance.");
   assert.equal(vide.resume, "Rien de prévu.");
+  assert.equal(vide.avertissement, null);
+  // Motion muet : jamais « journée libre », et c'est dit.
+  const muet = briefingMatin({ pour: MATIN, maintenant: MATIN, manque: ["Motion"] });
+  assert.equal(muet.compte, "Rien de lisible pour l'instant.");
+  assert.equal(muet.avertissement, "Motion n'a pas répondu : ce briefing peut être incomplet.");
+  assert.match(bilanSoir({ maintenant: MATIN, manque: ["Motion", "ton agenda"] }).avertissement, /^Motion et ton agenda n'ont pas répondu/);
 });
 
 test("le bilan du soir : fait, glissé, et ce qui reste avec son échéance de demain", () => {
