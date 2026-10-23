@@ -28,6 +28,8 @@ targets:
       - path: RemyPartage/FeuillePartage.swift
       - path: RemyPartage/LecturePartage.swift
       - path: Commun/Teinte.swift
+      # Intentions partagées avec les widgets (activité en direct, contrôle).
+      - path: Intentions
     dependencies:
       - package: RemyCore
       # Embarquées dans l'app (PlugIns) : widgets et feuille de partage (24/10).
@@ -109,6 +111,7 @@ targets:
     sources:
       - path: RemyWidgets
       - path: Commun
+      - path: Intentions
     dependencies:
       - package: RemyCore
     info:

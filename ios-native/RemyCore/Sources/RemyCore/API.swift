@@ -272,12 +272,17 @@ public final class ClientAPI: @unchecked Sendable {
     }
 
     /// Retenir un texte sans conversation. `source` dit d'où il vient :
-    /// « note » (Sam lui-même), « chatgpt », « claude » — une réponse d'un
-    /// autre assistant ne doit jamais devenir un fait sur Sam. « partage » : la
-    /// feuille de partage (24/10) ; une tour plus ancienne le lit comme « note ».
-    public func capturer(_ texte: String, source: String = "note") async throws -> RetourCapture {
-        let s = ["note", "chatgpt", "claude", "web", "partage"].contains(source) ? source : "note"
-        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["texte": texte, "source": s], delai: 90)
+    /// « note » (Sam lui-même), « chatgpt », « claude », « siri » (Noter dans
+    /// Rémy) — une réponse d'un autre assistant ne doit jamais devenir un fait
+    /// sur Sam. `differe` (capture-siri-v1) : la tour répond dès la capture
+    /// reçue et l'absorbe ensuite (Siri n'attend que quelques secondes).
+    /// « partage » : la feuille de partage (24/10) ; une tour plus ancienne le
+    /// lit comme « note ».
+    public func capturer(_ texte: String, source: String = "note", differe: Bool = false) async throws -> RetourCapture {
+        let s = ["note", "chatgpt", "claude", "web", "siri", "partage"].contains(source) ? source : "note"
+        var corps: [String: Any] = ["texte": texte, "source": s]
+        if differe { corps["differe"] = true }
+        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: differe ? 15 : 90)
     }
 
     /// Ajuste une proposition avant de dire oui (18/10) : `actions` — les champs

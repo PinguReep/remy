@@ -1024,6 +1024,8 @@ public struct RetourCapture: Codable, Sendable {
     public var memoire: Bool?
     /// Dit pourquoi la mémoire n'a pas bougé (ex. « Mémoire pleine »).
     public var message: String?
+    /// Reçue, absorbée ensuite par la tour (capture différée, 24/10).
+    public var differe: Bool?
 
     /// Ce que Sam lit après « Retenir ».
     public var phrase: String {

@@ -29,6 +29,35 @@ notes privées, sur la tour.
   Le reçu reprend celui de la capture : « J'ai compris. Classé. » + ce que
   Rémy en a retenu.
 
+## 2026-10-24 — Rémy hors de l'app : activité en direct, widgets, Siri
+
+- **Un seul choix, dans le cœur** : `ApercuMaintenant` (tâche en cours, sinon
+  la suivante, sinon « à faire » ; copie datée si la tour ne répond pas, et
+  « injoignable » si la copie est d'un autre jour) sert au widget
+  « Maintenant » et à Siri ; `SuiviActivite` décide démarrer / mettre à jour /
+  terminer pour l'activité en direct. Testés sous Linux (`HorsAppTests`).
+- **Activité en direct sans push** : l'app la démarre (« Commencer », où que
+  ce soit, via `TableauModel.surCommencee` ; ou seule quand une tâche commence,
+  réglable), la suit toutes les 15 s tant qu'elle est ouverte, et la ferme
+  quand la tâche est cochée ou finie. `staleDate` = fin prévue : app fermée,
+  iOS affiche « Temps écoulé ». Les boutons sont des `LiveActivityIntent` :
+  exécutés dans l'app (lancée en arrière-plan au besoin), ils appellent les
+  mêmes gestes que l'app (`terminer` avec sa file d'envoi et son délai,
+  `prolonger` en durée absolue, annulables depuis l'historique). Pour que
+  l'extension puisse construire les boutons et l'app les exécuter, les
+  intentions sont dans `ios-native/Intentions/`, compilé dans les deux cibles ;
+  l'app s'y branche par `Raccourcis` (RemyCore), nil dans l'extension.
+- **Widget « Maintenant »** : une lecture de la tour prépare une entrée par
+  borne (débuts et fins des 6 h suivantes) et relit au bout de 15 min. Sa copie
+  hors ligne vit dans le conteneur du widget (pas de groupe d'app).
+- **Siri « Noter dans Rémy »** : Siri n'attend que quelques secondes, la
+  distillation peut prendre une minute. La tour accepte `differe: true` : elle
+  répond 202 dès la capture validée, puis l'absorbe (même code qu'avant,
+  `absorberCapture`, texte gardé dans tous les cas). Source « siri » : 3
+  caractères suffisent (30 pour les autres). Capacité `capture-siri-v1`.
+- **Contrôle iOS 18** : le point d'entrée des widgets choisit le paquet selon
+  la version (`WidgetsRemy18` avec le contrôle, `WidgetsRemy` sinon).
+
 ## 2026-10-24 — Extensions iPhone : un trousseau partagé, pas de groupe d'app
 
 - Deux extensions embarquées dans l'app : `RemyWidgets` (WidgetKit,
