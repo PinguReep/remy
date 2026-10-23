@@ -114,6 +114,11 @@ struct LieuxVue: View {
                                 .font(Police.texte(13))
                                 .foregroundStyle(Palette.encre2)
                                 .fixedSize(horizontal: false, vertical: true)
+                        } else if v.commerces?.aRefaire == true {
+                            Text("La base des commerces de ta tour date d'avant les dernières règles : relance scripts/commerces-importer.mjs sur la tour.")
+                                .font(Police.texte(13))
+                                .foregroundStyle(Palette.encre2)
+                                .fixedSize(horizontal: false, vertical: true)
                         } else if v.commerces != nil, v.commerces?.pret != true {
                             Text("Ta tour ne connaît pas encore les commerces autour de toi (coiffeur, drive, salle…). Sur la tour : scripts/commerces-importer.mjs.")
                                 .font(Police.texte(13))
