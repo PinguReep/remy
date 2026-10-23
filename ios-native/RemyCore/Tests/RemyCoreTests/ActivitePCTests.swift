@@ -50,6 +50,19 @@ final class ActivitePCTests: XCTestCase {
         XCTAssertNil(v.probleme)
     }
 
+    func testLaSemaineSeCompareAuxSeptJoursDAvant() {
+        func vue(_ cette: Double, _ avant: Double?) -> VueActivitePC {
+            VueActivitePC(actif: true, activitywatch: EtatActivityWatch(joignable: true), derniereCollecte: nil, aujourdhui: .vide,
+                          semaine: BilanActivite(total: cette, categories: [], applis: []),
+                          semainePrecedente: avant.map { BilanActivite(total: $0, categories: [], applis: []) })
+        }
+        XCTAssertEqual(vue(10 * 3600, 8 * 3600 + 50 * 60).comparaison, "Les 7 jours d'avant : 8 h 50 (1 h 10 de plus cette semaine).")
+        XCTAssertEqual(vue(3600, 2 * 3600).comparaison, "Les 7 jours d'avant : 2 h (1 h de moins cette semaine).")
+        XCTAssertEqual(vue(3600, 3600 + 20).comparaison, "Les 7 jours d'avant : 1 h (autant cette semaine).")
+        XCTAssertNil(vue(3600, nil).comparaison)
+        XCTAssertNil(vue(3600, 0).comparaison)
+    }
+
     func testDureesEtNoms() {
         XCTAssertEqual(ActivitePC.duree(190 * 60), "3 h 10")
         XCTAssertEqual(ActivitePC.duree(45 * 60), "45 min")

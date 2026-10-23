@@ -293,8 +293,9 @@ notes privées, sur la tour.
   La note « Activité du PC » (aujourd'hui et 7 jours par catégorie, présentée
   comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude.
   `REMY_ACTIVITE_PC=off` coupe tout. Il n'existe pas encore d'analyse
-  hebdomadaire où ranger les totaux de la semaine : ils sont dans la vue
-  (`semaine`, `parJour`) et dans la note du modèle local.
+  hebdomadaire où les ranger : `bilanSemaine()` rend les totaux par catégorie
+  des 7 derniers jours et des 7 d'avant (sans IA), repris dans la vue
+  (`semaine`, `parJour`, `semainePrecedente`), dans l'app et dans la note.
 
 ## App iPhone
 
