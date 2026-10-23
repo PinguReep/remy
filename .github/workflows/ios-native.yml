@@ -217,6 +217,7 @@ jobs:
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
           capture 6f-activite-pc-clair light activite-pc
+          capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
