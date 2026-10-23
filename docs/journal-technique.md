@@ -4,6 +4,29 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-24 — Parcours joués sur le simulateur (RemyParcours)
+
+Les captures de `ios-native.yml` montrent des écrans figés, ouverts par des
+variables de démo ; rien n'y prouve qu'un geste mène au bon écran. La cible
+`RemyParcours` (XCUITest) joue de vrais parcours : se connecter, terminer ou
+prolonger la tâche en cours, capturer, ajuster puis accepter une proposition de
+Rémy, la tour qui s'éteint en plein usage… Chaque étape attend ce que l'écran
+doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
+
+- **Tour pilotée** (`tour-pilote.mjs`) : faux services + `server.js`, remis à
+  zéro avant chaque parcours (données de démo, journée recalée sur maintenant),
+  coupés ou relancés par le test lui-même — en TCP brut (Network) : l'ATS du
+  lanceur de tests ne s'en mêle pas. Un petit cerveau de conversation répond en
+  flux et propose une tâche (outil `motion_proposer`) ; le reste va au faux
+  modèle de la CI.
+- **Un défaut vu n'est pas corrigé par le parcours** : il reste un échec attendu
+  (`XCTExpectFailure`) avec sa note, repris dans le résumé. Le test reste vert ;
+  le jour où l'app change, la note se relit.
+- **Identifiants d'accessibilité** seulement là où le libellé ne suffit pas
+  (onglets, « + », Terminer / Gérer, champ et genres du « + ») : rien ne change
+  à l'écran ni pour VoiceOver.
+- `workflow_dispatch` seulement : une minute macOS compte pour dix.
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit
@@ -315,3 +338,6 @@ notes privées, sur la tour.
   chaque archive les certificats de développement créés par l'API (plafond Apple).
 - `serveur.yml` : `npm test` sur Ubuntu et Windows, et syntaxe des scripts
   PowerShell sous 5.1, comme la tour.
+- `ios-parcours.yml` (à la demande) : les parcours du quotidien joués sur le
+  simulateur (XCUITest, `ios-native/RemyParcours/`) contre une tour de démo
+  pilotée ; captures par étape, gestes et durées, résumé dans la page du run.

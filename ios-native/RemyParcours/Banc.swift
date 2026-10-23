@@ -186,6 +186,28 @@ class ParcoursBase: XCTestCase {
         }
     }
 
+    /// Les zones tactiles de l'écran affiché, mesurées (DoD : 44 pt au moins).
+    /// Un seul aller-retour (snapshot) ; seuls les boutons visibles comptent.
+    @MainActor
+    func auditerCibles(_ ecran: String) {
+        guard let racine = try? app.snapshot() else { return }
+        let visible = racine.frame
+        var petites: [String] = []
+        func parcourir(_ s: XCUIElementSnapshot) {
+            let f = s.frame
+            if [.button, .switch, .segmentedControl].contains(s.elementType), f.width >= 1, f.height >= 1,
+               visible.intersects(f), f.height < 43.5 || f.width < 43.5 {
+                let nom = s.label.isEmpty ? (s.identifier.isEmpty ? "sans libellé" : s.identifier) : s.label
+                petites.append("« \(nom.prefix(40)) » \(Int(f.width.rounded()))×\(Int(f.height.rounded()))")
+            }
+            s.children.forEach(parcourir)
+        }
+        parcourir(racine)
+        print("PARCOURS|\(identifiant)|cibles \(ecran)|\(petites.count) sous 44 pt")
+        constat("Zones tactiles sous 44 pt (\(ecran)) : " + petites.prefix(10).joined(separator: " ; ")
+                + (petites.count > 10 ? " … (\(petites.count) en tout)" : ""), siFaux: petites.isEmpty)
+    }
+
     /// Une remarque mesurée (pas un échec) : elle va dans le résumé.
     func noter(_ remarque: String) {
         constats.append("note : " + remarque)
@@ -245,6 +267,15 @@ class ParcoursBase: XCTestCase {
             throw ArretParcours()
         }
         if !e.isHittable { _ = attendreTouchable(e, delai: 3) }
+        // Hors de l'écran (bas d'une liste, d'une feuille) : Sam ferait défiler.
+        var defile = 0
+        while !e.isHittable && defile < 3 {
+            balayerVersLeHaut()
+            defile += 1
+        }
+        // Désactivé le temps d'une réponse (Rémy écrit encore) : patienter un peu.
+        let finActif = Date().addingTimeInterval(8)
+        while !e.isEnabled && Date() < finActif { RunLoop.current.run(until: Date().addingTimeInterval(0.25)) }
         compter()
         if e.isHittable {
             e.tap()
@@ -315,10 +346,13 @@ class ParcoursBase: XCTestCase {
     @MainActor
     func onglet(_ nom: String) -> XCUIElement { app.buttons["onglet.\(nom)"] }
 
-    /// Un bouton par son libellé exact, ou terminé par lui (« Coche, Terminer »).
+    /// Un bouton par son libellé exact, ou terminé par lui (« Coche, Terminer »),
+    /// ou suivi d'une pastille (« Conversations, 1 »).
     @MainActor
     func bouton(_ libelle: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR label ENDSWITH %@", libelle, libelle, ", " + libelle)).firstMatch
+        // « Conversations, 1 » : le libellé porte parfois une pastille.
+        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR label ENDSWITH %@ OR label BEGINSWITH %@",
+                                         libelle, libelle, ", " + libelle, libelle + ", ")).firstMatch
     }
 
     /// Un bouton dont le libellé contient ce texte.

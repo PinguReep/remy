@@ -47,6 +47,7 @@ final class ParcoursQuotidien: ParcoursBase {
             lancer()
             try attendreAccueil()
             try etape("maintenant", attendu: [texte("Finaliser la démo de la boutique"), texte("min restantes"), ident("maintenant.terminer")])
+            auditerCibles("Aujourd'hui")
             let conseil = boutonContenant("conseil")
             try toucher(conseil, "conseil du moment")
             try etape("conseil-en-grand", attendu: [texte("Conseil du moment"), bouton("Un autre conseil")])
@@ -89,6 +90,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try attendreAccueil()
             try toucher(ident("maintenant.gerer"), "Gérer")
             try etape("gerer", attendu: [bouton("+15 min"), boutonContenant("Replanifier ou modifier")])
+            auditerCibles("Gérer")
             try toucher(bouton("+15 min"), "+15 min")
             let prolonger = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Prolonger ")).firstMatch
             try etape("impact-estime", attendu: [prolonger, texte("Estimation")])
@@ -123,6 +125,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("feuille-noter", attendu: [champ])
             try saisir("Hugo préfère qu'on lui écrive plutôt que de l'appeler, surtout le lundi.", dans: champ)
             try etape("texte-tape", attendu: [ident("capture.genre.retenir")])
+            auditerCibles("Noter (+)")
             try toucher(ident("capture.genre.retenir"), "puce Retenir")
             try etape("genre-retenir", attendu: [ident("capture.valider")])
             try toucher(ident("capture.valider"), "Retenir")
@@ -182,8 +185,10 @@ final class ParcoursQuotidien: ParcoursBase {
             try ouvrirConversation("Abonnement de Tom")
             let ligne = boutonContenant("Acheter abonnement Claude Code pour Tom")
             try etape("proposition", attendu: [ligne, bouton("Oui, fais-le"), bouton("Non merci")])
+            auditerCibles("Rémy, proposition")
             try toucher(ligne, "ligne de la proposition")
             try etape("ajuster", attendu: [texte("Ajuster l'ajout"), bouton("30 min")])
+            auditerCibles("Ajuster")
             try toucher(bouton("30 min"), "30 min")
             try toucher(bouton("Enregistrer"), "Enregistrer")
             try etape("ajustee", attendu: [bouton("Oui, fais-le")], absent: [texte("Ajuster l'ajout")])
@@ -261,6 +266,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("projets", attendu: [courses])
             try toucher(courses, "liste Courses")
             try etape("liste", attendu: [bouton("Tomates"), bouton("Œufs")])
+            auditerCibles("Liste")
             try toucher(bouton("Tomates"), "Tomates")
             try toucher(bouton("Œufs"), "Œufs")
             try etape("cochees", attendu: [texteI("pris")])
@@ -284,6 +290,7 @@ final class ParcoursQuotidien: ParcoursBase {
             accepterAlerteSysteme(6)
             try etape("rappel-cree", absent: [champ], delai: 10)
             try toucher(onglet("projets"), "onglet Projets")
+            try toucher(bouton("Tout voir"), "Tout voir (rappels)")
             try etape("dans-les-rappels", attendu: [texte("Appeler le plombier")])
         }
     }
@@ -295,6 +302,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try attendreAccueil()
             try toucher(onglet("projets"), "onglet Projets")
             try etape("projets", attendu: [texte("Où tu mets ton énergie")])
+            auditerCibles("Projets")
             constat("Pas de recherche dans le carnet (listes, rappels, projets) : seule la liste des conversations a un champ « Chercher ».",
                     siFaux: app.searchFields.firstMatch.exists)
             let anniversaires = boutonContenant("Anniversaires,")
@@ -313,6 +321,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try attendreAccueil()
             try toucher(bouton("Réglages"), "Réglages")
             try etape("reglages", attendu: [texte("Apparence"), bouton("Sombre")])
+            auditerCibles("Réglages")
             try toucher(bouton("Sombre"), "Sombre")
             try etape("sombre", attendu: [bouton("Fermer")])
             try toucher(bouton("Fermer"), "Fermer")
@@ -416,15 +425,29 @@ final class ParcoursQuotidien: ParcoursBase {
         try toucher(onglet("remy"), "onglet Rémy")
         try toucher(bouton("Conversations"), "Conversations")
         let fil = boutonContenant(titre)
-        try etape("conversations", attendu: [fil])
+        try etape("conversations", attendu: [app.navigationBars["Conversations"]])
+        if !fil.waitForExistence(timeout: 3) || !fil.isHittable {
+            // Plus bas dans la liste : Sam cherche par son titre.
+            let recherche = app.searchFields.firstMatch
+            try toucher(recherche, "Chercher une conversation")
+            try saisir(String(titre.split(separator: " ").first ?? ""), dans: recherche)
+            try etape("recherche", attendu: [fil])
+        }
         try toucher(fil, titre)
         try etape("fil-ouvert", attendu: [texte(titre)], absent: [app.navigationBars["Conversations"]])
     }
 
-    /// Toucher à côté d'un panneau superposé (conseil, journée, Gérer) le referme.
+    /// Referme un panneau superposé (conseil, journée à l'échelle) : sa croix
+    /// « Fermer » (la dernière : le fond porte le même libellé), sinon un toucher
+    /// à côté du panneau.
     @MainActor
     private func fermerSurimpression() throws {
+        let croix = app.buttons.matching(NSPredicate(format: "label == %@", "Fermer")).allElementsBoundByIndex.filter { $0.isHittable }
         compter()
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.07)).tap()
+        if croix.count >= 2, let c = croix.last {
+            c.tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.07)).tap()
+        }
     }
 }
