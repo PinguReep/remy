@@ -128,6 +128,16 @@ struct OngletsView: View {
         .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
+        // L'activité en direct suit la journée (prolongée, cochée, l'heure
+        // passée) et démarre seule si Sam le veut ; rien en arrière-plan.
+        .onChange(of: app.tableau.journee) { _, _ in Task { await ActiviteEnDirect.partagee.suivre() } }
+        .task(id: scene) {
+            guard scene == .active else { return }
+            while !Task.isCancelled {
+                await ActiviteEnDirect.partagee.suivre()
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
         // Signe de vie tant que l'app est au premier plan : c'est la mesure
         // d'activité (le temps passé devant Rémy, pas le temps où il existe).
         // Une dictée de plusieurs minutes : l'écran ne se verrouille pas (le
@@ -210,7 +220,7 @@ extension OngletsView {
             }
             ui.choixDemo = 15
         case "journee-etendue": ui.journeeEtendue = true
-        case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
+        case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"

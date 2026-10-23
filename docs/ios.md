@@ -21,6 +21,37 @@ celui du site (papier & encre, orange signal, Inter + JetBrains Mono embarquées
   git tag ios-v2.1.0 && git push origin ios-v2.1.0
   ```
 
+## Rémy sans ouvrir l'app (24/10) : ce que Sam règle une fois
+
+- **Activité en direct** (écran verrouillé, Dynamic Island) : touche
+  « Commencer » sur la carte Maintenant (ou « Commencer maintenant » dans
+  « Gérer ») ; la tâche s'affiche avec sa minuterie, « Terminer » et
+  « +15 min ». Si rien ne s'affiche : Réglages de l'iPhone › Rémy ›
+  **Activités en direct** doit être allumé. Dans l'app : Réglages ›
+  **Activité en direct** (la couper), et **Démarrer seule** (quand une tâche
+  commence pendant que l'app est ouverte ; coupé = seulement avec
+  « Commencer »). Sans push : l'activité suit la tâche tant que l'app tourne ;
+  à l'heure de fin, iOS la marque « Temps écoulé ».
+- **Widgets** : appui long sur l'écran d'accueil › « + » (en haut à gauche) ›
+  Rémy › **Maintenant** (petit ou moyen : la tâche en cours ou la suivante,
+  avec l'heure) ou **Capturer**. Écran verrouillé : appui long › Personnaliser
+  › écran verrouillé › zone des widgets › Rémy (« Maintenant » rectangulaire,
+  « Capturer » rond). « Maintenant » relit la tour toutes les ~15 min et change
+  de tâche à l'heure tout seul ; tour injoignable : la dernière journée lue,
+  marquée « hors ligne · 14:02 » ; jamais connecté : « Ouvre Rémy pour te
+  connecter ».
+- **Centre de contrôle** (iOS 18) : glisser depuis le coin haut droit › « + » ›
+  Ajouter une commande › Rémy › **Capturer avec Rémy**.
+- **Bouton Action** (iPhone 15 Pro et suivants) : Réglages de l'iPhone ›
+  Bouton Action › **Raccourci** › Rémy › **Capturer avec Rémy** (la capture
+  s'ouvre directement).
+- **Siri** (aucune configuration) : « Dis Siri, **noter dans Rémy** » (Siri
+  demande quoi ; la note part à la tour, qui la range dans la mémoire de Rémy
+  — un appel au modèle, comme « Retenir », journalisé « capture »),
+  « **Que dois-je faire maintenant avec Rémy** » (la tâche en cours ou la
+  suivante, sans ouvrir l'app), « **Capturer avec Rémy** ». Les mêmes
+  actions sont dans l'app Raccourcis.
+
 ## Revenir à un build précédent
 
 App **TestFlight** sur l'iPhone → **Rémy** → **Builds précédents** → choisir le
@@ -103,6 +134,14 @@ tag) avant l'échéance.
   lisent l'adresse de la tour et le jeton dans un trousseau partagé
   (`keychain-access-groups`, pas de groupe d'app) : `TrousseauPartage` dans le
   cœur. Liens `remy://capture`, `remy://aujourdhui|remy|projets` (`LienRemy`).
+- Hors de l'app (24/10) : le choix « tâche en cours ou suivante » est dans le
+  cœur (`ApercuMaintenant`, `SuiviActivite`, `HorsApp.swift`, testé sous Linux).
+  Les intentions des boutons de l'activité et du contrôle sont dans
+  `ios-native/Intentions/` (compilé dans l'app ET les widgets ; iOS les exécute
+  dans l'app, branchée par `Raccourcis`). Siri : `Remy/App/RaccourcisSiri.swift`
+  (« Noter » envoie `source: "siri", differe: true` à `/api/capture`, capacité
+  `capture-siri-v1`). Activité : `Remy/App/ActiviteEnDirect.swift` (ActivityKit,
+  pas de push).
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

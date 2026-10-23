@@ -40,6 +40,10 @@ struct RemyApp: App {
         // iOS relance l'app en arrière-plan pour une visite : le capteur doit
         // être là dès le lancement (coupé tant que Sam ne l'a pas allumé).
         CapteurLocalisation.partage.brancher(modele.lieux)
+        // Siri, widgets et activité en direct (24/10) : leurs intentions
+        // s'exécutent ici, même app fermée (lancée en arrière-plan).
+        Raccourcis.app = modele
+        ActiviteEnDirect.partagee.brancher(modele)
         return modele
     }
 
@@ -97,6 +101,10 @@ struct RacineView: View {
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
+        // Déconnecté : l'activité en direct ne montre plus rien.
+        .onChange(of: app.phase) { _, p in
+            if p == .connexion { Task { await ActiviteEnDirect.partagee.toutArreter() } }
+        }
         .animation(.easeOut(duration: 0.2), value: app.phase)
     }
 }

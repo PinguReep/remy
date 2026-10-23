@@ -29,9 +29,13 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
-        Nouveaute(id: "widget-capture", serie: 3, date: "24 oct.", titre: "Capturer depuis l'écran d'accueil", capacite: nil, pages: [
-            .init(symbole: "plus.square", titre: "Le widget « Capturer »",
-                  texte: "Appui long sur l'écran d'accueil › « + » › Rémy. Un toucher sur le widget ouvre directement la capture : une idée, une tâche, un rappel. Il existe aussi en rond pour l'écran verrouillé."),
+        Nouveaute(id: "hors-app", serie: 3, date: "24 oct.", titre: "Rémy sans ouvrir l'app", capacite: nil, pages: [
+            .init(symbole: "timer", titre: "La tâche en cours, partout",
+                  texte: "Touche « Commencer » : la tâche reste sur l'écran verrouillé et dans la Dynamic Island, avec « Terminer » et « +15 min ». Réglages › Activité en direct pour la couper."),
+            .init(symbole: "square.grid.2x2", titre: "Deux widgets",
+                  texte: "Appui long sur l'écran d'accueil › « + » › Rémy : « Maintenant » (ta tâche, puis la suivante) et « Capturer ». Aussi sur l'écran verrouillé, et « Capturer » dans le Centre de contrôle (iOS 18)."),
+            .init(symbole: "mic", titre: "Siri et le bouton Action",
+                  texte: "« Dis Siri, noter dans Rémy », ou « Que dois-je faire maintenant avec Rémy ? ». Bouton Action : Réglages de l'iPhone › Bouton Action › Raccourci › Rémy › « Capturer avec Rémy »."),
         ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",

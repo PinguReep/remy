@@ -22,6 +22,8 @@ targets:
     platform: iOS
     sources:
       - path: Remy
+      # Intentions partagées avec les widgets (activité en direct, contrôle).
+      - path: Intentions
     dependencies:
       - package: RemyCore
       # Embarquées dans l'app (PlugIns) : widgets et feuille de partage (24/10).
@@ -103,6 +105,7 @@ targets:
     sources:
       - path: RemyWidgets
       - path: Commun
+      - path: Intentions
     dependencies:
       - package: RemyCore
     info:
