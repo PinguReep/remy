@@ -243,6 +243,16 @@ test("« Oui » sur une proposition périmée : 409 tant que Sam n'a pas confirm
   assert.equal((await envoyer("GET", "/api/conversations/vieille")).body.messages[1].proposal.perimee, undefined);
 });
 
+test("le délai de péremption se règle (1 à 90 jours) et s'applique", async () => {
+  assert.equal((await envoyer("GET", "/api/reglages")).body.peremptionJours, 7);
+  assert.equal((await envoyer("PUT", "/api/reglages", { peremptionJours: 0 })).status, 400);
+  assert.equal((await envoyer("PUT", "/api/reglages", { peremptionJours: 90 })).body.peremptionJours, 90);
+  await propositionDe("reglee", [{ type: "creer", nom: "Ranger le garage" }], { creeA: Date.now() - 30 * JOUR });
+  assert.equal((await envoyer("GET", "/api/conversations/reglee")).body.messages[1].proposal.perimee, undefined, "30 jours < 90");
+  await envoyer("PUT", "/api/reglages", { peremptionJours: 7 });
+  assert.equal((await envoyer("GET", "/api/conversations/reglee")).body.messages[1].proposal.perimee, true);
+});
+
 test("une proposition récente passe sans rien demander", async () => {
   motion.taches.clear();
   await propositionDe("fraiche", [{ type: "creer", nom: "Réserver le resto", echeance: new Date(Date.now() + 3 * JOUR).toISOString() }]);
