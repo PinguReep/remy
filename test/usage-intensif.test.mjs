@@ -231,6 +231,14 @@ test("« Oui » sur une proposition périmée : 409 tant que Sam n'a pas confirm
   const ok = await envoyer("POST", "/api/motion/apply", { convId: "vieille", propositionId: "p-vieille", confirmer: true });
   assert.equal(ok.status, 200);
   assert.equal(motion.ouvertes().length, 1);
+  // Une copie « périmée » restée dans le fil ne fait pas foi : ajustée, la carte est à neuf.
+  await propositionDe("ajustee", [{ type: "creer", nom: "Réserver", echeance: new Date(Date.now() + 2 * JOUR).toISOString() }], { creeA: Date.now() - 60 * JOUR });
+  const conv = await store.getConversation("ajustee");
+  conv.messages[1].proposal.perimee = true;
+  await store.putConversation(conv);
+  assert.equal((await envoyer("GET", "/api/conversations/ajustee")).body.messages[1].proposal.perimee, true, "60 jours : périmée");
+  assert.equal((await envoyer("POST", "/api/conversations/ajustee/propositions/p-ajustee/ajuster", { actions: [{ rang: 0, duree: 30 }] })).status, 200);
+  assert.equal((await envoyer("GET", "/api/conversations/ajustee")).body.messages[1].proposal.perimee, undefined, "ajustée : remise à neuf");
   // Appliquée : la carte n'est plus « périmée ».
   assert.equal((await envoyer("GET", "/api/conversations/vieille")).body.messages[1].proposal.perimee, undefined);
 });
