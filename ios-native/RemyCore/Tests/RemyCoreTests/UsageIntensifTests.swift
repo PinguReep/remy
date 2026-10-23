@@ -192,6 +192,24 @@ final class UsageIntensifTests: XCTestCase {
         XCTAssertNil(a.historique.suite, "tout est lu")
     }
 
+    func testCinqTachesPartentEnUneEcriture() async throws {
+        let a = app(["listes-v1"])
+        a.tableau.donnees = TableauDeBord(systeme: Systeme(motion: true, agenda: false))
+        let res = (1...5).map { k in k <= 2 ? #"{"ok":true,"type":"creer","nom":"T\#(k)","dejaLa":true}"# : #"{"ok":true,"type":"creer","nom":"T\#(k)"}"# }
+        FauxServeur.reponses = [
+            "POST /api/motion/apply": [(200, #"{"etat":"appliquee","echecs":0,"ledgerId":"j1","results":[\#(res.joined(separator: ","))]}"#)],
+            "GET /api/dashboard": [(200, #"{"journee":{"items":[]}}"#)],
+        ]
+        let elements = (1...5).map { ElementCapture(cle: "\($0)", nature: "tache", titre: "T\($0)") }
+        let bilan = await a.ranger(elements)
+        XCTAssertEqual(FauxServeur.recues.filter { $0 == "POST /api/motion/apply" }.count, 1, "une écriture pour cinq tâches")
+        XCTAssertEqual((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.count, 5)
+        XCTAssertEqual(bilan.faits.count, 3)
+        XCTAssertEqual(bilan.dejaLa.count, 2)
+        XCTAssertTrue(bilan.echecs.isEmpty)
+        XCTAssertEqual(bilan.regles, Set(["1", "2", "3", "4", "5"]))
+    }
+
     private let fil = #"{"id":"c1","title":"Tom","messages":[{"role":"user","content":"x"},{"role":"assistant","content":"Je l'ajoute ?","proposal":{"id":"p1","source":"motion","resume":"Abonnement","statut":"en_attente","perimee":true,"raisonPeremption":"Proposée il y a 60 jours.","actions":[{"type":"creer","nom":"Acheter abonnement pour Tom"}]}}]}"#
 
     func testUnePropositionPerimeeNeSAppliqueQuApresConfirmation() async throws {
