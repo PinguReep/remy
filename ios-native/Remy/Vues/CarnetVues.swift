@@ -41,9 +41,21 @@ struct SectionListes: View {
         let listes = app.carnet.listes
         let colonnes = DispositionListes.colonnes(disposition, nombre: listes.count)
         VStack(alignment: .leading, spacing: 6) {
-            TitreSection(texte: "Listes", compte: listes.isEmpty ? nil : listes.count).padding(.horizontal, 6)
+            HStack {
+                TitreSection(texte: "Listes", compte: listes.isEmpty ? nil : listes.count).padding(.horizontal, 6)
+                Spacer()
+                // Visible (24/10) : l'appui long reste un raccourci.
+                Menu { menu(nil) } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Palette.encre2)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Nouvelle liste, disposition")
+            }
             if listes.isEmpty {
-                Text("Appuie longuement ici pour créer ta première liste (courses, anniversaires…).")
+                Text("Touche « + » (ou appuie longuement ici) pour créer ta première liste : courses, anniversaires…")
                     .font(Police.texte(14))
                     .foregroundStyle(Palette.encre2)
                     .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
@@ -289,6 +301,18 @@ struct SectionRappels: View {
             HStack {
                 TitreSection(texte: "Rappels", compte: app.carnet.rappels.filter { !$0.fait }.count).padding(.horizontal, 6)
                 Spacer()
+                // Visible (24/10) : le même menu que l'appui long sur la carte.
+                Menu {
+                    Button { nouveau = true } label: { Label("Nouveau rappel", systemImage: "plus") }
+                    Button { Task { await import_.lancer(app) } } label: { Label("Importer mes rappels Apple", systemImage: "square.and.arrow.down") }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Nouveau rappel, importer")
                 NavigationLink(value: RouteProjets.rappels) {
                     Text("Tout voir").font(Police.texte(13, .medium)).foregroundStyle(Palette.encre2)
                         .frame(minHeight: 44).contentShape(Rectangle())
@@ -327,10 +351,13 @@ struct SectionRappels: View {
     }
 }
 
+/// Un rappel : le rond le coche ; toucher le texte ouvre « Quand ? »
+/// (reporter, étiquettes, retirer — 24/10 : on ne pouvait pas le reporter).
 struct LigneRappel: View {
     @Environment(AppModel.self) private var app
     let rappel: Rappel
     @State private var etiquetter = false
+    @State private var quand = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -345,7 +372,30 @@ struct LigneRappel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(rappel.fait ? "Fait" : "Marquer comme fait")
+            .accessibilityLabel(rappel.fait ? "« \(rappel.texte) » : fait" : "Marquer « \(rappel.texte) » comme fait")
+            Button {
+                Haptique.leger()
+                quand = true
+            } label: {
+                details.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Reporter, étiqueter ou retirer")
+        }
+        .frame(minHeight: 52)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button { quand = true } label: { Label("Reporter…", systemImage: "clock.arrow.circlepath") }
+            if app.organisation.etiquettesDisponibles {
+                Button { etiquetter = true } label: { Label("Étiquettes…", systemImage: "tag") }
+            }
+            Button(role: .destructive) { app.carnet.supprimer(rappel) } label: { Label("Retirer", systemImage: "trash") }
+        }
+        .sheet(isPresented: $etiquetter) { EtiquetterRappel(rappel: rappel) }
+        .sheet(isPresented: $quand) { QuandRappel(rappel: rappel) }
+    }
+
+    private var details: some View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(rappel.texte)
                     .font(Police.texte(16, .medium))
@@ -376,27 +426,120 @@ struct LigneRappel: View {
                     }
                 }
             }
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 52)
-        .contentShape(Rectangle())
-        .contextMenu {
-            if app.organisation.etiquettesDisponibles {
-                Button { etiquetter = true } label: { Label("Étiquettes…", systemImage: "tag") }
-            }
-            Button(role: .destructive) { app.carnet.supprimer(rappel) } label: { Label("Retirer", systemImage: "trash") }
-        }
-        .sheet(isPresented: $etiquetter) { EtiquetterRappel(rappel: rappel) }
     }
 
     /// « aujourd'hui 18:00 », « demain 09:00 », « jeu. 22 oct. 09:00 »
-    static func quand(_ ms: Millis) -> String {
-        let d = ms.date
-        let auj = Format.debutDuJour(Date())
-        let jour = Format.debutDuJour(d)
-        let ecart = Int((jour.timeIntervalSince(auj) / 86_400).rounded())
-        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier" : Format.jourSemaineCourt(d)
-        return j + " " + Format.heure(d)
+    static func quand(_ ms: Millis) -> String { CarnetModel.quand(ms) }
+}
+
+/// « Quand ? » : reporter un rappel en un toucher (avec « Annuler »), ou à une
+/// date choisie ; ses étiquettes ; le retirer. La notification suit.
+struct QuandRappel: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var fermer
+    let rappel: Rappel
+    @State private var choisir = false
+    @State private var date = Date().addingTimeInterval(3600)
+    @State private var etiquetter = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rappel.texte)
+                        .font(Police.titre(22))
+                        .foregroundStyle(Palette.encre)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(rappel.quand.map { "Prévu " + LigneRappel.quand($0) } ?? "Sans date")
+                        .font(Police.mono(12))
+                        .foregroundStyle(Palette.encre2)
+                }
+                Spacer(minLength: 8)
+                BoutonFermer { fermer() }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                TitreSection(texte: "Quand ?")
+                Flux(espacement: 8) {
+                    ForEach(Decaler.rappel()) { c in
+                        PuceRappel(titre: c.libelle) { reporter(c.date) }
+                    }
+                    PuceRappel(titre: "Choisir…", symbole: "calendar") {
+                        withAnimation(.snappy) { choisir.toggle() }
+                    }
+                }
+                if choisir {
+                    DatePicker("Le", selection: $date, in: Date()...)
+                        .environment(\.locale, Format.locale)
+                        .environment(\.timeZone, Format.fuseau)
+                        .font(Police.texte(15))
+                    BoutonA(titre: "Reporter : \(LigneRappel.quand(date.millis))", symbole: "clock.arrow.circlepath", hauteur: 46) {
+                        reporter(date)
+                    }
+                }
+            }
+            Rectangle().fill(Palette.filet).frame(height: 1)
+            HStack(spacing: 10) {
+                if app.organisation.etiquettesDisponibles {
+                    BoutonA(titre: "Étiquettes", symbole: "tag", principal: false, hauteur: 46) { etiquetter = true }
+                }
+                BoutonA(titre: rappel.fait ? "Pas encore fait" : "Fait", symbole: rappel.fait ? "arrow.uturn.backward" : "checkmark", hauteur: 46) {
+                    Haptique.leger()
+                    app.carnet.basculer(rappel)
+                    fermer()
+                }
+            }
+            Button(role: .destructive) {
+                Haptique.leger()
+                app.carnet.supprimer(rappel)
+                fermer()
+            } label: {
+                Label("Retirer ce rappel", systemImage: "trash")
+                    .font(Police.texte(15, .medium))
+                    .foregroundStyle(Palette.danger)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Palette.surface)
+        // La feuille a sa copie du message : sinon il passerait dessous.
+        .overlay(alignment: .bottom) { ToastView(marge: 12, annoncer: false) }
+        .presentationDetents(choisir ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+        .sheet(isPresented: $etiquetter) { EtiquetterRappel(rappel: rappel) }
+    }
+
+    private func reporter(_ d: Date) {
+        Haptique.leger()
+        app.carnet.reporter(rappel, a: d)
+        // Le rappel sonnera : la permission est demandée au premier rappel daté.
+        Task { await Notifications.demander() }
+        fermer()
+    }
+}
+
+/// Une puce de « Quand ? » : elle passe à la ligne (Flux), rien n'est caché.
+private struct PuceRappel: View {
+    let titre: String
+    var symbole: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let symbole { Image(systemName: symbole).font(.system(size: 13, weight: .semibold)) }
+                Text(titre)
+            }
+            .font(Police.texte(15, .semibold))
+            .foregroundStyle(Palette.encre)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background(Palette.fond2, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(Appui())
     }
 }
 
@@ -407,6 +550,8 @@ struct RappelsView: View {
     @State private var filtrer = false
     @State private var organiser = false
     @State private var import_ = ImportRappels()
+    /// Captures de la CI : « Quand ? » ouvert sur le premier rappel.
+    @State private var demoQuand: Rappel?
 
     var body: some View {
         let filtre = FiltreRappels.lire(filtreRappels)
@@ -437,8 +582,23 @@ struct RappelsView: View {
                     ForEach(liste) { r in
                         LigneRappel(rappel: r)
                             .listRowBackground(Palette.fond)
-                            .swipeActions {
+                            // Glisser → : fait ; ← : plus tard (+1 h) ou retirer (24/10).
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    Haptique.leger()
+                                    app.carnet.basculer(r)
+                                } label: { Label(r.fait ? "Pas fait" : "Fait", systemImage: r.fait ? "arrow.uturn.backward" : "checkmark") }
+                                .tint(Palette.encre)
+                            }
+                            .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) { app.carnet.supprimer(r) } label: { Label("Retirer", systemImage: "trash") }
+                                if !r.fait, let plusTard = Decaler.rappel().first {
+                                    Button {
+                                        Haptique.leger()
+                                        app.carnet.reporter(r, a: plusTard.date)
+                                    } label: { Label("Plus tard", systemImage: "clock.arrow.circlepath") }
+                                    .tint(Palette.signal)
+                                }
                             }
                     }
                 } header: {
@@ -468,6 +628,13 @@ struct RappelsView: View {
         .sheet(isPresented: $nouveau) { NouveauRappel() }
         .sheet(isPresented: $filtrer) { FiltreRappelsVue() }
         .sheet(isPresented: $organiser) { OnboardingRappels() }
+        .sheet(item: $demoQuand) { QuandRappel(rappel: $0) }
+        .task {
+            let env = ProcessInfo.processInfo.environment
+            guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "rappel-quand" else { return }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            demoQuand = app.carnet.rappels.first { !$0.fait && $0.quand != nil } ?? app.carnet.rappels.first
+        }
     }
 }
 

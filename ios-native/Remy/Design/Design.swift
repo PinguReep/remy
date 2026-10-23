@@ -61,9 +61,12 @@ enum Palette {
 }
 
 enum Police {
-    /// New York, le serif d'Apple : titres et voix de Rémy.
+    /// New York, le serif d'Apple : titres et voix de Rémy. La taille suit le
+    /// réglage de texte de l'iPhone (Dynamic Type), comme Inter : sinon, en
+    /// grand texte, le détail dépassait le titre (24/10). Plafonnée au double.
     static func titre(_ taille: CGFloat, _ graisse: Font.Weight = .semibold, italique: Bool = false) -> Font {
-        let f = Font.system(size: taille, weight: graisse, design: .serif)
+        let suivie = min(UIFontMetrics(forTextStyle: .title2).scaledValue(for: taille), taille * 2)
+        let f = Font.system(size: suivie, weight: graisse, design: .serif)
         return italique ? f.italic() : f
     }
 
@@ -272,10 +275,13 @@ struct BoutonEnTete: View {
     }
 }
 
-/// La case d'une tâche : 20 pt dessinés, 44 pt touchables.
+/// La case d'une tâche : 20 pt dessinés, 44 pt touchables. `nom` : ce que
+/// VoiceOver annonce (« Terminer « Relire le contrat » »), sinon N fois le
+/// même bouton dans une liste.
 struct CaseACocher: View {
     var cochee = false
     var enCours = false
+    var nom: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -295,7 +301,12 @@ struct CaseACocher: View {
         }
         .buttonStyle(.plain)
         .disabled(enCours)
-        .accessibilityLabel(cochee ? "Fait" : "Marquer comme fait")
+        .accessibilityLabel(libelle)
+    }
+
+    private var libelle: String {
+        guard let nom else { return cochee ? "Fait" : "Marquer comme fait" }
+        return cochee ? "« \(nom) » : fait" : "Terminer « \(nom) »"
     }
 }
 
