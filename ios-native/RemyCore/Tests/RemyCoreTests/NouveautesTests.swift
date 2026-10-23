@@ -22,11 +22,16 @@ final class NouveautesTests: XCTestCase {
         Nouveaute(id: "selection", serie: 1, date: "", titre: "Sélection", capacite: nil, pages: [page]),
     ]
 
+    /// Les AppModel des essais : `NouveautesModel.app` est faible.
+    private var gardes: [AppModel] = []
+
     /// Le modèle des nouveautés sur le catalogue d'essai. L'AppModel (pour les
     /// capacités) a ses propres réglages : il range les « vues » du vrai catalogue.
     func essai(_ capacites: [String], reglages: UserDefaults) -> NouveautesModel {
+        let a = app(capacites, reglages: suite())
+        gardes.append(a)
         let m = NouveautesModel(reglages: reglages, catalogue: Self.essai)
-        m.app = app(capacites, reglages: suite())
+        m.app = a
         return m
     }
 
