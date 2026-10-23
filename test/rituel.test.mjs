@@ -141,6 +141,8 @@ test("routes : /api/rituel rend le briefing, le bilan et les menaces ; le bilan 
     for (const k of ["aujourdhui", "demain", "soir", "menacees", "sources"]) assert.ok(k in j, k);
     assert.equal(j.sources.motion, "off");
     assert.match(j.aujourdhui.compte, /Journée libre|Ce qui compte/);
+    const tableau = await (await fetch(`${base}/api/dashboard`, { headers: { cookie } })).json();
+    assert.deepEqual(tableau.menacees, [], "le tableau porte les menacées (vide sans Motion)");
     const v = await (await fetch(`${base}/api/version`, { headers: { cookie } })).json();
     assert.ok(v.capacites.includes("rituel-v1"));
     const p = await fetch(`${base}/api/rituel/bilan`, { method: "POST", headers: { cookie, "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ ressenti: "Bonne journée, un peu dispersé." }) });
