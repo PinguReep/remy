@@ -229,15 +229,19 @@ public final class RituelModel {
         return maintenant.timeIntervalSince(le) > Rituel.fraicheurMax
     }
 
-    /// Le briefing de ce jour (ou nil s'il n'est pas encore calculé).
+    /// Le briefing de ce jour (ou nil s'il n'est pas encore calculé). Un
+    /// iPhone dans un autre fuseau que la tour (voyage, simulateur) : le
+    /// « aujourd'hui » de la tour vaut tant qu'il est frais.
     public func briefing(pour jour: Date = Date()) -> BriefingMatin? {
-        donnees.flatMap { Rituel.briefing(pour: jour, dans: $0) }
+        guard let d = donnees else { return nil }
+        if let b = Rituel.briefing(pour: jour, dans: d) { return b }
+        return perime(maintenant: jour) ? nil : d.aujourdhui
     }
 
-    /// Le bilan, s'il est bien celui d'aujourd'hui.
+    /// Le bilan, s'il est bien celui d'aujourd'hui (ou tout frais de la tour).
     public func bilan(maintenant: Date = Date()) -> BilanSoirTour? {
-        guard let s = donnees?.soir, s.jour == Rituel.cleJour(maintenant) else { return nil }
-        return s
+        guard let s = donnees?.soir else { return nil }
+        return s.jour == Rituel.cleJour(maintenant) || !perime(maintenant: maintenant) ? s : nil
     }
 
     public func charger() async {
