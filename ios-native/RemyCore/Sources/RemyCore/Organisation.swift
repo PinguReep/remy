@@ -370,6 +370,37 @@ public final class OrganisationModel {
         }
     }
 
+    /// Une pensée floue gardée dans « Idées » (24/10), avec « Annuler » :
+    /// l'incubateur qu'on relit, rien n'est planifié dans Motion.
+    @discardableResult
+    public func noterIdee(_ texte: String) async -> Bool {
+        guard dossiersDisponibles else {
+            app?.dire("Les Idées arriveront avec la mise à jour de ta tour.")
+            return false
+        }
+        guard let d = await dossierIdees(), await ajouterNote(texte, dans: d.id),
+              let note = dossiers.first(where: { $0.id == d.id })?.notes.last else { return false }
+        app?.dire("Gardée dans « Idées » (Projets) : rien n'est planifié.", annuler: { [weak self] in
+            Task { await self?.supprimer(note, dans: d.id) }
+        })
+        return true
+    }
+
+    /// Le dossier des idées (créé au premier besoin).
+    public func dossierIdees() async -> Dossier? {
+        if let d = dossiers.first(where: { $0.id == "idees" }) { return d }
+        let d = Dossier(id: "idees", nom: "Idées", parent: nil, ordre: -2)
+        dossiers.append(d)
+        do {
+            try await api.ecrireDossier(d)
+            return d
+        } catch {
+            dossiers.removeAll { $0.id == "idees" }
+            echec(error, "Le dossier « Idées » n'a pas été créé")
+            return nil
+        }
+    }
+
     /// Le dossier des notes sans projet (créé au premier besoin).
     public func dossierNotes() async -> Dossier? {
         if let d = dossiers.first(where: { $0.id == "notes" }) { return d }

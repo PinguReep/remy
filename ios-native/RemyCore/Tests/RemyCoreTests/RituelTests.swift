@@ -110,3 +110,28 @@ final class RituelTests: XCTestCase {
         XCTAssertEqual(t.menacees?.map(\.id), ["t10"], "une menacée illisible est sautée, pas tout l'écran")
     }
 }
+
+/// La capture (24/10) : une pensée floue va dans les Idées, Motion seulement
+/// si l'action est claire — ou si Sam l'a réglé ainsi.
+final class CaptureIdeesTests: XCTestCase {
+    func testUnePenseeFloueVaDansLesIdees() {
+        XCTAssertEqual(GenreCapture.deviner("Un clip en noir pour le prochain son"), .idee)
+        XCTAssertEqual(GenreCapture.deviner("Dossier subvention atelier"), .idee)
+        XCTAssertEqual(GenreCapture.deviner("Peut-être un voyage à Porto au printemps"), .idee)
+    }
+
+    func testUneActionClaireVaDansMotion() {
+        XCTAssertEqual(GenreCapture.deviner("Appeler le garage"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Relire le contrat de Hugo"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Me renseigner sur les assurances"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Il faut que je trie mes mails"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Studio : 90 min pour la démo"), .tache)
+    }
+
+    func testReglablePourRevenirAMotion() {
+        XCTAssertEqual(GenreCapture.deviner("Un clip en noir pour le prochain son", parDefaut: .tache), .tache)
+        // Les autres genres ne bougent pas.
+        XCTAssertEqual(GenreCapture.deviner("tomates, lait et œufs"), .liste)
+        XCTAssertEqual(GenreCapture.deviner("On mange où ce soir ?"), .question)
+    }
+}

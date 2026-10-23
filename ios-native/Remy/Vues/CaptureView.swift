@@ -25,8 +25,12 @@ struct CaptureView: View {
     @State private var garde: Set<String> = []
     @State private var analyseEnCours = false
     @FocusState private var focus: Bool
+    /// Réglages : une pensée sans action claire va dans les Idées (défaut) ou dans Motion.
+    @AppStorage(GenreCapture.cleParDefaut) private var parDefaut = "idees"
 
-    private var genre: GenreCapture { choisi ?? GenreCapture.deviner(texte) }
+    private var genre: GenreCapture {
+        choisi ?? GenreCapture.deviner(texte, parDefaut: parDefaut == "motion" || !projetPret ? .tache : .idee)
+    }
     private var propre: String { texte.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var dateLue: AnalyseDate.Resultat? { AnalyseDate.extraire(propre) }
     private var articles: [String] {
@@ -43,7 +47,7 @@ struct CaptureView: View {
         switch genre {
         case .retenir: return propre.count >= GenreCapture.minimumRetenir
         case .liste, .rappel: return carnetPret
-        case .projet: return projetPret
+        case .projet, .idee: return projetPret
         default: return true
         }
     }
@@ -109,7 +113,7 @@ struct CaptureView: View {
                 .frame(minHeight: 50)
             case .repos:
                 HStack(alignment: .top, spacing: 8) {
-                    TextField("Une tâche, des courses, un rappel…", text: $texte, axis: .vertical)
+                    TextField("Une idée, une tâche, des courses, un rappel…", text: $texte, axis: .vertical)
                         .font(Police.texte(19))
                         .foregroundStyle(Palette.encre)
                         .lineLimit(1...6)
@@ -255,6 +259,9 @@ struct CaptureView: View {
         guard !propre.isEmpty else { return micro ? "Écris ou dicte : Rémy devine où le ranger." : "Écris, Rémy devine où le ranger." }
         switch genre {
         case .tache: return "Tâche → Motion lui trouvera un créneau"
+        case .idee:
+            guard projetPret else { return "Les Idées arriveront avec la mise à jour de ta tour." }
+            return "Idée → gardée dans « Idées » (Projets), rien n'est planifié"
         case .liste:
             guard carnetPret else { return "Les listes arriveront avec la mise à jour de ta tour." }
             let n = articles.count
@@ -279,6 +286,7 @@ struct CaptureView: View {
     private var action: String {
         switch genre {
         case .tache: return "Ajouter à Motion"
+        case .idee: return "Garder l'idée"
         case .liste: return "Ajouter à la liste"
         case .rappel: return "Créer le rappel"
         case .retenir: return "Retenir"
@@ -290,6 +298,7 @@ struct CaptureView: View {
     private func icone(_ g: GenreCapture) -> String {
         switch g {
         case .tache: return "checkmark.circle"
+        case .idee: return "tray.and.arrow.down"
         case .liste: return "cart"
         case .rappel: return "bell"
         case .retenir: return "lightbulb"
@@ -307,6 +316,8 @@ struct CaptureView: View {
         switch genre {
         case .tache:
             if await app.noterTache(propre) { fermer() } else { Haptique.erreur() }
+        case .idee:
+            if await app.organisation.noterIdee(propre) { fermer() } else { Haptique.erreur() }
         case .liste:
             let l = cible ?? app.carnet.listeParDefaut()
             let ajoutes = app.carnet.ajouter(articles, a: l)

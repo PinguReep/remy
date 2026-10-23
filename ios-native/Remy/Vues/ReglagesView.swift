@@ -34,6 +34,9 @@ struct ReglagesView: View {
                         ReglagesRituelVue()
                             .padding(.bottom, 8)
                     }
+                    if app.organisation.dossiersDisponibles {
+                        ReglageCapture()
+                    }
                     ligne("Ouvrir le site", sous: "Le site te redemandera le mot de passe.", symbole: "safari") {
                         ouvrirURL(app.api.base)
                     }
