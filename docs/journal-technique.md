@@ -169,6 +169,10 @@ l'accumulation qui casse. Corrigé :
   date), un exemplaire par texte.
 - **Brouillon du « + »** : gardé sur l'iPhone (UserDefaults, une semaine),
   effacé dès que la capture est rangée.
+- **Tâches rangées par lots** : une capture de 5 tâches (ou des rappels
+  devenus tâches) part en UNE écriture par lot de 6. La tour relit Motion une
+  fois par lot au lieu d'une fois par tâche : 6 requêtes Motion au lieu de 10
+  pour 5 tâches, sous le quota (12/min) au lieu d'une attente d'une minute.
 
 ## Chaîne d'écriture (Motion, Google Agenda)
 
