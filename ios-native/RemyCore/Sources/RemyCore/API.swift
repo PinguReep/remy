@@ -273,9 +273,10 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Retenir un texte sans conversation. `source` dit d'où il vient :
     /// « note » (Sam lui-même), « chatgpt », « claude » — une réponse d'un
-    /// autre assistant ne doit jamais devenir un fait sur Sam.
+    /// autre assistant ne doit jamais devenir un fait sur Sam. « partage » : la
+    /// feuille de partage (24/10) ; une tour plus ancienne le lit comme « note ».
     public func capturer(_ texte: String, source: String = "note") async throws -> RetourCapture {
-        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
+        let s = ["note", "chatgpt", "claude", "web", "partage"].contains(source) ? source : "note"
         return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["texte": texte, "source": s], delai: 90)
     }
 

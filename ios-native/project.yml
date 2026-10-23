@@ -124,8 +124,8 @@ targets:
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
 
-  # Feuille de partage (24/10) : un texte, un lien ou une image vers Rémy.
-  # Pour l'instant « Bientôt ». Lit seulement le trousseau partagé.
+  # Feuille de partage (24/10) : un texte, un lien ou une image vers Rémy
+  # (RemyPartage/FeuillePartage.swift). Lit seulement le trousseau partagé.
   RemyPartage:
     type: app-extension
     platform: iOS
