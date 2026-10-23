@@ -215,6 +215,12 @@ private struct TroisLignes: View {
                     .font(Police.mono(13))
                     .foregroundStyle(Palette.encre3)
             }
+            if let a = b.avertissement {
+                Label(a, systemImage: "exclamationmark.circle")
+                    .font(Police.texte(14))
+                    .foregroundStyle(Palette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 6) {
                 if chargement { ProgressView().controlSize(.small) }
                 Text(provenance)
@@ -290,6 +296,12 @@ struct BilanVue: View {
                             .font(Police.titre(22))
                             .foregroundStyle(Palette.encre)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let a = b.avertissement {
+                            Label(a, systemImage: "exclamationmark.circle")
+                                .font(Police.texte(14))
+                                .foregroundStyle(Palette.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         bloc("Fait", symbole: "checkmark.circle", lignes: b.fait,
                              vide: "Rien coché dans Rémy aujourd'hui. Ce que tu as coché dans Motion n'apparaît pas ici.")
                         bloc("A glissé", symbole: "arrow.uturn.forward", lignes: b.glisse.map(\.titre),

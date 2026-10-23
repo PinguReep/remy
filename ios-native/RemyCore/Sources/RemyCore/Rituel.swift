@@ -50,6 +50,8 @@ public struct BriefingMatin: Codable, Sendable, Equatable {
     public var menacees: [MenaceeTour]?
     /// Les sujets de la nuit encore ouverts.
     public var sujets: Int?
+    /// Une source muette (Motion, l'agenda) : le briefing peut être incomplet.
+    public var avertissement: String?
 }
 
 /// Le bilan du soir : fait, glissé, ce qui reste (avec son échéance de demain).
@@ -69,6 +71,7 @@ public struct BilanSoirTour: Codable, Sendable, Equatable {
     public var glisse: [Glisse]
     public var reste: [Reste]
     public var phrase: String
+    public var avertissement: String?
 }
 
 /// GET /api/rituel.
@@ -168,7 +171,7 @@ public enum Rituel {
             let depuis = prepareA.map { " (dernière lecture \(fraicheur($0, maintenant: declenchement, calendrier: calendrier)))" } ?? ""
             return ("Ton briefing", nil, "Ta tour n'a pas encore préparé cette journée\(depuis). Ouvre Rémy pour le calculer.")
         }
-        var sous: String?
+        var sous: String? = b.avertissement
         if let p = prepareA, declenchement.timeIntervalSince(p) > fraicheurMax {
             sous = "Préparé \(fraicheur(p, maintenant: declenchement, calendrier: calendrier)) · touche pour l'actualiser"
         }
