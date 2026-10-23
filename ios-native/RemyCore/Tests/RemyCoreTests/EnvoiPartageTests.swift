@@ -111,6 +111,10 @@ final class EnvoiPartageTests: XCTestCase {
         XCTAssertEqual(RecuPartage(r).detail, "Image rangée dans ton coffre (Captures/Images).")
         r = RetourCapture(ajouts: [], memoire: true, message: nil)
         XCTAssertEqual(RecuPartage(r).detail, "Rien de nouveau : Rémy le savait déjà.")
+        // Le modèle local absent : l'image est quand même gardée, et c'est dit.
+        r = RetourCapture(ajouts: [], memoire: false, message: "Pas absorbé tout de suite (le modèle local ne répond pas) : Rémy le relira cette nuit.")
+        r.image = "Captures/Images/x.jpg"
+        XCTAssertEqual(RecuPartage(r).detail, "Image gardée sur ta tour. Pas absorbé tout de suite (le modèle local ne répond pas) : Rémy le relira cette nuit.")
     }
 
     func testLesErreursSontDitesEnClair() {
@@ -218,7 +222,7 @@ final class EnvoiPartageTests: XCTestCase {
         XCTAssertTrue(seule.detail.hasPrefix("Image rangée"), seule.detail)
         // Avec du texte lu : gardée, jamais envoyée au cloud (modèle local seulement).
         let lue = try await api.partager(ContenuPartage(image: ImagePartagee(donnees: octets, largeur: 1, hauteur: 1, texteLu: "Atelier bougies jeudi 18 h chez Hugo")), mot: "à noter")
-        XCTAssertFalse(lue.detail.isEmpty)
+        XCTAssertTrue(lue.detail.hasPrefix("Image gardée sur ta tour."), lue.detail)
         // Un format refusé revient en clair.
         do {
             _ = try await api.partager(ContenuPartage(image: ImagePartagee(donnees: Data("GIF89a".utf8), largeur: 1, hauteur: 1)), mot: nil)

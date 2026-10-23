@@ -113,7 +113,7 @@ tag) avant l'échéance.
   afficher la feuille (`FeuillePartage`). Pour l'avoir en tête de la feuille
   de partage : rangée d'apps › « Plus » › « Modifier » › « + » à côté de Rémy.
   En CI, la feuille est montrée dans l'app (`REMY_DEMO_ECRAN=partage-lien`,
-  `partage-image`, `partage-erreur`, `Remy/App/DemoPartage.swift`) : l'extension
+  `partage-image`, `partage-recu`, `partage-erreur`, `Remy/App/DemoPartage.swift`) : l'extension
   ne se lance pas en ligne de commande, mais la lecture des pièces jointes,
   Vision et l'envoi à la tour de démo tournent pour de vrai.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).

@@ -52,14 +52,15 @@ struct DemoPartageVue: View {
             ]
             await m.charger([element])
             m.mot = "À lire avant de commander la cire pour Léa"
-        case "partage-image":
+        case "partage-image", "partage-recu":
+            // L'aperçu (texte lu par Vision), puis le reçu de la vraie route.
             let element = NSExtensionItem()
             if let png = Self.imageEssai() {
                 element.attachments = [NSItemProvider(item: png as NSData, typeIdentifier: UTType.png.identifier)]
             }
             await m.charger([element])
             m.mot = "À noter"
-            await m.envoyer()
+            if ecran == "partage-recu" { await m.envoyer() }
         default:
             let element = NSExtensionItem()
             element.attachments = [

@@ -190,11 +190,10 @@ public struct RecuPartage: Equatable, Sendable {
 
     public init(_ r: RetourCapture) {
         titre = "J'ai compris. Classé."
-        if r.ajouts?.isEmpty == false || r.message == nil {
-            detail = r.phrase
-        } else {
-            detail = r.message ?? r.phrase
-        }
+        var d = r.ajouts?.isEmpty == false || r.message == nil ? r.phrase : (r.message ?? r.phrase)
+        // L'image est gardée même quand le modèle n'a rien appris : on le dit.
+        if r.image != nil, !d.hasPrefix("Image") { d = "Image gardée sur ta tour. " + d }
+        detail = d
     }
 }
 
