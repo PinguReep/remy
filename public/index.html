@@ -1728,7 +1728,7 @@ function setModelChip(nameEl, model, tier, usd) {
 }
 
 // ---------- Propositions Motion (Rémy propose, tu appliques) ----------
-const VERBES = { creer: "créer", modifier: "modifier", terminer: "terminer", supprimer: "supprimer" };
+const VERBES = { creer: "créer", modifier: "modifier", terminer: "terminer", supprimer: "supprimer", liste: "ajouter", rappel: "rappel" };
 
 // Deux destinations, même contrat : Rémy propose, Sam valide, tout est
 // annulable. Motion tient les TÂCHES, Google Calendar les RENDEZ-VOUS.
@@ -1751,6 +1751,17 @@ const SOURCES = {
     encours: "Ajout dans ton agenda…",
     nom: (a) => a.nouveau_titre || a.titre,
   },
+  // Le carnet (24/10) : courses et rappels proposés par Rémy, écrits sur la
+  // tour au « Ajouter » (pas d'annulation : on retire l'article de la liste).
+  carnet: {
+    titre: "Proposition · Carnet",
+    fait: "Ajouté à ton carnet",
+    ou: "ton carnet",
+    apply: null,
+    undo: null,
+    encours: "Ajout au carnet…",
+    nom: (a) => (a.type === "liste" ? (a.articles || []).join(", ") + " → " + (a.liste || "Courses") : a.texte),
+  },
 };
 
 function fmtEcheance(iso) {
@@ -1768,6 +1779,7 @@ function actionLabel(a) {
   if (a.debut) bits.push(fmtEcheance(a.debut)); // rendez-vous
   if (a.lieu) bits.push(String(a.lieu));
   if (a.echeance) bits.push(fmtEcheance(a.echeance)); // tâche
+  if (a.quand) bits.push(fmtEcheance(a.quand)); // rappel du carnet
   if (a.duree) {
     const d = String(a.duree).toUpperCase();
     bits.push(DUREE_FR[d] || (/^\d+$/.test(d) ? d + " min" : d.toLowerCase()));
@@ -1970,12 +1982,26 @@ function renderProposal(block, prop, index) {
 
   const go = document.createElement("button");
   go.className = "btn btn-primary";
-  go.textContent = echec ? "Réessayer" : "Appliquer";
+  go.textContent = echec ? "Réessayer" : prop.source === "carnet" ? "Ajouter" : "Appliquer";
   go.onclick = async () => {
     go.disabled = true;
     refuse.disabled = true;
     status.textContent = S.encours;
     try {
+      if (prop.source === "carnet") {
+        if (!prop.id || !currentId) throw new Error("Proposition sans identifiant : redemande à Rémy.");
+        const r = await apiFetch(`/api/conversations/${encodeURIComponent(currentId)}/propositions/${encodeURIComponent(prop.id)}/carnet`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.message || d.error || "Ajout impossible");
+        prop.statut = "applique";
+        prop.bilan = d.bilan || { faits: [] };
+        redessiner();
+        return toast("Ajouté à ton carnet ✓ (sur l'iPhone au prochain rafraîchissement)");
+      }
       const r = await apiFetch(S.apply, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
