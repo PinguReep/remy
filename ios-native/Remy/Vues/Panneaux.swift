@@ -4,16 +4,20 @@ import RemyCore
 // Les panneaux superposés de l'accueil (spec §4.2 à §4.4) : « Gérer » une
 // tâche, et la journée à l'échelle.
 
-/// « Gérer » : les gestes fréquents, sans vingt réglages à la fois. Prolonger
-/// montre d'abord ce que ça change (estimation) ; rien ne part sans un second
-/// geste.
+/// « Gérer » : les gestes fréquents, sans vingt réglages à la fois. Le même
+/// panneau pour toutes les tâches (24/10) : celles du planning, à faire ou en
+/// retard. Décaler part en un toucher (avec « Annuler ») ; prolonger montre
+/// d'abord ce que ça change (estimation) — rien ne part sans un second geste.
 struct GererPanneau: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
     let e: ElementJour
     @State private var choix: Int?
     @State private var envoi = false
-    @State private var replanifier = false
+    /// Le choix de « Décaler » en cours d'envoi (son id).
+    @State private var decalage: String?
+    @State private var choixDate = false
+    @State private var modifier = false
     @State private var bloquer = false
     @State private var raison = ""
     @State private var categoriser = false
@@ -24,6 +28,7 @@ struct GererPanneau: View {
         let reste = max(0, Int(((e.finEffective - maintenant) / 60_000).rounded(.up)))
         VStack(alignment: .leading, spacing: 16) {
             Capsule().fill(Palette.fond3).frame(width: 36, height: 5).frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 if (e.projet ?? "").isEmpty == false || !categories.isEmpty {
                     HStack(spacing: 6) {
@@ -40,16 +45,19 @@ struct GererPanneau: View {
                     .font(Police.titre(22))
                     .foregroundStyle(Palette.encre)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(horaires(maintenant: maintenant, reste: reste))
+                    .accessibilityAddTraits(.isHeader)
+                Text(e.sansCreneau ? quandSansCreneau : horaires(maintenant: maintenant, reste: reste))
                     .font(Police.mono(12))
-                    .foregroundStyle(Palette.encre2)
+                    .foregroundStyle(e.sansCreneau && e.retard == true ? Palette.danger : Palette.encre2)
+                if e.bloquee == true { MarqueBloquee(raison: e.raison) }
             }
-            prolonger
+            // La croix « Fermer » est posée en haut à droite (Surimpression).
+            .padding(.trailing, 34)
+            if !e.sansCreneau { prolonger }
+            decaler
             Rectangle().fill(Palette.filet).frame(height: 1)
             VStack(spacing: 0) {
-                action("Replanifier ou modifier", detail: "Une autre date ; nom, durée, priorité", symbole: "calendar") {
-                    replanifier = true
-                }
+                action("Modifier", detail: "Nom, durée, priorité, échéance", symbole: "pencil") { modifier = true }
                 if app.tableau.categoriesDisponibles {
                     action("Catégorie", detail: categories.isEmpty ? "Voiture, Santé, Pro, Perso…" : categories.joined(separator: ", "), symbole: "tag") {
                         categoriser = true
@@ -62,7 +70,7 @@ struct GererPanneau: View {
                             Task { await app.tableau.bloquer(id: e.id, titre: e.titre, bloquee: false) }
                         }
                     } else {
-                        action("En attente de…", detail: "Mise de côté, avec ce que tu attends", symbole: "pause.circle") { bloquer = true }
+                        action("Mettre en attente", detail: "Mise de côté, avec ce que tu attends", symbole: "pause.circle") { bloquer = true }
                     }
                 }
                 if app.serveur?.sait("taches-etat-v2") == true {
@@ -71,37 +79,48 @@ struct GererPanneau: View {
                             ui.gerer = nil
                             Task { await app.tableau.arreter(id: e.id, titre: e.titre) }
                         }
-                    } else if Jour.etat(e, maintenant: maintenant) == .avenir {
-                        action("Commencer maintenant", detail: "Elle devient ta tâche en cours, pour \(Format.duree(minutes: e.dureeTotale))", symbole: "play.circle") {
+                    } else if e.sansCreneau || Jour.etat(e, maintenant: maintenant) == .avenir {
+                        action("Commencer maintenant", detail: "Elle devient ta tâche en cours, pour \(Format.duree(minutes: e.duree ?? e.dureeTotale))", symbole: "play.circle") {
                             ui.gerer = nil
                             Task { await app.tableau.commencer(id: e.id, titre: e.titre, duree: e.duree) }
                         }
                     }
                 }
-                action("Est-ce raisonnable ?", detail: "Demander l'avis de Rémy", symbole: "questionmark.bubble") {
-                    let m = choix ?? 15
-                    demander(Brouillons.raisonnable(e, minutes: m, impact: ImpactProlongation.de(e, minutes: m, journee: app.tableau.journee)))
-                }
-                action("Terminer", detail: "Elle quitte la journée, avec « Annuler »", symbole: "checkmark.circle") {
-                    ui.gerer = nil
-                    Cocher.tache(app, id: e.id, titre: e.titre, ui: ui)
+                action("En parler à Rémy", detail: choix != nil ? "Est-ce raisonnable de prolonger ? Rien ne part sans toi" : "Une question prête, envoyée seulement si tu le décides",
+                       symbole: "bubble.left") {
+                    if let m = choix {
+                        demander(Brouillons.raisonnable(e, minutes: m, impact: ImpactProlongation.de(e, minutes: m, journee: app.tableau.journee)))
+                    } else {
+                        demander(e.sansCreneau && e.retard == true ? Brouillons.retard(e.resume) : Brouillons.tache(e.titre))
+                    }
                 }
             }
+            // Le geste le plus fréquent, en bas : sous le pouce.
+            BoutonA(titre: "Terminer", symbole: "checkmark", hauteur: 50) {
+                ui.gerer = nil
+                Cocher.tache(app, id: e.id, titre: e.titre, ui: e.sansCreneau ? nil : ui)
+            }
+            .accessibilityLabel("Terminer « \(e.titre) »")
         }
         .padding(20)
         .carte(rayon: 28)
         .onAppear {
-            if let c = ui.choixDemo, e.duree != nil { choix = c }
+            if let c = ui.choixDemo, e.duree != nil, !e.sansCreneau { choix = c }
             ui.choixDemo = nil
             // Capture de la CI : la feuille « Catégorie ».
             let env = ProcessInfo.processInfo.environment
             if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "categorie" { categoriser = true }
         }
-        .modifier(ActionsTache(id: e.id, titre: e.titre, ouvert: $replanifier, echeance: e.echeance,
-                               duree: e.duree, priorite: e.priorite, bloquee: e.bloquee ?? false, etiquettes: e.etiquettes) {
-            demander(Brouillons.tache(e.titre))
-        })
+        .sheet(isPresented: $modifier) {
+            ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
+        }
         .sheet(isPresented: $categoriser) { CategoriserTache(id: e.id, titre: e.titre, actuelles: e.etiquettes ?? []) }
+        .sheet(isPresented: $choixDate) {
+            ChoixEcheance(titre: e.titre) { date in
+                choixDate = false
+                envoyer(ChoixDate(id: "date", libelle: "", date: Format.echeanceDans(jours: 0, depuis: date)))
+            }
+        }
         .alert("En attente de quoi ?", isPresented: $bloquer) {
             TextField("Le devis, une réponse de Hugo… (facultatif)", text: $raison)
             Button("Mettre en attente") {
@@ -113,6 +132,38 @@ struct GererPanneau: View {
             Button("Annuler", role: .cancel) { raison = "" }
         } message: {
             Text("Elle reste dans ta journée, marquée « en attente », et le conseil du moment ne te la propose plus.")
+        }
+    }
+
+    /// « Décaler » : une nouvelle échéance en un toucher (Motion choisit
+    /// l'heure), annulable depuis le bandeau. Le calendrier pour le reste.
+    private var decaler: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TitreSection(texte: "Décaler")
+            HStack(spacing: 8) {
+                ForEach(Decaler.tache(echeance: e.echeance)) { c in
+                    PuceGeste(titre: decalage == c.id ? "…" : c.libelle, actif: decalage == c.id) { envoyer(c) }
+                        .accessibilityLabel("Décaler à \(c.libelle.lowercased())")
+                        .accessibilityHint("Nouvelle échéance ; Motion trouvera le créneau")
+                }
+                PuceGeste(symbole: "calendar", actif: false) { choixDate = true }
+                    .frame(width: 50)
+                    .accessibilityLabel("Choisir une date")
+            }
+            .disabled(decalage != nil)
+        }
+    }
+
+    /// Reste ouvert pendant l'envoi (la puce dit « … ») ; fermé si Motion
+    /// accepte (le bandeau dit où et propose « Annuler »), ouvert sinon.
+    private func envoyer(_ c: ChoixDate) {
+        guard decalage == nil else { return }
+        decalage = c.id
+        Haptique.leger()
+        Task {
+            let ok = await app.tableau.replanifier(id: e.id, titre: e.titre, echeance: c.date)
+            decalage = nil
+            if ok { ui.gerer = nil } else { Haptique.erreur() }
         }
     }
 
@@ -132,18 +183,10 @@ struct GererPanneau: View {
                 HStack(spacing: 8) {
                     ForEach([5, 15, 30], id: \.self) { m in
                         let actif = choix == m
-                        Button {
-                            Haptique.leger()
+                        PuceGeste(titre: "+\(m) min", actif: actif) {
                             withAnimation(.snappy) { choix = actif ? nil : m }
-                        } label: {
-                            Text("+\(m) min")
-                                .font(Police.texte(15, .semibold))
-                                .foregroundStyle(actif ? Palette.fond : Palette.encre)
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(actif ? Palette.encre : Palette.fond2,
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .buttonStyle(Appui())
+                        .accessibilityLabel("Prolonger de \(m) minutes")
                         .accessibilityAddTraits(actif ? .isSelected : [])
                     }
                 }
@@ -192,6 +235,19 @@ struct GererPanneau: View {
         return bits.joined(separator: " · ")
     }
 
+    /// « En retard · prévue le 20 oct. » ; « À faire aujourd'hui · avant 18:00 · 30 min »
+    private var quandSansCreneau: String {
+        var bits: [String] = []
+        if e.retard == true {
+            bits.append("En retard" + (e.echeance.map { " · prévue le " + Format.jourCourt($0.date) } ?? ""))
+        } else {
+            bits.append("Pas encore placée par Motion")
+            if let ec = e.echeance { bits.append("avant " + Format.heure(ec)) }
+        }
+        if let d = e.duree { bits.append(Format.duree(minutes: d)) }
+        return bits.joined(separator: " · ")
+    }
+
     private func action(_ titre: String, detail: String, symbole: String, faire: @escaping () -> Void) -> some View {
         Button {
             Haptique.leger()
@@ -205,6 +261,7 @@ struct GererPanneau: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(titre).font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
                     Text(detail).font(Police.texte(13)).foregroundStyle(Palette.encre3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.encre3)
@@ -218,6 +275,61 @@ struct GererPanneau: View {
     private func demander(_ texte: String) {
         ui.gerer = nil
         Task { _ = await app.preparer(texte, dansFil: Fils.journee(Date())) }
+    }
+}
+
+/// Une puce de geste (Décaler, Prolonger) : 44 pt de haut, la même partout.
+struct PuceGeste: View {
+    var titre: String? = nil
+    var symbole: String? = nil
+    var actif = false
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptique.leger()
+            action()
+        } label: {
+            Group {
+                if let symbole {
+                    Image(systemName: symbole).font(.system(size: 16, weight: .semibold))
+                } else {
+                    Text(titre ?? "").lineLimit(1).minimumScaleFactor(0.75)
+                }
+            }
+            .font(Police.texte(15, .semibold))
+            .foregroundStyle(actif ? Palette.fond : Palette.encre)
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(actif ? Palette.encre : Palette.fond2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
+    }
+}
+
+/// Une échéance au calendrier (« Décaler » › 📅) : Motion trouve le créneau.
+struct ChoixEcheance: View {
+    let titre: String
+    let valider: (Date) -> Void
+    @Environment(\.dismiss) private var fermer
+    @State private var date = Format.echeanceDans(jours: 1)
+
+    var body: some View {
+        NavigationStack {
+            DatePicker("Échéance", selection: $date, in: Date()..., displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .environment(\.locale, Format.locale)
+                .environment(\.timeZone, Format.fuseau)
+                .padding(.horizontal, 18)
+                .navigationTitle(titre)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Décaler") { valider(date) } }
+                }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

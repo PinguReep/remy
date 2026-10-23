@@ -45,6 +45,9 @@ struct OngletsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scene
     @State private var ui = EtatInterface()
+    /// Clavier ouvert : le « + » s'efface (24/10 : à 13 pt d'« Envoyer », même
+    /// orange). Rabattre le clavier le fait revenir.
+    @State private var clavier = false
 
     var body: some View {
         @Bindable var app = app
@@ -67,8 +70,16 @@ struct OngletsView: View {
                     .accessibilityHidden(app.onglet != .projets)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            BarreOnglets { ui.captureOuverte = true }
+            // Dans une liste, son champ d'ajout est déjà là : pas de second « + ».
+            BarreOnglets(sansPlus: clavier || (app.onglet == .projets && ui.cheminProjets.last.map(Self.estListe) == true)) {
+                ui.captureOuverte = true
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in clavier = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in clavier = false }
+        // Une notification de rappel touchée : Projets › Rappels (24/10).
+        .onReceive(NotificationCenter.default.publisher(for: .remyOuvrirRappels)) { _ in ouvrirRappels() }
+        .onAppear { if DelegueNotifications.partage.rappelsEnAttente { ouvrirRappels() } }
         .background(Palette.fond.ignoresSafeArea())
         .overlay {
             ZStack {
@@ -167,6 +178,18 @@ struct OngletsView: View {
 }
 
 extension OngletsView {
+    fileprivate static func estListe(_ r: RouteProjets) -> Bool {
+        if case .liste = r { return true }
+        return false
+    }
+
+    fileprivate func ouvrirRappels() {
+        DelegueNotifications.partage.rappelsEnAttente = false
+        ui.gerer = nil
+        app.onglet = .projets
+        ui.cheminProjets = [.rappels]
+    }
+
     /// Captures de la CI : ouvre le panneau demandé une fois la journée chargée.
     /// Inactif sans les variables d'environnement de démonstration.
     fileprivate func demo() async {
@@ -185,6 +208,13 @@ extension OngletsView {
                 ui.gerer = j?.items?.first { !$0.estRendezVous && $0.duree != nil } ?? j?.items?.first { !$0.estRendezVous }
             }
             ui.choixDemo = 15
+        case "gerer-retard":
+            // Le même « Gérer » pour une tâche en retard (24/10).
+            if let t = j?.retard?.items.first ?? j?.aFaire?.first {
+                ui.gerer = ElementJour.sansCreneau(t, retard: j?.retard?.items.first != nil)
+            }
+        case "rappel-quand":
+            ui.cheminProjets = [.rappels]
         case "journee-etendue": ui.journeeEtendue = true
         case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
         case "capture": ui.captureOuverte = true
@@ -235,6 +265,8 @@ extension OngletsView {
 struct BarreOnglets: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
+    /// Clavier ouvert, ou dans une liste : pas de « + » (il couvrait le champ).
+    var sansPlus = false
     let noter: () -> Void
 
     var body: some View {
@@ -250,6 +282,12 @@ struct BarreOnglets: View {
         .background(Palette.surface.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Palette.filet).frame(height: 1) }
         .overlay(alignment: .topTrailing) {
+            if !sansPlus { plus.transition(.scale(scale: 0.6).combined(with: .opacity)) }
+        }
+        .animation(.easeOut(duration: 0.15), value: sansPlus)
+    }
+
+    private var plus: some View {
             Button {
                 Haptique.leger()
                 noter()
@@ -266,7 +304,6 @@ struct BarreOnglets: View {
             .padding(.trailing, 18)
             .offset(y: -24)
             .accessibilityLabel("Noter quelque chose")
-        }
     }
 
     private func onglet(_ o: AppModel.Onglet, _ titre: String, _ symbole: String) -> some View {

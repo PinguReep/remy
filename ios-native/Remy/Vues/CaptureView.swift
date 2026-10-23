@@ -59,10 +59,15 @@ struct CaptureView: View {
         .padding(20)
         // En haut de la feuille : sinon le contenu flotte au milieu du détent.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // L'envoi collé au clavier, sous le pouce (24/10 : il était en haut,
+        // au-dessus de 300 pt de vide).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if analyse == nil { barreEnvoi }
+        }
         .background(Palette.surface)
         // La feuille a sa copie du message : sinon il passerait dessous.
         .overlay(alignment: .bottom) { ToastView(marge: 12, annoncer: false) }
-        .presentationDetents(analyse != nil ? [.large] : [.height(genre == .liste || genre == .projet ? 420 : 380), .medium, .large])
+        .presentationDetents(analyse != nil ? [.large] : [.height(genre == .liste || genre == .projet ? 470 : 430), .medium, .large])
         .presentationDragIndicator(.visible)
         .onAppear {
             if let t = ui.texteDemo { texte = t; ui.texteDemo = nil }
@@ -108,19 +113,18 @@ struct CaptureView: View {
                 }
                 .frame(minHeight: 50)
             case .repos:
-                HStack(alignment: .top, spacing: 8) {
-                    TextField("Une tâche, des courses, un rappel…", text: $texte, axis: .vertical)
-                        .font(Police.texte(19))
-                        .foregroundStyle(Palette.encre)
-                        .lineLimit(1...6)
-                        .focused($focus)
-                    if micro {
-                        bouton("mic", "Dicter") {
-                            focus = false
-                            Task { await app.dictee.commencer() }
-                        }
+                TextField("Une tâche, des courses, un rappel…", text: $texte, axis: .vertical)
+                    .font(Police.texte(19))
+                    .foregroundStyle(Palette.encre)
+                    .lineLimit(1...6)
+                    .focused($focus)
+                    // Retour = Ajouter (24/10) ; un texte collé garde ses lignes.
+                    .submitLabel(.send)
+                    .onChange(of: texte) { ancien, nouveau in
+                        guard nouveau.hasSuffix("\n"), String(nouveau.dropLast()) == ancien else { return }
+                        texte = ancien
+                        if pret { Task { await noter() } } else { Haptique.erreur() }
                     }
-                }
             }
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: icone(genre)).font(.system(size: 12, weight: .semibold))
@@ -148,20 +152,12 @@ struct CaptureView: View {
                 .buttonStyle(Appui())
                 .disabled(analyseEnCours)
             }
-            // Le genre deviné reste visible : la rangée défile jusqu'à lui.
-            ScrollViewReader { defile in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(GenreCapture.allCases, id: \.self) { g in
-                            puce(g.libelle, symbole: icone(g), actif: genre == g) {
-                                choisi = (choisi == g) ? nil : g
-                            }
-                            .id(g)
-                        }
+            // Les six genres passent à la ligne : aucun n'est caché hors de l'écran (24/10).
+            Flux(espacement: 8) {
+                ForEach(GenreCapture.allCases, id: \.self) { g in
+                    puce(g.libelle, symbole: icone(g), actif: genre == g) {
+                        choisi = (choisi == g) ? nil : g
                     }
-                }
-                .onChange(of: genre, initial: true) { _, g in
-                    withAnimation(.snappy) { defile.scrollTo(g, anchor: .center) }
                 }
             }
             if genre == .liste && carnetPret && !app.carnet.listes.isEmpty {
@@ -189,10 +185,37 @@ struct CaptureView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Sous le pouce, juste au-dessus du clavier : dicter, et ajouter.
+    private var barreEnvoi: some View {
+        HStack(spacing: 10) {
+            if micro, app.dictee.etat == .repos {
+                Button {
+                    Haptique.leger()
+                    focus = false
+                    Task { await app.dictee.commencer() }
+                } label: {
+                    Image(systemName: "mic")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Palette.encre)
+                        .frame(width: 50, height: 50)
+                        .background(Palette.fond2, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(Appui())
+                .accessibilityLabel("Dicter")
+            }
             BoutonA(titre: envoi ? "…" : action, symbole: "arrow.up") { Task { await noter() } }
                 .disabled(!pret)
                 .opacity(pret ? 1 : 0.45)
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .background(Palette.surface)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.filet).frame(height: 1) }
     }
 
     /// La liste visée : celle choisie, sinon « Courses », sinon la première.
@@ -243,7 +266,7 @@ struct CaptureView: View {
             .font(Police.texte(14, .semibold))
             .foregroundStyle(actif ? Palette.fond : Palette.encre)
             .padding(.horizontal, 14)
-            .frame(minHeight: 40)
+            .frame(minHeight: 44)
             .background(actif ? (discrete ? Palette.encre2 : Palette.encre) : Palette.fond2, in: Capsule())
             .contentShape(Capsule())
         }
