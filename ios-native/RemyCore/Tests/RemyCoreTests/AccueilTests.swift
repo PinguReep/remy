@@ -224,6 +224,8 @@ final class AccueilTests: XCTestCase {
     /// Déjà dans Motion n'est pas un échec (24/10) : la feuille se ferme, sans
     /// haptique d'erreur — avec une tour à jour comme avec une plus ancienne.
     func testDoublonDitDejaLaSansEchec() async {
+        // Rien ne reste pour la classe suivante (AjustementTests vérifie qu'aucune écriture n'est partie).
+        defer { FauxServeur.recues = []; FauxServeur.reponses = [:]; FauxServeur.corps = [:] }
         FauxServeur.reponses = [
             "POST /api/motion/apply": [
                 (200, #"{"echecs":1,"etat":"echouee","results":[{"ok":false,"type":"creer","nom":"Appeler","erreur":"« Appeler » existe déjà dans Motion — rien n'a été créé"}]}"#),
@@ -240,6 +242,7 @@ final class AccueilTests: XCTestCase {
     }
 
     func testUneVraiePanneResteUnEchec() async {
+        defer { FauxServeur.recues = []; FauxServeur.reponses = [:]; FauxServeur.corps = [:] }
         FauxServeur.reponses = [
             "POST /api/motion/apply": [(200, #"{"echecs":1,"etat":"echouee","results":[{"ok":false,"type":"creer","nom":"Appeler","erreur":"Motion ne répond pas"}]}"#)],
         ]
