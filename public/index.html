@@ -1976,12 +1976,24 @@ function renderProposal(block, prop, index) {
     refuse.disabled = true;
     status.textContent = S.encours;
     try {
-      const r = await apiFetch(S.apply, {
+      const envoyer = (confirmer) => apiFetch(S.apply, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actions: prop.actions, resume: prop.resume, convId: currentId, index, propositionId: prop.id }),
+        body: JSON.stringify({ actions: prop.actions, resume: prop.resume, convId: currentId, index, propositionId: prop.id, ...(confirmer ? { confirmer: true } : {}) }),
       });
-      const d = await r.json().catch(() => ({}));
+      let r = await envoyer(false);
+      let d = await r.json().catch(() => ({}));
+      // Périmée (ancienne, ou date passée) : jamais appliquée sans le dire (24/10).
+      if (r.status === 409 && d.error === "perimee") {
+        if (!confirm(`${d.message}\n\nAppliquer quand même ?`)) {
+          go.disabled = false;
+          refuse.disabled = false;
+          status.textContent = "";
+          return toast("Rien n'a été appliqué : ajuste la proposition ou redemande à Rémy.");
+        }
+        r = await envoyer(true);
+        d = await r.json().catch(() => ({}));
+      }
       if (r.status === 502 || r.status === 503) {
         // Motion ou Google n'a rien pu écrire : la carte le dit, et reste retentable.
         prop.statut = "echec";
@@ -1994,8 +2006,9 @@ function renderProposal(block, prop, index) {
       prop.statut = d.etat === "echouee" ? "echec" : "applique";
       prop.ledgerId = d.ledgerId;
       prop.bilan = {
-        faits: results.filter((x) => x.ok).map((x) => x.nom || x.titre),
+        faits: results.filter((x) => x.ok && !x.dejaLa).map((x) => x.nom || x.titre),
         echoues: results.filter((x) => !x.ok).map((x) => ({ nom: x.nom || x.titre, erreur: x.erreur })),
+        dejaLa: results.filter((x) => x.ok && x.dejaLa).map((x) => x.nom || x.titre),
       };
       prop.annulee = undefined;
       prop.annulationRatee = undefined;
@@ -2004,7 +2017,9 @@ function renderProposal(block, prop, index) {
       // une tâche créée dans le mauvais espace Motion est invisible.
       const espace = results.find((x) => x.ok && x.espace)?.espace;
       toast(
-        prop.statut === "echec"
+        d.etat === "deja_la"
+          ? "Déjà là : rien à ajouter."
+          : prop.statut === "echec"
           ? "Rien n'a pu être fait : la raison est sous chaque ligne."
           : d.echecs
             ? `${d.echecs} action(s) en échec — la raison est sous la ligne.`
