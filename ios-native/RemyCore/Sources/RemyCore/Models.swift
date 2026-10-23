@@ -1035,6 +1035,9 @@ public struct RetourCapture: Codable, Sendable {
         if memoire == false { return message.map { "Gardé : \($0)" } ?? "Gardé : Rémy le relira cette nuit." }
         return "Rien de nouveau : Rémy le savait déjà."
     }
+
+    /// Une image partagée : son chemin sur la tour (Captures/Images/…, 24/10).
+    public var image: String?
 }
 
 // MARK: - Version et réglages (Lot 0)
