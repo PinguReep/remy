@@ -4,6 +4,31 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-24 — Extensions iPhone : un trousseau partagé, pas de groupe d'app
+
+- Deux extensions embarquées dans l'app : `RemyWidgets` (WidgetKit,
+  `com.pingureep.remy.widgets`) et `RemyPartage` (feuille de partage,
+  `com.pingureep.remy.partage`). Même version que l'app (TestFlight l'exige),
+  même signature automatique ; `scripts/asc-register-bundle.mjs` enregistre les
+  trois identifiants (idempotent).
+- Pas de groupe d'app (App Groups) : Apple ne permet pas d'enregistrer la
+  capacité par l'API, et le build TestFlight de nuit échouerait. Le partage
+  passe par un **trousseau partagé** : `keychain-access-groups =
+  $(AppIdentifierPrefix)com.pingureep.remy`, couvert par tout profil de
+  l'équipe. C'est aussi le groupe par défaut de l'app avant ce changement : le
+  jeton d'appareil déjà rangé reste lisible, rien à refaire sur l'iPhone.
+- L'app recopie l'adresse de la tour dans le trousseau (service
+  `remy.adresse-tour`, `AfterFirstUnlockThisDeviceOnly`) au démarrage et à la
+  connexion, l'efface à la déconnexion (`TrousseauPartage.publier`). Les
+  extensions **lisent seulement** : `TrousseauPartage.systeme.client()` rend un
+  `ClientAPI` (adresse + jeton, coffre en lecture seule : un 401 n'efface pas
+  le jeton de l'app) ou « Ouvre Rémy une fois pour te connecter ».
+- Liens `remy://capture` (la capture), `remy://aujourdhui|remy|projets`
+  (l'onglet) : `LienRemy` dans le cœur, `.onOpenURL` dans l'app. La capture
+  attend les onglets et ferme d'abord la feuille ouverte.
+- `NSSupportsLiveActivities` posé dans l'app (les activités en direct viennent
+  ensuite).
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit

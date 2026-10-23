@@ -109,6 +109,11 @@ public final class AppModel {
     public private(set) var horsLigne = false
     /// Pour mesurer le temps jusqu'à la journée à l'écran.
     @ObservationIgnored let lancement = Date()
+    /// Le trousseau partagé avec les widgets et la feuille de partage (24/10),
+    /// posé par l'app : l'adresse de la tour y est recopiée. nil : les tests.
+    @ObservationIgnored public var partage: TrousseauPartage?
+    /// Un lien remy:// qui attend les onglets (la capture ouverte depuis un widget).
+    public var lien: LienRemy?
 
     /// `rangement` : où garder la journée et les gestes pas encore envoyés
     /// (nil : rien sur le disque, pour les tests et les aperçus).
@@ -172,6 +177,7 @@ public final class AppModel {
     /// Une journée gardée sur l'iPhone s'affiche sans attendre la tour (qui
     /// peut mettre longtemps à ne pas répondre, Tailscale coupé).
     public func demarrer() async {
+        partage?.publier(api.base)
         if tableau.donnees != nil || !tableau.envoi.isEmpty { phase = .pret }
         if tableau.donnees != nil { Mesures.partagees.noter("app.affichage", ms: Date().timeIntervalSince(lancement) * 1000) }
         do {
@@ -197,6 +203,7 @@ public final class AppModel {
 
     public func connecter(motDePasse: String) async throws {
         try await api.connexion(motDePasse: motDePasse, appareil: nomAppareil)
+        partage?.publier(api.base)
         phase = .pret
         await chargerTout()
     }
@@ -208,6 +215,9 @@ public final class AppModel {
         dictee.annuler(sansMessage: true)
         dictee.oublierEnAttente()
         await api.deconnexion()
+        // Les extensions n'ont plus de tour à qui parler.
+        partage?.publier(nil)
+        lien = nil
         chat.vider()
         tableau.vider()
         projets.vider()
@@ -219,6 +229,22 @@ public final class AppModel {
         reglagesOuverts = false
         message = nil
         phase = .connexion
+    }
+
+    /// Un lien remy:// (widget, feuille de partage) : l'onglet tout de suite ;
+    /// la capture attend les onglets (`lien`), qui ferment d'abord la feuille
+    /// ouverte. Rend faux si le lien est inconnu.
+    @discardableResult
+    public func ouvrir(_ url: URL) -> Bool {
+        guard let l = LienRemy(url: url) else { return false }
+        switch l {
+        case .onglet(let o):
+            reglagesOuverts = false
+            onglet = o
+        case .capture:
+            lien = .capture
+        }
+        return true
     }
 
     public func chargerTout(frais: Bool = false) async {

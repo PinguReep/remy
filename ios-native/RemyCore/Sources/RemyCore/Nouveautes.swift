@@ -29,6 +29,10 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "widget-capture", serie: 3, date: "24 oct.", titre: "Capturer depuis l'écran d'accueil", capacite: nil, pages: [
+            .init(symbole: "plus.square", titre: "Le widget « Capturer »",
+                  texte: "Appui long sur l'écran d'accueil › « + » › Rémy. Un toucher sur le widget ouvre directement la capture : une idée, une tâche, un rappel. Il existe aussi en rond pour l'écran verrouillé."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
