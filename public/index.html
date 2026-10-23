@@ -2405,16 +2405,24 @@ async function recoverReply(convId, text, block, name, bubble, { recu = true, de
   const deadline = Date.now() + 150_000;
   let muetteDepuis = recu ? null : debut;
   while (Date.now() < deadline) {
+    // Ni flux ni conversation depuis ~20 s : le message n'est pas parti.
+    if (!recu && muetteDepuis !== null && Date.now() - muetteDepuis >= 20_000) {
+      return envoiRate(block, bubble, text, (navigator.onLine ? TOUR_MUETTE : "Hors ligne.") + " Ton message est revenu dans le champ.");
+    }
     await sleep(document.hidden ? 1000 : recu ? 4000 : 2000);
     if (document.hidden) continue; // on attend le retour au premier plan
     if (!navigator.onLine) {
       note.textContent = "Hors ligne — en attente de connexion…";
       continue;
     }
+    // Une tour muette peut aussi laisser la requête pendue : 8 s au plus.
+    const delai = new AbortController();
+    const minuteur = setTimeout(() => delai.abort(), 8_000);
     try {
-      const r = await apiFetch(`/api/conversations/${convId}`);
+      const r = await apiFetch(`/api/conversations/${convId}`, { signal: delai.signal });
       if (!r.ok) throw new ErreurServeur(`Erreur ${r.status}`);
       const conv = await r.json();
+      clearTimeout(minuteur);
       muetteDepuis = null;
       const msgs = conv.messages || [];
       const iUser = msgs.map((m) => (m.role === "user" ? m.content : null)).lastIndexOf(text);
@@ -2437,14 +2445,13 @@ async function recoverReply(convId, text, block, name, bubble, { recu = true, de
       }
       // Sinon : toujours en cours de génération, on continue à attendre.
     } catch (err) {
+      clearTimeout(minuteur);
       if (err instanceof AuthError) return;
       if (err instanceof ErreurServeur) continue; // la tour répond, mal : on insiste
       muetteDepuis ??= Date.now();
       note.textContent = TOUR_MUETTE + " Nouvel essai…";
-      if (Date.now() - muetteDepuis >= 20_000) {
-        if (!recu) return envoiRate(block, bubble, text, TOUR_MUETTE + " Ton message est revenu dans le champ.");
-        break; // la tour a le message : la réponse sera dans la conversation
-      }
+      // La tour a le message : la réponse l'attendra dans la conversation.
+      if (recu && Date.now() - muetteDepuis >= 20_000) break;
     }
   }
   bubble.classList.add("error");
