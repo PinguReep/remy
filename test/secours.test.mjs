@@ -159,6 +159,21 @@ test("capture, GLM éteint et secours coupé : le texte est gardé pour la nuit,
   assert.ok(JSON.stringify(gardees).includes("Une idée de projet"), "le texte n'est pas perdu");
 });
 
+test("capture différée (Siri) : réponse immédiate, texte gardé ensuite", async () => {
+  appelsClaude = 0;
+  const r = await envoyerJSON("POST", "/api/capture", { texte: "Rappeler le garage", source: "siri", differe: true });
+  assert.equal(r.status, 202);
+  assert.deepEqual(await r.json(), { ok: true, differe: true });
+  // L'absorption continue sur la tour : GLM éteint, le texte est gardé pour la nuit.
+  let gardees = "";
+  for (let i = 0; i < 50 && !gardees.includes("Rappeler le garage"); i++) {
+    await new Promise((ok) => setTimeout(ok, 100));
+    gardees = JSON.stringify(await (await fetch(`${base}/api/capture`)).json());
+  }
+  assert.ok(gardees.includes("Rappeler le garage"), "le texte n'est pas perdu");
+  assert.equal(appelsClaude, 0);
+});
+
 test("réglage : valeur invalide refusée, autre origine refusée", async () => {
   assert.equal((await envoyerJSON("PUT", "/api/reglages", { secoursCloud: "oui" })).status, 400);
   const r = await fetch(`${base}/api/reglages`, { method: "PUT", headers: { "Content-Type": "application/json", Origin: "https://ailleurs.example" }, body: JSON.stringify({ secoursCloud: true }) });
