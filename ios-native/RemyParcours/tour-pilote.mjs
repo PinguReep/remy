@@ -152,7 +152,7 @@ http.createServer((req, res) => {
       const court = (texte) => res.end(JSON.stringify({ choices: [{ message: { content: texte }, finish_reason: "stop" }], usage: { prompt_tokens: 50, completion_tokens: 3 } }));
       res.setHeader("Content-Type", "application/json");
       if (systeme.startsWith("Tu es le routeur")) return court("raisonnement");
-      if (/titre/i.test(systeme) && !systeme.startsWith("Tu ranges")) return court("Tâche à caler");
+      if (systeme.startsWith("Tu génères le titre")) return court("Tâche à caler");
     }
     // Le reste : au faux modèle de la CI, tel quel.
     try {

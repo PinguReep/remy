@@ -85,6 +85,29 @@ class ParcoursBase: XCTestCase {
     private var numero = 0
     private var etapes: [[String: Any]] = []
     private var constats: [String] = []
+    /// Ce que cherche chaque élément (« texte « … » »), pour un échec lisible.
+    private var noms: [ObjectIdentifier: String] = [:]
+
+    func nomme(_ e: XCUIElement, _ n: String) -> XCUIElement {
+        noms[ObjectIdentifier(e)] = n
+        return e
+    }
+
+    @MainActor
+    func nom(_ e: XCUIElement) -> String { noms[ObjectIdentifier(e)] ?? e.description }
+
+    /// Après un geste fait dans une feuille (le « + ») : la confirmation, avec
+    /// son « Annuler », doit rester visible une fois la feuille refermée.
+    @MainActor
+    func confirmationApresFeuille(_ message: String, champ: XCUIElement) throws {
+        let toast = texte(message)
+        let pendant = toast.waitForExistence(timeout: 3)
+        try etape("feuille-fermee", absent: [champ], delai: 10)
+        let apres = toast.exists
+        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non")")
+        constat("Après le « + », la confirmation (« \(message)… » et son « Annuler ») disparaît avec la feuille : la tâche d'effacement du message est annulée quand la feuille se ferme, et efface le message aussitôt (ToastView, RemyApp.swift).",
+                siFaux: apres)
+    }
 
     override func setUp() {
         super.setUp()
@@ -162,10 +185,10 @@ class ParcoursBase: XCTestCase {
     func etape(_ nom: String, attendu: [XCUIElement] = [], absent: [XCUIElement] = [], delai: TimeInterval = 12) throws {
         var manque: [String] = []
         for e in attendu where !e.waitForExistence(timeout: delai) {
-            manque.append(e.description)
+            manque.append("absent : " + self.nom(e))
         }
         for e in absent where !attendreDisparition(e, delai: delai) {
-            manque.append("encore là : " + e.description)
+            manque.append("encore là : " + self.nom(e))
         }
         capturer(nom + (manque.isEmpty ? "" : "-ECHEC"))
         if !manque.isEmpty {
@@ -267,22 +290,13 @@ class ParcoursBase: XCTestCase {
             throw ArretParcours()
         }
         if !e.isHittable { _ = attendreTouchable(e, delai: 3) }
-        // Hors de l'écran (bas d'une liste, d'une feuille) : Sam ferait défiler.
-        var defile = 0
-        while !e.isHittable && defile < 3 {
-            balayerVersLeHaut()
-            defile += 1
-        }
         // Désactivé le temps d'une réponse (Rémy écrit encore) : patienter un peu.
         let finActif = Date().addingTimeInterval(8)
         while !e.isEnabled && Date() < finActif { RunLoop.current.run(until: Date().addingTimeInterval(0.25)) }
         compter()
-        if e.isHittable {
-            e.tap()
-        } else {
-            // Partiellement couvert (clavier, barre) : toucher son centre.
-            e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        }
+        // Hors de l'écran (bas d'une liste, sous le clavier) : XCUITest fait
+        // défiler jusqu'à lui, comme Sam ; jamais de toucher au jugé.
+        e.tap()
     }
 
     @MainActor
@@ -344,38 +358,38 @@ class ParcoursBase: XCTestCase {
     // MARK: Requêtes
 
     @MainActor
-    func onglet(_ nom: String) -> XCUIElement { app.buttons["onglet.\(nom)"] }
+    func onglet(_ n: String) -> XCUIElement { nomme(app.buttons["onglet.\(n)"], "onglet \(n)") }
 
     /// Un bouton par son libellé exact, ou terminé par lui (« Coche, Terminer »),
     /// ou suivi d'une pastille (« Conversations, 1 »).
     @MainActor
     func bouton(_ libelle: String) -> XCUIElement {
         // « Conversations, 1 » : le libellé porte parfois une pastille.
-        app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR label ENDSWITH %@ OR label BEGINSWITH %@",
-                                         libelle, libelle, ", " + libelle, libelle + ", ")).firstMatch
+        nomme(app.buttons.matching(NSPredicate(format: "identifier == %@ OR label == %@ OR label ENDSWITH %@ OR label BEGINSWITH %@",
+                                               libelle, libelle, ", " + libelle, libelle + ", ")).firstMatch, "bouton « \(libelle) »")
     }
 
     /// Un bouton dont le libellé contient ce texte.
     @MainActor
     func boutonContenant(_ texte: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", texte)).firstMatch
+        nomme(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", texte)).firstMatch, "bouton contenant « \(texte) »")
     }
 
     /// N'importe quel élément dont le libellé contient ce texte.
     @MainActor
     func texte(_ t: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", t)).firstMatch
+        nomme(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", t)).firstMatch, "texte « \(t) »")
     }
 
     /// Sans tenir compte de la casse (les titres de section sont en capitales).
     @MainActor
     func texteI(_ t: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch
+        nomme(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", t)).firstMatch, "texte « \(t) » (casse ignorée)")
     }
 
     @MainActor
     func ident(_ id: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(identifier: id).firstMatch
+        nomme(app.descendants(matching: .any).matching(identifier: id).firstMatch, "identifiant \(id)")
     }
 
     @MainActor
