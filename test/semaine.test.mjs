@@ -87,6 +87,21 @@ test("sept jours : frise, échéances, charge et débordement par jour", () => {
   assert.equal(s.jours.flatMap((j) => j.items).some((i) => i.id === "t5" || i.id === "t6"), false);
 });
 
+test("une tâche étalée sur deux jours compte sa durée une fois ; finie à minuit, elle n'est pas du lendemain", () => {
+  const taches = [
+    // Découpée par Motion : lundi 16 h → mardi 11 h, 4 h de travail en tout.
+    { id: "t1", name: "Rapport annuel", scheduledStart: iso(a(0, 16)), scheduledEnd: iso(a(1, 11)), duration: 240 },
+    // Finie pile à minuit lundi soir.
+    { id: "t2", name: "Tard le soir", scheduledStart: iso(a(0, 23)), scheduledEnd: iso(a(1, 0)), duration: 60 },
+  ];
+  const s = semaine({ taches, evenements: [], horaires: BUREAU, maintenant: LUNDI_10H, jours: 2 });
+  const [lun, mar] = s.jours;
+  assert.equal(lun.charge.taches + mar.charge.taches, 240 + 60, "la durée n'est pas comptée deux fois");
+  assert.equal(lun.charge.taches, 60 + Math.round(240 * (8 / 19)), "lundi : sa part (8 h sur 19 h d'étalement) et la tâche du soir");
+  assert.deepEqual(lun.items.map((i) => i.id), ["t1", "t2"]);
+  assert.deepEqual(mar.items.map((i) => i.id), ["t1"], "rien à 00:00 le mardi");
+});
+
 test("sans horaires Motion : la charge prévue reste, le disponible est inconnu", () => {
   const s = semaine({ taches: [], evenements: [], horaires: null, maintenant: LUNDI_10H, jours: 2 });
   assert.equal(s.jours.length, 2);

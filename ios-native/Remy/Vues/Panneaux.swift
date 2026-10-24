@@ -445,7 +445,7 @@ struct JourneeEtendue: View {
     private var contenu: some View {
         switch portee {
         case .aujourdhui:
-            frise(app.tableau.journee?.items ?? [], aujourdhui: true, vide: "Rien à heure fixe aujourd'hui.")
+            frise(app.tableau.journee?.items ?? [], jour: Self.bornesAujourdhui(), aujourdhui: true, vide: "Rien à heure fixe aujourd'hui.")
         case .demain:
             jourVue(SemaineModel.demainISO(), vide: "Rien de prévu demain : ni rendez-vous, ni tâche placée par Motion.")
         case .semaine:
@@ -470,7 +470,8 @@ struct JourneeEtendue: View {
             BandeauSemaine()
             if let j = app.semaine.jour(iso), !j.estVide {
                 ResumeJour(j: j, ouvrir: ouvrir)
-                frise(j.items, aujourdhui: false, vide: "Rien à heure fixe ce jour-là.")
+                frise(j.items, jour: j.debut...max(j.debut + 3_600_000, j.fin ?? j.debut + 86_400_000),
+                      aujourdhui: false, vide: "Rien à heure fixe ce jour-là.")
             } else {
                 EtatSemaine(vide: vide)
             }
@@ -478,11 +479,15 @@ struct JourneeEtendue: View {
     }
 
     @ViewBuilder
-    private func frise(_ items: [ElementJour], aujourdhui: Bool, vide: String) -> some View {
-        let bornes = Self.heures(items)
+    private func frise(_ items: [ElementJour], jour: ClosedRange<Millis>, aujourdhui: Bool, vide: String) -> some View {
+        // Une tâche étalée sur plusieurs jours (découpée par Motion) : seul son
+        // bout de ce jour est dessiné ; la toucher ouvre la vraie.
+        let dessines = items.map { Self.dansLeJour($0, jour) }
+        let originaux: [String: ElementJour] = Dictionary(items.map { ($0.cle, $0) }, uniquingKeysWith: { a, _ in a })
+        let bornes = Self.heures(dessines, jour: jour)
         let premiere = bornes.0
         let derniere = bornes.1
-        let places = Couloirs.de(items)
+        let places = Couloirs.de(dessines)
         if items.isEmpty {
             Text(vide)
                 .font(Police.texte(15))
@@ -497,12 +502,13 @@ struct JourneeEtendue: View {
                         grille(premiere...derniere)
                         GeometryReader { g in
                             let largeur = g.size.width - 64
-                            ForEach(items, id: \.cle) { e in
-                                let p = places[e.cle] ?? Couloirs.Place(index: 0, total: 1)
+                            ForEach(dessines, id: \.cle) { d in
+                                let e = originaux[d.cle] ?? d
+                                let p = places[d.cle] ?? Couloirs.Place(index: 0, total: 1)
                                 let l = largeur / CGFloat(p.total)
-                                bloc(e)
-                                    .frame(width: l - 2, height: hauteur(e))
-                                    .offset(x: 60 + l * CGFloat(p.index), y: y(e.debut, depuis: premiere))
+                                bloc(e, hauteur: hauteur(d))
+                                    .frame(width: l - 2, height: hauteur(d))
+                                    .offset(x: 60 + l * CGFloat(p.index), y: y(d.debut, depuis: premiere))
                                     .onTapGesture { ouvrir(e) }
                             }
                             if aujourdhui { ligneMaintenant(largeur: g.size.width, depuis: premiere, jusqua: derniere) }
@@ -516,7 +522,7 @@ struct JourneeEtendue: View {
                 .task {
                     try? await Task.sleep(nanoseconds: 60_000_000)
                     // Aujourd'hui : là où on en est ; un autre jour : son premier élément.
-                    let depart = (aujourdhui ? Format.minuteDuJour(Date()) / 60 : (items.map { Format.minuteDuJour($0.debut.date) / 60 }.min() ?? premiere)) - 1
+                    let depart = (aujourdhui ? Format.minuteDuJour(Date()) / 60 : (dessines.map { Format.minuteDuJour($0.debut.date) / 60 }.min() ?? premiere)) - 1
                     let h = max(premiere, min(derniere, depart))
                     defilement.scrollTo("h\(h)", anchor: .top)
                 }
@@ -525,11 +531,30 @@ struct JourneeEtendue: View {
         }
     }
 
-    /// De la première heure utile à la dernière (8 h – 22 h au moins).
-    static func heures(_ items: [ElementJour]) -> (Int, Int) {
+    /// De la première heure utile à la dernière (8 h – 22 h au moins). Fini à
+    /// minuit (ou après) : jusqu'au bout de la grille.
+    static func heures(_ items: [ElementJour], jour: ClosedRange<Millis>? = nil) -> (Int, Int) {
         let debuts = items.map { Format.minuteDuJour($0.debut.date) / 60 }
-        let fins = items.map { (Format.minuteDuJour($0.finEffective.date) + 59) / 60 }
+        let fins = items.map { e -> Int in
+            if let j = jour, e.finEffective >= j.upperBound { return 24 }
+            return (Format.minuteDuJour(e.finEffective.date) + 59) / 60
+        }
         return (max(0, min(8, debuts.min() ?? 8)), min(24, max(22, fins.max() ?? 22)))
+    }
+
+    /// Le bout d'un élément qui tombe dans ce jour.
+    static func dansLeJour(_ e: ElementJour, _ jour: ClosedRange<Millis>) -> ElementJour {
+        var d = e
+        d.debut = min(max(e.debut, jour.lowerBound), jour.upperBound)
+        d.fin = max(d.debut, min(e.finEffective, jour.upperBound))
+        return d
+    }
+
+    /// Aujourd'hui, de minuit à minuit (heure de l'iPhone).
+    static func bornesAujourdhui(_ maintenant: Date = Date()) -> ClosedRange<Millis> {
+        let d0 = Format.calendrier.startOfDay(for: maintenant)
+        let d1 = Format.calendrier.date(byAdding: .day, value: 1, to: d0) ?? d0.addingTimeInterval(86_400)
+        return d0.millis...max(d0.millis, d1.millis)
     }
 
     private func grille(_ heures: ClosedRange<Int>) -> some View {
@@ -558,9 +583,8 @@ struct JourneeEtendue: View {
     }
 
     @ViewBuilder
-    private func bloc(_ e: ElementJour) -> some View {
+    private func bloc(_ e: ElementJour, hauteur h: CGFloat) -> some View {
         let couleur = e.estRendezVous ? Palette.encre2 : Palette.projet(e.projet)
-        let h = hauteur(e)
         let passe = Jour.etat(e, maintenant: Date().millis) == .passe
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
