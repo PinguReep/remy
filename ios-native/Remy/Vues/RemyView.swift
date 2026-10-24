@@ -805,8 +805,11 @@ private struct PropositionView: View {
     }
 
     /// Une case par ligne : garder une partie seulement, sans réécrire à Rémy.
+    /// Après un échec aussi : « Réessayer » renvoie les mêmes lignes, jamais
+    /// celles que Sam a décochées (ni quand une ligne rangée en rappel n'en
+    /// laisse qu'une).
     private var partielle: Bool {
-        !p.appliquee && !p.echouee && !p.convertie && !ligne.enCours && p.id != nil && p.actions.count > 1
+        !p.appliquee && !p.convertie && !ligne.enCours && p.id != nil && (p.actions.count > 1 || !decoches.isEmpty)
             && app.serveur?.sait("propositions-partielles-v1") == true
     }
 
@@ -892,6 +895,14 @@ private struct PropositionView: View {
         }
         .sheet(item: $ajustement) { AjusterAction(demande: $0) }
         .task {
+            // Échec relu plus tard (app relancée) : les lignes écartées au
+            // premier essai restent décochées pour « Réessayer ».
+            if p.echouee, decoches.isEmpty, let ecartees = p.bilan?.ecartees, !ecartees.isEmpty {
+                decoches = Set(p.actions.enumerated().compactMap { (i, a) -> Int? in
+                    guard let nom = a.nom ?? a.titre, ecartees.contains(nom) else { return nil }
+                    return a.rang ?? i
+                })
+            }
             // Captures de la CI : une ligne décochée (la dernière).
             let env = ProcessInfo.processInfo.environment
             if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "proposition-partielle", partielle, let a = p.actions.last {

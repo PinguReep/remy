@@ -27,9 +27,9 @@ public enum Decaler {
     /// l'heure. En retard : « Aujourd'hui » d'abord ; puis demain, lundi (ou
     /// dans une semaine quand lundi est demain).
     public static func tache(echeance: Millis?, maintenant: Date = Date()) -> [ChoixDate] {
-        let aujourdhui = Format.debutDuJour(maintenant)
         var choix: [ChoixDate] = []
-        if let e = echeance, e.date < aujourdhui {
+        // Échéance passée (même ce matin) : « Aujourd'hui » d'abord.
+        if let e = echeance, e.date < maintenant {
             choix.append(ChoixDate(id: "aujourdhui", libelle: "Aujourd'hui", date: Format.echeanceDans(jours: 0, depuis: maintenant)))
         }
         choix.append(ChoixDate(id: "demain", libelle: "Demain", date: Format.echeanceDans(jours: 1, depuis: maintenant)))
@@ -39,7 +39,10 @@ public enum Decaler {
         } else {
             choix.append(ChoixDate(id: "semaine", libelle: "Dans 1 sem.", date: Format.echeanceDans(jours: 7, depuis: maintenant)))
         }
-        return choix
+        // Décaler ne rapproche jamais l'échéance : seulement après l'actuelle.
+        guard let e = echeance?.date else { return choix }
+        let apres = choix.filter { $0.date > e }
+        return apres.isEmpty ? [ChoixDate(id: "plus-7", libelle: "+1 sem.", date: Format.echeanceDans(jours: 7, depuis: e))] : apres
     }
 
     /// Une activité à soi (« Aspirateur ») se décale à l'heure : +15 min,
@@ -92,11 +95,14 @@ public enum Decaler {
         return cal.date(bySettingHour: h, minute: m, second: 0, of: jour)
     }
 
-    /// Au quart d'heure inférieur : « 15:00 », pas « 15:07 ».
+    /// Au quart d'heure SUPÉRIEUR : « 15:15 », pas « 15:07 » ; jamais moins
+    /// que l'écart annoncé (« +15 min », « Dans 1 h »).
     static func arrondi(_ d: Date) -> Date {
+        let d = Date(timeIntervalSince1970: d.timeIntervalSince1970.rounded(.down))
         let minute = Format.calendrier.component(.minute, from: d)
         let seconde = Format.calendrier.component(.second, from: d)
-        return d.addingTimeInterval(-Double((minute % 15) * 60 + seconde))
+        let reste = (minute % 15) * 60 + seconde
+        return reste == 0 ? d : d.addingTimeInterval(Double(15 * 60 - reste))
     }
 }
 

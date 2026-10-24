@@ -350,7 +350,8 @@ public final class CarnetModel {
         }
         let r = rappels[i]
         trierRappels()
-        ecrire(.rappels([r]))
+        // Pas d'envoi en tâche détachée : le délégué l'attend avant de rendre la main à iOS.
+        ecrire(.rappels([r]), envoyerTout: false)
         return true
     }
 

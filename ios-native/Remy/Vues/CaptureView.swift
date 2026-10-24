@@ -118,13 +118,9 @@ struct CaptureView: View {
                     .foregroundStyle(Palette.encre)
                     .lineLimit(1...6)
                     .focused($focus)
-                    // Retour = Ajouter (24/10) ; un texte collé garde ses lignes.
-                    .submitLabel(.send)
-                    .onChange(of: texte) { ancien, nouveau in
-                        guard nouveau.hasSuffix("\n"), String(nouveau.dropLast()) == ancien else { return }
-                        texte = ancien
-                        if pret { Task { await noter() } } else { Haptique.erreur() }
-                    }
+                    // Retour reste un saut de ligne : « tomates⏎lait » fait deux
+                    // articles, deux lignes deux intentions. Ajouter est sous le pouce.
+                    .accessibilityIdentifier("capture.champ")
             }
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: icone(genre)).font(.system(size: 12, weight: .semibold))
@@ -158,6 +154,7 @@ struct CaptureView: View {
                     puce(g.libelle, symbole: icone(g), actif: genre == g) {
                         choisi = (choisi == g) ? nil : g
                     }
+                    .accessibilityIdentifier("capture.genre." + g.rawValue)
                 }
             }
             if genre == .liste && carnetPret && !app.carnet.listes.isEmpty {
@@ -208,6 +205,7 @@ struct CaptureView: View {
                 .accessibilityLabel("Dicter")
             }
             BoutonA(titre: envoi ? "…" : action, symbole: "arrow.up") { Task { await noter() } }
+                .accessibilityIdentifier("capture.valider")
                 .disabled(!pret)
                 .opacity(pret ? 1 : 0.45)
         }

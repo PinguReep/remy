@@ -422,6 +422,22 @@ test("une partie seulement d'une proposition : les lignes décochées ne partent
   assert.equal(motion.taches.size, 0, "les deux créations sont défaites");
 });
 
+test("une partie seulement, Motion en panne, puis « Réessayer » avec les mêmes rangs : la ligne décochée ne part pas", async () => {
+  motion.taches.clear();
+  await proposition("pp2", [{ type: "creer", nom: "Relire le devis" }, { type: "creer", nom: "Appeler Léa" }, { type: "creer", nom: "Réserver la salle" }]);
+  motion.pannes.push({ methode: "POST", chemin: /^\/tasks$/, code: 500, fois: 20 });
+  const a = await post("/api/motion/apply", { convId: "pp2", index: 1, propositionId: "p-pp2", rangs: [0, 2] });
+  motion.pannes.length = 0;
+  assert.equal(a.body.etat, "echouee", JSON.stringify(a.body));
+  assert.equal(motion.taches.size, 0);
+  // L'iPhone garde les cases après un échec : « Réessayer » renvoie les mêmes rangs.
+  const b = await post("/api/motion/apply", { convId: "pp2", index: 1, propositionId: "p-pp2", rangs: [0, 2] });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.etat, "appliquee");
+  assert.deepEqual([...motion.taches.values()].map((t) => t.name).sort(), ["Relire le devis", "Réserver la salle"]);
+  assert.deepEqual(b.body.ecartees, ["Appeler Léa"]);
+});
+
 test("une tâche se catégorise depuis l'app, et la journée le dit", async () => {
   const c = await import("../lib/carnet.js");
   c.ecrireEtiquette("et-voiture", { nom: "Voiture" });

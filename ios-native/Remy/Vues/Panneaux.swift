@@ -143,7 +143,7 @@ struct GererPanneau: View {
             HStack(spacing: 8) {
                 ForEach(Decaler.tache(echeance: e.echeance)) { c in
                     PuceGeste(titre: decalage == c.id ? "…" : c.libelle, actif: decalage == c.id) { envoyer(c) }
-                        .accessibilityLabel("Décaler à \(c.libelle.lowercased())")
+                        .accessibilityLabel("Décaler : \(c.libelle.lowercased())")
                         .accessibilityHint("Nouvelle échéance ; Motion trouvera le créneau")
                 }
                 PuceGeste(symbole: "calendar", actif: false) { choixDate = true }
