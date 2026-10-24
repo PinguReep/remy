@@ -357,6 +357,15 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         "planifier", "organiser", "booker", "caler", "fixer", "noter", "regler", "rembourser", "virer", "vendre", "poster",
         "publier", "monter", "installer", "telephoner", "finaliser", "boucler", "livrer", "porter",
     ]
+    /// Les mêmes à l'impératif, comme on se le dicte (« Appelle le garage »).
+    /// Pas les formes qui sont aussi des noms courants (note, livre, poste, règle).
+    static let imperatifs: Set<String> = [
+        "fais", "dis", "prends", "mets", "ecris", "lis", "relis", "rends", "finis", "range", "envoie", "appelle", "paie", "paye",
+        "achete", "reserve", "relance", "reponds", "prepare", "repare", "nettoie", "contacte", "imprime", "depose", "recupere",
+        "commande", "inscris", "valide", "signe", "termine", "redige", "verifie", "demande", "remplis", "trie", "lave", "sors",
+        "va", "passe", "rappelle", "renouvelle", "resilie", "declare", "planifie", "organise", "cale", "fixe", "rembourse",
+        "vends", "publie", "installe", "telephone", "finalise", "boucle",
+    ]
     /// Des noms en -er/-ir qui ne sont pas des actions (« Dossier subvention »).
     static let pasDesVerbes: Set<String> = [
         "dossier", "atelier", "papier", "clavier", "panier", "cahier", "premier", "dernier", "hiver", "super", "fichier",
@@ -366,7 +375,7 @@ public enum GenreCapture: String, CaseIterable, Sendable {
     ]
 
     /// L'action est-elle claire ? Un verbe d'action en tête (« Appeler le
-    /// garage », « Finir le devis »), « il faut », « je dois », ou une durée
+    /// garage », « Appelle le garage »), « il faut », « je dois », ou une durée
     /// (« 2 h de studio »). Sinon c'est une pensée à garder, pas à planifier.
     public static func actionClaire(_ texte: String) -> Bool {
         let t = texte.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fr_FR"))
@@ -377,7 +386,7 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         guard var premier = mots.first else { return false }
         // « Me renseigner », « se faire couper les cheveux » : le verbe suit.
         if ["me", "m", "se", "s", "te", "t"].contains(premier), mots.count > 1 { premier = mots[1] }
-        if verbes.contains(premier) { return true }
+        if verbes.contains(premier) || imperatifs.contains(premier) { return true }
         if pasDesVerbes.contains(premier) { return false }
         return premier.count >= 5 && (premier.hasSuffix("er") || premier.hasSuffix("ir"))
     }

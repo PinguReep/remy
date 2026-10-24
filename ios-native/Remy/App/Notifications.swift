@@ -21,6 +21,12 @@ enum Notifications {
         }
     }
 
+    /// Sans rien demander : Sam a-t-il refusé les notifications de Rémy dans iOS ?
+    static func refusees() async -> Bool {
+        let r = await UNUserNotificationCenter.current().notificationSettings()
+        return r.authorizationStatus == .denied
+    }
+
     /// Reprogramme les rappels à venir (iOS en garde 64 au plus : les plus proches).
     static func planifier(_ rappels: [Rappel]) async {
         let centre = UNUserNotificationCenter.current()
@@ -72,7 +78,7 @@ enum Notifications {
         }
         if reglages.soir {
             for (i, quand) in Rituel.prochains(minutes: reglages.heureSoir, apres: maintenant, nombre: joursRituel).enumerated() {
-                let n = Rituel.notificationSoir(r?.soir, declenchement: quand)
+                let n = Rituel.notificationSoir(r?.soir, prepareA: prepareA, declenchement: quand)
                 await ajouter(centre, id: "rituel-soir-\(i)", titre: n.titre, sousTitre: nil, corps: n.corps, quand: quand, quoi: "soir")
             }
         }

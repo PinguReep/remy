@@ -172,18 +172,35 @@ public enum Rituel {
             return ("Ton briefing", nil, "Ta tour n'a pas encore préparé cette journée\(depuis). Ouvre Rémy pour le calculer.")
         }
         var sous: String? = b.avertissement
+        var lignes = [b.compte, b.pourquoi, b.menace]
         if let p = prepareA, declenchement.timeIntervalSince(p) > fraicheurMax {
             sous = "Préparé \(fraicheur(p, maintenant: declenchement, calendrier: calendrier)) · touche pour l'actualiser"
+            // Une source muette à la préparation : toujours dit, même ancien.
+            if let a = b.avertissement { lignes.append(a) }
         }
-        return (b.titre, sous, [b.compte, b.pourquoi, b.menace].joined(separator: "\n"))
+        return (b.titre, sous, lignes.joined(separator: "\n"))
     }
 
-    /// Ce que la notification du soir dira (le bilan du jour seulement s'il est de ce jour-là).
-    public static func notificationSoir(_ b: BilanSoirTour?, declenchement: Date,
+    /// Ce que la notification du soir dira. Les chiffres (« 2 faits, 3
+    /// restent ») seulement s'ils sont de ce jour-là ET frais : relus le matin,
+    /// ils ignoreraient toute la journée.
+    public static func notificationSoir(_ b: BilanSoirTour?, prepareA: Date?, declenchement: Date,
                                         calendrier: Calendar = Format.calendrier) -> (titre: String, corps: String) {
         let generique = "Fait, glissé, et ce qui reste pour demain : 30 secondes."
-        guard let b, b.jour == cleJour(declenchement, calendrier: calendrier) else { return ("Bilan du soir", generique) }
+        guard let b, b.jour == cleJour(declenchement, calendrier: calendrier),
+              let p = prepareA, declenchement.timeIntervalSince(p) <= fraicheurMax else { return ("Bilan du soir", generique) }
         return ("Bilan du soir", b.phrase + " Touche pour faire le point.")
+    }
+
+    /// Le prochain réveil en arrière-plan à demander à iOS : une heure avant
+    /// le plus proche des rendez-vous allumés (nil si tout est coupé).
+    public static func prochainReveil(_ r: ReglagesRituel, apres: Date, calendrier: Calendar = Format.calendrier) -> Date? {
+        var heures: [Int] = []
+        if r.matin { heures.append(r.heureMatin) }
+        if r.soir { heures.append(r.heureSoir) }
+        return heures
+            .compactMap { prochains(minutes: max(0, $0 - 60), apres: apres, nombre: 1, calendrier: calendrier).first }
+            .min()
     }
 
     /// Tout ce qui reste → demain : UNE écriture (un seul « Annuler »).
