@@ -174,3 +174,25 @@ test("apprend-on quelque chose sur Sam ? (test déterministe, sans IA)", () => {
   assert.equal(indiceWeb("Qui est le maire de Lyon ?"), true);
   assert.equal(apprendSurSam("Ma sœur arrive samedi"), true, "« œ » lu comme « oe »");
 });
+
+test("la mémoire apprend encore : négations, rejets, corrections, réponses à une question de Rémy", () => {
+  for (const t of [
+    "Je ne travaille pas le mercredi",
+    "Je ne suis plus à la salle de sport",
+    "Ne me propose plus de réunions le vendredi",
+    "Désormais je finis à 17 h",
+    "Tu te trompes, c'est le jeudi",
+    "J'ai un chien qu'il faut sortir à midi",
+    "Je ne mange pas de viande",
+    "Je pars en vacances du 3 au 10",
+  ]) {
+    assert.equal(apprendSurSam(t), true, t);
+  }
+  // La réponse à une question de Rémy sur Sam apprend, même courte.
+  assert.equal(apprendSurSam("vers 7 h", { question: "C'est noté. Tu te lèves à quelle heure, d'habitude ?" }), true);
+  assert.equal(apprendSurSam("le matin", { question: "Tu préfères le sport le matin ou le soir ?" }), true);
+  // Une offre d'agir n'est pas une question sur Sam.
+  for (const q of ["Tu veux que je l'ajoute à Motion ?", "Je te propose de le décaler à demain ?", "Ça te va ?", "Besoin d'autre chose ?", "C'est fait."]) {
+    assert.equal(apprendSurSam("oui", { question: q }), false, q);
+  }
+});

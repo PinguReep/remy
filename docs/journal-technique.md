@@ -321,8 +321,11 @@ notes privées, sur la tour.
   conseil (décision). Web coupé ou conversation privée + message « web » :
   palier `web` sans appel, pour garder la note « je ne peux pas chercher ».
   La mémoire n'est réécrite que si l'échange apprend quelque chose sur Sam
-  (préférence, habitude, fait de sa vie, état, « retiens que ») ; une étape
-  « Faire connaissance » la nourrit toujours. `REMY_ALLEGEMENT=off` rend
+  (préférence, habitude, fait de sa vie, état, « retiens que », y compris
+  à la forme négative, un rejet comme « ne me propose plus », une correction)
+  ou s'il répond à une question de Rémy sur lui (« Tu te lèves à quelle
+  heure ? » → « vers 7 h » ; « oui » à une offre d'agir n'apprend rien) ; une
+  étape « Faire connaissance » la nourrit toujours. `REMY_ALLEGEMENT=off` rend
   l'ancien comportement. Mesure (`test/allegement.test.mjs`, faux modèle qui
   compte, 7 messages types, délais des Sparks ÷ 100) : 22 appels → 10
   (3,1 → 1,4 par message), temps modèle divisé par 2,9 (aux délais réels,
