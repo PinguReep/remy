@@ -141,9 +141,11 @@ notes privées, sur la tour.
 - **Tour** : `GET /api/semaine?jours=7` (`lib/semaine.js`, pur, testé à l'heure
   de Paris, changement d'heure compris). Par jour : la frise, les rendez-vous
   « journée entière », les échéances (menacée = placée après l'échéance ou pas
-  placée), la charge (minutes de tâches placées, plafonnées à leur durée, contre
-  les plages de l'horaire Motion moins les rendez-vous qui les recouvrent) et ce
-  que Motion place après l'échéance.
+  placée), la charge (minutes de tâches placées contre les plages de l'horaire
+  Motion moins les rendez-vous qui les recouvrent) et ce que Motion place après
+  l'échéance. Une tâche que Motion étale sur plusieurs jours compte sa durée au
+  prorata de chaque jour (une seule fois en tout) ; la frise n'en dessine que le
+  bout du jour affiché.
 - **Quota Motion** : aucune requête de plus. `GET /tasks` rend déjà les créneaux
   des jours suivants : la liste en cache de l'accueil sert telle quelle. Les
   horaires (`/schedules`) passent par le même cache de 10 min que l'instantané
