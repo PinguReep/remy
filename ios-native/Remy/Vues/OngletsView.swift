@@ -198,7 +198,7 @@ extension OngletsView {
             }
             ui.choixDemo = 15
         case "journee-etendue": ui.journeeEtendue = true
-        case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
+        case "nouveautes": app.nouveautes.montrerPourCapture(["fil-du-jour"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"
