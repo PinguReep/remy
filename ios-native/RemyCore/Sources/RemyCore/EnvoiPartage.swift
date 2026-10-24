@@ -117,6 +117,9 @@ public enum EnvoiPartage {
     /// En dessous, la tour refuse la capture (« trop court », lib/capture.js).
     static let minCaracteres = 30
     public static let motMax = 500
+    /// La tour laisse 180 s au modèle local (lib/glm.js) : abandonner avant,
+    /// c'est dire « vérifie Tailscale » à tort, et « Réessayer » ferait un doublon.
+    static let delai: TimeInterval = 200
 
     /// Une image : le grand côté (pixels) et le poids visés. La tour en accepte
     /// 3 Mo ; on reste loin en dessous pour un envoi rapide en 4G.
@@ -168,7 +171,9 @@ public enum EnvoiPartage {
     /// De quoi ne rien perdre si l'envoi échoue (« Copier »).
     public static func texteACopier(_ c: ContenuPartage, mot m: String?) -> String {
         if c.genre == .image {
-            return [c.image?.texteLu, mot(m).map { "Mon mot pour Rémy : \($0)" }].compactMap { $0 }.joined(separator: "\n\n")
+            // Le lien et le texte joints à l'image ne se perdent pas non plus.
+            let joints = texteCapture(c, mot: nil)
+            return [c.image?.texteLu, joints.isEmpty ? nil : joints, mot(m).map { "Mon mot pour Rémy : \($0)" }].compactMap { $0 }.joined(separator: "\n\n")
         }
         return texteCapture(c, mot: m)
     }
@@ -179,17 +184,24 @@ public enum EnvoiPartage {
         if let t = image.texteLu { corps["texte"] = t }
         if let m = mot(m) { corps["mot"] = String(m.prefix(motMax)) }
         if let n = c.titre { corps["titre"] = n }
+        // Partagés avec l'image (une app de vente : image, lien, titre) : ils partent aussi.
+        if let l = c.lien { corps["lien"] = l.absoluteString }
+        if let t = c.texte { corps["joint"] = String(t.prefix(8_000)) }
         return corps
     }
 }
 
-/// Le reçu affiché après l'envoi : « J'ai compris. Classé. » et ce que Rémy en a fait.
+/// Le reçu affiché après l'envoi : un titre qui dit vrai (classé, image
+/// rangée, ou gardé pour la nuit) et ce que Rémy en a fait.
 public struct RecuPartage: Equatable, Sendable {
     public let titre: String
     public let detail: String
 
     public init(_ r: RetourCapture) {
-        titre = "J'ai compris. Classé."
+        // « Classé » seulement si la mémoire a bougé (ou savait déjà) ; sinon on dit ce qui s'est passé.
+        titre = r.ajouts?.isEmpty == false || r.memoire != false ? "J'ai compris. Classé."
+            : r.message?.hasPrefix("Image") == true ? (r.image != nil ? "Image rangée." : "Image reçue.")
+            : "Gardé, pas encore classé."
         var d = r.ajouts?.isEmpty == false || r.message == nil ? r.phrase : (r.message ?? r.phrase)
         // L'image est gardée même quand le modèle n'a rien appris : on le dit.
         if r.image != nil, !d.hasPrefix("Image") { d = "Image gardée sur ta tour. " + d }
@@ -233,32 +245,24 @@ public struct EchecPartage: Equatable, Sendable, Error {
 
 extension ClientAPI {
     /// Envoie un partage à la tour et rend son reçu. Une tour pas encore à jour
-    /// (pas de route d'image) reçoit au moins le texte lu sur l'image.
+    /// (pas de route d'image) ne reçoit rien : la capture ordinaire ne garderait
+    /// pas le texte lu sur l'image au modèle local.
     public func partager(_ c: ContenuPartage, mot: String?) async throws -> RecuPartage {
         if let raison = EnvoiPartage.manque(c, mot: mot) {
             throw EchecPartage(titre: "Rien n'est parti", detail: raison, reessayable: false)
         }
         guard let image = c.image else {
-            let r = try await capturer(EnvoiPartage.texteCapture(c, mot: mot), source: EnvoiPartage.source)
+            let r = try await capturer(EnvoiPartage.texteCapture(c, mot: mot), source: EnvoiPartage.source, delai: EnvoiPartage.delai)
             return RecuPartage(r)
         }
         do {
             let r = try await json(RetourCapture.self, "api/capture/image", methode: "POST",
-                                   corps: EnvoiPartage.corpsImage(c, image, mot: mot), delai: 120)
+                                   corps: EnvoiPartage.corpsImage(c, image, mot: mot), delai: EnvoiPartage.delai)
             return RecuPartage(r)
         } catch ErreurAPI.serveur(let code, _) where code == 404 {
-            // La tour ne connaît pas encore les images : le texte lu part seul.
-            let texte = EnvoiPartage.texteACopier(c, mot: mot)
-            guard texte.count >= EnvoiPartage.minCaracteres else {
-                throw EchecPartage(titre: "Ta tour ne sait pas encore recevoir d'images",
-                                   detail: "Mets-la à jour (installeur de la tour), puis partage à nouveau. En attendant, un texte ou un lien passe déjà.",
-                                   reessayable: false)
-            }
-            var r = try await capturer("Image partagée depuis l'iPhone, texte lu dessus :\n\n" + texte, source: EnvoiPartage.source)
-            if r.ajouts?.isEmpty ?? true {
-                r.message = "Texte de l'image gardé ; l'image elle-même attend la mise à jour de ta tour."
-            }
-            return RecuPartage(r)
+            throw EchecPartage(titre: "Ta tour ne sait pas encore recevoir d'images",
+                               detail: "Mets-la à jour (installeur de la tour), puis partage à nouveau. En attendant, « Copier » garde l'image et son texte ; un texte ou un lien passe déjà.",
+                               reessayable: false)
         }
     }
 }

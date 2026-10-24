@@ -61,6 +61,11 @@ test("le texte d'une image : le mot de Sam puis ce que l'iPhone a lu ; vide sans
   assert.match(t, /Ce que Sam en dit : à payer avant vendredi/);
   assert.match(t, /Texte lu sur l'image[^\n]*:\nFacture n° 42\nTotal : 18 €/);
   assert.ok(texteImage({ texte: "x".repeat(20_000) }).length < 9_000, "le texte lu est borné");
+  // Partagés avec l'image (une app de vente) : le lien et le texte joints ne se perdent pas.
+  const v = texteImage({ lien: "https://exemple.org/produit/42", joint: "Lampe en laiton, 49 €", titre: "Lampe Atelier" });
+  assert.match(v, /Lien partagé avec l'image : https:\/\/exemple\.org\/produit\/42/);
+  assert.match(v, /Texte partagé avec l'image :\nLampe en laiton, 49 €/);
+  assert.doesNotMatch(texteImage({ lien: "javascript:alert(1)" }), /javascript/, "seuls http et https");
 });
 
 test("une photo sans texte est rangée dans le coffre, sans appel au modèle", async () => {
@@ -88,6 +93,9 @@ test("une capture d'écran avec du texte : gardée même sans modèle local, jam
   const captures = await (await fetch(`${base}/api/capture`)).json();
   assert.equal(captures[0].source, "partage");
   assert.match(captures[0].apercu, /Ce que Sam en dit : à ne pas oublier/);
+  // Gardée « privée » : la réflexion de la nuit la réserve au modèle local.
+  const brut = JSON.parse(fs.readFileSync(path.join(process.env.REMY_DATA_DIR, "captures.json"), "utf8"));
+  assert.equal(brut[0].prive, true);
 });
 
 test("deux images du même jour gardent chacune leur note", async () => {

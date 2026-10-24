@@ -99,6 +99,14 @@ final class EnvoiPartageTests: XCTestCase {
         let i = ImagePartagee(donnees: jpeg, largeur: 1, hauteur: 1, texteLu: "Facture 42")
         XCTAssertEqual(EnvoiPartage.texteACopier(ContenuPartage(image: i), mot: "à payer"), "Facture 42\n\nMon mot pour Rémy : à payer")
         XCTAssertEqual(EnvoiPartage.texteACopier(ContenuPartage(textes: ["Un texte"]), mot: nil), "Un texte")
+        // Image + lien + texte (une app de vente) : rien ne se perd.
+        let vente = ContenuPartage(textes: ["Lampe en laiton, 49 € — à offrir à Léa"], liens: [URL(string: "https://exemple.org/produit/42")!],
+                                   titre: "Lampe Atelier", image: ImagePartagee(donnees: jpeg, largeur: 1, hauteur: 1))
+        XCTAssertEqual(EnvoiPartage.texteACopier(vente, mot: nil),
+                       "Lien partagé : « Lampe Atelier »\nhttps://exemple.org/produit/42\n\nLampe en laiton, 49 € — à offrir à Léa")
+        let corps = EnvoiPartage.corpsImage(vente, vente.image!, mot: nil)
+        XCTAssertEqual(corps["lien"] as? String, "https://exemple.org/produit/42")
+        XCTAssertEqual(corps["joint"] as? String, "Lampe en laiton, 49 € — à offrir à Léa")
     }
 
     // MARK: Ce qui revient
@@ -108,12 +116,18 @@ final class EnvoiPartageTests: XCTestCase {
         XCTAssertEqual(RecuPartage(r).titre, "J'ai compris. Classé.")
         XCTAssertEqual(RecuPartage(r).detail, "Retenu : Sam compare les mèches en coton et en bois")
         r = RetourCapture(ajouts: [], memoire: false, message: "Image rangée dans ton coffre (Captures/Images).")
+        r.image = "Captures/Images/x.jpg"
+        XCTAssertEqual(RecuPartage(r).titre, "Image rangée.")
         XCTAssertEqual(RecuPartage(r).detail, "Image rangée dans ton coffre (Captures/Images).")
+        // Une tour qui ne garde pas les images : rien n'est « rangé ».
+        XCTAssertEqual(RecuPartage(RetourCapture(ajouts: [], memoire: false, message: "Image reçue, mais cette tour ne garde pas les images.")).titre, "Image reçue.")
         r = RetourCapture(ajouts: [], memoire: true, message: nil)
+        XCTAssertEqual(RecuPartage(r).titre, "J'ai compris. Classé.")
         XCTAssertEqual(RecuPartage(r).detail, "Rien de nouveau : Rémy le savait déjà.")
         // Le modèle local absent : l'image est quand même gardée, et c'est dit.
         r = RetourCapture(ajouts: [], memoire: false, message: "Pas absorbé tout de suite (le modèle local ne répond pas) : Rémy le relira cette nuit.")
         r.image = "Captures/Images/x.jpg"
+        XCTAssertEqual(RecuPartage(r).titre, "Gardé, pas encore classé.")
         XCTAssertEqual(RecuPartage(r).detail, "Image gardée sur ta tour. Pas absorbé tout de suite (le modèle local ne répond pas) : Rémy le relira cette nuit.")
     }
 
@@ -163,24 +177,23 @@ final class EnvoiPartageTests: XCTestCase {
         XCTAssertNil(FauxServeur.corps["POST /api/capture"], "rien d'autre n'est parti")
     }
 
-    func testUneTourAncienneRecoitAuMoinsLeTexteLu() async throws {
+    func testUneTourAncienneNeRecoitPasLeTexteLu() async throws {
+        // La capture ordinaire d'une tour ancienne ne garde pas le texte lu au
+        // modèle local : rien ne part, Sam met la tour à jour (ou copie).
         FauxServeur.reponses = [
             "POST /api/capture/image": [(404, "{}")],
             "POST /api/capture": [(200, #"{"ok":true,"ajouts":[],"memoire":false}"#)],
         ]
         let api = client()
         let i = ImagePartagee(donnees: jpeg, largeur: 1, hauteur: 1, texteLu: "Rendez-vous chez Hugo jeudi à 18 h")
-        let recu = try await api.partager(ContenuPartage(image: i), mot: nil)
-        XCTAssertEqual(recu.detail, "Texte de l'image gardé ; l'image elle-même attend la mise à jour de ta tour.")
-        XCTAssertEqual(FauxServeur.corps["POST /api/capture"]?["texte"] as? String, "Image partagée depuis l'iPhone, texte lu dessus :\n\nRendez-vous chez Hugo jeudi à 18 h")
-        // Sans texte lu, rien à sauver : on dit de mettre la tour à jour.
-        FauxServeur.reponses = ["POST /api/capture/image": [(404, "{}")]]
         do {
-            _ = try await api.partager(ContenuPartage(image: ImagePartagee(donnees: jpeg, largeur: 1, hauteur: 1)), mot: nil)
+            _ = try await api.partager(ContenuPartage(image: i), mot: nil)
             XCTFail("une tour sans route d'image doit le dire")
         } catch let e as EchecPartage {
             XCTAssertEqual(e.titre, "Ta tour ne sait pas encore recevoir d'images")
+            XCTAssertFalse(e.reessayable)
         }
+        XCTAssertNil(FauxServeur.corps["POST /api/capture"], "le texte lu ne repart pas par la capture ordinaire")
     }
 
     func testUnRefusDeLaTourEstRapporteTelQuel() async {
@@ -218,7 +231,7 @@ final class EnvoiPartageTests: XCTestCase {
         // Un vrai JPEG de 1×1 : rangé, sans appel au modèle.
         let octets = try XCTUnwrap(Data(base64Encoded: "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="))
         let seule = try await api.partager(ContenuPartage(image: ImagePartagee(donnees: octets, largeur: 1, hauteur: 1)), mot: nil)
-        XCTAssertEqual(seule.titre, "J'ai compris. Classé.")
+        XCTAssertEqual(seule.titre, "Image rangée.")
         XCTAssertTrue(seule.detail.hasPrefix("Image rangée"), seule.detail)
         // Avec du texte lu : gardée, jamais envoyée au cloud (modèle local seulement).
         let lue = try await api.partager(ContenuPartage(image: ImagePartagee(donnees: octets, largeur: 1, hauteur: 1, texteLu: "Atelier bougies jeudi 18 h chez Hugo")), mot: "à noter")

@@ -20,14 +20,20 @@ notes privées, sur la tour.
   note de capture, nommée comme l'image pour que deux images du même jour ne
   s'écrasent pas) et distille le texte lu + le mot de Sam comme une capture,
   avec le **modèle local seulement** (`prive`) : une capture d'écran peut
-  montrer n'importe quoi. Sans texte, l'image est rangée sans appel au modèle.
-- Tour pas encore à jour (404 sur la route d'image) : le texte lu part seul
-  par la capture, et le reçu le dit ; sans texte, « mets ta tour à jour ».
+  montrer n'importe quoi. La capture garde `prive` : la réflexion de la nuit
+  qui la relit passe alors au modèle local seulement. Sans texte, l'image est
+  rangée sans appel au modèle. Le lien et le texte partagés avec l'image
+  (`lien`, `joint`) partent avec elle.
+- Tour pas encore à jour (404 sur la route d'image) : rien ne part (la capture
+  ordinaire ne garantit pas le modèle local) ; « mets ta tour à jour », et
+  « Copier ». L'iPhone attend 200 s, plus que les 180 s laissées au modèle
+  local : pas de faux « vérifie Tailscale » ni de doublon au « Réessayer ».
 - Erreurs (`EchecPartage`) : pas connecté (« Ouvre Rémy une fois »), 401
   (« reconnecte-toi »), tour injoignable (« vérifie Tailscale »), refus de la
   tour (son message). Toujours « Copier » (texte et image au presse-papiers).
-  Le reçu reprend celui de la capture : « J'ai compris. Classé. » + ce que
-  Rémy en a retenu.
+  Le reçu : « J'ai compris. Classé. » si la mémoire a bougé, « Image rangée. »
+  pour une photo sans texte (« Image reçue. » si la tour ne garde pas les
+  images), « Gardé, pas encore classé. » sinon ; + le détail.
 
 ## 2026-10-24 — Rémy hors de l'app : activité en direct, widgets, Siri
 
