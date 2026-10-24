@@ -438,6 +438,28 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(VueLieux.self, "api/lieux/historique", methode: "DELETE")
     }
 
+    // MARK: Activité du PC (activite-pc-v1)
+
+    public func activitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc")
+    }
+
+    /// Allumer / couper, ou la liste des applis jamais comptées.
+    public func reglerActivitePC(actif: Bool? = nil, exclusions: [String]? = nil) async throws -> VueActivitePC {
+        var corps: [String: Any] = [:]
+        if let actif { corps["actif"] = actif }
+        if let exclusions { corps["exclusions"] = exclusions }
+        return try await json(VueActivitePC.self, "api/activite-pc", methode: "PUT", corps: corps, delai: 20)
+    }
+
+    public func releverActivitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc/collecte", methode: "POST", corps: [:], delai: 20)
+    }
+
+    public func effacerActivitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc", methode: "DELETE")
+    }
+
     // MARK: Modèle local (modeles-v1)
 
     public func modelesLocaux() async throws -> ModelesLocaux {

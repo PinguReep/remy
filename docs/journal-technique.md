@@ -267,6 +267,47 @@ notes privées, sur la tour.
   réflexion (mémorisé par modèle), et `nettoyerSortie` la retire de toute façon
   à la fin, avec les jetons `<｜…｜>` de DeepSeek. Ses appels d'outils écrits en
   texte sont exécutés comme ceux de GLM (des propositions).
+- **Activité du PC** (`activite-pc-v1`, `lib/activite-pc.js`, migration 9,
+  24/10) : ActivityWatch tourne sur la tour (`REMY_ACTIVITYWATCH_URL`, défaut
+  `http://127.0.0.1:5600`, API REST `/api/0`) ; Rémy le LIT seulement. Job
+  `activite-pc-releve` toutes les 20 min (sans IA, dès que l'app l'a allumée) :
+  ce qui est nouveau depuis le curseur, jusqu'à 5 min avant maintenant (l'absence
+  n'est décidée qu'après 3 min d'inactivité, datée en arrière), une tranche par
+  jour (heure de la tour), totaux et curseur écrits dans la même transaction —
+  une coupure ne compte jamais deux fois. Temps actif = fenêtre au premier plan
+  ∩ « not-afk », moins « afk » (l'absence l'emporte sur un chevauchement) ;
+  segments qui se chevauchent : le plus récent l'emporte. Gardé (table
+  `activite_pc`) : secondes par jour × application (exécutable sans `.exe`) et
+  par domaine pour le navigateur (extension aw-watcher-web, domaine seul, jamais
+  le chemin, onglets privés ignorés). **Les titres de fenêtres ne sont jamais
+  écrits** (test : absents du fichier de la base). Catégories par table
+  (`CATEGORIES`, sans IA), réglables (`REMY_ACTIVITE_CATEGORIES=appli=jeux,…` ou
+  `categories` depuis l'API) ; `REMY_ACTIVITE_EXCLURE` + exclusions de l'app
+  (applis ou domaines ; « .app » n'est pas retiré, agenda.app reste un domaine) :
+  jamais comptées, et ce qui l'était s'efface (pour la tour, au relevé suivant).
+  Exclure un navigateur efface tous les sites relevés (un domaine gardé ne dit
+  pas quel navigateur l'a vu) et ignore les onglets de son seau web
+  (`navigateurDuSeau`), écrits même quand il est derrière. Premier allumage : depuis minuit ;
+  rallumée après une coupure voulue, ou après « tout effacer » : à partir de
+  maintenant (le passé d'ActivityWatch n'est pas relu) ; après une panne de la
+  tour, 7 jours rattrapés au plus. ActivityWatch absent : `joignable: false` et
+  un message avec quoi faire, un seul avertissement au journal, réessai au
+  relevé suivant. Un guetteur arrêté garde son seau : si sa dernière écriture
+  (`last_updated`, ou `metadata.end` d'aw-server-rust) date de plus de 10 min
+  avant le relevé d'avant, `fenetre`/`afk` passent à false avec « … n'écrit plus
+  depuis HH:MM ». Pas d'alerte au réveil de la tour ni après un redémarrage
+  d'ActivityWatch (relevé d'avant injoignable), ni pour une fenêtre muette
+  pendant que Sam est absent (écran verrouillé) : il faut 2 min de présence
+  (aw-watcher-afk) depuis son dernier événement. 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
+  `GET/PUT/DELETE /api/activite-pc`, `POST /api/activite-pc/collecte`.
+  La note « Activité du PC » (aujourd'hui et 7 jours par catégorie, présentée
+  comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude ;
+  avec le secours Claude, ce que GLM en a dit dans la conversation peut lui
+  être relu (historique, réflexion de nuit), comme le reste de la conversation.
+  `REMY_ACTIVITE_PC=off` coupe tout. Il n'existe pas encore d'analyse
+  hebdomadaire où les ranger : `bilanSemaine()` rend les totaux par catégorie
+  des 7 derniers jours et des 7 d'avant (sans IA), repris dans la vue
+  (`semaine`, `parJour`, `semainePrecedente`), dans l'app et dans la note.
 
 ## App iPhone
 
@@ -306,11 +347,18 @@ notes privées, sur la tour.
 - Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
+- Réglages › Activité du PC (`RemyCore/ActivitePC.swift`, `ActivitePCVue`,
+  24/10) : visible si la tour a `activite-pc-v1`. Interrupteur (le premier
+  relevé se fait pendant la requête, 8 s au plus), état d'ActivityWatch avec
+  quoi faire, aujourd'hui et 7 jours par catégorie (barres), applis de la
+  semaine (glisser = ne plus compter), sites par domaine, exclusions, « Tout
+  effacer » confirmé. Tirer pour rafraîchir = relever maintenant.
 
 ## CI
 
 - `ios-native.yml` : build, tests du cœur, intégration contre `server.js` avec de
-  faux services (Motion, Google, GLM, dictée), captures (dont iPhone SE).
+  faux services (Motion, Google, GLM, dictée, ActivityWatch sur :9993), captures
+  (dont iPhone SE).
 - `ios-testflight.yml` : n'envoie qu'après tous les tests verts ; nettoie avant
   chaque archive les certificats de développement créés par l'API (plafond Apple).
 - `serveur.yml` : `npm test` sur Ubuntu et Windows, et syntaxe des scripts
