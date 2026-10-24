@@ -10,7 +10,6 @@ struct ReglagesView: View {
     @Environment(\.openURL) private var ouvrirURL
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @AppStorage("theme") private var theme = "auto"
-    @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
     @State private var memoire = false
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
@@ -22,8 +21,7 @@ struct ReglagesView: View {
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
     @State private var reglages: Reglages?
     @State private var changementSecours = false
-    @State private var prototypes = false
-    @State private var mesures = false
+    @State private var diagnostic = false
 
     var body: some View {
         let d = app.tableau.donnees
@@ -31,10 +29,17 @@ struct ReglagesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ligne("Ce que Rémy sait de toi", symbole: "person.text.rectangle") { memoire = true }
+                    // Le rendez-vous quotidien (24/10) : coupé par défaut.
+                    if app.rituel.disponible {
+                        ReglagesRituelVue()
+                            .padding(.bottom, 8)
+                    }
+                    if app.organisation.dossiersDisponibles {
+                        ReglageCapture()
+                    }
                     ligne("Ouvrir le site", sous: "Le site te redemandera le mot de passe.", symbole: "safari") {
                         ouvrirURL(app.api.base)
                     }
-                    ligne("Temps de réponse", sous: "Ce que prend chaque étape, iPhone et tour", symbole: "speedometer") { mesures = true }
                     if let c = d?.couts {
                         info("Coût des 30 derniers jours", valeur: Format.usd(c.jours30), symbole: "creditcard")
                     }
@@ -52,24 +57,6 @@ struct ReglagesView: View {
                             Text("Comme l'iPhone").tag("auto")
                             Text("Clair").tag("clair")
                             Text("Sombre").tag("sombre")
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    .foregroundStyle(Palette.encre)
-                    .padding(.vertical, 12)
-                    .overlay(alignment: .bottom) { Filet() }
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 14) {
-                            Image(systemName: "hand.tap").font(.system(size: 18)).frame(width: 26)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Appui pour agrandir le planning").font(Police.texte(16, .medium))
-                                Text("Plus long si ça s'ouvre sans le vouloir.")
-                                    .font(Police.texte(13))
-                                    .foregroundStyle(Palette.encre2)
-                            }
-                        }
-                        Picker("Appui pour agrandir le planning", selection: $appuiMs) {
-                            ForEach(Gestes.choix, id: \.self) { Text("\($0) ms").tag($0) }
                         }
                         .pickerStyle(.segmented)
                     }
@@ -138,9 +125,10 @@ struct ReglagesView: View {
                     ligne("Nouveautés", sous: nouveautesSous, symbole: "sparkles") {
                         nouveautesOuvertes = true
                     }
-                    ligne("Prototypes de design", sous: "Lot 1 : deux directions à essayer, sur des données fictives.",
-                          symbole: "paintpalette") {
-                        prototypes = true
+                    // Les outils du constructeur, à part (24/10) : temps de réponse,
+                    // jauge du chat (masquée par défaut), appui du planning.
+                    ligne("Diagnostic", sous: "Temps de réponse, jauge du chat, réglages fins", symbole: "stethoscope") {
+                        diagnostic = true
                     }
                     ligne("Se déconnecter", symbole: "rectangle.portrait.and.arrow.right", couleur: Palette.danger, fleche: false) {
                         deconnexion = true
@@ -161,7 +149,7 @@ struct ReglagesView: View {
             .background(Palette.fond)
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(isPresented: $mesures) { MesuresView() }
+            .navigationDestination(isPresented: $diagnostic) { DiagnosticVue() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fermer") { fermer() }.font(Police.texte(16, .semibold))
@@ -176,7 +164,6 @@ struct ReglagesView: View {
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .sheet(isPresented: $modelesOuverts) { ModelesVue() }
         .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
-        .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()

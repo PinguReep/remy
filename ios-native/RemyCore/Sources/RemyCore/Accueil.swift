@@ -254,6 +254,8 @@ public enum Couloirs {
 public enum GenreCapture: String, CaseIterable, Sendable {
     /// Une tâche dans Motion (qui lui trouve un créneau).
     case tache
+    /// Une pensée floue, gardée dans « Idées » (24/10) : rien n'est planifié.
+    case idee
     /// Des articles dans une liste (« tomates, lait, œufs »).
     case liste
     /// Un rappel à une date (« appeler le garage demain à 9h »).
@@ -268,6 +270,7 @@ public enum GenreCapture: String, CaseIterable, Sendable {
     public var libelle: String {
         switch self {
         case .tache: return "Tâche"
+        case .idee: return "Idée"
         case .liste: return "Liste"
         case .rappel: return "Rappel"
         case .retenir: return "Retenir"
@@ -324,10 +327,16 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         return longs.count >= 2
     }
 
-    /// Le genre probable, deviné sans IA ; Sam corrige d'un toucher.
-    public static func deviner(_ texte: String, maintenant: Date = Date()) -> GenreCapture {
+    /// Où va une pensée sans action claire (Réglages) : « idees » (défaut) ou « motion ».
+    public static let cleParDefaut = "capture.parDefaut"
+
+    /// Le genre probable, deviné sans IA ; Sam corrige d'un toucher. Une
+    /// pensée floue va dans les Idées (24/10 : « il ne faut pas transformer
+    /// chaque pensée en tâche Motion ») ; Motion seulement si l'action est
+    /// claire — ou si Sam l'a réglé ainsi (`parDefaut: .tache`).
+    public static func deviner(_ texte: String, maintenant: Date = Date(), parDefaut: GenreCapture = .idee) -> GenreCapture {
         let t = texte.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !t.isEmpty else { return .tache }
+        guard !t.isEmpty else { return parDefaut }
         if t.hasSuffix("?") { return .question }
         let interrogatifs = ["est-ce", "qu'est-ce", "quand ", "comment ", "pourquoi ", "combien ", "quel ", "quelle ", "quels ", "quelles ", "où "]
         if interrogatifs.contains(where: { t.hasPrefix($0) }) { return .question }
@@ -336,7 +345,50 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         if t.hasPrefix("rappelle") || t.hasPrefix("rappel ") || t.hasPrefix("n'oublie pas") || t.hasPrefix("fais-moi penser") { return .rappel }
         if ["projet ", "nouveau projet", "sous-projet", "sous projet", "catégorie ", "categorie ", "nouvelle catégorie"].contains(where: { t.hasPrefix($0) }) { return .projet }
         if articles(t).count >= 2 { return .liste }
-        return .tache
+        return actionClaire(t) ? .tache : parDefaut
+    }
+
+    /// Des verbes d'action courants (à l'infinitif, sans accents).
+    static let verbes: Set<String> = [
+        "faire", "dire", "prendre", "mettre", "ecrire", "lire", "relire", "rendre", "finir", "ranger", "envoyer", "appeler",
+        "payer", "acheter", "reserver", "relancer", "repondre", "preparer", "reparer", "nettoyer", "contacter", "imprimer",
+        "deposer", "recuperer", "commander", "inscrire", "valider", "signer", "terminer", "rediger", "changer", "verifier",
+        "demander", "remplir", "trier", "laver", "sortir", "aller", "passer", "rappeler", "renouveler", "resilier", "declarer",
+        "planifier", "organiser", "booker", "caler", "fixer", "noter", "regler", "rembourser", "virer", "vendre", "poster",
+        "publier", "monter", "installer", "telephoner", "finaliser", "boucler", "livrer", "porter",
+    ]
+    /// Les mêmes à l'impératif, comme on se le dicte (« Appelle le garage »).
+    /// Pas les formes qui sont aussi des noms courants (note, livre, poste, règle).
+    static let imperatifs: Set<String> = [
+        "fais", "dis", "prends", "mets", "ecris", "lis", "relis", "rends", "finis", "range", "envoie", "appelle", "paie", "paye",
+        "achete", "reserve", "relance", "reponds", "prepare", "repare", "nettoie", "contacte", "imprime", "depose", "recupere",
+        "commande", "inscris", "valide", "signe", "termine", "redige", "verifie", "demande", "remplis", "trie", "lave", "sors",
+        "va", "passe", "rappelle", "renouvelle", "resilie", "declare", "planifie", "organise", "cale", "fixe", "rembourse",
+        "vends", "publie", "installe", "telephone", "finalise", "boucle",
+    ]
+    /// Des noms en -er/-ir qui ne sont pas des actions (« Dossier subvention »).
+    static let pasDesVerbes: Set<String> = [
+        "dossier", "atelier", "papier", "clavier", "panier", "cahier", "premier", "dernier", "hiver", "super", "fichier",
+        "loyer", "dimanche", "plaisir", "avenir", "souvenir", "desir", "loisir", "soir", "miroir", "espoir", "devoir",
+        "pouvoir", "savoir", "quartier", "metier", "courrier", "calendrier", "chantier", "sentier", "danger", "diner",
+        "dejeuner", "routier", "voilier", "escalier", "potager", "boulanger", "foyer", "cocher", "cavalier", "janvier", "fevrier",
+    ]
+
+    /// L'action est-elle claire ? Un verbe d'action en tête (« Appeler le
+    /// garage », « Appelle le garage »), « il faut », « je dois », ou une durée
+    /// (« 2 h de studio »). Sinon c'est une pensée à garder, pas à planifier.
+    public static func actionClaire(_ texte: String) -> Bool {
+        let t = texte.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "fr_FR"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if ["il faut ", "faut ", "je dois ", "a faire", "todo"].contains(where: { t.hasPrefix($0) }) { return true }
+        if t.range(of: #"\b\d+\s?(h|min|mn|minutes?|heures?)\b"#, options: .regularExpression) != nil { return true }
+        let mots = t.split(whereSeparator: { !$0.isLetter }).map(String.init)
+        guard var premier = mots.first else { return false }
+        // « Me renseigner », « se faire couper les cheveux » : le verbe suit.
+        if ["me", "m", "se", "s", "te", "t"].contains(premier), mots.count > 1 { premier = mots[1] }
+        if verbes.contains(premier) || imperatifs.contains(premier) { return true }
+        if pasDesVerbes.contains(premier) { return false }
+        return premier.count >= 5 && (premier.hasSuffix("er") || premier.hasSuffix("ir"))
     }
 
     /// « tomates, lait et œufs » → trois articles. Un morceau de plus de cinq
