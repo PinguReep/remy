@@ -66,6 +66,11 @@ struct CaptureView: View {
         .presentationDragIndicator(.visible)
         .onAppear {
             if let t = ui.texteDemo { texte = t; ui.texteDemo = nil }
+            // Fermée en route (un appel, une notification) : le texte revient (24/10).
+            if texte.isEmpty, let b = BrouillonCapture.lire() {
+                texte = b
+                app.dire("Ton brouillon est revenu.")
+            }
             focus = true
             if ui.analyseDemo {
                 ui.analyseDemo = false
@@ -78,10 +83,17 @@ struct CaptureView: View {
                 texte = texte.isEmpty ? dit : texte + (texte.hasSuffix(" ") ? "" : " ") + dit
             }
         }
+        .onChange(of: texte) { _, t in BrouillonCapture.garder(t) }
         .onDisappear {
             app.dictee.annuler(sansMessage: true)
             app.dictee.destination = nil
         }
+    }
+
+    /// Réussi : le brouillon n'a plus lieu d'être, la feuille se ferme.
+    private func finir() {
+        BrouillonCapture.effacer()
+        fermer()
     }
 
     // MARK: Saisie
@@ -306,30 +318,42 @@ struct CaptureView: View {
         Haptique.leger()
         switch genre {
         case .tache:
-            if await app.noterTache(propre) { fermer() } else { Haptique.erreur() }
+            // « Déjà dans Motion » compte comme réussi : la feuille se ferme.
+            if await app.noterTache(propre) { finir() } else { Haptique.erreur() }
         case .liste:
             let l = cible ?? app.carnet.listeParDefaut()
-            let ajoutes = app.carnet.ajouter(articles, a: l)
-            guard !ajoutes.isEmpty else { return }
-            app.dire("\(ajoutes.count) article\(ajoutes.count > 1 ? "s" : "") dans « \(l.nom) ».", annuler: {
-                app.carnet.retirer(ajoutes, de: l)
-            })
-            fermer()
+            let n = app.carnet.noter(articles, dans: l)
+            guard !n.nouveaux.isEmpty || !n.dejaLa.isEmpty else { return }
+            let deja = n.dejaLa.map { "« \($0) »" }.joined(separator: ", ")
+            if n.nouveaux.isEmpty {
+                app.dire("Déjà dans « \(l.nom) » : \(deja).")
+            } else {
+                let ajoutes = n.nouveaux
+                app.dire("\(ajoutes.count) article\(ajoutes.count > 1 ? "s" : "") dans « \(l.nom) »." + (deja.isEmpty ? "" : " Déjà dans ta liste : \(deja)."), annuler: {
+                    app.carnet.retirer(ajoutes, de: l)
+                })
+            }
+            finir()
         case .rappel:
             let d = dateLue
             let texteRappel = (d?.reste.isEmpty == false) ? d!.reste : AnalyseDate.sansFormule(propre)
             let etiquettes = etiquetteRetiree ? nil : etiquetteDevinee.map { [$0.id] }
-            guard let r = app.carnet.creerRappel(texteRappel, quand: d?.quand, etiquettes: etiquettes) else { return }
-            app.dire(d.map { "Rappel : \(LigneRappel.quand($0.quand.millis))." } ?? "Rappel noté, sans date.", annuler: {
-                app.carnet.supprimer(r)
-            })
+            guard let n = app.carnet.noterRappel(texteRappel, quand: d?.quand, etiquettes: etiquettes) else { return }
+            if n.dejaLa {
+                app.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».")
+            } else {
+                let r = n.rappel
+                app.dire(d.map { "Rappel : \(LigneRappel.quand($0.quand.millis))." } ?? "Rappel noté, sans date.", annuler: {
+                    app.carnet.supprimer(r)
+                })
+            }
             if d != nil { await Notifications.demander() }
-            fermer()
+            finir()
         case .retenir:
-            if await app.retenirNote(propre) { fermer() } else { Haptique.erreur() }
+            if await app.retenirNote(propre) { finir() } else { Haptique.erreur() }
         case .question:
             if await app.preparer(propre, dansFil: "") {
-                fermer()
+                finir()
             } else {
                 app.dire("Tu as déjà un message en cours pour Rémy : finis-le d'abord, ta question est toujours là.")
             }
@@ -337,7 +361,7 @@ struct CaptureView: View {
             let p = GenreCapture.projet(propre, parents: parents.map(\.nom))
             if let d = await app.organisation.creerDossier(p.titre.isEmpty ? propre : p.titre, parent: parentEffectif) {
                 app.dire("Dossier « \(d.nom) » créé (Projets).")
-                fermer()
+                finir()
             } else {
                 Haptique.erreur()
             }
@@ -393,7 +417,13 @@ struct CaptureView: View {
                     let bilan = await app.ranger(choisis)
                     envoi = false
                     app.dire(bilan.phrase)
-                    if bilan.echecs.isEmpty { fermer() } else { Haptique.erreur() }
+                    if bilan.echecs.isEmpty {
+                        finir()
+                    } else {
+                        // Seul ce qui a raté reste coché : « Ranger » ne refait pas le reste.
+                        garde.subtract(bilan.regles)
+                        Haptique.erreur()
+                    }
                 }
             }
             .disabled(choisis.isEmpty || envoi || choisis.contains { !$0.pret })

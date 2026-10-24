@@ -97,7 +97,10 @@ test.after(async () => {
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
+// Les échéances sont écrites en dur (octobre 2026) : la péremption des
+// propositions, testée dans test/usage-intensif.test.mjs, est confirmée ici.
 const post = async (p, b) => {
+  if (/\/apply$/.test(p) && b && !("confirmer" in b)) b = { ...b, confirmer: true };
   const r = await fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json().catch(() => null) };
 };
@@ -137,8 +140,11 @@ test("deux propositions différentes créent la même tâche en même temps : un
     post("/api/motion/apply", { convId: "d2", index: 1 }),
   ]);
   assert.equal(motion.ouvertes().filter((t) => t.name === "Appeler le comptable").length, 1);
-  const doublon = [r1, r2].find((r) => r.body.echecs === 1);
-  assert.match(doublon.body.results[0].erreur, /existe déjà/);
+  // Le second trouve la tâche déjà là : ni échec, ni doublon (24/10).
+  const doublon = [r1, r2].find((r) => r.body.results[0].dejaLa);
+  assert.equal(doublon.body.echecs, 0);
+  assert.equal(doublon.body.etat, "deja_la");
+  assert.match(doublon.body.results[0].note, /déjà dans Motion/);
 });
 
 test("un nom qui en contient un autre n'est pas un doublon (« Sport » ≠ « Sport avec Hugo »)", async () => {
