@@ -13,6 +13,10 @@
 name: iOS natif — parcours joués
 
 on:
+  # MISE AU POINT (temporaire, retiré avant la PR) : un workflow_dispatch n'est
+  # appelable qu'une fois le fichier sur main ; d'ici là, chaque envoi sur la branche.
+  push:
+    branches: [claude/ux-parcours-ios]
   workflow_dispatch:
     inputs:
       filtre:

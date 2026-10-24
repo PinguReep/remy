@@ -260,7 +260,16 @@ final class ParcoursQuotidien: ParcoursBase {
             amener(dejeuner)
             try etape("la-suite", attendu: [dejeuner])
             try appuiLong(dejeuner)
-            try etape("journee-a-l-echelle", attendu: [texte("Les durées sont à l'échelle")])
+            let echelle = texte("Les durées sont à l'échelle")
+            if !echelle.waitForExistence(timeout: 5) {
+                // Vu au 3e run : l'appui long a ouvert le panneau de la ligne, comme
+                // un simple toucher. Sam fermerait et réessaierait, plus longuement.
+                capturer("appui-pris-pour-un-toucher")
+                noter("appui long (0,8 s) sur une ligne de la suite pris pour un toucher : panneau de la ligne au lieu de la journée à l'échelle ; second essai à 1,5 s")
+                try fermerSurimpression()
+                try appuiLong(dejeuner, duree: 1.5)
+            }
+            try etape("journee-a-l-echelle", attendu: [echelle])
             try fermerSurimpression()
             try etape("retour", absent: [texte("Les durées sont à l'échelle")])
             // La semaine : Sam la cherche sur l'accueil puis dans Projets.
