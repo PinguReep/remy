@@ -304,7 +304,7 @@ private struct CarteMaintenant: View {
         case .enCours(let e):
             entete(e.titre, projet: nil, etat: "EN CE MOMENT")
             detail(Self.jusqua(e))
-            BoutonA(titre: "Préparer avec Rémy", symbole: "bubble.left", principal: false) {
+            BoutonA(titre: "En parler à Rémy", symbole: "bubble.left", principal: false) {
                 demander(Brouillons.rendezVous(e), Fils.journee(Date()))
             }
         case .suivant(let e) where e.type == "tache" && peutCommencer:
@@ -324,7 +324,7 @@ private struct CarteMaintenant: View {
         case .suivant(let e):
             entete(e.titre, projet: e.projet, etat: "À VENIR")
             detail(avenir(e))
-            BoutonA(titre: e.estRendezVous ? "Préparer avec Rémy" : "En parler à Rémy", symbole: "bubble.left", principal: false) {
+            BoutonA(titre: "En parler à Rémy", symbole: "bubble.left", principal: false) {
                 demander(e.estRendezVous ? Brouillons.rendezVous(e) : Brouillons.tache(e.titre), Fils.journee(Date()))
             }
         case .aFaire(let t, let total):
@@ -332,12 +332,19 @@ private struct CarteMaintenant: View {
             if total > 1 { detail("et \(total - 1) autre\(total > 2 ? "s" : "") tâche\(total > 2 ? "s" : "") aujourd'hui") }
             HStack(spacing: 10) {
                 BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+                    .accessibilityIdentifier("maintenant.terminer")
                 if peutCommencer {
                     BoutonA(titre: "Commencer", symbole: "play.fill", principal: false) {
                         Haptique.leger()
                         Task { await app.tableau.commencer(id: t.id, titre: t.titre, duree: t.duree) }
                     }
                 }
+                // Le même « Gérer » que la tâche en cours (24/10) : décaler, modifier…
+                BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
+                    Haptique.leger()
+                    ui.gerer = ElementJour.sansCreneau(t, retard: false)
+                }
+                .accessibilityIdentifier("maintenant.gerer")
             }
         case .rienDePrevu(let retards):
             TitreSection(texte: "Temps libre")
@@ -412,10 +419,12 @@ private struct CarteMaintenant: View {
         }
         HStack(spacing: 10) {
             BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: e.id, titre: e.titre, ui: ui) }
+                .accessibilityIdentifier("maintenant.terminer")
             BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
                 Haptique.leger()
                 ui.gerer = e
             }
+            .accessibilityIdentifier("maintenant.gerer")
         }
     }
 
@@ -599,14 +608,13 @@ private struct LigneSuite: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Ouvre ses actions")
             if !e.estRendezVous {
-                CaseACocher { Cocher.tache(app, id: e.id, titre: e.titre, ui: etat == .encours ? ui : nil) }
+                CaseACocher(nom: e.titre) { Cocher.tache(app, id: e.id, titre: e.titre, ui: etat == .encours ? ui : nil) }
             } else if e.estActivite && app.serveur?.sait("taches-etat-v2") == true {
                 // Une activité à soi (« Aspirateur ») se coche aussi : gardé dans Remy, l'agenda ne change pas.
-                CaseACocher(cochee: e.fait == true) {
+                CaseACocher(cochee: e.fait == true, nom: e.titre) {
                     Haptique.leger()
                     Task { await app.tableau.marquerFaite(e, fait: e.fait != true) }
                 }
-                .accessibilityLabel(e.fait == true ? "Faite" : "Marquer faite")
             }
         }
         .frame(minHeight: 56)
@@ -718,19 +726,20 @@ private struct ATraiter: View {
     }
 }
 
-/// Une tâche sans heure fixe (à faire aujourd'hui, ou en retard).
+/// Une tâche sans heure fixe (à faire aujourd'hui, ou en retard). Touchée,
+/// elle s'ouvre dans le même « Gérer » que les tâches du planning (24/10).
 private struct LigneTache: View {
     @Environment(AppModel.self) private var app
+    @Environment(EtatInterface.self) private var ui
     let t: TacheResume
     let enRetard: Bool
     let demander: (String, String) -> Void
-    @State private var actions = false
 
     var body: some View {
         HStack(spacing: 4) {
             Button {
                 Haptique.leger()
-                actions = true
+                ui.gerer = ElementJour.sansCreneau(t, retard: enRetard)
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(t.titre)
@@ -748,13 +757,10 @@ private struct LigneTache: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            CaseACocher { Cocher.tache(app, id: t.id, titre: t.titre) }
+            .accessibilityHint("Ouvre ses actions : décaler, modifier, terminer")
+            CaseACocher(nom: t.titre) { Cocher.tache(app, id: t.id, titre: t.titre) }
         }
         .frame(minHeight: 52)
-        .modifier(ActionsTache(id: t.id, titre: t.titre, ouvert: $actions, echeance: t.echeance,
-                               duree: t.duree, priorite: t.priorite, bloquee: t.bloquee ?? false, etiquettes: t.etiquettes) {
-            demander(enRetard ? Brouillons.retard(t) : Brouillons.tache(t.titre), Fils.journee(Date()))
-        })
     }
 
     private var detail: String {
@@ -848,100 +854,6 @@ enum Cocher {
             case .faite: ui?.suite = titre
             default: break
             }
-        }
-    }
-}
-
-/// Replanifier une tâche d'un geste, ou en parler à Rémy (Sam, 09/10 : il
-/// touchait une tâche en retard pour la décaler). Seule l'échéance change ;
-/// Motion recalcule le créneau.
-struct ActionsTache: ViewModifier {
-    @Environment(AppModel.self) private var app
-    let id: String
-    let titre: String
-    @Binding var ouvert: Bool
-    var echeance: Millis? = nil
-    var duree: Int? = nil
-    var priorite: String? = nil
-    var bloquee = false
-    var etiquettes: [String]? = nil
-    let demander: () -> Void
-    @State private var choixDate = false
-    @State private var categoriser = false
-    @State private var date = Format.echeanceDans(jours: 1)
-    @State private var modifier = false
-    @State private var bloquer = false
-    @State private var raison = ""
-
-    func body(content: Content) -> some View {
-        content
-            .confirmationDialog(titre, isPresented: $ouvert, titleVisibility: .visible) {
-                Button("Aujourd'hui") { replanifier(Format.echeanceDans(jours: 0)) }
-                Button("Demain") { replanifier(Format.echeanceDans(jours: 1)) }
-                Button("Dans une semaine") { replanifier(Format.echeanceDans(jours: 7)) }
-                Button("Choisir une date…") { choixDate = true }
-                Button("Modifier…") { modifier = true }
-                if app.tableau.categoriesDisponibles {
-                    Button("Catégorie…") { categoriser = true }
-                }
-                if app.serveur?.sait("taches-etat-v2") == true {
-                    Button("Commencer maintenant") { Task { await app.tableau.commencer(id: id, titre: titre, duree: duree) } }
-                }
-                // « Bloquée » vit sur la tour (D12) : absent tant qu'elle ne sait pas le garder.
-                if app.serveur?.sait("taches-etat-v1") == true {
-                    if bloquee {
-                        Button("Reprendre (plus en attente)") { Task { await app.tableau.bloquer(id: id, titre: titre, bloquee: false) } }
-                    } else {
-                        Button("Mettre en attente…") { bloquer = true }
-                    }
-                }
-                Button("En parler à Rémy") { demander() }
-                Button("Annuler", role: .cancel) {}
-            } message: {
-                Text("Nouvelle échéance : Motion trouvera le créneau.")
-            }
-            .sheet(isPresented: $modifier) {
-                ModifierTache(id: id, titre: titre, echeance: echeance, duree: duree, priorite: priorite)
-            }
-            .sheet(isPresented: $categoriser) { CategoriserTache(id: id, titre: titre, actuelles: etiquettes ?? []) }
-            .alert("En attente de quoi ?", isPresented: $bloquer) {
-                TextField("Le devis, une réponse de Hugo… (facultatif)", text: $raison)
-                Button("Mettre en attente") {
-                    let r = raison
-                    raison = ""
-                    Task { await app.tableau.bloquer(id: id, titre: titre, bloquee: true, raison: r) }
-                }
-                Button("Annuler", role: .cancel) { raison = "" }
-            } message: {
-                Text("Elle reste dans ta journée, marquée « en attente », et le conseil du moment ne te la propose plus.")
-            }
-            .sheet(isPresented: $choixDate) {
-                NavigationStack {
-                    DatePicker("Échéance", selection: $date, in: Date()..., displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .environment(\.locale, Format.locale)
-                        .environment(\.timeZone, Format.fuseau)
-                        .padding(.horizontal, 18)
-                        .navigationTitle(titre)
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) { Button("Annuler") { choixDate = false } }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Replanifier") {
-                                    choixDate = false
-                                    replanifier(Format.echeanceDans(jours: 0, depuis: date))
-                                }
-                            }
-                        }
-                }
-                .presentationDetents([.medium, .large])
-            }
-    }
-
-    private func replanifier(_ echeance: Date) {
-        Haptique.leger()
-        Task {
-            if !(await app.tableau.replanifier(id: id, titre: titre, echeance: echeance)) { Haptique.erreur() }
         }
     }
 }

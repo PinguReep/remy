@@ -1976,11 +1976,17 @@ public final class ChatModel {
     /// « Oui » sur le site, rend le même résultat sans rien refaire.
     /// `confirmer` : Sam a vu que la proposition est périmée (ancienne ou date
     /// passée) et la veut quand même (24/10).
+    /// `rangs` : une partie seulement (les lignes cochées, propositions-partielles-v1) ;
+    /// nil, tout part.
     @discardableResult
-    public func appliquer(_ ligne: LigneChat, confirmer: Bool = false) async -> Bool {
+    public func appliquer(_ ligne: LigneChat, confirmer: Bool = false, rangs: [Int]? = nil) async -> Bool {
         guard let p = ligne.proposition else { return false }
+        if let rangs, rangs.isEmpty {
+            app?.dire("Rien de coché : coche au moins une ligne, ou « Non merci ».")
+            return false
+        }
         do {
-            let r = try await api.appliquer(p, convId: idCourant, index: ligne.indexMessage, confirmer: confirmer)
+            let r = try await api.appliquer(p, convId: idCourant, index: ligne.indexMessage, confirmer: confirmer, rangs: rangs)
             let bilan = r.bilan
             if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {
                 lignes[i].proposition?.statut = r.statut
@@ -1991,13 +1997,14 @@ public final class ChatModel {
                 lignes[i].proposition?.raisonPeremption = nil
             }
             let echecs = bilan.echoues?.count ?? 0
+            let ecartees = bilan.ecartees?.count ?? 0
             if r.toutDejaLa {
                 // Pas un échec : tout y était déjà.
                 app?.dire(p.versAgenda ? "Déjà dans ton agenda : rien à ajouter." : "Déjà dans ton planning : rien à ajouter.")
             } else if echecs == 0 {
                 let ou = p.versAgenda ? " dans ton agenda" : bilan.espace.map { " dans « \($0) »" } ?? " dans ton planning"
-                app?.dire("C'est fait\(ou).")
-            } else if echecs >= p.actions.count {
+                app?.dire(ecartees > 0 ? "C'est fait\(ou) (\(p.actions.count - ecartees) sur \(p.actions.count))." : "C'est fait\(ou).")
+            } else if echecs >= p.actions.count - ecartees {
                 app?.dire("Rien n'a pu être fait : la raison est sous chaque ligne.")
             } else {
                 app?.dire("\(echecs) changement\(echecs > 1 ? "s" : "") sur \(p.actions.count) n'\(echecs > 1 ? "ont" : "a") pas pu être fait\(echecs > 1 ? "s" : "") : la raison est sous la ligne.")

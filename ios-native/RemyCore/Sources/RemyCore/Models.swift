@@ -419,12 +419,15 @@ public struct Bilan: Codable, Equatable, Sendable {
     public var espace: String?
     /// Déjà là (anti-doublon) : ni fait, ni raté (24/10).
     public var dejaLa: [String]?
+    /// Les lignes décochées par Sam (propositions-partielles-v1) : pas faites, exprès.
+    public var ecartees: [String]?
 
-    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil, dejaLa: [String]? = nil) {
+    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil, dejaLa: [String]? = nil, ecartees: [String]? = nil) {
         self.faits = faits
         self.echoues = echoues
         self.espace = espace
         self.dejaLa = dejaLa
+        self.ecartees = ecartees
     }
 }
 
@@ -529,6 +532,8 @@ public struct ResultatApplication: Codable, Sendable {
     public var etat: String?
     /// Vrai quand la même demande avait déjà été faite (réseau coupé, double tap).
     public var rejoue: Bool?
+    /// Les lignes décochées, pas envoyées (propositions-partielles-v1).
+    public var ecartees: [String]?
 
     /// Le statut de la carte après application, dans le vocabulaire de la conversation.
     public var statut: String { etat == "echouee" && !toutDejaLa ? "echec" : "applique" }
@@ -548,7 +553,8 @@ public struct ResultatApplication: Codable, Sendable {
             faits: r.filter { $0.ok == true && !$0.estDejaLa }.compactMap { $0.nom ?? $0.titre },
             echoues: r.filter { $0.ok != true && !$0.estDejaLa }.map { Echec(nom: $0.nom ?? $0.titre, erreur: $0.erreur) },
             espace: r.first { $0.ok == true && $0.espace != nil }?.espace,
-            dejaLa: deja.isEmpty ? nil : deja
+            dejaLa: deja.isEmpty ? nil : deja,
+            ecartees: ecartees?.isEmpty == false ? ecartees : nil
         )
     }
 

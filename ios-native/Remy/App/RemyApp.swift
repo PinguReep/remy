@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 import RemyCore
 
 @main
@@ -18,6 +19,10 @@ struct RemyApp: App {
         // Sinon, l'adresse de la tour gardée sur l'iPhone (ou posée à la compilation).
         let env = ProcessInfo.processInfo.environment
         let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.adresseTour
+        // Les actions des rappels (Fait, Dans 1 h, Demain) : déclarées avant
+        // qu'une notification touchée ne relance l'app.
+        UNUserNotificationCenter.current().delegate = DelegueNotifications.partage
+        Notifications.declarerActions()
         let modele = base.map(Self.modele)
         _app = State(initialValue: modele)
         _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
@@ -44,6 +49,7 @@ struct RemyApp: App {
         // s'exécutent ici, même app fermée (lancée en arrière-plan).
         Raccourcis.app = modele
         ActiviteEnDirect.partagee.brancher(modele)
+        DelegueNotifications.partage.app = modele
         return modele
     }
 
@@ -194,7 +200,7 @@ enum Demo {
         case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle":
             app.chat.fermer()
             app.onglet = .remy
-        case "remy-fil", "ajuster", "ajuster-rappel":
+        case "remy-fil", "ajuster", "ajuster-rappel", "proposition-partielle":
             // Un fil précis (REMY_DEMO_ANCRE = son identifiant).
             if let id = env["REMY_DEMO_ANCRE"] { await app.ouvrirConversation(id) }
         case "appel", "dictee", "vocal-en-attente":
@@ -216,7 +222,7 @@ enum Demo {
         case "reglages", "lieux", "modeles", "nouveautes-liste", "activite-pc":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
-        case "projets", "liste", "rappels", "filtre", "noeud":
+        case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand":
             app.onglet = .projets
         case "cocher":
             // J1.2, tour coupée : la coche reste sur l'iPhone et le dit.
