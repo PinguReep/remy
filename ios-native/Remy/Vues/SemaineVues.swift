@@ -154,6 +154,9 @@ struct SemaineCompacte: View {
     }
 }
 
+/// Un jour en vue compacte : un en-tête touchable (le jour à l'échelle) qui
+/// dit la charge, les rendez-vous fixes et ce qui dure toute la journée ; en
+/// dessous, seulement ce qui est menacé, touchable comme dans la journée.
 private struct CarteJour: View {
     @Environment(AppModel.self) private var app
     let j: JourSemaine
@@ -163,12 +166,13 @@ private struct CarteJour: View {
     var body: some View {
         let charge = j.charge ?? ChargeJour(taches: j.taches.reduce(0) { $0 + $1.dureeTotale })
         let aujourdhui = j.jour == Format.jourISO(Date())
+        let menaces = menacees
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 Haptique.leger()
                 ouvrirJour(j.jour)
             } label: {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(aujourdhui ? "Aujourd'hui" : j.titreCourt)
                             .font(Police.titre(18))
@@ -182,6 +186,22 @@ private struct CarteJour: View {
                         .font(Police.texte(13))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
+                    if !j.rendezVous.isEmpty {
+                        Label {
+                            Text(j.rendezVous.map { "\(Format.heure($0.debut)) \($0.titre)" }.joined(separator: " · "))
+                                .lineLimit(2)
+                        } icon: {
+                            Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold))
+                        }
+                        .font(Police.texte(14))
+                        .foregroundStyle(Palette.encre)
+                    }
+                    if !j.toute.isEmpty {
+                        Text("Toute la journée : " + j.toute.map(\.titre).joined(separator: " · "))
+                            .font(Police.texte(14))
+                            .foregroundStyle(Palette.encre2)
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -190,36 +210,36 @@ private struct CarteJour: View {
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
             .accessibilityHint("Ouvre ce jour à l'échelle")
-            if !j.toute.isEmpty {
-                Text("Toute la journée : " + j.toute.map(\.titre).joined(separator: " · "))
-                    .font(Police.texte(14, .medium))
-                    .foregroundStyle(Palette.encre)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.bottom, 6)
-            }
-            ForEach(j.rendezVous.prefix(3), id: \.cle) { e in
-                ligne(symbole: "lock.fill", heure: Format.heure(e.debut), titre: e.titre, alerte: false) { ouvrir(e) }
-            }
-            if j.rendezVous.count > 3 {
-                plus("+ \(j.rendezVous.count - 3) rendez-vous") { ouvrirJour(j.jour) }
-            }
-            ForEach(menacees) { t in
+            ForEach(menaces.prefix(2)) { t in
                 LigneEcheance(t: t, element: element(t), ouvrir: ouvrir)
+            }
+            if menaces.count > 2 {
+                Button {
+                    Haptique.leger()
+                    ouvrirJour(j.jour)
+                } label: {
+                    Text("+ \(menaces.count - 2) autre\(menaces.count > 3 ? "s" : "") à surveiller")
+                        .font(Police.texte(14, .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.bottom, 6)
+        .padding(.bottom, menaces.isEmpty ? 0 : 6)
         .carte(rayon: 18)
     }
 
-    /// Les échéances menacées d'abord, puis celles tenues ; au plus 3.
+    /// Ce qui est menacé ce jour-là : échéance que Motion tient mal, ou tâche
+    /// placée après son échéance (même due un autre jour).
     private var menacees: [EcheanceJour] {
         let ids = Set(j.echeances.map(\.id))
         let horsJour = j.deborde.filter { !ids.contains($0.id) }.map {
             EcheanceJour(id: $0.id, titre: $0.titre, echeance: $0.echeance, projet: $0.projet, duree: $0.duree, placee: true, menacee: true)
         }
-        let toutes = (j.echeances + horsJour).sorted { ($0.menacee == true ? 0 : 1) < ($1.menacee == true ? 0 : 1) }
-        return Array(toutes.prefix(3))
+        return j.echeances.filter { $0.menacee == true } + horsJour
     }
 
     /// La tâche telle que la frise la connaît (placée ce jour ou un autre).
@@ -232,38 +252,9 @@ private struct CarteJour: View {
 
     private func resume(_ c: ChargeJour) -> String {
         var bits = [c.phrase]
-        let r = j.rendezVous.count
-        if r > 0 { bits.append("\(r) rendez-vous") }
         let e = j.echeances.count
         if e > 0 { bits.append("\(e) échéance\(e > 1 ? "s" : "")") }
         return bits.joined(separator: " · ")
-    }
-
-    private func ligne(symbole: String, heure: String, titre: String, alerte: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptique.leger()
-            action()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: symbole).font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.encre2).frame(width: 16)
-                Text(heure).font(Police.mono(13, .medium)).foregroundStyle(Palette.encre2)
-                Text(titre).font(Police.texte(15)).foregroundStyle(Palette.encre).lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(titre), rendez-vous à \(heure)")
-    }
-
-    private func plus(_ texte: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(texte).font(Police.texte(14, .medium)).foregroundStyle(Palette.encre2)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 

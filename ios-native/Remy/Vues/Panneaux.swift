@@ -516,7 +516,7 @@ struct JourneeEtendue: View {
                 .task {
                     try? await Task.sleep(nanoseconds: 60_000_000)
                     // Aujourd'hui : là où on en est ; un autre jour : son premier élément.
-                    let depart = aujourdhui ? Format.minuteDuJour(Date()) / 60 - 1 : (items.map { Format.minuteDuJour($0.debut.date) / 60 }.min() ?? premiere)
+                    let depart = (aujourdhui ? Format.minuteDuJour(Date()) / 60 : (items.map { Format.minuteDuJour($0.debut.date) / 60 }.min() ?? premiere)) - 1
                     let h = max(premiere, min(derniere, depart))
                     defilement.scrollTo("h\(h)", anchor: .top)
                 }

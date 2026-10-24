@@ -59,6 +59,10 @@ final class SemaineTests: XCTestCase {
         XCTAssertEqual(ChargeJour(taches: 45, disponible: nil).niveau, .leger)
         XCTAssertEqual(ChargeJour(taches: 0, disponible: 0).phrase, "Pas d'horaires de travail")
         XCTAssertEqual(ChargeJour(taches: 30, disponible: 0).niveau, .deborde)
+        // Un jour sans horaires de travail (dimanche) : pas d'alarme pour 3 h.
+        XCTAssertEqual(ChargeJour(taches: 180, travail: 0, disponible: 0).niveau, .leger)
+        XCTAssertEqual(ChargeJour(taches: 180, travail: 0, disponible: 0).phrase, "3 h prévues, hors horaires")
+        XCTAssertEqual(ChargeJour(taches: 120, rdv: 540, travail: 540, disponible: 0).niveau, .deborde, "journée prise par les rendez-vous")
     }
 
     func testLeJourSeLitEnCourtEtSeRelitCommeUneJournee() throws {
