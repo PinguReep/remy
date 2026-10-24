@@ -357,6 +357,45 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
 - **Tests** : `test/semaine.test.mjs` (faux Motion à quota, faux agenda qui
   compte ses lectures), `SemaineTests` (décodage tolérant, charge en mots),
   intégration contre `server.js` avec les horaires du faux Motion de la CI.
+## 2026-10-24 — Le cerveau relié à la vie (priorites-v1, carnet-outils-v1, propositions-attente-v1)
+
+- **Priorités déclarées** (`lib/priorites.js`, `GET/PUT /api/priorites`) : 5 au
+  plus, chacune avec son pourquoi et, au choix, les mots qui la reconnaissent.
+  Rangées dans l'instantané `priorites` de `remy.db` (pas de migration : la
+  liste des versions tient dans une ligne), **versionnées** : chaque
+  enregistrement ajoute une version (200 gardées, la première toujours) ; un
+  `PUT` doit donner la version qu'il avait sous les yeux (`base`), sinon 409 —
+  un autre appareil ne voit jamais son travail écrasé en silence.
+- **« Négligée depuis N jours »**, sans IA : la dernière trace qui reprend les
+  mots de la priorité (mot entier, sans accents, au pluriel près) parmi les
+  écritures validées du journal, les rappels faits, les notes de dossiers et
+  les titres de conversations (90 jours) ; sans trace, on compte depuis la
+  déclaration. Seuil : 7 jours. Le conseil et la nuit reçoivent un constat daté
+  (« rien depuis 12 jours, dernière trace : … »), jamais une supposition.
+- **Conseil du moment** : la situation porte les priorités ; GLM rend
+  `priorite` (titre exact) quand le conseil en sert une. Une priorité citée qui
+  n'existe pas est retirée, avec le « pourquoi » qui la citait (`lireReponse`).
+  **Nuit** : réflexion et pré-réflexion reçoivent le bloc des priorités, et les
+  dossiers du carnet aux idées encore ouvertes sans mouvement depuis 14 jours
+  (`dossiersSansMouvement`) ; un seul « négligé » relevé par nuit.
+- **Outils du carnet** (`liste_ajouter`, `rappel_creer`, `lib/providers.js`) :
+  même contrat que `motion_proposer`, une carte `source: "carnet"` par réponse.
+  Offerts sans Motion (le carnet vit sur la tour), jamais pour une recherche
+  « question seule », coupables (`REMY_OUTILS_CARNET=off`). Validation :
+  `POST /api/conversations/:id/propositions/:pid/carnet` (`validerCarnet`) lit
+  la conversation stockée ; identifiants dérivés de la proposition, donc un
+  second « Oui » ne double rien. La liste est retrouvée par son nom (sans casse
+  ni accents), créée sinon. Une app d'avant qui montrerait la carte en Motion
+  est refusée proprement (« concerne le carnet, pas Motion »).
+- **Propositions hors du chat** (`GET /api/propositions/attente`) : celles des
+  fils de Rémy (règles) encore en attente et pas périmées, et les sujets « de
+  plus » de la pré-réflexion pas encore retenus (`POST /api/propositions/nuit`,
+  seulement un sujet que Rémy a proposé). L'iPhone en fait des notifications
+  de catégorie `remy.proposition` (« Oui » demande l'appareil déverrouillé ;
+  « Plus tard » = 3 h), relues au retour au premier plan (pas de push). La
+  catégorie s'**ajoute** aux catégories existantes ; le délégué
+  (`DeleguePropositions`) passe devant celui qui est déjà posé (reposé au
+  retour au premier plan) et lui transmet tout ce qui n'est pas une proposition.
 
 ## Chaîne d'écriture (Motion, Google Agenda)
 

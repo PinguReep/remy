@@ -22,6 +22,7 @@ struct ReglagesView: View {
     @State private var modelesOuverts = false
     @State private var activitePCOuverte = false
     @State private var nouveautesOuvertes = false
+    @State private var prioritesOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -120,6 +121,11 @@ struct ReglagesView: View {
                             activitePCOuverte = true
                         }
                     }
+                    if app.serveur?.sait("priorites-v1") == true {
+                        ligne("Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", symbole: "star") {
+                            prioritesOuvertes = true
+                        }
+                    }
                     if app.chat.reglesDisponibles {
                         ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
                             reglesOuvertes = true
@@ -200,6 +206,7 @@ struct ReglagesView: View {
         .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
         .sheet(isPresented: $triOuvert) { ATrancherFeuille() }
         .sheet(isPresented: $revueOuverte) { RevueDimanche() }
+        .sheet(isPresented: $prioritesOuvertes) { PrioritesVue() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
@@ -218,9 +225,9 @@ struct ReglagesView: View {
         .task {
             // Captures de la CI : l'écran Modèle, sur le serveur de démo.
             let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"]
-            guard ecran == "modeles" || ecran == "nouveautes-liste" else { return }
+            guard ecran == "modeles" || ecran == "nouveautes-liste" || ecran == "priorites" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if ecran == "modeles" { modelesOuverts = true } else { nouveautesOuvertes = true }
+            if ecran == "modeles" { modelesOuverts = true } else if ecran == "priorites" { prioritesOuvertes = true } else { nouveautesOuvertes = true }
         }
         .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
