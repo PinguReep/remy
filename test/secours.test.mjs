@@ -78,9 +78,13 @@ const remy = http.createServer(async (req, res) => {
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${remy.address().port}`;
 
+const { fermer } = await import("../lib/db.js");
 test.after(() => {
   remy.close();
   anthropic.close();
+  // La base SQLite est ouverte (capture d'image, réflexion) : la fermer avant
+  // d'effacer le dossier, sinon Windows refuse (EBUSY).
+  fermer();
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
