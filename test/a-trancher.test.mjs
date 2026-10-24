@@ -152,6 +152,7 @@ test("la semaine commence le lundi ; décidées un dimanche, elles valent pour l
   assert.equal(tri.debutSemaine(dimanche), lundi);
   const d = tri.ecrireDecisions(["Finir la boutique"], dimanche);
   assert.equal(d.semaine, new Date(2026, 9, 26, 0, 0).getTime());
+  assert.deepEqual(tri.decisions(dimanche + 3600_000).liste, ["Finir la boutique"], "rouverte le même dimanche, la revue les retrouve");
   assert.deepEqual(tri.decisions(new Date(2026, 9, 27, 9).getTime()).liste, ["Finir la boutique"]);
   assert.deepEqual(tri.decisions(new Date(2026, 10, 3, 9).getTime()).liste, [], "la semaine d'après repart à zéro");
 });
@@ -159,4 +160,16 @@ test("la semaine commence le lundi ; décidées un dimanche, elles valent pour l
 test("réduire : casse, accents et ponctuation ne comptent pas", () => {
   assert.equal(tri.reduire("Appeler  le Garage."), tri.reduire("appeler le garage"));
   assert.equal(tri.reduire("Élagage"), "elagage");
+});
+
+test("une carte appliquée avant le Lot 0 (trace au journal, pas d'état) n'attend plus", async () => {
+  await store.putConversation({ id: "c-lot0", title: "Avant le Lot 0", createdAt: maintenant - 60 * JOUR, updatedAt: maintenant - 60 * JOUR, messages: [
+    { role: "user", content: "Ajoute le contrôle technique" },
+    { role: "assistant", content: "Fait.", proposal: { id: "p-lot0", source: "motion", resume: "Contrôle technique", actions: [{ type: "creer", nom: "Contrôle technique" }], ledgerId: "j-ancien" } },
+    { role: "user", content: "Merci" },
+    { role: "assistant", content: "Avec plaisir." },
+  ] });
+  const r = await (await envoyer("GET", "/api/a-trancher")).json();
+  const cartes = r.groupes.find((g) => g.id === "cartes")?.lignes || [];
+  assert.ok(!cartes.some((l) => l.propositionId === "p-lot0"), JSON.stringify(cartes));
 });
