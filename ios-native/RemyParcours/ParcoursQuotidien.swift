@@ -79,11 +79,21 @@ final class ParcoursQuotidien: ParcoursBase {
                 try etape("suivante-commencee", absent: [texte("terminée. Et maintenant ?")])
                 noter("suivante proposée : \(suivante)")
                 // La suivante, commencée, doit passer « EN COURS » tout de suite.
-                let marque = nomme(app.staticTexts.matching(NSPredicate(format: "label == %@", "EN COURS")).firstMatch, "marque EN COURS")
-                let tout = marque.waitForExistence(timeout: 8)
+                // (Visible et touchable : la même étiquette existe, cachée, dans Projets.)
+                let aVenir = nomme(app.staticTexts.matching(NSPredicate(format: "label == %@", "À VENIR")).firstMatch, "carte « À VENIR »")
+                let debut = Date()
+                RunLoop.current.run(until: Date().addingTimeInterval(3))
                 capturer("carte-apres-commencer")
+                let encoreAVenir = aVenir.exists && aVenir.isHittable
+                if encoreAVenir {
+                    while aVenir.exists && aVenir.isHittable && Date().timeIntervalSince(debut) < 70 {
+                        RunLoop.current.run(until: Date().addingTimeInterval(1))
+                    }
+                    noter(String(format: "la tâche commencée reste « À VENIR · maintenant » %.0f s avant de passer en cours", Date().timeIntervalSince(debut)))
+                    capturer("carte-enfin-en-cours")
+                }
                 constat("Après « Commencer », la carte dit encore « À VENIR · maintenant » : la tâche ne passe « EN COURS » (avec son temps restant) qu'à la minute suivante, quand l'écran se recalcule.",
-                        siFaux: tout)
+                        siFaux: !encoreAVenir)
             } else {
                 try toucher(bouton("Choisir…"), "Choisir")
                 try etape("choisir-la-suite", attendu: [texteI("cette semaine")], delai: 8)
