@@ -29,6 +29,19 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "au-pouce", serie: 3, date: "24 oct.", titre: "Plus vite, au pouce", capacite: nil, pages: [
+            .init(symbole: "calendar.badge.clock", titre: "Décaler en un toucher",
+                  texte: "Touche une tâche, même en retard : « Demain », « Lundi » ou une date, d'un geste, avec « Annuler ». Le panneau se ferme en le glissant vers le bas."),
+            .init(symbole: "bell.badge", titre: "Les rappels se reportent",
+                  texte: "Touche un rappel : « Dans 1 h », « Ce soir », « Demain 9:00 »… Sur la notification aussi : appuie longuement dessus pour « Fait », « Dans 1 h » ou « Demain »."),
+            .init(symbole: "keyboard.chevron.compact.down", titre: "Noter sous le pouce",
+                  texte: "Le bouton d'envoi suit le clavier, sous ton pouce."),
+        ]),
+        Nouveaute(id: "proposition-partielle", serie: 3, date: "24 oct.", titre: "Garder une partie d'une proposition",
+                  capacite: "propositions-partielles-v1", pages: [
+            .init(symbole: "checklist", titre: "Décoche ce que tu ne veux pas",
+                  texte: "Dans une proposition de Rémy, décoche une ligne : seules les lignes cochées partent, et la carte dit ce qui a été écarté."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

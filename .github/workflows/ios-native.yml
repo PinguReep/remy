@@ -171,12 +171,14 @@ jobs:
           capture 3c-boite-sombre dark boite
           capture 3d-connaissance-clair light aujourdhui connaissance
           capture 3e-gerer-clair light gerer
+          capture 3e2-gerer-retard-clair light gerer-retard
           capture 3f-journee-etendue-clair light journee-etendue
           capture 3g-capture-clair light capture
           capture 3h-projets-clair light projets
           capture 3i-projets-sombre dark projets
           capture 3j-liste-clair light liste
           capture 3k-rappels-sombre dark rappels
+          capture 3k2-rappel-quand-clair light rappel-quand
           capture 3l-capture-liste-clair light capture-liste
           capture 3m-capture-rappel-sombre dark capture-rappel
           capture 3n-modifier-clair light modifier
@@ -203,6 +205,7 @@ jobs:
           capture 5c-conversations-sombre dark conversations
           capture 5d-retenir-clair light retenir
           capture 5e-proposition-clair light remy-fil c10
+          capture 5e2-proposition-partielle-clair light proposition-partielle c13
           capture 5f-ajuster-clair light ajuster c10
           capture 5g-ajuster-rappel-sombre dark ajuster-rappel c10
           capture 5h-categorie-tache-clair light categorie
@@ -220,6 +223,12 @@ jobs:
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
           capture 8b-vocal-en-attente-sombre dark vocal-en-attente
+          # Grand texte (Dynamic Type, 24/10) : titres serif et panneaux suivent.
+          xcrun simctl ui "$UDID" content_size accessibility-large || true
+          capture 11-grand-texte-aujourdhui-clair light aujourdhui
+          capture 11b-grand-texte-gerer-clair light gerer
+          capture 11c-grand-texte-capture-clair light capture
+          xcrun simctl ui "$UDID" content_size large || true
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
           xcrun simctl ui "$UDID" appearance light
@@ -266,6 +275,7 @@ jobs:
             capture 10-petit-aujourdhui-clair light aujourdhui
             capture 10b-petit-suite-clair light aujourdhui journee
             capture 10c-petit-gerer-sombre dark gerer
+            capture 10c2-petit-gerer-retard-clair light gerer-retard
             capture 10d-petit-capture-clair light capture
             capture 10e-petit-projets-sombre dark projets
             capture 10f-petit-liste-sombre dark liste

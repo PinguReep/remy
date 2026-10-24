@@ -313,6 +313,58 @@ public final class CarnetModel {
         ecrire(.rappels([rappels[i]]))
     }
 
+    /// Reporter un rappel (« Quand ? », balayage) : sa date seule change, avec
+    /// « Annuler ». La notification suit (reprogrammée par l'app).
+    public func reporter(_ rappel: Rappel, a quand: Date) {
+        guard let i = rappels.firstIndex(where: { $0.id == rappel.id }) else { return }
+        let avant = rappels[i]
+        rappels[i].quand = quand.millis
+        rappels[i].fait = false
+        let r = rappels[i]
+        trierRappels()
+        ecrire(.rappels([r]))
+        app?.dire("Rappel : \(Self.quand(quand.millis)).", annuler: { [weak self] in
+            guard let self, let k = self.rappels.firstIndex(where: { $0.id == avant.id }) else { return }
+            self.rappels[k].quand = avant.quand
+            self.rappels[k].fait = avant.fait
+            let remis = self.rappels[k]
+            self.trierRappels()
+            self.ecrire(.rappels([remis]))
+        })
+    }
+
+    /// Depuis la notification (« Fait », « Dans 1 h », « Demain ») : sans
+    /// message (l'app n'est peut-être pas à l'écran), et rien si le rappel a
+    /// disparu entre-temps. Rend vrai si quelque chose a changé.
+    @discardableResult
+    public func depuisNotification(id: String, fait: Bool, quand: Date?) -> Bool {
+        guard let i = rappels.firstIndex(where: { $0.id == id }) else { return false }
+        if fait {
+            guard !rappels[i].fait else { return false }
+            rappels[i].fait = true
+        } else if let quand {
+            rappels[i].quand = quand.millis
+            rappels[i].fait = false
+        } else {
+            return false
+        }
+        let r = rappels[i]
+        trierRappels()
+        // Pas d'envoi en tâche détachée : le délégué l'attend avant de rendre la main à iOS.
+        ecrire(.rappels([r]), envoyerTout: false)
+        return true
+    }
+
+    /// « aujourd'hui 18:00 », « demain 09:00 », « jeu. 22 oct. 09:00 »
+    public static func quand(_ ms: Millis, maintenant: Date = Date()) -> String {
+        let d = ms.date
+        let auj = Format.debutDuJour(maintenant)
+        let jour = Format.debutDuJour(d)
+        let ecart = Int((jour.timeIntervalSince(auj) / 86_400).rounded())
+        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier" : Format.jourSemaineCourt(d)
+        return j + " " + Format.heure(d)
+    }
+
     public func basculer(_ rappel: Rappel) {
         guard let i = rappels.firstIndex(where: { $0.id == rappel.id }) else { return }
         rappels[i].fait.toggle()

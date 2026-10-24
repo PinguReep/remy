@@ -155,6 +155,24 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(p()?.proposition?.annulee, true, app.toast ?? "")
             try await app.api.appliquer(.supprimerRappel(id: rappel.id))
         }
+        // 24/10 : une partie seulement d'une proposition (une case par ligne) ;
+        // la ligne décochée ne part pas, et « Annuler » défait le reste.
+        if v.sait("propositions-partielles-v1") {
+            let ouvert = await app.chat.ouvrir("c14")
+            XCTAssertTrue(ouvert)
+            let p = { app.chat.lignes.first { $0.proposition?.id == "p-atelier" } }
+            let ligne = try XCTUnwrap(p(), "la proposition de démo")
+            let rangs = try XCTUnwrap(SelectionLignes.rangs(ligne.proposition?.actions ?? [], decoches: [0]))
+            XCTAssertEqual(rangs, [1])
+            let fait = await app.chat.appliquer(ligne, rangs: rangs)
+            XCTAssertTrue(fait, app.toast ?? "")
+            XCTAssertEqual(p()?.proposition?.bilan?.ecartees, ["Trier les chutes de cire"])
+            let jour = try await app.api.tableauDeBord(frais: true).journee
+            let toutes = ((jour?.aFaire ?? []) + (jour?.retard?.items ?? [])).map(\.titre)
+            XCTAssertFalse(toutes.contains("Trier les chutes de cire"), "décochée : pas créée")
+            await app.chat.annuler(try XCTUnwrap(p()))
+            XCTAssertEqual(p()?.proposition?.annulee, true, app.toast ?? "")
+        }
         if v.sait("historique-v1") {
             // La coche puis « Annuler » plus haut sont dans l'historique, en mots.
             let h = try await app.api.historique()

@@ -796,10 +796,21 @@ private struct PropositionView: View {
     let p: Proposition
     @State private var enCours = false
     @State private var ajustement: DemandeAjustement?
+    /// Les lignes décochées (leur rang) : elles ne partiront pas (24/10).
+    @State private var decoches: Set<Int> = []
 
     /// Sam peut régler une ligne (date, durée, catégorie, rappel) avant de dire oui.
     private var ajustable: Bool {
         p.ajustable && !p.echouee && !ligne.enCours && p.id != nil && app.chat.ajustementDisponible
+    }
+
+    /// Une case par ligne : garder une partie seulement, sans réécrire à Rémy.
+    /// Après un échec aussi : « Réessayer » renvoie les mêmes lignes, jamais
+    /// celles que Sam a décochées (ni quand une ligne rangée en rappel n'en
+    /// laisse qu'une).
+    private var partielle: Bool {
+        !p.appliquee && !p.convertie && !ligne.enCours && p.id != nil && (p.actions.count > 1 || !decoches.isEmpty)
+            && app.serveur?.sait("propositions-partielles-v1") == true
     }
 
     var body: some View {
@@ -835,21 +846,40 @@ private struct PropositionView: View {
                     .padding(.top, 4)
             }
             ForEach(Array(p.actions.enumerated()), id: \.offset) { i, a in
+                let rang = a.rang ?? i
+                let decochee = partielle && decoches.contains(rang)
                 let ligneAction = LigneAction(action: a,
                                               versAgenda: p.versAgenda,
                                               erreur: erreurAffichee(a),
-                                              barree: estDefaite(a),
+                                              barree: estDefaite(a) || estEcartee(a),
                                               premiere: i == 0 && (p.appliquee || (p.resume ?? "").isEmpty),
-                                              ajustable: ajustable && peutAjuster(a))
-                if ajustable && peutAjuster(a) {
-                    Button {
-                        Haptique.leger()
-                        ajustement = DemandeAjustement(ligne: ligne, rang: a.rang ?? i, action: a, versAgenda: p.versAgenda)
-                    } label: { ligneAction.contentShape(Rectangle()) }
-                    .buttonStyle(AppuiLigne())
-                    .accessibilityHint("Régler la date, la durée ou la catégorie avant de dire oui")
-                } else {
-                    ligneAction
+                                              ajustable: ajustable && peutAjuster(a) && !decochee)
+                HStack(spacing: 0) {
+                    if partielle {
+                        CaseACocher(cochee: !decochee) {
+                            Haptique.leger()
+                            withAnimation(.snappy) {
+                                if decochee { decoches.remove(rang) } else { decoches.insert(rang) }
+                            }
+                        }
+                        .accessibilityLabel("Garder « \(a.libelle) »")
+                        .accessibilityValue(decochee ? "décochée : ne partira pas" : "cochée")
+                        .padding(.leading, 4)
+                        .overlay(alignment: .top) { if i > 0 { Filet() } }
+                    }
+                    Group {
+                        if ajustable && peutAjuster(a) && !decochee {
+                            Button {
+                                Haptique.leger()
+                                ajustement = DemandeAjustement(ligne: ligne, rang: rang, action: a, versAgenda: p.versAgenda)
+                            } label: { ligneAction.contentShape(Rectangle()) }
+                            .buttonStyle(AppuiLigne())
+                            .accessibilityHint("Régler la date, la durée ou la catégorie avant de dire oui")
+                        } else {
+                            ligneAction
+                        }
+                    }
+                    .opacity(decochee ? 0.45 : 1)
                 }
             }
             if p.rangeesEnRappels > 0 && !p.convertie {
@@ -864,6 +894,21 @@ private struct PropositionView: View {
             pied
         }
         .sheet(item: $ajustement) { AjusterAction(demande: $0) }
+        .task {
+            // Échec relu plus tard (app relancée) : les lignes écartées au
+            // premier essai restent décochées pour « Réessayer ».
+            if p.echouee, decoches.isEmpty, let ecartees = p.bilan?.ecartees, !ecartees.isEmpty {
+                decoches = Set(p.actions.enumerated().compactMap { (i, a) -> Int? in
+                    guard let nom = a.nom ?? a.titre, ecartees.contains(nom) else { return nil }
+                    return a.rang ?? i
+                })
+            }
+            // Captures de la CI : une ligne décochée (la dernière).
+            let env = ProcessInfo.processInfo.environment
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "proposition-partielle", partielle, let a = p.actions.last {
+                decoches = [a.rang ?? (p.actions.count - 1)]
+            }
+        }
         .task {
             // Captures de la CI : la feuille « Ajuster » sur la première ligne.
             let env = ProcessInfo.processInfo.environment
@@ -895,8 +940,15 @@ private struct PropositionView: View {
         return Palette.encre2
     }
 
+    /// Décochée par Sam au moment du « Oui » : pas faite, exprès.
+    private func estEcartee(_ a: ActionProposee) -> Bool {
+        guard p.appliquee, let e = p.bilan?.ecartees, let nom = a.nom ?? a.titre else { return false }
+        return e.contains(nom)
+    }
+
     /// « Pas défait : … » après une annulation incomplète, sinon « Pas fait : … ».
     private func erreurAffichee(_ a: ActionProposee) -> String? {
+        if estEcartee(a) { return nil }
         if let rate = p.echecAnnulation(pour: a) { return "Pas défait : " + (rate.erreur ?? "raison inconnue") }
         guard p.appliquee || p.echouee, p.annulee != true, let e = p.erreur(pour: a) else { return nil }
         return "Pas fait : " + e
@@ -920,7 +972,11 @@ private struct PropositionView: View {
         if !(p.annulationRatee ?? []).isEmpty { return "Annulation incomplète" }
         if p.annulee == true { return "Annulé : tout est revenu comme avant." }
         let echecs = p.nombreEchecs
-        if echecs == 0 { return p.versAgenda ? "C'est fait dans ton agenda" : "C'est fait dans ton planning" }
+        let ecartees = p.bilan?.ecartees?.count ?? 0
+        if echecs == 0 {
+            let fait = p.versAgenda ? "C'est fait dans ton agenda" : "C'est fait dans ton planning"
+            return ecartees > 0 ? fait + " (\(max(0, p.actions.count - ecartees)) sur \(p.actions.count))" : fait
+        }
         return echecs >= p.actions.count ? "Rien n'a pu être fait" : "En partie fait"
     }
 
@@ -932,15 +988,18 @@ private struct PropositionView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     BoutonA(titre: "Non merci", principal: false, hauteur: 46) { agir { await app.chat.ecarter(ligne) } }
-                    BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : "Oui, fais-le", hauteur: 46) {
+                    let gardes = p.actions.count - (partielle ? decoches.count : 0)
+                    BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : SelectionLignes.libelle(total: p.actions.count, gardes: gardes), hauteur: 46) {
+                        let rangs = partielle ? SelectionLignes.rangs(p.actions, decoches: decoches) : nil
                         agir {
-                            if await app.chat.appliquer(ligne) { Haptique.succes() }
+                            if await app.chat.appliquer(ligne, rangs: rangs) { Haptique.succes() }
                         }
                     }
                     // Tant que Rémy écrit, la proposition n'est pas enregistrée.
-                    .disabled(ligne.enCours)
+                    .disabled(ligne.enCours || gardes == 0)
                 }
-                Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
+                Text(partielle ? "Décoche ce que tu ne veux pas" + (ajustable ? " ; touche une ligne pour la régler." : ".")
+                     : ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
                                : "Pour changer un détail, réponds-le simplement à Rémy.")
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre3)
