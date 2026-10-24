@@ -165,7 +165,8 @@ enum Demo {
         if app.phase != .pret { try? await app.connecter(motDePasse: mdp) }
         // Lancée sur la journée gardée, l'app est « prête » avant d'avoir relu
         // les conversations : les écrans de Rémy les attendent (5 s au plus).
-        for _ in 0..<25 where app.chat.conversations.isEmpty {
+        let fil = ["remy", "appel", "dictee", "vocal-en-attente", "remy-fil", "ajuster", "ajuster-rappel"].contains(env["REMY_DEMO_ECRAN"] ?? "")
+        for _ in 0..<25 where fil && app.chat.conversations.isEmpty {
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
         switch env["REMY_DEMO_ECRAN"] {
