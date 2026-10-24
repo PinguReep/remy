@@ -218,6 +218,19 @@ test("le conseil reçoit les priorités ; une priorité citée qui n'existe pas 
   assert.equal(rendu?.priorite, "Musique", "l'app reçoit la priorité servie");
 });
 
+test("la réflexion de nuit reçoit les priorités et ce qui est négligé (modèle local)", async () => {
+  const { runReflection } = await import("../lib/reflection.js");
+  script = [{ choices: [{ message: { content: "- La musique n'a pas bougé depuis 9 jours : vingt minutes demain ?" }, finish_reason: "stop" }], usage: { prompt_tokens: 50, completion_tokens: 12 } }];
+  const avant = recus.length;
+  const r = await runReflection();
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const envoye = recus.slice(avant).find((b) => !b.stream);
+  const texte = envoye.messages.map((m) => m.content).join("\n");
+  assert.match(texte, /Priorités déclarées par .+ version 2/);
+  assert.match(texte, /- Musique — pourquoi : « Jouer me rend plus calme toute la semaine » — NÉGLIGÉE : rien depuis 9 jours/);
+  assert.match(texte, /N'en relève qu'une par nuit/);
+});
+
 // --- Outils du carnet ----------------------------------------------------------------
 
 test("outils du carnet : toujours offerts (sans Motion), jamais pour une question seule", () => {
