@@ -219,10 +219,16 @@ public enum SuiviActivite {
     /// `suivie` : la tâche de l'activité en cours (id, fin), nil s'il n'y en a
     /// pas. `auto` : démarrer seule quand une tâche commence. `dejaVues` : les
     /// tâches déjà montrées (ou fermées par Sam), jamais relancées d'office.
-    /// Sans journée (pas encore lue), rien ne bouge.
+    /// Sans journée (pas encore lue), rien ne bouge. `copie` : la journée du
+    /// dernier lancement, pas encore relue sur la tour (elle ignore un
+    /// « Commencer » fait depuis) : rien ne bouge non plus. `occupees` : les
+    /// tâches dont un bouton de l'activité est en train d'agir (il la met à
+    /// jour lui-même ; le suivi la fermerait sous ses doigts).
     public static func gestes(journee j: Journee?, maintenant: Millis, suivie: (id: String, fin: Date)?,
-                              auto: Bool, dejaVues: Set<String>) -> [Geste] {
-        guard j != nil else { return [] }
+                              auto: Bool, dejaVues: Set<String>, copie: Bool = false,
+                              occupees: Set<String> = []) -> [Geste] {
+        guard j != nil, !copie else { return [] }
+        if let s = suivie, occupees.contains(s.id) { return [] }
         let enCours = tacheEnCours(j, maintenant: maintenant)
         var gestes: [Geste] = []
         if let s = suivie {
@@ -244,7 +250,9 @@ public enum SuiviActivite {
 @MainActor
 public enum Raccourcis {
     /// Le modèle de l'app (nil tant que l'adresse de la tour est inconnue).
-    public static weak var app: AppModel?
+    /// Gardé ici sans condition : lancée en arrière-plan pour une intention,
+    /// l'app n'a peut-être aucune scène pour le retenir.
+    public static var app: AppModel?
     /// « Terminer » sur l'activité en direct (id, titre).
     public static var terminer: ((String, String) async -> Void)?
     /// « +15 min » sur l'activité en direct (id, minutes).

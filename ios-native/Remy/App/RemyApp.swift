@@ -101,9 +101,11 @@ struct RacineView: View {
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
-        // Déconnecté : l'activité en direct ne montre plus rien.
+        // Déconnecté : l'activité en direct ne montre plus rien. Connecté ou
+        // non : les widgets se relisent (« Pas connecté », ou la journée).
         .onChange(of: app.phase) { _, p in
             if p == .connexion { Task { await ActiviteEnDirect.partagee.toutArreter() } }
+            if p == .connexion || p == .pret { WidgetsAJour.tout() }
         }
         .animation(.easeOut(duration: 0.2), value: app.phase)
     }

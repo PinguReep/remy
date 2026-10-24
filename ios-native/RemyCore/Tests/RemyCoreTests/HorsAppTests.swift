@@ -119,6 +119,20 @@ final class SuiviActiviteTests: XCTestCase {
         XCTAssertEqual(SuiviActivite.gestes(journee: nil, maintenant: t0, suivie: ("a", fin), auto: true, dejaVues: []), [])
     }
 
+    func testCopieEtBoutonEnCours() {
+        let fin = (t0 + 20 * 60_000).date
+        // La copie du dernier lancement ignore un « Commencer » fait depuis :
+        // l'activité qu'il a lancée n'est pas fermée, rien ne démarre.
+        XCTAssertEqual(SuiviActivite.gestes(journee: j([]), maintenant: t0, suivie: ("a", fin), auto: true, dejaVues: ["a"], copie: true), [])
+        XCTAssertEqual(SuiviActivite.gestes(journee: j([e("b", -10, 20)]), maintenant: t0, suivie: nil, auto: true, dejaVues: [], copie: true), [])
+        // « Terminer » touché sur l'activité : la tâche quitte la journée tout
+        // de suite, mais c'est le bouton qui ferme l'activité (« Fait », ou la
+        // tâche revenue si Motion refuse).
+        XCTAssertEqual(SuiviActivite.gestes(journee: j([]), maintenant: t0, suivie: ("a", fin), auto: true, dejaVues: ["a"], occupees: ["a"]), [])
+        // Une autre tâche occupée ne bloque pas le suivi.
+        XCTAssertEqual(SuiviActivite.gestes(journee: j([]), maintenant: t0, suivie: ("a", fin), auto: true, dejaVues: ["a"], occupees: ["b"]), [.terminer])
+    }
+
     func testEtatDeLActivite() {
         let (attributs, etat) = ActiviteTache.depuis(e("a", -10, 20))!
         XCTAssertEqual(attributs.titre, "a")

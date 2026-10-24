@@ -32,6 +32,16 @@ notes privées, sur la tour.
   caractères suffisent (30 pour les autres). Capacité `capture-siri-v1`.
 - **Contrôle iOS 18** : le point d'entrée des widgets choisit le paquet selon
   la version (`WidgetsRemy18` avec le contrôle, `WidgetsRemy` sinon).
+- **Relecture** : un bouton de l'activité touché deux fois n'agit qu'une fois
+  (tâches « occupées » ; sinon « +15 min » doublé affichait 30 min quand
+  Motion n'en recevait que 15 de plus), et le suivi de l'app ne touche pas à
+  l'activité pendant qu'un bouton agit (il fermait « Fait » sous les doigts).
+  Le suivi ignore aussi la copie du dernier lancement tant que la tour n'a pas
+  été relue : elle ignore un « Commencer » fait depuis, et fermait l'activité.
+  L'app ouverte recharge le widget « Maintenant » quand son aperçu change
+  (`WidgetsAJour`, 5 s après, gratuit au premier plan) et tous les widgets à
+  la connexion ou à la déconnexion. `Raccourcis.app` est une référence forte :
+  lancée en arrière-plan pour une intention, l'app n'a pas de scène.
 
 ## 2026-10-24 — Extensions iPhone : un trousseau partagé, pas de groupe d'app
 

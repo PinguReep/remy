@@ -141,7 +141,9 @@ tag) avant l'échéance.
   dans l'app, branchée par `Raccourcis`). Siri : `Remy/App/RaccourcisSiri.swift`
   (« Noter » envoie `source: "siri", differe: true` à `/api/capture`, capacité
   `capture-siri-v1`). Activité : `Remy/App/ActiviteEnDirect.swift` (ActivityKit,
-  pas de push).
+  pas de push ; un bouton touché deux fois n'agit qu'une fois). L'app ouverte
+  recharge le widget « Maintenant » quand ce qu'il montre change
+  (`Remy/App/WidgetsAJour.swift`).
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces
