@@ -340,8 +340,8 @@ notes privées, sur la tour.
   jour (jamais pendant une réponse, ni avec un brouillon ou un message en
   file) ; « Reprendre » le rouvre d'un geste. Le site ouvre le fil touché
   aujourd'hui, sinon un écran neuf (avant : le premier de la liste, souvent
-  l'épinglé). Liste iPhone : les échanges d'un seul aller-retour de plus de
-  14 jours sont repliés (jamais supprimés).
+  l'épinglé). Listes iPhone et site : les échanges d'un seul aller-retour de
+  plus de 14 jours sont repliés (jamais supprimés).
 - Compteurs d'usage (`RemyCore/Usage.swift`, Réglages › Ce que tu utilises
   vraiment) : par fonction et par jour, sur l'iPhone seulement, 60 jours.
   Comptés : les onglets, l'ouverture, et les écritures vers la tour reconnues
