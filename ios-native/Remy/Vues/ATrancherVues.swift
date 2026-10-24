@@ -157,12 +157,22 @@ struct ListeTri: View {
     var seulement: Set<String>? = nil
     var sauf: Set<String> = []
     var vide = "Rien à trancher : tout est rangé."
+    /// Dans la revue : ce qui a glissé se règle ici aussi (Fait, Demain, Abandonner).
+    var avecRetards = false
 
     var body: some View {
         let t = app.aTrancher
         let groupes = t.groupes.filter { g in (seulement?.contains(g.id) ?? true) && !sauf.contains(g.id) }
+        let retards = avecRetards ? t.retards() : []
         List {
-            if groupes.isEmpty {
+            if !retards.isEmpty {
+                Section {
+                    ForEach(retards) { l in LigneTri(ligne: l) }
+                } header: {
+                    TitreSection(texte: "En retard", compte: retards.count)
+                }
+            }
+            if groupes.isEmpty && retards.isEmpty {
                 Section {
                     if t.vue == nil && t.chargement {
                         HStack(spacing: 12) { ProgressView(); Text("Rémy rassemble ce qui attend…").foregroundStyle(Palette.encre2) }.frame(minHeight: 44)
@@ -263,7 +273,7 @@ struct RevueDimanche: View {
                     switch etape {
                     case 0: semaine(t)
                     case 1: ListeTri(seulement: ["idees"], vide: "Aucune idée en attente : rien à trier cette semaine.")
-                    case 2: ListeTri(sauf: ["idees"])
+                    case 2: ListeTri(sauf: ["idees"], avecRetards: true)
                     case 3: troisDecisions(t)
                     default: appris(t)
                     }
@@ -274,7 +284,14 @@ struct RevueDimanche: View {
             .background(Palette.fond)
             .navigationTitle(titres[etape])
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Plus tard") { fermer() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Plus tard") {
+                        if etape == 3 { garderSiChange(t) }
+                        fermer()
+                    }
+                }
+            }
         }
         .overlay(alignment: .bottom) { ToastView(marge: 84, annoncer: false) }
         .task {
@@ -331,7 +348,7 @@ struct RevueDimanche: View {
                                 .font(Police.texte(14)).foregroundStyle(Palette.encre2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        Text("Elles sont dans « À trancher » si tu veux les régler maintenant.")
+                        Text("Tu peux les régler à l'étape « À trancher » : Fait, Demain ou Abandonner.")
                             .font(Police.texte(13)).foregroundStyle(Palette.encre3)
                     }
                 } else if t.chargementRevue {
@@ -386,6 +403,18 @@ struct RevueDimanche: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
+    /// Les décisions tapées partent en quittant l'étape, sans passer par le
+    /// bouton : « Suivant » ne doit rien perdre.
+    private func garderSiChange(_ t: ATrancherModel) {
+        let propres = decisions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !enregistrement, propres != (t.revue?.decisions?.liste ?? []) else { return }
+        enregistrement = true
+        Task {
+            await t.enregistrerDecisions(decisions)
+            enregistrement = false
+        }
+    }
+
     @ViewBuilder
     private func appris(_ t: ATrancherModel) -> some View {
         ScrollView {
@@ -416,6 +445,7 @@ struct RevueDimanche: View {
             if etape > 0 {
                 BoutonA(titre: "Précédent", principal: false) {
                     Haptique.leger()
+                    if etape == 3 { garderSiChange(t) }
                     withAnimation(.snappy) { etape -= 1 }
                 }
             }
@@ -426,6 +456,7 @@ struct RevueDimanche: View {
                     app.dire("Revue faite. Bonne semaine !")
                     fermer()
                 } else {
+                    if etape == 3 { garderSiChange(t) }
                     withAnimation(.snappy) { etape += 1 }
                 }
             }
@@ -473,17 +504,20 @@ struct FeuillesTri: ViewModifier {
                 // Captures de la CI : l'écran demandé s'ouvre seul (OngletsView.demo).
                 guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == nil else { return }
                 let m = app.aTrancher
-                let absent = m.noterVisite()
                 // La tour d'abord : ses capacités disent si elle sait rassembler.
                 var essais = 0
-                while !m.disponible && essais < 40 {
+                while !m.disponible && essais < 40 && !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     essais += 1
                 }
-                guard m.disponible else { return }
+                // Tour injoignable : la visite n'est pas notée, et l'absence sera
+                // encore là au prochain retour où la tour répond.
+                guard m.disponible, !Task.isCancelled else { return }
+                let absent = m.noterVisite()
                 guard absent else { await m.chargerSiAncien(); return }
                 // Jamais par-dessus une autre feuille (nouveautés, réglages).
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled else { return }
                 if app.reglagesOuverts || app.nouveautes.affichees != nil { await m.chargerSiAncien(); return }
                 await m.auRetour(absent: true)
             }

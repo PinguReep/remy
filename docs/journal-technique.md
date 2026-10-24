@@ -324,7 +324,11 @@ notes privées, sur la tour.
   dimanche (Réglages › Revue du dimanche pour la couper) ; après plus de 3
   jours sans ouvrir l'app, « On trie tes retards ? » (tâches Motion en retard
   et rappels datés passés). « Abandonner » une tâche la clôt dans Motion
-  (pas d'état « abandonné » côté Motion), annulable par le journal.
+  (pas d'état « abandonné » côté Motion), annulable par le journal. Dans la
+  revue, l'étape « À trancher » montre aussi ces retards (ce qui a glissé se
+  règle là) ; les décisions tapées partent en quittant l'étape, sans bouton.
+  L'absence n'est notée qu'une fois la tour jointe : un retour sans réseau
+  ne la fait pas oublier.
 - Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
