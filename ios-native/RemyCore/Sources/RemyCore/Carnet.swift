@@ -117,6 +117,14 @@ public enum OperationCarnet: Codable, Sendable, Equatable {
         default: return self
         }
     }
+
+    /// La suppression d'un doublon fondu : elle sort de la file.
+    func effaceUnDoublon(_ par: [String: String]) -> Bool {
+        switch self {
+        case let .supprimerElement(_, id), let .supprimerRappel(id): return par[id] != nil
+        default: return false
+        }
+    }
 }
 
 /// Un nouvel article ou rappel que la tour n'a pas recréé : il existait déjà
@@ -335,7 +343,11 @@ public final class CarnetModel {
         app?.dire("\(coches.count) article\(coches.count > 1 ? "s" : "") coché\(coches.count > 1 ? "s" : "") retiré\(coches.count > 1 ? "s" : "").", annuler: { [weak self] in
             guard let self, let k = self.listes.firstIndex(where: { $0.id == liste.id }) else { return }
             self.listes[k].elements.append(contentsOf: coches)
-            self.ecrire(.elements(liste: liste.id, coches))
+            // La tour n'écrit que 100 articles par envoi : par lots, comme l'import.
+            for lot in stride(from: 0, to: coches.count, by: 100) {
+                self.ecrire(.elements(liste: liste.id, Array(coches[lot..<min(lot + 100, coches.count)])), envoyerTout: false)
+            }
+            Task { await self.envoyer() }
         })
     }
 
@@ -355,7 +367,14 @@ public final class CarnetModel {
         let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
         let k = cleTexte(t)
-        if !k.isEmpty, let i = rappels.firstIndex(where: { !$0.fait && cleTexte($0.texte) == k }) {
+        // Même texte ET même jour (ou l'un sans date) : le même rappel. Le loyer
+        // du 1er novembre et celui du 1er décembre en font deux (comme la tour).
+        let jumeau = { (r: Rappel) -> Bool in
+            guard !r.fait, cleTexte(r.texte) == k else { return false }
+            guard let q = quand, let rq = r.quand else { return true }
+            return Format.calendrier.isDate(rq.date, inSameDayAs: q)
+        }
+        if !k.isEmpty, let i = rappels.firstIndex(where: jumeau) {
             if rappels[i].quand == nil, let q = quand {
                 rappels[i].quand = q.millis
                 let r = rappels[i]
@@ -529,8 +548,10 @@ public final class CarnetModel {
             break
         }
         // La première de la file est celle qui vient de partir : on ne touche qu'aux suivantes.
+        // Effacer le doublon (« Annuler » juste après l'avoir noté) n'efface pas
+        // l'original : le doublon n'a jamais existé sur la tour.
         if enAttente.count > 1 {
-            enAttente = [enAttente[0]] + enAttente.dropFirst().map { $0.remplacant(par) }
+            enAttente = [enAttente[0]] + enAttente.dropFirst().filter { !$0.effaceUnDoublon(par) }.map { $0.remplacant(par) }
         }
         sauverFile()
         garder()

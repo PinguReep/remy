@@ -2053,8 +2053,12 @@ public final class ChatModel {
     @discardableResult
     public func rangerEnRappel(_ ligne: LigneChat, rang: Int, texte: String, quand: Date?, etiquettes: [String]) async -> Bool {
         guard await envoyerAjustement(ligne, actions: [], convertis: [rang]) else { return false }
-        guard let carnet = app?.carnet, carnet.creerRappel(texte, quand: quand, etiquettes: etiquettes) != nil else { return false }
-        app?.dire(quand.map { "Rangé en rappel, \(Format.jourSemaineCourt($0)) \(Format.heure($0))." } ?? "Rangé en rappel, sans date.")
+        guard let carnet = app?.carnet, let n = carnet.noterRappel(texte, quand: quand, etiquettes: etiquettes) else { return false }
+        if n.dejaLa {
+            app?.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».")
+        } else {
+            app?.dire(quand.map { "Rangé en rappel, \(Format.jourSemaineCourt($0)) \(Format.heure($0))." } ?? "Rangé en rappel, sans date.")
+        }
         return true
     }
 
@@ -2069,6 +2073,10 @@ public final class ChatModel {
                 if p.actionsOrigine == nil { p.actionsOrigine = p.actions }
                 p.actions = r.actions
                 p.ajustee = true
+                // Ajustée, la tour la remet à neuf ; une date encore passée rendra
+                // 409 « perimee » au « Oui », et la carte le redira.
+                p.perimee = nil
+                p.raisonPeremption = nil
                 if r.statut == "converti" { p.statut = "converti" }
                 lignes[i].proposition = p
             }
@@ -2089,9 +2097,13 @@ public final class ChatModel {
     public func validerRegle(_ ligne: LigneChat) async -> Bool {
         guard let convId = idCourant, let p = ligne.proposition, let pid = p.id else { return false }
         do {
-            try await api.validerRegle(convId: convId, propositionId: pid)
-            if let i = lignes.firstIndex(where: { $0.id == ligne.id }) { lignes[i].proposition?.statut = "applique" }
-            app?.dire("Règle créée : Rémy te proposera la tâche avant chaque événement qui correspond.")
+            let r = try await api.validerRegle(convId: convId, propositionId: pid)
+            if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {
+                lignes[i].proposition?.statut = "applique"
+                if r.deja { lignes[i].proposition?.bilan = Bilan(faits: [], dejaLa: [p.actions.first?.nom ?? "règle"]) }
+            }
+            // Redemandée : dite telle quelle ou mise à jour, jamais « créée » à tort.
+            app?.dire(r.phrase)
             return true
         } catch {
             app?.signaler(error)
