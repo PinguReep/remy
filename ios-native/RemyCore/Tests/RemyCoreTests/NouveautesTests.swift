@@ -29,15 +29,23 @@ final class NouveautesTests: XCTestCase {
 
     func testUneFonctionQueLaTourNeConnaitPasNestPasPresentee() {
         let r = suite()
-        let a = app(["lieux-v1"], reglages: r)
-        a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["lieux"], "le modèle attend la mise à jour de la tour")
-        a.nouveautes.fermer()
+        // Un catalogue d'essai : le test ne dépend pas de la dernière série du vrai.
+        let p = Nouveaute.Page(symbole: "star", titre: "T", texte: "Texte")
+        let catalogue = [Nouveaute(id: "lieux", serie: 2, date: "", titre: "L", capacite: "lieux-v1", pages: [p]),
+                         Nouveaute(id: "modele", serie: 2, date: "", titre: "M", capacite: "modeles-v1", pages: [p])]
+        let m1 = NouveautesModel(reglages: r, catalogue: catalogue)
+        let a = app(["lieux-v1"], reglages: suite()) // gardé : `app` est une référence faible
+        m1.app = a
+        m1.verifier()
+        XCTAssertEqual(m1.affichees?.entrees.map(\.id), ["lieux"], "le modèle attend la mise à jour de la tour")
+        m1.fermer()
         // La tour mise à jour : le tutoriel du modèle arrive à son tour.
-        let b = app(["lieux-v1", "modeles-v1"], reglages: r)
-        b.nouveautes.verifier()
-        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["modele"])
-        XCTAssertFalse(b.nouveautes.existe(Nouveaute(id: "x", serie: 9, date: "", titre: "", capacite: "inconnue-v1", pages: [])))
+        let m2 = NouveautesModel(reglages: r, catalogue: catalogue)
+        let b = app(["lieux-v1", "modeles-v1"], reglages: suite())
+        m2.app = b
+        m2.verifier()
+        XCTAssertEqual(m2.affichees?.entrees.map(\.id), ["modele"])
+        XCTAssertFalse(m2.existe(Nouveaute(id: "x", serie: 9, date: "", titre: "", capacite: "inconnue-v1", pages: [])))
     }
 
     func testUneMiseAJourSuivanteMontreSeulementSaNouveaute() {
@@ -68,10 +76,12 @@ final class NouveautesTests: XCTestCase {
         let lot = a.nouveautes.lot(pour: jauge)
         XCTAssertEqual(lot.entrees, [jauge])
         XCTAssertNil(a.nouveautes.affichees, "revoir ne passe pas par la feuille du lancement")
-        let modele = Nouveautes.catalogue.first { $0.id == "modele" }!
-        XCTAssertTrue(a.nouveautes.estNouvelle(modele))
-        a.nouveautes.marquerVues(a.nouveautes.lot(pour: modele))
-        XCTAssertFalse(a.nouveautes.estNouvelle(modele))
+        // La dernière série est nouvelle au premier lancement (quelle qu'elle soit).
+        let derniere = Nouveautes.catalogue.map(\.serie).max()!
+        let recente = Nouveautes.catalogue.first { $0.serie == derniere }!
+        XCTAssertTrue(a.nouveautes.estNouvelle(recente))
+        a.nouveautes.marquerVues(a.nouveautes.lot(pour: recente))
+        XCTAssertFalse(a.nouveautes.estNouvelle(recente))
     }
 
     func testLeCatalogueResteCourt() {
