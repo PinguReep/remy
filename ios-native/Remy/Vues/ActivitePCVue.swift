@@ -10,6 +10,14 @@ struct ActivitePCVue: View {
     @State private var effacerOuvert = false
     @State private var ajoutOuvert = false
     @State private var nouvelleExclusion = ""
+    /// L'appli ou le site glissé « Ne plus compter » : confirmé avant d'effacer son historique.
+    @State private var aExclure: AExclure?
+
+    private struct AExclure {
+        let nom: String
+        let libelle: String
+        let message: String
+    }
 
     var body: some View {
         let m = app.activitePC
@@ -25,7 +33,7 @@ struct ActivitePCVue: View {
                     }
                     exclusions(v)
                     Section {
-                        Text("Lu sur ta tour seulement. Les titres de fenêtres ne sont jamais gardés, un site se réduit à son domaine, la navigation privée est ignorée. Gardé \(v.jours ?? 90) jours, puis effacé. Le modèle local s'en sert comme repère ; Claude n'en reçoit rien.")
+                        Text("Lu sur ta tour seulement. Les titres de fenêtres ne sont jamais gardés, un site se réduit à son domaine, la navigation privée est ignorée. Gardé \(v.jours ?? 90) jours, puis effacé. Le modèle local s'en sert comme repère ; Claude ne reçoit jamais ces relevés (avec le secours Claude, il peut lire ce que Rémy t'en a dit).")
                             .font(Police.texte(12))
                             .foregroundStyle(Palette.encre3)
                             .fixedSize(horizontal: false, vertical: true)
@@ -61,12 +69,20 @@ struct ActivitePCVue: View {
                 .disabled(nouvelleExclusion.trimmingCharacters(in: .whitespaces).isEmpty)
                 Button("Annuler", role: .cancel) {}
             } message: {
-                Text("Son nom d'exécutable, sans « .exe ». Ce qui était déjà compté s'efface.")
+                Text("Son nom d'exécutable sans « .exe », ou un site (exemple.org). Ce qui était déjà compté s'efface.")
             }
             .confirmationDialog("Effacer toute l'activité du PC ?", isPresented: $effacerOuvert, titleVisibility: .visible) {
                 Button("Tout effacer", role: .destructive) { Task { await m.toutEffacer() } }
             } message: {
                 Text("Sur la tour. Ce qui précède ne sera pas relu dans ActivityWatch ; le relevé continue si l'activité reste allumée.")
+            }
+            .confirmationDialog("Ne plus compter ?",
+                                isPresented: Binding(get: { aExclure != nil }, set: { if !$0 { aExclure = nil } }),
+                                titleVisibility: .visible, presenting: aExclure) { a in
+                Button("Ne plus compter \(a.libelle)", role: .destructive) { Task { await m.exclure(a.nom) } }
+                Button("Annuler", role: .cancel) {}
+            } message: { a in
+                Text(a.message)
             }
         }
     }
@@ -115,7 +131,9 @@ struct ActivitePCVue: View {
                         .font(Police.texte(14))
                         .foregroundStyle(Palette.danger)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Sur la tour : installe ActivityWatch (activitywatch.net) et lance-le avec Windows ; le pas à pas est dans docs/tour.md.")
+                    Text(v.activitywatch.joignable == true
+                         ? "Sur la tour : ouvre ActivityWatch (l'icône près de l'horloge) et relance-le ; le dépannage est dans docs/tour.md."
+                         : "Sur la tour : installe ActivityWatch (activitywatch.net) et lance-le avec Windows ; le pas à pas est dans docs/tour.md.")
                         .font(Police.texte(13))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -211,10 +229,18 @@ struct ActivitePCVue: View {
                             .monospacedDigit()
                     }
                     .frame(minHeight: 44)
-                    .swipeActions {
-                        Button(role: .destructive) { Task { await app.activitePC.exclure(a.nom) } } label: {
+                    // Pas de glissement complet ni de rôle destructif : la ligne
+                    // ne disparaît pas avant la confirmation.
+                    .swipeActions(allowsFullSwipe: false) {
+                        Button {
+                            let duree = ActivitePC.duree(a.secondes)
+                            aExclure = AExclure(nom: a.nom, libelle: a.libelle, message: a.categorie == "navigateur"
+                                ? "Ses \(duree) de la semaine, tout son historique et les sites relevés s'effacent sur la tour, sans retour."
+                                : "Ses \(duree) de la semaine et tout son historique s'effacent sur la tour, sans retour.")
+                        } label: {
                             Label("Ne plus compter", systemImage: "eye.slash")
                         }
+                        .tint(Palette.danger)
                     }
                 }
                 if !v.semaine.domaines.isEmpty {
@@ -225,7 +251,16 @@ struct ActivitePCVue: View {
                                 Spacer(minLength: 8)
                                 Text(ActivitePC.duree(d.secondes)).font(Police.mono(13)).foregroundStyle(Palette.encre2).monospacedDigit()
                             }
-                            .frame(minHeight: 36)
+                            .frame(minHeight: 44)
+                            .swipeActions(allowsFullSwipe: false) {
+                                Button {
+                                    aExclure = AExclure(nom: d.nom, libelle: d.nom,
+                                                        message: "Ses \(ActivitePC.duree(d.secondes)) de la semaine et tout son historique s'effacent sur la tour, sans retour.")
+                                } label: {
+                                    Label("Ne plus compter", systemImage: "eye.slash")
+                                }
+                                .tint(Palette.danger)
+                            }
                         }
                     }
                     .font(Police.texte(14))
@@ -234,7 +269,7 @@ struct ActivitePCVue: View {
             } header: {
                 Text("Applis les plus utilisées (7 jours)")
             } footer: {
-                Text("Glisse une appli vers la gauche pour ne plus la compter.").font(Police.texte(12))
+                Text("Glisse une appli ou un site vers la gauche pour ne plus le compter.").font(Police.texte(12))
             }
         }
     }

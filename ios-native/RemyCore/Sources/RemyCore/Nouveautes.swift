@@ -35,7 +35,7 @@ public enum Nouveautes {
             .init(symbole: "lock.shield", titre: "Rien ne sort de chez toi",
                   texte: "Les titres de fenêtres ne sont jamais gardés, un site se réduit à son domaine. Coupé par défaut, gardé 90 jours, effaçable d'un geste. Exclus une appli d'un glissement."),
             .init(symbole: "chart.bar", titre: "Des repères pour Rémy",
-                  texte: "Le modèle local sait « développement 3 h 10 aujourd'hui » et s'en sert pour t'aider, jamais pour te juger. Claude, lui, n'en reçoit rien."),
+                  texte: "Le modèle local sait « développement 3 h 10 aujourd'hui » et s'en sert pour t'aider, jamais pour te juger. Claude ne reçoit jamais ces relevés ; avec le secours Claude, il peut lire ce que Rémy t'en a dit."),
         ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",

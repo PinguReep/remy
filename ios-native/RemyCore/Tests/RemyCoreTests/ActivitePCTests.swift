@@ -69,5 +69,6 @@ final class ActivitePCTests: XCTestCase {
         XCTAssertEqual(ActivitePC.duree(10), "moins d'une minute")
         XCTAssertEqual(ActivitePC.cle(" Discord.exe "), "discord")
         XCTAssertEqual(ActivitePC.cle("Code"), "code")
+        XCTAssertEqual(ActivitePC.cle("Agenda.app"), "agenda.app", "un domaine en .app reste un domaine")
     }
 }
