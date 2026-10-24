@@ -17,7 +17,9 @@
 
 import http from "node:http";
 
-export async function demarrerFauxMotion({ pageTaille = 50, quotaParMinute = null, latenceMs = 0 } = {}) {
+// `horaires` : les plages de « Work Hours » ({ monday: [{ start, end }] … }),
+// absentes par défaut comme avant.
+export async function demarrerFauxMotion({ pageTaille = 50, quotaParMinute = null, latenceMs = 0, horaires = null } = {}) {
   const reglage = { latenceMs }; // modifiable en cours de test (m.latenceMs = 300)
   const taches = new Map();
   const requetes = [];
@@ -88,7 +90,7 @@ export async function demarrerFauxMotion({ pageTaille = 50, quotaParMinute = nul
       if (chemin === "/users/me") return repondre(200, { id: "u1", name: "Sam" });
       if (chemin === "/workspaces") return repondre(200, { workspaces: [{ ...espace, statuses: statuts }], meta: {} });
       if (chemin === "/statuses") return repondre(200, statuts);
-      if (chemin === "/schedules") return repondre(200, [{ name: "Work Hours", isChunkedTaskSchedule: false, timezone: "Europe/Paris" }]);
+      if (chemin === "/schedules") return repondre(200, [{ name: "Work Hours", isChunkedTaskSchedule: false, timezone: "Europe/Paris", ...(horaires ? { schedule: horaires } : {}) }]);
       if (chemin === "/projects") return repondre(200, { projects: [], meta: {} });
 
       if (chemin === "/tasks" && req.method === "GET") {

@@ -172,6 +172,10 @@ jobs:
           capture 3d-connaissance-clair light aujourdhui connaissance
           capture 3e-gerer-clair light gerer
           capture 3f-journee-etendue-clair light journee-etendue
+          capture 3f2-semaine-clair light semaine
+          capture 3f3-semaine-sombre dark semaine
+          capture 3f4-demain-clair light demain
+          capture 3f5-demain-sombre dark demain
           capture 3g-capture-clair light capture
           capture 3h-projets-clair light projets
           capture 3i-projets-sombre dark projets

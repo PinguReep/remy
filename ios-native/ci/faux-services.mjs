@@ -22,6 +22,14 @@ const taches = [
   // Un titre très long : il doit passer à la ligne, jamais déborder.
   { id: "t9", name: "Préparer le dossier complet de subvention pour la rénovation énergétique de l'atelier de la rue des Lilas", scheduledStart: t(15, 15), scheduledEnd: t(16, 0), dueDate: t(19), duration: 45, project: { id: "p3", name: "Voyage à Porto et autres projets personnels au long cours" }, workspace: { id: "w1" } },
   { id: "t8", name: "Retoucher les photos", dueDate: t(20, 0, 2), duration: 90, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
+  // Les jours suivants (vue « Demain » et « 7 jours », 24/10) : placés par Motion.
+  { id: "t10", name: "Préparer la réunion fournisseurs", scheduledStart: t(9, 30, 1), scheduledEnd: t(11, 0, 1), dueDate: t(18, 0, 1), duration: 90, priority: "HIGH", project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t11", name: "Commander les mèches en coton", scheduledStart: t(14, 0, 1), scheduledEnd: t(14, 30, 1), dueDate: t(19, 0, 3), duration: 30, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  // Placée après son échéance : « Motion la place après ».
+  { id: "t12", name: "Envoyer le dossier à la banque", scheduledStart: t(16, 0, 1), scheduledEnd: t(17, 0, 1), dueDate: t(12, 0, 1), duration: 60, priority: "HIGH", workspace: { id: "w1" } },
+  { id: "t13", name: "Écrire la newsletter d'automne", scheduledStart: t(9, 0, 2), scheduledEnd: t(12, 30, 2), dueDate: t(18, 0, 4), duration: 210, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t14", name: "Tri des photos de l'été", scheduledStart: t(13, 30, 2), scheduledEnd: t(17, 30, 2), dueDate: t(20, 0, 2), duration: 240, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
+  { id: "t15", name: "Faire la déclaration de TVA", scheduledStart: t(10, 0, 4), scheduledEnd: t(11, 30, 4), dueDate: t(23, 0, 5), duration: 90, workspace: { id: "w1" } },
 ];
 const evenements = [
   { id: "e1", summary: "Podologue", start: { dateTime: t(9) }, end: { dateTime: t(9, 45) }, location: "Cabinet Voltaire, Paris 11e" },
@@ -31,7 +39,19 @@ const evenements = [
   // Une activité à soi, à heure fixe (le « cadenas ») : se décale, se coche.
   { id: "e5", summary: "Aspirateur", start: { dateTime: t(19, 30) }, end: { dateTime: t(20, 0) } },
   { id: "e4", summary: "Salon du design", start: { date: t(0).slice(0, 10) }, end: { date: t(0, 0, 2).slice(0, 10) } },
+  // Demain et les jours suivants.
+  { id: "e6", summary: "Kiné", start: { dateTime: t(8, 0, 1) }, end: { dateTime: t(8, 45, 1) }, location: "Cabinet du parc" },
+  { id: "e7", summary: "Visite de l'atelier avec Hugo", start: { dateTime: t(11, 30, 1) }, end: { dateTime: t(13, 0, 1) },
+    attendees: [{ email: "sam@exemple.fr", self: true }, { email: "hugo@exemple.fr" }] },
+  { id: "e8", summary: "Dîner chez Léa", start: { dateTime: t(19, 30, 1) }, end: { dateTime: t(22, 0, 1) } },
+  { id: "e9", summary: "Comptable", start: { dateTime: t(10, 0, 3) }, end: { dateTime: t(11, 0, 3) },
+    attendees: [{ email: "sam@exemple.fr", self: true }, { email: "cabinet@exemple.fr" }] },
+  { id: "e10", summary: "Tennis", start: { dateTime: t(18, 0, 4) }, end: { dateTime: t(19, 30, 4) } },
 ];
+// Les horaires de travail Motion : de quoi dire « 4 h prévues sur 7 h libres ».
+const semaine = { start: "09:00", end: "18:00" };
+const horaires = [{ name: "Work Hours", timezone: "Europe/Paris",
+  schedule: { monday: [semaine], tuesday: [semaine], wednesday: [semaine], thursday: [semaine], friday: [semaine], saturday: [{ start: "10:00", end: "13:00" }], sunday: [] } }];
 
 let creees = 0;
 http.createServer((req, res) => {
@@ -76,7 +96,7 @@ http.createServer((req, res) => {
     return res.end(JSON.stringify({ ...tache, status: tache.status || { name: "Todo" } }));
   }
   if (u.pathname === "/v1/workspaces") return res.end(JSON.stringify({ workspaces: [{ id: "w1", name: "Perso" }] }));
-  if (u.pathname === "/v1/schedules") return res.end(JSON.stringify([]));
+  if (u.pathname === "/v1/schedules") return res.end(JSON.stringify(horaires));
   if (u.pathname === "/v1/projects") return res.end(JSON.stringify({ projects: [
     { id: "p1", name: "Boutiques", status: { name: "En cours" } },
     { id: "p2", name: "Album « Été »", status: { name: "En cours" } },
