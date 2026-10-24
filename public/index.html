@@ -4449,6 +4449,15 @@ function direRetenu(etat, d) {
       : "Rien de nouveau : il le savait déjà.";
 }
 
+// Échec d'une capture courte : la raison, et les deux choix de nouveau (le
+// texte est toujours dans la zone).
+function rateCapture(texte, quoi, err) {
+  choixCaptureCourte(texte);
+  // « Motion n'est pas connecté » n'a pas de point : la phrase suivante en a besoin.
+  const raison = String(err?.message || "erreur inconnue").replace(/[\s.!?…]*$/, "");
+  $("#dash-cap-etat .cap-choix-q").textContent = `${quoi} : ${raison}. Réessaie, ou range-la autrement.`;
+}
+
 // Une note de quelques mots (« acheter des piles AAA ») part directement,
 // sans conversation : une tâche Motion (sans IA, comme « Noter » sur
 // l'iPhone), ou « Retenir » (Rémy la garde en mémoire, telle quelle).
@@ -4514,7 +4523,7 @@ function choixCaptureCourte(texte) {
       }
     } catch (err) {
       if (err instanceof AuthError) return;
-      etat.textContent = "Pas ajoutée à Motion : " + err.message + " Ton texte est toujours là.";
+      rateCapture(texte, "Pas ajoutée à Motion", err);
     }
   };
 
@@ -4536,7 +4545,7 @@ function choixCaptureCourte(texte) {
       dashAt = 0;
     } catch (err) {
       if (err instanceof AuthError) return;
-      etat.textContent = "Pas retenu : " + err.message + " — ton texte est toujours là, réessaie.";
+      rateCapture(texte, "Pas retenu", err);
     }
   };
 }
