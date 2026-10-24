@@ -213,10 +213,11 @@ public enum ActivitePC {
         return m < 1 ? "moins d'une minute" : Format.duree(minutes: m)
     }
 
-    /// « Discord.exe », «  discord » → « discord » (comme la tour).
+    /// « Discord.exe », «  discord » → « discord » (comme la tour). « .app » reste :
+    /// agenda.app est aussi un domaine.
     public static func cle(_ appli: String) -> String {
         var s = appli.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        for suffixe in [".exe", ".app"] where s.hasSuffix(suffixe) { s.removeLast(suffixe.count) }
+        if s.hasSuffix(".exe") { s.removeLast(4) }
         return String(s.prefix(80))
     }
 }
@@ -260,7 +261,7 @@ public final class ActivitePCModel {
         }
     }
 
-    /// Ne plus jamais compter cette appli (ce qui l'était s'efface sur la tour).
+    /// Ne plus jamais compter cette appli, ou ce site (ce qui l'était s'efface sur la tour).
     @discardableResult
     public func exclure(_ appli: String) async -> Bool {
         let c = ActivitePC.cle(appli)
@@ -269,7 +270,9 @@ public final class ActivitePCModel {
             app?.dire("« \(c) » est déjà exclue.")
             return false
         }
-        return await geste({ try await self.api.reglerActivitePC(exclusions: v.exclusions + [c]) }) { _ in "« \(c) » ne sera plus comptée." }
+        return await geste({ try await self.api.reglerActivitePC(exclusions: v.exclusions + [c]) }) { _ in
+            "« \(c) » : plus rien n'est compté, et ce qui l'était est effacé sur la tour."
+        }
     }
 
     @discardableResult
@@ -303,7 +306,10 @@ public final class ActivitePCModel {
     }
 
     private func geste(_ f: @escaping () async throws -> VueActivitePC, dire: (VueActivitePC) -> String) async -> Bool {
-        guard !enCours else { return false }
+        guard !enCours else {
+            app?.dire("Un réglage est déjà en cours sur la tour : réessaie dans un instant.")
+            return false
+        }
         enCours = true
         defer { enCours = false }
         do {
