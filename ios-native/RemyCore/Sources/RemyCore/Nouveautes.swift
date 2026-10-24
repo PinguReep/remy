@@ -57,7 +57,7 @@ public enum Nouveautes {
         ]),
         Nouveaute(id: "jauge", serie: 1, date: "20 oct.", titre: "La jauge du contexte", capacite: "jauge-v1", pages: [
             .init(symbole: "gauge.with.dots.needle.33percent", titre: "Ce que Rémy a en tête",
-                  texte: "Le cadran, en haut du chat, montre la place prise dans la mémoire de travail du modèle. Les tokens par seconde s'affichent pendant qu'il écrit."),
+                  texte: "Le cadran, en haut du chat (à allumer dans Réglages › Diagnostic), montre la place prise dans la mémoire de travail du modèle. Les tokens par seconde s'affichent pendant qu'il écrit."),
             .init(symbole: "hand.tap", titre: "Touche-le",
                   texte: "La place prise et d'où elle vient, la vitesse de la dernière réponse, la moyenne du fil, et le modèle qui a répondu."),
         ]),
