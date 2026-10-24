@@ -374,6 +374,13 @@ struct JourneeEtendue: View {
             }
             Rectangle().fill(Palette.filet).frame(height: 1)
             contenu
+                // Glisser ← → : le jour suivant ou précédent (le défilement
+                // vertical de la frise reste libre).
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { g in
+                    let dx = g.translation.width
+                    guard abs(dx) > 70, abs(dx) > abs(g.translation.height) * 2 else { return }
+                    decaler(dx < 0 ? 1 : -1)
+                })
         }
         .containerRelativeFrame(.vertical) { hauteur, _ in hauteur * 0.92 }
         .carte(rayon: 26)
@@ -390,6 +397,28 @@ struct JourneeEtendue: View {
             // celle de l'ouverture de l'app suffit.
             let vieille = app.semaine.misAJour.map { Date().timeIntervalSince($0) > 60 } ?? true
             if vieille || app.semaine.copieLocale { await app.semaine.charger() }
+        }
+    }
+
+    /// Le jour d'à côté, dans les 7 jours (rien depuis la vue des 7 jours).
+    private func decaler(_ sens: Int) {
+        guard app.semaine.disponible else { return }
+        let auj = Format.jourISO(Date())
+        let demain = SemaineModel.demainISO()
+        let actuel: String
+        switch portee {
+        case .aujourdhui: actuel = auj
+        case .demain: actuel = demain
+        case .jour(let iso): actuel = iso
+        case .semaine: return
+        }
+        var jours = app.semaine.jours().map(\.jour)
+        if jours.isEmpty { jours = [auj, demain] }
+        guard let i = jours.firstIndex(of: actuel), jours.indices.contains(i + sens) else { return }
+        let cible = jours[i + sens]
+        Haptique.leger()
+        withAnimation(.easeOut(duration: 0.18)) {
+            portee = cible == auj ? .aujourdhui : cible == demain ? .demain : .jour(cible)
         }
     }
 
