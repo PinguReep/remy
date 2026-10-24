@@ -170,6 +170,21 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(m.elements.first?.action, "Durée changée", "\(m.elements)")
             XCTAssertEqual(m.annulable, true)
         }
+        if v.sait("semaine-v1") {
+            // Demain et les 7 jours (24/10) : la vraie réponse se lit en entier,
+            // avec les horaires Motion du faux service.
+            await app.semaine.charger()
+            let s = try XCTUnwrap(app.semaine.donnees, app.semaine.erreur ?? "semaine illisible")
+            XCTAssertEqual(s.jours.count, 7)
+            XCTAssertEqual(s.illisibles, [], "le contrat a dérivé")
+            XCTAssertEqual(s.jours.flatMap(\.illisibles), [])
+            XCTAssertEqual(s.horaires, "Work Hours")
+            XCTAssertEqual(s.sources?.agenda, "ok")
+            let jours = s.jours.filter { $0.items.contains { $0.titre == "Préparer la réunion fournisseurs" } }
+            XCTAssertEqual(jours.count, 1, "la tâche placée demain par Motion est dans la semaine")
+            XCTAssertNotNil(jours.first?.charge?.disponible, "heures libres d'après les horaires Motion")
+            XCTAssertTrue(s.jours.contains { !$0.deborde.isEmpty }, "la tâche placée après son échéance est signalée")
+        }
         // Contrat : chaque réponse que l'app lit se décode, telle que le serveur la rend.
         _ = try await app.api.memoire()
         _ = try await app.api.journal()
