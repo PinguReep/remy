@@ -48,7 +48,10 @@ test.after(async () => {
 });
 
 const lireConv = async (id) => (await fetch(`${base}/api/conversations/${id}`)).json();
+// Les échéances sont écrites en dur (octobre 2026) : la péremption des
+// propositions, testée dans test/usage-intensif.test.mjs, est confirmée ici.
 const post = async (p, b) => {
+  if (/\/apply$/.test(p) && b && !("confirmer" in b)) b = { ...b, confirmer: true };
   const r = await fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json().catch(() => null) };
 };

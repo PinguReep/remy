@@ -228,6 +228,66 @@ notes privées, sur la tour.
   `Projets/` dans le coffre, bloc « Projets » dans le chat (conversation passée
   en privé).
 
+## 2026-10-24 — Ce qui casse à J+30 (usage intensif simulé)
+
+Une tour de démo isolée a rejoué 30 jours d'usage intensif (669 captures, 457
+articles, 169 rappels). La tour tient (ni fuite ni dérive) ; c'est
+l'accumulation qui casse. Corrigé :
+
+- **Plafonds du carnet** : ils ne comptent que ce qui reste à faire (articles à
+  prendre, rappels pas faits). Une coche n'est jamais refusée (avant : 409 à
+  500 lignes, dont 405 « pris »). Purge **douce** (récupérable) des pris de
+  plus de 7 jours et des rappels faits de plus de 30 jours : job `carnet-purge`
+  la nuit, et quand une liste grossit. « Retirer les pris » en une requête
+  (`POST /api/listes/:id/retirer`, `carnet-lot-v1`).
+- **Doublons à l'entrée** : même clé que l'anti-doublon de Motion (sans
+  accents ni casse, lettres et chiffres seulement), même liste, pas fait →
+  rien de recréé. L'iPhone vérifie sur sa copie ; la tour aussi (copie pas à
+  jour, deuxième appareil) et rend `dejaLa: [{id, existant}]`. L'iPhone fond
+  alors le fantôme dans l'existant, et les écritures encore en file visent
+  l'existant (cocher le doublon coche l'original).
+- **« Déjà dans Motion »** : `ok: true, dejaLa: true`, état `deja_la`, plus
+  jamais compté comme échec. Les cartes rouges et lignes d'historique d'avant
+  sont relues ainsi (texte « existe déjà dans Motion »), côté tour comme côté app.
+- **Propositions périmées** (`propositions-perimees-v1`) : plus vieilles que
+  `peremptionJours` (réglage, 7 par défaut) ou dont une date est passée (un
+  rendez-vous dès son heure, une échéance les jours d'avant). La carte le dit ;
+  « Oui » rend 409 `perimee` tant que Sam n'a pas confirmé (`confirmer: true`).
+  L'âge vient de `creeA` (nouvelles cartes) ou, à défaut, du dernier message du
+  fil (une borne sûre). Un ajustement remet la carte à neuf.
+- **Règles** : une règle identique (même tâche, un mot en commun) est rendue
+  telle quelle ou complétée de ses mots nouveaux ; une seule action par
+  événement et par tâche, même avec des doublons d'avant.
+- **Historique** (`historique-v2`) : `?avant=<ts>&filtre=echouee|annulee|deja_la`,
+  réponse `{ entrees, suite }` ; une page lit au plus 5 000 lignes.
+- **Rangement des rappels** : les 60 plus récents (avant : les 60 premiers par
+  date), un exemplaire par texte.
+- **Brouillon du « + »** : gardé sur l'iPhone (UserDefaults, une semaine),
+  effacé dès que la capture est rangée.
+- **Tâches rangées par lots** : une capture de 5 tâches (ou des rappels
+  devenus tâches) part en UNE écriture par lot de 6. La tour relit Motion une
+  fois par lot au lieu d'une fois par tâche : 6 requêtes Motion au lieu de 10
+  pour 5 tâches, sous le quota (12/min) au lieu d'une attente d'une minute.
+
+Revue contradictoire, corrigé dans la foulée :
+
+- **Rappels** : même texte ET même jour (heure de Sam), ou l'un des deux sans
+  date, font le même rappel. Le loyer du 1er novembre et celui du 1er décembre
+  en font deux (avant : le second disparaissait, notification comprise) ;
+  « Ranger en rappel » dit « déjà là » au lieu d'une fausse date.
+- **Annuler un ajout fondu** : la suppression d'un doublon que la tour a fondu
+  sort de la file ; elle n'efface plus l'article ou le rappel d'origine.
+- **Règle redemandée avec un autre délai ou une autre durée** : la carte validée
+  l'emporte (délai, durée, priorité). L'app dit « existait déjà » ou « mise à
+  jour », plus jamais « créée » à tort.
+- **« Déjà là » ne s'annule pas** : 409 `rien` (avant : journal passé en
+  « annulée » sans rien défaire) ; le site n'affiche plus « Annuler » sur une
+  carte où tout existait déjà.
+- **Historique** : un filtre touché pendant une lecture relance une lecture, la
+  dernière gagne. **Carte ajustée** : plus marquée périmée dans l'app.
+  **Annuler « Retirer les pris »** : les articles reviennent par lots de 100
+  (la tour n'en écrit que 100 par envoi).
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
