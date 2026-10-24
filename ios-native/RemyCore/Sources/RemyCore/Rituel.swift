@@ -127,7 +127,7 @@ public enum Rituel {
     public static let fraicheurMax: TimeInterval = 3 * 3600
 
     /// Les `nombre` prochains passages à `minutes` après minuit, strictement après `apres`.
-    public static func prochains(minutes: Int, apres: Date, nombre: Int, calendrier: Calendar = .current) -> [Date] {
+    public static func prochains(minutes: Int, apres: Date, nombre: Int, calendrier: Calendar = Format.calendrier) -> [Date] {
         let m = min(max(0, minutes), 24 * 60 - 1)
         var out: [Date] = []
         var jour = calendrier.startOfDay(for: apres)
@@ -142,19 +142,19 @@ public enum Rituel {
     }
 
     /// « 2026-10-24 » pour une date, dans le fuseau du calendrier (celui de l'iPhone).
-    public static func cleJour(_ d: Date, calendrier: Calendar = .current) -> String {
+    public static func cleJour(_ d: Date, calendrier: Calendar = Format.calendrier) -> String {
         let c = calendrier.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     /// Le briefing qui vaut pour ce jour-là (aujourd'hui ou demain vus par la tour), sinon nil.
-    public static func briefing(pour jour: Date, dans r: RituelTour, calendrier: Calendar = .current) -> BriefingMatin? {
+    public static func briefing(pour jour: Date, dans r: RituelTour, calendrier: Calendar = Format.calendrier) -> BriefingMatin? {
         let cle = cleJour(jour, calendrier: calendrier)
         return [r.aujourdhui, r.demain].compactMap { $0 }.first { $0.pour == cle }
     }
 
     /// « à l'instant », « il y a 12 min », « à 07:12 », « hier à 22:10 », « le 21 oct. ».
-    public static func fraicheur(_ d: Date, maintenant: Date, calendrier: Calendar = .current) -> String {
+    public static func fraicheur(_ d: Date, maintenant: Date, calendrier: Calendar = Format.calendrier) -> String {
         let s = maintenant.timeIntervalSince(d)
         if s < 90 { return "à l'instant" }
         if s < 3600 { return "il y a \(Int(s / 60)) min" }
@@ -166,7 +166,7 @@ public enum Rituel {
 
     /// Ce que la notification du matin dira. Préparée la veille : elle le dit.
     public static func notificationMatin(_ b: BriefingMatin?, prepareA: Date?, declenchement: Date,
-                                         calendrier: Calendar = .current) -> (titre: String, sousTitre: String?, corps: String) {
+                                         calendrier: Calendar = Format.calendrier) -> (titre: String, sousTitre: String?, corps: String) {
         guard let b else {
             let depuis = prepareA.map { " (dernière lecture \(fraicheur($0, maintenant: declenchement, calendrier: calendrier)))" } ?? ""
             return ("Ton briefing", nil, "Ta tour n'a pas encore préparé cette journée\(depuis). Ouvre Rémy pour le calculer.")
@@ -180,7 +180,7 @@ public enum Rituel {
 
     /// Ce que la notification du soir dira (le bilan du jour seulement s'il est de ce jour-là).
     public static func notificationSoir(_ b: BilanSoirTour?, declenchement: Date,
-                                        calendrier: Calendar = .current) -> (titre: String, corps: String) {
+                                        calendrier: Calendar = Format.calendrier) -> (titre: String, corps: String) {
         let generique = "Fait, glissé, et ce qui reste pour demain : 30 secondes."
         guard let b, b.jour == cleJour(declenchement, calendrier: calendrier) else { return ("Bilan du soir", generique) }
         return ("Bilan du soir", b.phrase + " Touche pour faire le point.")

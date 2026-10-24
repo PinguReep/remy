@@ -26,7 +26,11 @@ test("une tâche placée après son échéance est menacée, avec « repousser �
   assert.equal(m.raison, "apres-echeance");
   assert.match(m.phrase, /Planifiée demain 10:00, après son échéance \(aujourd'hui 17:00\)/);
   assert.equal(m.action.type, "repousser");
+  assert.equal(m.action.libelle, "Repousser l'échéance à demain");
   assert.ok(m.action.echeance >= a(11, 0, 1), "la nouvelle échéance couvre le créneau");
+  // Le créneau est ce soir : l'heure, pas « à aujourd'hui ».
+  const [ce] = menacees({ taches: [{ id: "t2", name: "Visuels", dueDate: iso(a(7, 40)), scheduledStart: iso(a(21, 40)), scheduledEnd: iso(a(22, 40)) }], maintenant: a(1, 40) });
+  assert.equal(ce.action.libelle, "Repousser l'échéance à 22:40");
 });
 
 test("une tâche due sous 24 h sans créneau est menacée ; une lointaine ou en retard non", () => {
