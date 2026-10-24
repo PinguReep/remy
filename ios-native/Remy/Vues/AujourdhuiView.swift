@@ -455,26 +455,9 @@ private struct LaSuite: View {
         let suite = items.filter { Jour.etat($0, maintenant: now) != .passe }
         let toute = journee?.toute ?? []
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .bottom) {
-                TitreSection(texte: "La suite")
-                    .frame(minHeight: 28, alignment: .bottomLeading)
-                Spacer()
-                // L'appui long reste un raccourci ; ceci se voit (24/10).
-                Button {
-                    Haptique.leger()
-                    ui.journeeEtendue = true
-                } label: {
-                    Label("À l'échelle", systemImage: "calendar.day.timeline.left")
-                        .font(Police.texte(13, .medium))
-                        .foregroundStyle(Palette.encre2)
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Voir toute la journée à l'échelle")
-            }
-            .padding(.leading, 22)
-            .padding(.trailing, 16)
+            TitreSection(texte: "La suite")
+                .frame(minHeight: 28, alignment: .bottomLeading)
+                .padding(.horizontal, 22)
             VStack(alignment: .leading, spacing: 0) {
                 if !toute.isEmpty {
                     Text("Toute la journée : " + toute.map(\.titre).joined(separator: " · "))

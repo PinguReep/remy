@@ -443,6 +443,8 @@ struct QuandRappel: View {
     @State private var etiquetter = false
 
     var body: some View {
+        // Défile sur petit iPhone (demi-feuille) : « Retirer » reste atteignable.
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -502,6 +504,8 @@ struct QuandRappel: View {
             .buttonStyle(.plain)
         }
         .padding(20)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Palette.surface)
         // La feuille a sa copie du message : sinon il passerait dessous.
