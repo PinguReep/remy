@@ -194,6 +194,20 @@ struct ReglagesView: View {
             if ecran == "modeles" { modelesOuverts = true } else { nouveautesOuvertes = true }
         }
         .task {
+            // Captures de la CI : « Ce que tu utilises vraiment », gestes fictifs.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "usage" else { return }
+            let c = CompteursUsage.partages
+            c.remettreAZero()
+            let jour: Double = 86_400
+            c.noter(.ouverture, le: Date().addingTimeInterval(-19 * jour))
+            let gestes: [(FonctionUsage, Int)] = [(.aujourdhui, 64), (.terminer, 41), (.remy, 30), (.parler, 27), (.capture, 18), (.listes, 9), (.gerer, 6)]
+            for (f, n) in gestes {
+                for i in 0..<n { c.noter(f, le: Date().addingTimeInterval(-Double(i % 20) * jour)) }
+            }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            usage = true
+        }
+        .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
             guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "lieux" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
