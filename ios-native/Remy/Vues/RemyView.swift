@@ -199,9 +199,9 @@ private struct AccueilRemy: View {
 
     var body: some View {
         let chat = app.chat
-        let derniere = chat.conversations
-            .filter { $0.origine == nil }
-            .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
+        // Le fil du jour s'il y en a un, sinon le dernier : à un geste (24/10).
+        let reprise = Fils.aReprendre(chat.conversations, maintenant: Date())
+        let derniere = reprise?.fil
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -237,7 +237,8 @@ private struct AccueilRemy: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
-                            Text("Reprendre « \(d.title) »").font(Police.texte(14)).lineLimit(1)
+                            Text(reprise?.duJour == true ? "Reprendre le fil du jour « \(d.title) »" : "Reprendre « \(d.title) »")
+                                .font(Police.texte(14)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(Palette.encre2)
