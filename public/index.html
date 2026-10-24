@@ -1835,6 +1835,8 @@ function renderProposal(block, prop, index) {
   const converti = prop.statut === "converti";
   const rates = Array.isArray(prop.annulationRatee) ? prop.annulationRatee : [];
   const echoues = Array.isArray(prop.bilan?.echoues) ? prop.bilan.echoues : [];
+  // Tout existait déjà (anti-doublon) : rien n'a été écrit, donc rien à annuler.
+  const toutDejaLa = applique && !prop.annulee && !echoues.length && prop.bilan?.dejaLa?.length > 0 && !prop.bilan?.faits?.length;
   el.className = "prop" + ((applique && !rates.length) || converti ? " done" : "") + (echec || rates.length ? " ko" : "");
   // `source` vient du serveur : on retombe sur Motion pour les propositions
   // enregistrées avant l'arrivée de l'agenda.
@@ -1855,7 +1857,9 @@ function renderProposal(block, prop, index) {
       : applique
         ? echoues.length
           ? "En partie fait"
-          : S.fait
+          : toutDejaLa
+            ? "Déjà dans " + S.ou
+            : S.fait
         : echec
           ? parLigne
             ? "Rien n'a pu être fait"
@@ -1904,8 +1908,10 @@ function renderProposal(block, prop, index) {
     }
     status.textContent = rates.length
       ? "Vérifie " + S.ou + " : ce qui est marqué n'a pas pu être défait"
-      : "Appliqué dans " + S.ou;
-    if (prop.ledgerId && echoues.length < prop.actions.length) {
+      : toutDejaLa
+        ? "Déjà dans " + S.ou + " : rien à ajouter, rien à annuler."
+        : "Appliqué dans " + S.ou;
+    if (prop.ledgerId && echoues.length < prop.actions.length && !toutDejaLa) {
       const undo = document.createElement("button");
       undo.className = "btn btn-ghost";
       // Une annulation incomplète se REPREND : le serveur ne défait que ce qui reste.
