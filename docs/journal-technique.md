@@ -151,7 +151,9 @@ notes privées, sur la tour.
 - **Conseil du moment** : la situation porte les priorités ; GLM rend
   `priorite` (titre exact) quand le conseil en sert une. Une priorité citée qui
   n'existe pas est retirée, avec le « pourquoi » qui la citait (`lireReponse`).
-  **Nuit** : réflexion et pré-réflexion reçoivent le bloc des priorités.
+  **Nuit** : réflexion et pré-réflexion reçoivent le bloc des priorités, et les
+  dossiers du carnet aux idées encore ouvertes sans mouvement depuis 14 jours
+  (`dossiersSansMouvement`) ; un seul « négligé » relevé par nuit.
 - **Outils du carnet** (`liste_ajouter`, `rappel_creer`, `lib/providers.js`) :
   même contrat que `motion_proposer`, une carte `source: "carnet"` par réponse.
   Offerts sans Motion (le carnet vit sur la tour), jamais pour une recherche
