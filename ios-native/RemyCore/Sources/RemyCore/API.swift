@@ -245,6 +245,16 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(ConseilTour.self, "api/conseil/renouveler", methode: "POST", corps: ["type": type], delai: 20)
     }
 
+    /// Le rendez-vous quotidien (rituel-v1) : briefing, bilan, tâches menacées.
+    public func rituel() async throws -> RituelTour {
+        try await json(RituelTour.self, "api/rituel", delai: 20)
+    }
+
+    /// La ligne du soir, rangée sur la tour pour la réflexion de nuit.
+    public func envoyerBilan(_ ressenti: String) async throws -> RetourBilan {
+        try await json(RetourBilan.self, "api/rituel/bilan", methode: "POST", corps: ["ressenti": ressenti], delai: 20)
+    }
+
     public func mesures() async throws -> MesuresTour {
         try await json(MesuresTour.self, "api/mesures")
     }

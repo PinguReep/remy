@@ -76,6 +76,8 @@ private struct EnTeteRemy: View {
     @Environment(AppModel.self) private var app
     @Binding var listeOuverte: Bool
     @State private var jaugeOuverte = false
+    /// Réglages › Diagnostic (24/10) : la jauge est un outil de constructeur.
+    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
 
     var body: some View {
         let chat = app.chat
@@ -93,7 +95,7 @@ private struct EnTeteRemy: View {
             Spacer(minLength: 6)
             // Le compteur du contexte (Sam, 19/10) : seulement dans un fil de
             // Rémy, face à une tour qui sait mesurer.
-            if chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
+            if jaugeVisible || Diagnostic.demo, chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
                 BoutonJauge(jauge: chat.jauge) {
                     Haptique.leger()
                     jaugeOuverte = true
@@ -507,6 +509,8 @@ struct BarreEtapes: View {
     let ligne: LigneChat
     // Ouverte d'office pour la capture de la CI seulement.
     @State private var ouverte = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "etapes"
+    /// Les tokens par seconde : avec la jauge, dans Réglages › Diagnostic (24/10).
+    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
 
     var body: some View {
         let etapes = ligne.etapes
@@ -535,7 +539,7 @@ struct BarreEtapes: View {
                         .animation(.easeOut(duration: 0.2), value: etapes.last?.texte)
                     Spacer(minLength: 4)
                     // La vitesse d'écriture en direct (jauge-v1), une fois par seconde.
-                    if ligne.enCours, let d = ligne.debit {
+                    if ligne.enCours, jaugeVisible || Diagnostic.demo, let d = ligne.debit {
                         Text(JaugeContexte.tps(d))
                             .font(Police.mono(13, .medium))
                             .foregroundStyle(Palette.encre2)
@@ -611,7 +615,7 @@ struct BarreEtapes: View {
 
     /// « · 42 tok/s » après la durée, une fois la réponse mesurée.
     private var vitesseFinale: String {
-        guard let t = ligne.mesures?.tps, t > 0 else { return "" }
+        guard jaugeVisible || Diagnostic.demo, let t = ligne.mesures?.tps, t > 0 else { return "" }
         return " · " + JaugeContexte.tps(t)
     }
 

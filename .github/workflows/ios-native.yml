@@ -197,6 +197,13 @@ jobs:
           capture 3za-historique-clair light historique
           capture 3zb-projet-motion-sombre dark noeud motion:p1
           capture 3zc-sous-projet-clair light noeud d-site
+          # Le rendez-vous quotidien (24/10) : briefing, bilan, bandeau « menacée »,
+          # réglages ; à comparer aux captures d'avant (même liste, sur main).
+          capture 11-briefing-clair light briefing
+          capture 11b-briefing-sombre dark briefing
+          capture 11c-bilan-clair light bilan
+          capture 11d-bilan-sombre dark bilan
+          capture 11e-menacee-clair light aujourdhui menacee
           capture 4-remy-clair light remy
           capture 4b-remy-sombre dark remy
           capture 4c-recherche-web-sombre dark remy-fil c6
@@ -297,6 +304,8 @@ jobs:
             capture 10m-petit-remy-clair light remy
             capture 10n-petit-retenir-sombre dark retenir
             capture 10o-petit-ajuster-sombre dark ajuster c10
+            capture 10p-petit-briefing-clair light briefing
+            capture 10q-petit-bilan-sombre dark bilan
             UDID=$GRAND
             xcrun simctl shutdown "$PETIT" || true
           else

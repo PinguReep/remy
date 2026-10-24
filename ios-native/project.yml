@@ -74,6 +74,12 @@ targets:
         NSLocationWhenInUseUsageDescription: "Pour que Rémy sache où tu en es dans ta journée (à la maison, à la salle, sur la route). Tes positions vont seulement à ta tour."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Pour reconnaître tes arrivées et départs même app fermée (iOS les détecte, presque sans batterie). Tes positions vont seulement à ta tour, gardées 90 jours."
         NSMotionUsageDescription: "Pour savoir quand tu es en voiture, et que Rémy ne t'envoie rien de long à lire au volant. Rien ne quitte ta tour."
+        # Le rendez-vous quotidien (24/10) : iOS relit la tour en arrière-plan
+        # avant le briefing, quand il le permet.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.pingureep.remy.rituel
         UILaunchScreen:
           UIColorName: Fond
         UISupportedInterfaceOrientations:

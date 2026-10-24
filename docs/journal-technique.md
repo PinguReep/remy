@@ -287,6 +287,46 @@ Revue contradictoire, corrigé dans la foulée :
   dernière gagne. **Carte ajustée** : plus marquée périmée dans l'app.
   **Annuler « Retirer les pris »** : les articles reviennent par lots de 100
   (la tour n'en écrit que 100 par envoi).
+## 2026-10-24 — Le rendez-vous quotidien (rituel-v1)
+
+Constat des usages simulés : Rémy ne venait jamais à Sam (seuls les rappels
+sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
+
+- **Calculé sur la tour, sans IA** (`lib/rituel.js`, `GET /api/rituel`) : le
+  briefing d'aujourd'hui ET de demain (trois lignes : ce qui compte, pourquoi,
+  ce qui est menacé), le bilan du soir, les tâches menacées. Les mêmes données
+  donnent les mêmes phrases ; la réflexion de nuit n'entre que par ses sujets
+  encore ouverts. Aucun appel automatique de plus.
+- **« Menacée »** (déterministe, avant le retard) : placée par Motion après son
+  échéance (`scheduledEnd > dueDate`) ; due sous 24 h sans créneau ; due
+  aujourd'hui sans créneau et plus de temps libre jusqu'à 21 h (rendez-vous et
+  tâches placées comptés une fois). Action : repousser l'échéance (chaîne
+  d'écriture, annulable) ou préparer la question à Rémy (jamais envoyée seule).
+  Aussi dans `/api/dashboard` (`menacees`) : le bandeau d'Aujourd'hui sans
+  appel de plus.
+- **Notifications locales** (pas d'APNs) : coupées par défaut, proposées une
+  fois sur l'accueil. Chaque notification porte le briefing de SON jour
+  (aujourd'hui ou demain, vu par la tour) ; sans contenu pour ce jour, elle
+  invite à ouvrir Rémy. Préparée depuis plus de 3 h : le sous-titre le dit
+  (et une source muette reste dite). Le soir, les chiffres (« 2 faits, 3
+  restent ») seulement s'ils ont moins de 3 h : relus le matin, ils seraient
+  faux ; sinon la notification reste générique.
+  4 jours programmés d'avance (les rappels gardent 54 places sur les 64 d'iOS).
+- **Arrière-plan** : `BGAppRefreshTask` `com.pingureep.remy.rituel`, demandé une
+  heure avant le prochain rendez-vous allumé (briefing ou bilan) ; iOS choisit
+  le moment (ou pas). Le jeton du trousseau est lisible après le premier
+  déverrouillage. Notifications refusées dans iOS : Réglages le dit.
+- **Bilan** : « tout ce qui reste → demain » = UNE proposition Motion (une
+  écriture, un « Annuler ») ; même heure demain, bornée à 9 h–20 h. La ligne
+  « comment ça s'est passé » est rangée comme une capture `source: bilan`
+  (avec les faits du jour) : la réflexion de nuit lit déjà les captures.
+- **Capture** : une pensée sans action claire (verbe d'action en tête, à
+  l'infinitif ou à l'impératif, « il faut », une durée) va dans le dossier
+  « Idées », plus dans Motion. Réglable (`capture.parDefaut`) ; une tour sans
+  dossiers garde l'ancien comportement.
+- **Réglages** : Diagnostic (temps de réponse, jauge et tok/s du chat masqués
+  par défaut, appui du planning) ; les prototypes de design ne sont plus
+  proposés (le code reste pour `ios-prototypes.yml`).
 
 ## Chaîne d'écriture (Motion, Google Agenda)
 

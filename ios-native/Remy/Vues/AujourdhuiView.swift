@@ -82,9 +82,12 @@ private struct EnTete: View {
                     }
                 }
                 BoutonRond(symbole: "gearshape", libelle: "Réglages") { app.reglagesOuverts = true }
-                BoutonRond(symbole: ouverts > 0 ? "tray.full" : "tray", libelle: "À voir avec Rémy", pastille: ouverts) {
+                // Le briefing rassemble les sujets de la nuit (24/10) ; une tour
+                // pas encore à jour garde la boîte seule.
+                BoutonRond(symbole: ouverts > 0 ? "tray.full" : "tray",
+                           libelle: app.rituel.disponible ? "Ton briefing et les sujets de la nuit" : "À voir avec Rémy", pastille: ouverts) {
                     Haptique.leger()
-                    ui.boiteOuverte = true
+                    if app.rituel.disponible { ui.briefingOuvert = true } else { ui.boiteOuverte = true }
                 }
             }
         }
@@ -100,6 +103,7 @@ private struct EnTete: View {
 
 private struct Contenu: View {
     @Environment(AppModel.self) private var app
+    @Environment(EtatInterface.self) private var ui
     let maintenant: Date
     let demander: (String, String) -> Void
 
@@ -125,6 +129,18 @@ private struct Contenu: View {
             .carte()
             .padding(.horizontal, 16)
         } else {
+            // Le rendez-vous quotidien (24/10) : l'échéance menacée d'abord,
+            // la proposition du briefing (une fois), le bilan le soir.
+            if let ms = t.donnees?.menacees, let m = ms.first {
+                CarteMenacee(m: m, autres: ms.count - 1, voirTout: { ui.briefingOuvert = true })
+                    .padding(.horizontal, 16)
+                    .id("menacee")
+            }
+            PropositionRituel()
+            if app.rituel.disponible, !app.rituel.bilanRange, Format.calendrier.component(.hour, from: maintenant) >= 18 {
+                EntreeBilan { ui.bilanOuvert = true }
+                    .padding(.horizontal, 16)
+            }
             if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
                 ConseilDuMoment(local: local, maintenant: maintenant.millis)
             }
@@ -906,5 +922,40 @@ private struct FaireConnaissance: View {
             .carte()
             .padding(.horizontal, 16)
         }
+    }
+}
+
+/// Le soir, une porte vers le bilan (30 s).
+private struct EntreeBilan: View {
+    let ouvrir: () -> Void
+
+    var body: some View {
+        Button {
+            Haptique.leger()
+            ouvrir()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "moon.stars")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Palette.signal)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Faire le bilan du soir")
+                        .font(Police.texte(16, .semibold))
+                        .foregroundStyle(Palette.encre)
+                    Text("Fait, glissé, ce qui reste → demain. 30 secondes.")
+                        .font(Police.texte(14))
+                        .foregroundStyle(Palette.encre2)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.encre3)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .carte(rayon: 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
     }
 }

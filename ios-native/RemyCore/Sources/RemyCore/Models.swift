@@ -620,12 +620,14 @@ public struct TableauDeBord: Codable, Sendable, Equatable {
     public var systeme: Systeme?
     /// Le conseil « maintenant » réfléchi par GLM sur la tour (conseil-v1).
     public var conseil: ConseilTour?
+    /// Les échéances qui ne tiennent plus (rituel-v1) : le bandeau « menacée ».
+    public var menacees: [MenaceeTour]?
     /// Les parties illisibles laissées de côté (« activite », « journee.items (1) ») :
     /// l'écran s'affiche sans elles et le dit. Jamais envoyé ni gardé.
     public var illisibles: [String] = []
 
     enum CodingKeys: String, CodingKey {
-        case maintenant, briefing, journee, activite, setup, memoire, couts, systeme, conseil
+        case maintenant, briefing, journee, activite, setup, memoire, couts, systeme, conseil, menacees
     }
 
     /// Toutes les parties illisibles, y compris dans la journée et les sujets.
@@ -651,6 +653,7 @@ extension TableauDeBord {
         couts = c.souple(ResumeCouts.self, .couts, &i)
         systeme = c.souple(Systeme.self, .systeme, &i)
         conseil = c.souple(ConseilTour.self, .conseil, &i)
+        menacees = c.listeSouple(MenaceeTour.self, .menacees, &i)
         illisibles = i
     }
 }

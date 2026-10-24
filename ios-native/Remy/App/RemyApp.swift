@@ -5,6 +5,8 @@ import RemyCore
 
 @main
 struct RemyApp: App {
+    /// Notifications du rendez-vous quotidien et rafraîchissement en arrière-plan (24/10).
+    @UIApplicationDelegateAdaptor(DelegueApp.self) private var delegue
     /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
     @State private var app: AppModel?
     /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
@@ -112,10 +114,14 @@ struct RacineView: View {
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
-        // Déconnecté : l'activité en direct ne montre plus rien. Connecté ou
-        // non : les widgets se relisent (« Pas connecté », ou la journée).
+        // Déconnecté : l'activité en direct ne montre plus rien, le briefing et
+        // le bilan programmés (titres de tâches) s'effacent. Connecté ou non :
+        // les widgets se relisent (« Pas connecté », ou la journée).
         .onChange(of: app.phase) { _, p in
-            if p == .connexion { Task { await ActiviteEnDirect.partagee.toutArreter() } }
+            if p == .connexion {
+                Task { await ActiviteEnDirect.partagee.toutArreter() }
+                Notifications.oublierRituel()
+            }
             if p == .connexion || p == .pret { WidgetsAJour.tout() }
         }
         .animation(.easeOut(duration: 0.2), value: app.phase)
@@ -188,6 +194,12 @@ enum Demo {
         guard let mdp = env["REMY_DEMO_MDP"] else { return }
         try? await Task.sleep(nanoseconds: 800_000_000)
         if app.phase != .pret { try? await app.connecter(motDePasse: mdp) }
+        // Lancée sur la journée gardée, l'app est « prête » avant d'avoir relu
+        // les conversations : les écrans de Rémy les attendent (5 s au plus).
+        let fil = ["remy", "appel", "dictee", "vocal-en-attente", "remy-fil", "ajuster", "ajuster-rappel"].contains(env["REMY_DEMO_ECRAN"] ?? "")
+        for _ in 0..<25 where fil && app.chat.conversations.isEmpty {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
         switch env["REMY_DEMO_ECRAN"] {
         case "remy":
             if let c = app.chat.conversations.first(where: { $0.origine == nil && $0.pinned == true })
