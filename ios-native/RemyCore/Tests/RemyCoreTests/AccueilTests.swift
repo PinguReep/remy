@@ -221,14 +221,35 @@ final class AccueilTests: XCTestCase {
         XCTAssertEqual(a.toast, "Retenu : Sam veut un studio à Porto")
     }
 
-    func testDoublonRefuseLeDit() async {
+    /// Déjà dans Motion n'est pas un échec (24/10) : la feuille se ferme, sans
+    /// haptique d'erreur — avec une tour à jour comme avec une plus ancienne.
+    func testDoublonDitDejaLaSansEchec() async {
+        // Rien ne reste pour la classe suivante (AjustementTests vérifie qu'aucune écriture n'est partie).
+        defer { FauxServeur.recues = []; FauxServeur.reponses = [:]; FauxServeur.corps = [:] }
         FauxServeur.reponses = [
-            "POST /api/motion/apply": [(200, #"{"echecs":1,"results":[{"ok":false,"type":"creer","nom":"Appeler","erreur":"« Appeler » existe déjà dans Motion — rien n'a été créé"}]}"#)],
+            "POST /api/motion/apply": [
+                (200, #"{"echecs":1,"etat":"echouee","results":[{"ok":false,"type":"creer","nom":"Appeler","erreur":"« Appeler » existe déjà dans Motion — rien n'a été créé"}]}"#),
+                (200, #"{"echecs":0,"etat":"deja_la","results":[{"ok":true,"type":"creer","nom":"Appeler","dejaLa":true}]}"#),
+            ],
+        ]
+        let a = app()
+        let ancienne = await a.noterTache("Appeler")
+        XCTAssertTrue(ancienne)
+        XCTAssertEqual(a.toast, "Déjà dans Motion : « Appeler ».")
+        let neuve = await a.noterTache("Appeler")
+        XCTAssertTrue(neuve)
+        XCTAssertEqual(a.toast, "Déjà dans Motion : « Appeler ».")
+    }
+
+    func testUneVraiePanneResteUnEchec() async {
+        defer { FauxServeur.recues = []; FauxServeur.reponses = [:]; FauxServeur.corps = [:] }
+        FauxServeur.reponses = [
+            "POST /api/motion/apply": [(200, #"{"echecs":1,"etat":"echouee","results":[{"ok":false,"type":"creer","nom":"Appeler","erreur":"Motion ne répond pas"}]}"#)],
         ]
         let a = app()
         let ok = await a.noterTache("Appeler")
         XCTAssertFalse(ok)
-        XCTAssertEqual(a.toast, "Pas ajouté à Motion : « Appeler » existe déjà dans Motion — rien n'a été créé.")
+        XCTAssertEqual(a.toast, "Pas ajouté à Motion : Motion ne répond pas.")
     }
 
     // MARK: Projets
