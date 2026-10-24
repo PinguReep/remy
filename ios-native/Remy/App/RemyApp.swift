@@ -37,6 +37,8 @@ struct RemyApp: App {
         // iOS relance l'app en arrière-plan pour une visite : le capteur doit
         // être là dès le lancement (coupé tant que Sam ne l'a pas allumé).
         CapteurLocalisation.partage.brancher(modele.lieux)
+        // Les propositions des règles et de la nuit : notifications Oui / Plus tard.
+        NotificationsPropositions.brancher(modele)
         return modele
     }
 
@@ -170,7 +172,7 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle":
+        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle", "carnet":
             app.chat.fermer()
             app.onglet = .remy
         case "remy-fil", "ajuster", "ajuster-rappel":
@@ -192,7 +194,7 @@ enum Demo {
                     app.dictee.interrompre()
                 }
             }
-        case "reglages", "lieux", "modeles", "nouveautes-liste":
+        case "reglages", "lieux", "modeles", "nouveautes-liste", "priorites":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud":

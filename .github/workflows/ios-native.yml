@@ -212,10 +212,12 @@ jobs:
           capture 5l-jauge-clair light jauge
           capture 5m-erreur-sombre dark erreur
           capture 5n-regle-clair light regle
+          capture 5o-carnet-clair light carnet
           capture 6b-lieux-clair light lieux
           capture 6c-modele-sombre dark modeles
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
+          capture 6f-priorites-clair light priorites
           capture 6-reglages-sombre dark reglages
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
