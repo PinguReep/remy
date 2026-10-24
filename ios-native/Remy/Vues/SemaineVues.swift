@@ -259,19 +259,19 @@ private struct CarteJour: View {
 }
 
 /// Une échéance : placée, elle s'ouvre dans « Gérer » ; pas encore placée par
-/// Motion, elle a les mêmes actions qu'une tâche « À faire » de l'accueil.
+/// Motion, elle s'y ouvre aussi, comme une tâche « À faire » de l'accueil
+/// (le même panneau pour toutes les tâches depuis ergonomie-ios).
 struct LigneEcheance: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
     let t: EcheanceJour
     let element: ElementJour?
     let ouvrir: (ElementJour) -> Void
-    @State private var actions = false
 
     var body: some View {
         Button {
             Haptique.leger()
-            if let e = element { ouvrir(e) } else { actions = true }
+            ouvrir(element ?? ElementJour.sansCreneau(resume, retard: t.echeance.map { $0.date < Date() } ?? false))
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: t.menacee == true ? "exclamationmark.triangle.fill" : "flag")
@@ -296,11 +296,14 @@ struct LigneEcheance: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Ouvre ses actions")
-        .modifier(ActionsTache(id: t.id, titre: t.titre, ouvert: $actions, echeance: t.echeance,
-                               duree: t.duree, priorite: t.priorite, bloquee: t.bloquee ?? false, etiquettes: t.etiquettes) {
-            ui.journeeEtendue = false
-            Task { _ = await app.preparer(Brouillons.tache(t.titre), dansFil: Fils.journee(Date())) }
-        })
+    }
+
+    /// L'échéance comme une tâche « à faire » (pour le panneau « Gérer »).
+    private var resume: TacheResume {
+        var r = TacheResume(id: t.id, titre: t.titre, echeance: t.echeance, projet: t.projet, priorite: t.priorite,
+                            bloquee: t.bloquee, raison: t.raison, duree: t.duree)
+        r.etiquettes = t.etiquettes
+        return r
     }
 
     private var detail: String {
