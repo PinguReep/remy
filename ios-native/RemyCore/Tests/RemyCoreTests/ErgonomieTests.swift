@@ -12,8 +12,8 @@ final class ErgonomieTests: XCTestCase {
         c.timeZone = Format.fuseau
         return c
     }
-    private func date(_ j: Int, _ m: Int, _ h: Int, _ mi: Int = 0) -> Date {
-        cal.date(from: DateComponents(year: 2026, month: m, day: j, hour: h, minute: mi))!
+    private func date(_ j: Int, _ m: Int, _ h: Int, _ mi: Int = 0, _ s: Int = 0) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: m, day: j, hour: h, minute: mi, second: s))!
     }
     // Vendredi 23 octobre 2026, 14:07 à Paris.
     private var vendredi: Date { date(23, 10, 14, 7) }
@@ -53,7 +53,26 @@ final class ErgonomieTests: XCTestCase {
     func testUneActiviteCommenceeSeDecaleDepuisMaintenant() {
         let e = ElementJour(type: "rdv", id: "a1", titre: "Aspirateur", debut: date(23, 10, 13, 30).millis, fin: date(23, 10, 14, 30).millis)
         let c = Decaler.activite(e, maintenant: vendredi)
-        XCTAssertEqual(c[0].date, date(23, 10, 14, 15), "14:07 + 15 min, arrondi au quart d'heure")
+        XCTAssertEqual(c[0].date, date(23, 10, 14, 30), "14:07 + 15 min, arrondi au quart d'heure suivant")
+        XCTAssertEqual(c[1].date, date(23, 10, 15, 15))
+    }
+
+    func testDecalerUneActiviteNeRaccourcitJamaisLEcart() {
+        let e = ElementJour(type: "rdv", id: "a1", titre: "Aspirateur", debut: date(23, 10, 15, 14).millis)
+        let c = Decaler.activite(e, maintenant: vendredi)
+        XCTAssertEqual(c[0].date, date(23, 10, 15, 30), "15:14 + 15 min : 15:30, pas 15:15")
+        XCTAssertEqual(c[1].date, date(23, 10, 16, 15))
+        let commencee = ElementJour(type: "rdv", id: "a2", titre: "Lessive", debut: date(23, 10, 14).millis)
+        XCTAssertEqual(Decaler.activite(commencee, maintenant: date(23, 10, 14, 14, 50))[0].date, date(23, 10, 14, 30))
+    }
+
+    func testDecalerUneTacheNAvancePasSonEcheance() {
+        // Placée aujourd'hui par Motion, due vendredi prochain : ni « Demain » ni « Lundi ».
+        let loin = Decaler.tache(echeance: date(30, 10, 23).millis, maintenant: vendredi)
+        XCTAssertEqual(loin.map(\.id), ["plus-7"])
+        XCTAssertEqual(loin[0].date, date(6, 11, 23))
+        // Due ce matin (la tour la dit en retard) : « Aujourd'hui » revient.
+        XCTAssertEqual(Decaler.tache(echeance: date(23, 10, 10).millis, maintenant: vendredi).map(\.id), ["aujourdhui", "demain", "lundi"])
     }
 
     func testLeSoirOnNeProposePlusCeSoir() {
@@ -66,7 +85,7 @@ final class ErgonomieTests: XCTestCase {
     func testReporterUnRappel() {
         let c = Decaler.rappel(maintenant: vendredi)
         XCTAssertEqual(c.map(\.libelle), ["Dans 1 h", "Ce soir 19:00", "Demain 9:00", "Lundi 9:00"])
-        XCTAssertEqual(c[0].date, date(23, 10, 15, 0))
+        XCTAssertEqual(c[0].date, date(23, 10, 15, 15), "14:07 + 1 h, au quart d'heure suivant")
         XCTAssertEqual(c[2].date, date(24, 10, 9))
         XCTAssertEqual(c[3].date, date(26, 10, 9))
         // Après 18 h, plus de « ce soir » ; le dimanche, lundi est déjà « demain ».
@@ -77,7 +96,7 @@ final class ErgonomieTests: XCTestCase {
         XCTAssertEqual(ActionRappel.rappel(dansNotification: "rappel-r42"), "r42")
         XCTAssertNil(ActionRappel.rappel(dansNotification: "autre-r42"))
         XCTAssertNil(ActionRappel.fait.report(maintenant: vendredi))
-        XCTAssertEqual(ActionRappel.dansUneHeure.report(maintenant: vendredi), date(23, 10, 15, 0))
+        XCTAssertEqual(ActionRappel.dansUneHeure.report(maintenant: vendredi), date(23, 10, 15, 15))
         XCTAssertEqual(ActionRappel.demain.report(maintenant: vendredi), date(24, 10, 9))
         XCTAssertEqual(Set(ActionRappel.allCases.map(\.rawValue)).count, 3, "identifiants distincts")
     }
@@ -142,7 +161,8 @@ final class ReportRappelsTests: XCTestCase {
     func testReporterUnRappelSAnnule() async throws {
         let a = app()
         let r = try XCTUnwrap(a.carnet.creerRappel("Payer le loyer", quand: Date().addingTimeInterval(-600)))
-        let demain = Date().addingTimeInterval(86_400)
+        // Un jour du calendrier, pas 86 400 s (nuits du changement d'heure).
+        let demain = Format.calendrier.date(byAdding: .day, value: 1, to: Date())!
         a.carnet.reporter(r, a: demain)
         XCTAssertEqual(a.carnet.rappels.first?.quand, demain.millis)
         XCTAssertEqual(a.carnet.enAttente.count, 2, "la création, puis le report")

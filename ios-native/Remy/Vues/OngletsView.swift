@@ -304,6 +304,7 @@ struct BarreOnglets: View {
             .padding(.trailing, 18)
             .offset(y: -24)
             .accessibilityLabel("Noter quelque chose")
+            .accessibilityIdentifier("noter")
     }
 
     private func onglet(_ o: AppModel.Onglet, _ titre: String, _ symbole: String) -> some View {

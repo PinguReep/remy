@@ -318,11 +318,13 @@ private struct CarteMaintenant: View {
             if total > 1 { detail("et \(total - 1) autre\(total > 2 ? "s" : "") tâche\(total > 2 ? "s" : "") aujourd'hui") }
             HStack(spacing: 10) {
                 BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+                    .accessibilityIdentifier("maintenant.terminer")
                 // Le même « Gérer » que la tâche en cours (24/10) : décaler, modifier…
                 BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
                     Haptique.leger()
                     ui.gerer = ElementJour.sansCreneau(t, retard: false)
                 }
+                .accessibilityIdentifier("maintenant.gerer")
             }
         case .rienDePrevu(let retards):
             TitreSection(texte: "Temps libre")
@@ -394,10 +396,12 @@ private struct CarteMaintenant: View {
         }
         HStack(spacing: 10) {
             BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: e.id, titre: e.titre, ui: ui) }
+                .accessibilityIdentifier("maintenant.terminer")
             BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
                 Haptique.leger()
                 ui.gerer = e
             }
+            .accessibilityIdentifier("maintenant.gerer")
         }
     }
 
