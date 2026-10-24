@@ -134,6 +134,19 @@ tag) avant l'échéance.
   lisent l'adresse de la tour et le jeton dans un trousseau partagé
   (`keychain-access-groups`, pas de groupe d'app) : `TrousseauPartage` dans le
   cœur. Liens `remy://capture`, `remy://aujourdhui|remy|projets` (`LienRemy`).
+- Feuille de partage (24/10) : Partager › Rémy depuis n'importe quelle app.
+  Un texte ou un lien part par la capture (source `partage`) ; une image est
+  réduite sur l'iPhone (1600 px, JPEG ≤ 1,5 Mo), son texte lu par Vision sur
+  l'appareil, puis envoyée à `POST /api/capture/image` (rangée dans le coffre,
+  `Captures/Images` ; le texte lu est distillé par le modèle local seulement).
+  Préparation et erreurs dans le cœur (`EnvoiPartage`, testées sous Linux) ;
+  l'extension ne fait que lire les pièces jointes (`LecturePartage`) et
+  afficher la feuille (`FeuillePartage`). Pour l'avoir en tête de la feuille
+  de partage : rangée d'apps › « Plus » › « Modifier » › « + » à côté de Rémy.
+  En CI, la feuille est montrée dans l'app (`REMY_DEMO_ECRAN=partage-lien`,
+  `partage-image`, `partage-recu`, `partage-erreur`, `Remy/App/DemoPartage.swift`) : l'extension
+  ne se lance pas en ligne de commande, mais la lecture des pièces jointes,
+  Vision et l'envoi à la tour de démo tournent pour de vrai.
 - Hors de l'app (24/10) : le choix « tâche en cours ou suivante » est dans le
   cœur (`ApercuMaintenant`, `SuiviActivite`, `HorsApp.swift`, testé sous Linux).
   Les intentions des boutons de l'activité et du contrôle sont dans

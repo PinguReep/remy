@@ -4,6 +4,37 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-24 — Feuille de partage : texte, lien, image vers la tour
+
+- Texte et lien : la capture existante (`POST /api/capture`), source
+  `partage` (nouvelle ; une tour plus ancienne la lit comme `note`). Le lien
+  part avec son titre et le mot facultatif de Sam ; la tour refusant les
+  textes de moins de 30 caractères, l'extension le dit avant d'envoyer
+  (« ajoute un mot pour lui ») au lieu d'essuyer un 400.
+- Image : aucune route existante ne prenait d'image (`analyser` et `extraire`
+  lisent du texte), d'où `POST /api/capture/image` (capacité `partage-v1`).
+  L'iPhone réduit l'image (ImageIO, 1600 px, JPEG sous 1,5 Mo) et lit son
+  texte lui-même (Vision, hors ligne) : la tour ne voit jamais d'appel à un
+  service d'image. Elle vérifie le format dans les octets (JPEG/PNG, 3 Mo au
+  plus), range l'image dans le coffre (`Captures/Images`, affichée dans la
+  note de capture, nommée comme l'image pour que deux images du même jour ne
+  s'écrasent pas) et distille le texte lu + le mot de Sam comme une capture,
+  avec le **modèle local seulement** (`prive`) : une capture d'écran peut
+  montrer n'importe quoi. La capture garde `prive` : la réflexion de la nuit
+  qui la relit passe alors au modèle local seulement. Sans texte, l'image est
+  rangée sans appel au modèle. Le lien et le texte partagés avec l'image
+  (`lien`, `joint`) partent avec elle.
+- Tour pas encore à jour (404 sur la route d'image) : rien ne part (la capture
+  ordinaire ne garantit pas le modèle local) ; « mets ta tour à jour », et
+  « Copier ». L'iPhone attend 200 s, plus que les 180 s laissées au modèle
+  local : pas de faux « vérifie Tailscale » ni de doublon au « Réessayer ».
+- Erreurs (`EchecPartage`) : pas connecté (« Ouvre Rémy une fois »), 401
+  (« reconnecte-toi »), tour injoignable (« vérifie Tailscale »), refus de la
+  tour (son message). Toujours « Copier » (texte et image au presse-papiers).
+  Le reçu : « J'ai compris. Classé. » si la mémoire a bougé, « Image rangée. »
+  pour une photo sans texte (« Image reçue. » si la tour ne garde pas les
+  images), « Gardé, pas encore classé. » sinon ; + le détail.
+
 ## 2026-10-24 — Rémy hors de l'app : activité en direct, widgets, Siri
 
 - **Un seul choix, dans le cœur** : `ApercuMaintenant` (tâche en cours, sinon
