@@ -276,11 +276,13 @@ public final class ClientAPI: @unchecked Sendable {
     /// Rémy) — une réponse d'un autre assistant ne doit jamais devenir un fait
     /// sur Sam. `differe` (capture-siri-v1) : la tour répond dès la capture
     /// reçue et l'absorbe ensuite (Siri n'attend que quelques secondes).
-    public func capturer(_ texte: String, source: String = "note", differe: Bool = false) async throws -> RetourCapture {
-        let s = ["note", "chatgpt", "claude", "web", "siri"].contains(source) ? source : "note"
+    /// « partage » : la feuille de partage (24/10) ; une tour plus ancienne le
+    /// lit comme « note ».
+    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil) async throws -> RetourCapture {
+        let s = ["note", "chatgpt", "claude", "web", "siri", "partage"].contains(source) ? source : "note"
         var corps: [String: Any] = ["texte": texte, "source": s]
         if differe { corps["differe"] = true }
-        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: differe ? 15 : 90)
+        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: delai ?? (differe ? 15 : 90))
     }
 
     /// Ajuste une proposition avant de dire oui (18/10) : `actions` — les champs

@@ -22,6 +22,12 @@ targets:
     platform: iOS
     sources:
       - path: Remy
+      # La feuille de partage, aussi dans l'app pour les captures de la CI
+      # (REMY_DEMO_ECRAN=partage-…) : l'extension ne se lance pas en ligne de
+      # commande dans le simulateur.
+      - path: RemyPartage/FeuillePartage.swift
+      - path: RemyPartage/LecturePartage.swift
+      - path: Commun/Teinte.swift
       # Intentions partagées avec les widgets (activité en direct, contrôle).
       - path: Intentions
     dependencies:
@@ -127,8 +133,8 @@ targets:
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
 
-  # Feuille de partage (24/10) : un texte, un lien ou une image vers Rémy.
-  # Pour l'instant « Bientôt ». Lit seulement le trousseau partagé.
+  # Feuille de partage (24/10) : un texte, un lien ou une image vers Rémy
+  # (RemyPartage/FeuillePartage.swift). Lit seulement le trousseau partagé.
   RemyPartage:
     type: app-extension
     platform: iOS
