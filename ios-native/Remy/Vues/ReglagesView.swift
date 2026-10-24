@@ -24,6 +24,7 @@ struct ReglagesView: View {
     @State private var changementSecours = false
     @State private var prototypes = false
     @State private var mesures = false
+    @State private var usage = false
 
     var body: some View {
         let d = app.tableau.donnees
@@ -35,6 +36,8 @@ struct ReglagesView: View {
                         ouvrirURL(app.api.base)
                     }
                     ligne("Temps de réponse", sous: "Ce que prend chaque étape, iPhone et tour", symbole: "speedometer") { mesures = true }
+                    // J1.8 (24/10) : compté sur l'iPhone, sans contenu.
+                    ligne("Ce que tu utilises vraiment", sous: ResumeUsage.de(CompteursUsage.partages).phrase, symbole: "chart.bar") { usage = true }
                     if let c = d?.couts {
                         info("Coût des 30 derniers jours", valeur: Format.usd(c.jours30), symbole: "creditcard")
                     }
@@ -162,6 +165,7 @@ struct ReglagesView: View {
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $mesures) { MesuresView() }
+            .navigationDestination(isPresented: $usage) { UsageVue() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fermer") { fermer() }.font(Police.texte(16, .semibold))
