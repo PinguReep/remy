@@ -46,6 +46,13 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(v.api, 1)
         XCTAssertTrue(v.sait("reglages"))
         XCTAssertEqual(app.serveur, v, "lue au chargement")
+        // Hors de l'app (24/10) : « Noter dans Rémy » (capture différée, la tour
+        // répond tout de suite), et l'aperçu du widget / de Siri sur la vraie journée.
+        if v.sait("capture-siri-v1") {
+            let c = try await app.api.capturer("Rappeler le garage", source: "siri", differe: true)
+            XCTAssertEqual(c.differe, true)
+        }
+        XCTAssertFalse(ApercuMaintenant.pour(t.journee, maintenant: Date()).phrase().isEmpty)
         // Réglages : le secours Claude se lit et se règle (sans objet en démo : pas de GLM).
         let r = try await app.api.reglages()
         XCTAssertEqual(r.secoursCloudSansObjet, true)

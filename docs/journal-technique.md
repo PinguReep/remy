@@ -4,6 +4,70 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-24 — Rémy hors de l'app : activité en direct, widgets, Siri
+
+- **Un seul choix, dans le cœur** : `ApercuMaintenant` (tâche en cours, sinon
+  la suivante, sinon « à faire » ; copie datée si la tour ne répond pas, et
+  « injoignable » si la copie est d'un autre jour) sert au widget
+  « Maintenant » et à Siri ; `SuiviActivite` décide démarrer / mettre à jour /
+  terminer pour l'activité en direct. Testés sous Linux (`HorsAppTests`).
+- **Activité en direct sans push** : l'app la démarre (« Commencer », où que
+  ce soit, via `TableauModel.surCommencee` ; ou seule quand une tâche commence,
+  réglable), la suit toutes les 15 s tant qu'elle est ouverte, et la ferme
+  quand la tâche est cochée ou finie. `staleDate` = fin prévue : app fermée,
+  iOS affiche « Temps écoulé ». Les boutons sont des `LiveActivityIntent` :
+  exécutés dans l'app (lancée en arrière-plan au besoin), ils appellent les
+  mêmes gestes que l'app (`terminer` avec sa file d'envoi et son délai,
+  `prolonger` en durée absolue, annulables depuis l'historique). Pour que
+  l'extension puisse construire les boutons et l'app les exécuter, les
+  intentions sont dans `ios-native/Intentions/`, compilé dans les deux cibles ;
+  l'app s'y branche par `Raccourcis` (RemyCore), nil dans l'extension.
+- **Widget « Maintenant »** : une lecture de la tour prépare une entrée par
+  borne (débuts et fins des 6 h suivantes) et relit au bout de 15 min. Sa copie
+  hors ligne vit dans le conteneur du widget (pas de groupe d'app).
+- **Siri « Noter dans Rémy »** : Siri n'attend que quelques secondes, la
+  distillation peut prendre une minute. La tour accepte `differe: true` : elle
+  répond 202 dès la capture validée, puis l'absorbe (même code qu'avant,
+  `absorberCapture`, texte gardé dans tous les cas). Source « siri » : 3
+  caractères suffisent (30 pour les autres). Capacité `capture-siri-v1`.
+- **Contrôle iOS 18** : le point d'entrée des widgets choisit le paquet selon
+  la version (`WidgetsRemy18` avec le contrôle, `WidgetsRemy` sinon).
+- **Relecture** : un bouton de l'activité touché deux fois n'agit qu'une fois
+  (tâches « occupées » ; sinon « +15 min » doublé affichait 30 min quand
+  Motion n'en recevait que 15 de plus), et le suivi de l'app ne touche pas à
+  l'activité pendant qu'un bouton agit (il fermait « Fait » sous les doigts).
+  Le suivi ignore aussi la copie du dernier lancement tant que la tour n'a pas
+  été relue : elle ignore un « Commencer » fait depuis, et fermait l'activité.
+  L'app ouverte recharge le widget « Maintenant » quand son aperçu change
+  (`WidgetsAJour`, 5 s après, gratuit au premier plan) et tous les widgets à
+  la connexion ou à la déconnexion. `Raccourcis.app` est une référence forte :
+  lancée en arrière-plan pour une intention, l'app n'a pas de scène.
+
+## 2026-10-24 — Extensions iPhone : un trousseau partagé, pas de groupe d'app
+
+- Deux extensions embarquées dans l'app : `RemyWidgets` (WidgetKit,
+  `com.pingureep.remy.widgets`) et `RemyPartage` (feuille de partage,
+  `com.pingureep.remy.partage`). Même version que l'app (TestFlight l'exige),
+  même signature automatique ; `scripts/asc-register-bundle.mjs` enregistre les
+  trois identifiants (idempotent).
+- Pas de groupe d'app (App Groups) : Apple ne permet pas d'enregistrer la
+  capacité par l'API, et le build TestFlight de nuit échouerait. Le partage
+  passe par un **trousseau partagé** : `keychain-access-groups =
+  $(AppIdentifierPrefix)com.pingureep.remy`, couvert par tout profil de
+  l'équipe. C'est aussi le groupe par défaut de l'app avant ce changement : le
+  jeton d'appareil déjà rangé reste lisible, rien à refaire sur l'iPhone.
+- L'app recopie l'adresse de la tour dans le trousseau (service
+  `remy.adresse-tour`, `AfterFirstUnlockThisDeviceOnly`) au démarrage et à la
+  connexion, l'efface à la déconnexion (`TrousseauPartage.publier`). Les
+  extensions **lisent seulement** : `TrousseauPartage.systeme.client()` rend un
+  `ClientAPI` (adresse + jeton, coffre en lecture seule : un 401 n'efface pas
+  le jeton de l'app) ou « Ouvre Rémy une fois pour te connecter ».
+- Liens `remy://capture` (la capture), `remy://aujourdhui|remy|projets`
+  (l'onglet) : `LienRemy` dans le cœur, `.onOpenURL` dans l'app. La capture
+  attend les onglets et ferme d'abord la feuille ouverte.
+- `NSSupportsLiveActivities` posé dans l'app (les activités en direct viennent
+  ensuite).
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit
