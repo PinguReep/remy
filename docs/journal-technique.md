@@ -133,6 +133,30 @@ notes privées, sur la tour.
   `Projets/` dans le coffre, bloc « Projets » dans le chat (conversation passée
   en privé).
 
+## 2026-10-24 — Correctifs du site (28 parcours joués au pouce)
+
+- **Règles sur le site** : une proposition `source: "regle"` a sa carte
+  (« Nouvelle règle », « Créer la règle » → `POST …/propositions/:pid/regle`) ;
+  elle passait pour une proposition Motion et l'erreur disait « undefined »
+  (`NOMS` de `lib/ecriture.js` connaît maintenant les règles).
+- **Coût des réponses locales** : `lib/chat.js` ne mettait 0 $ que pour
+  `claude-code` ; un modèle local au nom inconnu de la grille (« DeepSeek-… »)
+  prenait le prix d'Opus. Même règle que le panneau des coûts (`estLocal`) ; les
+  réponses déjà enregistrées sont remises à 0 $ à la lecture (`corrigerCoutsLocaux` :
+  seul un modèle `claude…` est facturé).
+- **Tour injoignable pendant un envoi** (site) : le flux SSE s'ouvre tout de
+  suite, donc 20 s sans en-têtes = tour muette (Tailscale, PC éteint). Sans flux
+  reçu, le message n'est pas sur la tour : arrêt vers 20 s, texte remis dans le
+  champ, « Réessayer ». Flux reçu puis coupé : la tour a le message, on récupère
+  la réponse (jamais « échoué côté serveur » pour un message jamais arrivé).
+- **File du quota Motion** (`motion-file-v1`, `GET /api/motion/file`) : la
+  fenêtre glissante de `lib/motion.js` dit combien de requêtes attendent et quand
+  la dernière partira (`estimerFile`, pur), plus la pause d'un 429. Le site et
+  l'iPhone l'affichent sur la carte pendant l'écriture. Aucun appel à Motion.
+- **Capture courte** (site, < 30 caractères) : « Tâche Motion » (même chemin que
+  « Noter » sur l'iPhone : `/api/motion/apply` + `idCommande`, sans IA,
+  annulable) ou « Retenir » (`choisis: [texte]` : Sam a choisi ce qui est gardé).
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont
