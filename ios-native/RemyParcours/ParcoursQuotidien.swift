@@ -33,6 +33,8 @@ final class ParcoursQuotidien: ParcoursBase {
             let plusTard = bouton("Plus tard")
             if plusTard.waitForExistence(timeout: 6) {
                 try etape("nouveautes-par-dessus", attendu: [plusTard])
+                constat("Premier lancement : à peine connecté, le tutoriel des « nouveautés » d'une mise à jour (plusieurs pages) passe devant la journée, pour quelqu'un qui n'a jamais connu la version d'avant.",
+                        siFaux: false)
                 try toucher(plusTard, "Plus tard")
                 try etape("journee-libre", absent: [plusTard])
             }
@@ -76,6 +78,12 @@ final class ParcoursQuotidien: ParcoursBase {
                 try toucher(commencer, "Commencer la suivante")
                 try etape("suivante-commencee", absent: [texte("terminée. Et maintenant ?")])
                 noter("suivante proposée : \(suivante)")
+                // La suivante, commencée, doit passer « EN COURS » tout de suite.
+                let marque = nomme(app.staticTexts.matching(NSPredicate(format: "label == %@", "EN COURS")).firstMatch, "marque EN COURS")
+                let tout = marque.waitForExistence(timeout: 8)
+                capturer("carte-apres-commencer")
+                constat("Après « Commencer », la carte dit encore « À VENIR · maintenant » : la tâche ne passe « EN COURS » (avec son temps restant) qu'à la minute suivante, quand l'écran se recalcule.",
+                        siFaux: tout)
             } else {
                 try toucher(bouton("Choisir…"), "Choisir")
                 try etape("choisir-la-suite", attendu: [texteI("cette semaine")], delai: 8)
@@ -110,6 +118,8 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("dates", attendu: [bouton("Demain"), bouton("Dans une semaine")])
             try toucher(bouton("Demain"), "Demain")
             try etape("decalee", attendu: [texte("à faire d'ici")], delai: 15)
+            constat("Décaler laisse le panneau « Gérer » ouvert (« Prolonger » le referme) ; le message de confirmation se pose par-dessus ses actions.",
+                    siFaux: !bouton("+15 min").exists)
         }
     }
 
@@ -206,6 +216,8 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("proposition", attendu: [bouton("Non merci"), bouton("Oui, fais-le")])
             try toucher(bouton("Non merci"), "Non merci")
             try etape("refusee", attendu: [texte("rien n'a été changé")], absent: [bouton("Oui, fais-le")], delai: 10)
+            constat("« Non merci » efface la proposition du fil, sans trace ni « Annuler » : un refus touché par erreur ne se rattrape pas, et rien ne rappelle ce qui avait été proposé.",
+                    siFaux: bouton("Annuler").exists || texte("Prendre rendez-vous pour la vidange").exists)
         }
     }
 
@@ -418,6 +430,30 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("defile")
             try toucher(ident("noter"), "+")
             try etape("noter-tres-grand", attendu: [ident("capture.champ")])
+        }
+    }
+
+    // MARK: - Le matin
+
+    @MainActor
+    func test20_trierLesSujetsDeLaNuit() {
+        jouer("P20", "Le matin : trier les sujets de la nuit (« À voir avec Rémy »)") {
+            lancer()
+            try attendreAccueil()
+            try toucher(bouton("À voir avec Rémy"), "boîte « À voir avec Rémy »")
+            try etape("boite", attendu: [app.navigationBars["À voir avec Rémy"], bouton("C'est fait"), bouton("Laisser tomber")])
+            auditerCibles("À voir avec Rémy")
+            try toucher(bouton("C'est fait"), "C'est fait")
+            try etape("sujet-fait", attendu: [bouton("Rouvrir")], delai: 10)
+            try toucher(bouton("Laisser tomber"), "Laisser tomber")
+            try etape("sujet-laisse", attendu: [texte("Laissé de côté")], delai: 10)
+            try toucher(bouton("En parler à Rémy"), "En parler à Rémy")
+            let composeur = app.textViews["Écris à Rémy…"]
+            try etape("question-preparee", attendu: [composeur], absent: [app.navigationBars["À voir avec Rémy"]], delai: 10)
+            let prepare = (composeur.value as? String) ?? ""
+            noter("question préparée dans le composeur : \(prepare.isEmpty ? "vide" : "\(prepare.count) caractères")")
+            constat("« En parler à Rémy » depuis un sujet de la nuit n'amène pas la question dans le composeur.",
+                    siFaux: !prepare.isEmpty && prepare != "Écris à Rémy…")
         }
     }
 
