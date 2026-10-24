@@ -210,8 +210,10 @@ struct BoutonA: View {
                 Text(titre)
             }
             .font(Police.texte(16, .semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            // Deux lignes plutôt qu'un libellé tronqué (« Commencer « Prépa… »).
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .minimumScaleFactor(0.85)
             .foregroundStyle(principal ? Palette.fond : Palette.encre)
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, minHeight: hauteur)
@@ -310,31 +312,113 @@ struct Risque: View {
 }
 
 /// Panneau superposé (spec §4.4) : fond flouté, bords visibles, fermeture en
-/// touchant à l'extérieur. `depuisLeBas` : une feuille d'actions ; sinon une
-/// carte presque plein écran (la journée à l'échelle).
+/// touchant à l'extérieur. `depuisLeBas` : une feuille d'actions, qui se ferme
+/// aussi en la glissant vers le bas (sa poignée n'est plus factice, 24/10) et
+/// par « Fermer » en haut à droite ; sinon une carte presque plein écran (la
+/// journée à l'échelle). Modal pour VoiceOver : il ne sort pas vers l'accueil.
 struct Surimpression<Contenu: View>: View {
     let fermer: () -> Void
     var depuisLeBas = true
     @ViewBuilder let contenu: () -> Contenu
     @State private var visible = false
+    @State private var glisse: CGFloat = 0
+    /// La hauteur du panneau : au-delà de l'écran (petit iPhone, grand
+    /// texte), il défile au lieu d'être coupé.
+    @State private var hauteur: CGFloat = 0
 
     var body: some View {
-        ZStack(alignment: depuisLeBas ? .bottom : .center) {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.12))
-                .ignoresSafeArea()
-                .onTapGesture { fermer() }
-                .accessibilityLabel("Fermer")
-                .accessibilityAddTraits(.isButton)
-            contenu()
-                .padding(.horizontal, depuisLeBas ? 10 : 12)
-                .padding(.bottom, depuisLeBas ? 8 : 0)
-                .offset(y: visible ? 0 : (depuisLeBas ? 60 : 24))
-                .scaleEffect(visible || depuisLeBas ? 1 : 0.97)
+        if depuisLeBas { feuille } else { carteCentree }
+    }
+
+    private var fond: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay(Color.black.opacity(0.12))
+            .ignoresSafeArea()
+            .onTapGesture { fermer() }
+            .accessibilityHidden(true)
+    }
+
+    private var feuille: some View {
+        GeometryReader { geo in
+            let dispo = max(240, geo.size.height - 8)
+            let defile = hauteur > dispo
+            ZStack(alignment: .bottom) {
+                fond
+                ScrollView {
+                    contenu()
+                        .overlay(alignment: .topTrailing) { BoutonFermer(action: fermer).padding(8) }
+                        .background(GeometryReader { g in Color.clear.preference(key: HauteurPanneau.self, value: g.size.height) })
+                }
+                .scrollDisabled(!defile)
+                .scrollClipDisabled()
+                .frame(height: hauteur > 0 ? min(hauteur, dispo) : nil)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+                .offset(y: (visible ? 0 : 60) + glisse)
                 .opacity(visible ? 1 : 0)
+                // Glisser pour fermer, tant que le panneau ne défile pas.
+                .simultaneousGesture(glisser, including: defile ? .subviews : .all)
+                .accessibilityAddTraits(.isModal)
+            }
+        }
+        .onPreferenceChange(HauteurPanneau.self) { hauteur = $0 }
+        .onAppear { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { visible = true } }
+        .accessibilityAction(.escape) { fermer() }
+    }
+
+    private var carteCentree: some View {
+        ZStack {
+            fond
+            contenu()
+                .padding(.horizontal, 12)
+                .offset(y: visible ? 0 : 24)
+                .scaleEffect(visible ? 1 : 0.97)
+                .opacity(visible ? 1 : 0)
+                .accessibilityAddTraits(.isModal)
         }
         .onAppear { withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { visible = true } }
         .accessibilityAction(.escape) { fermer() }
+    }
+
+    /// Vers le bas seulement ; au-delà de 110 pt (ou d'un geste vif), fermé.
+    private var glisser: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { g in glisse = max(0, g.translation.height) }
+            .onEnded { g in
+                if g.translation.height > 110 || g.predictedEndTranslation.height > 260 {
+                    Haptique.leger()
+                    fermer()
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { glisse = 0 }
+                }
+            }
+    }
+}
+
+private struct HauteurPanneau: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// « Fermer » : toujours en haut à droite, la même croix partout (24/10).
+struct BoutonFermer: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptique.leger()
+            action()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Palette.encre2)
+                .frame(width: 30, height: 30)
+                .background(Palette.fond2, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Fermer")
     }
 }

@@ -508,6 +508,41 @@ Revue contradictoire, corrigé dans la foulée :
   quoi faire, aujourd'hui et 7 jours par catégorie (barres), applis de la
   semaine (glisser = ne plus compter), sites par domaine, exclusions, « Tout
   effacer » confirmé. Tirer pour rafraîchir = relever maintenant.
+- Ergonomie au pouce (24/10, `RemyCore/Ergonomie.swift`) : les choix « en un
+  toucher » sont calculés dans le cœur, sans réseau, testés sous Linux.
+  « Décaler » une tâche Motion ne change QUE son échéance (Motion choisit
+  l'heure ; « Aujourd'hui » dès que l'échéance est passée) et ne la rapproche
+  jamais : seuls les choix après l'échéance actuelle sont offerts (sinon
+  « +1 sem. » à partir d'elle). Une activité de l'agenda se décale à l'heure
+  (+15 min, +1 h, ce soir, demain), arrondie au quart d'heure SUPÉRIEUR : le
+  décalage n'est jamais plus court qu'annoncé (de même « Dans 1 h » d'un rappel). Le même
+  panneau « Gérer » sert toutes les tâches : une tâche à faire ou en retard y
+  entre en `ElementJour` de type `sans-creneau` (ni horaire ni « prolonger »).
+  La feuille système de 9 boutons (`ActionsTache`) a disparu.
+- Rappels : « Quand ? » au toucher, glisser (fait / plus tard) dans la liste,
+  et une catégorie de notification `rappel` (Fait, Dans 1 h, Demain 9:00). Les
+  actions s'exécutent sans ouvrir l'app (iOS la lance en arrière-plan) : le
+  carnet de l'iPhone change, les notifications sont reprogrammées, et le
+  délégué attend l'envoi de la file vers la tour avant de rendre la main à
+  iOS (`depuisNotification` n'envoie pas en tâche détachée). Le délégué (`DelegueNotifications`) montre aussi les
+  rappels au premier plan, ce qu'iOS taisait sans lui.
+- Une partie d'une proposition (`propositions-partielles-v1`) : l'iPhone envoie
+  les `rangs` gardés avec `propositionId` ; la tour filtre sa version STOCKÉE
+  (jamais celle de la requête), garde la même clé d'idempotence (`prop:id`),
+  et dit les lignes écartées dans le bilan (`ecartees`). L'annulation ne
+  défait que ce qui a été fait. Un second « Oui » ne rajoute pas les lignes
+  écartées : pour elles, redemander à Rémy. Après un échec, les cases restent
+  et « Réessayer » renvoie les mêmes `rangs` (relus du bilan `ecartees` si
+  l'app a été relancée) : une tentative échouée est rejouée telle que la
+  requête la décrit, la tour ne retient pas les rangs du premier essai.
+- Noter : « Ajouter » et le micro sont collés au clavier (`safeAreaInset`) ;
+  la touche Retour reste un saut de ligne, car « tomates⏎lait » fait deux
+  articles et deux lignes deux intentions.
+- Panneaux (`Surimpression`) : glisser vers le bas pour fermer, « Fermer » en
+  haut à droite, modaux pour VoiceOver, et ils défilent quand ils dépassent
+  l'écran (petit iPhone, grand texte). Les titres serif suivent Dynamic Type
+  (`UIFontMetrics`, plafonné au double), relu au rendu : un changement de
+  taille en cours de route s'applique au prochain affichage.
 
 ## CI
 

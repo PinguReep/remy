@@ -7,7 +7,18 @@ import RemyCore
 /// daté, jamais au lancement.
 @MainActor
 enum Notifications {
-    private static let prefixe = "rappel-"
+    private static let prefixe = ActionRappel.prefixe
+
+    /// Les actions des rappels, déclarées à iOS une fois au lancement.
+    static func declarerActions() {
+        let symboles: [ActionRappel: String] = [.fait: "checkmark", .dansUneHeure: "clock", .demain: "sunrise"]
+        let actions = ActionRappel.allCases.map { a in
+            UNNotificationAction(identifier: a.rawValue, title: a.libelle, options: [],
+                                 icon: UNNotificationActionIcon(systemImageName: symboles[a] ?? "bell"))
+        }
+        let categorie = UNNotificationCategory(identifier: ActionRappel.categorie, actions: actions, intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([categorie])
+    }
 
     /// Demande la permission (une fois) ; rend vrai si les rappels peuvent sonner.
     @discardableResult
@@ -39,10 +50,58 @@ enum Notifications {
             contenu.title = "Rappel"
             contenu.body = rappel.texte
             contenu.sound = .default
+            // « Fait », « Dans 1 h », « Demain » sous la notification (24/10).
+            contenu.categoryIdentifier = ActionRappel.categorie
             let quand = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: q.date)
             let requete = UNNotificationRequest(identifier: prefixe + rappel.id, content: contenu,
                                                 trigger: UNCalendarNotificationTrigger(dateMatching: quand, repeats: false))
             try? await centre.add(requete)
+        }
+    }
+}
+
+extension Notification.Name {
+    /// Un toucher sur la notification d'un rappel : Projets › Rappels.
+    static let remyOuvrirRappels = Notification.Name("remy.ouvrirRappels")
+}
+
+/// Les réponses à une notification de rappel (24/10). « Fait », « Dans 1 h »
+/// et « Demain » s'appliquent sans ouvrir l'app (iOS la lance en arrière-plan) :
+/// le carnet de l'iPhone change, la file part vers la tour, les notifications
+/// sont reprogrammées. Un toucher ouvre Projets › Rappels.
+final class DelegueNotifications: NSObject, UNUserNotificationCenterDelegate {
+    static let partage = DelegueNotifications()
+    weak var app: AppModel?
+    /// Touchée avant que l'interface soit prête (app lancée par la notification).
+    var rappelsEnAttente = false
+
+    /// Au premier plan aussi, le rappel s'affiche (sans délégué, iOS le taisait).
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let id = response.notification.request.identifier
+        let action = response.actionIdentifier
+        Task { @MainActor in
+            await self.traiter(id: id, action: action)
+            completionHandler()
+        }
+    }
+
+    @MainActor
+    private func traiter(id: String, action: String) async {
+        guard let rappel = ActionRappel.rappel(dansNotification: id) else { return }
+        if let a = ActionRappel(rawValue: action) {
+            guard let app, app.carnet.depuisNotification(id: rappel, fait: a == .fait, quand: a.report()) else { return }
+            await Notifications.planifier(app.carnet.rappels)
+            await app.carnet.envoyer()
+        } else if action == UNNotificationDefaultActionIdentifier {
+            app?.onglet = .projets
+            rappelsEnAttente = true
+            NotificationCenter.default.post(name: .remyOuvrirRappels, object: nil)
         }
     }
 }

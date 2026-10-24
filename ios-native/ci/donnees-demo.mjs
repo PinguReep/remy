@@ -57,6 +57,31 @@ w("conversations.json", {
           ] } },
       ],
     },
+    // Une partie seulement d'une proposition (24/10) : une case par ligne — capture « 5e2 ».
+    {
+      id: "c13", title: "Salon des créateurs", createdAt: now - 30 * H, updatedAt: now - 30 * H,
+      messages: [
+        { role: "user", content: "Pour le salon des créateurs samedi, il faut que je m'organise." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose trois tâches pour être prêt samedi.",
+          proposal: { id: "p-salon", source: "motion", statut: "en_attente", resume: "Trois tâches avant samedi.", actions: [
+            { type: "creer", nom: "Imprimer les étiquettes de prix", duree: 30 },
+            { type: "creer", nom: "Appeler Léa pour le stand", duree: 10 },
+            { type: "creer", nom: "Préparer la caisse de bougies", duree: 45 },
+          ] } },
+      ],
+    },
+    // Pour le test d'intégration (une partie seulement, puis « Annuler ») : un vieux fil.
+    {
+      id: "c14", title: "Rangement de l'atelier", createdAt: now - 720 * H, updatedAt: now - 720 * H,
+      messages: [
+        { role: "user", content: "Il faut ranger l'atelier ce week-end." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Deux tâches pour l'atelier.",
+          proposal: { id: "p-atelier", source: "motion", statut: "en_attente", resume: "L'atelier en deux temps.", actions: [
+            { type: "creer", nom: "Trier les chutes de cire", duree: 20 },
+            { type: "creer", nom: "Commander des bocaux", duree: 10 },
+          ] } },
+      ],
+    },
     // Un tableau dans une réponse (19/10 : il s'affichait en lignes de « | ») — capture « 5k ».
     {
       id: "c12", title: "Comparatif des offres", createdAt: now - 900 * H, updatedAt: now - 900 * H,
