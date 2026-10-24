@@ -17,7 +17,9 @@ struct CarteATrancher: View {
         if t.disponible {
             let dimanche = t.revueProposee()
             let n = t.total
-            Group {
+            // Un VStack (pas un Group) : vide, il existe quand même, et sa
+            // tâche de lecture part.
+            VStack(spacing: 0) {
                 if dimanche || n > 0 {
                     VStack(alignment: .leading, spacing: 10) {
                         TitreSection(texte: dimanche ? "Revue du dimanche" : "À trancher", compte: dimanche || n == 0 ? nil : n)
@@ -468,12 +470,21 @@ struct FeuillesTri: ViewModifier {
             }
             .task(id: scene) {
                 guard scene == .active else { return }
+                // Captures de la CI : l'écran demandé s'ouvre seul (OngletsView.demo).
                 guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == nil else { return }
                 let m = app.aTrancher
-                guard m.noterVisite() else { return }
-                // La tour d'abord (capacités), et jamais par-dessus une autre feuille.
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                guard !app.reglagesOuverts, app.nouveautes.affichees == nil else { return }
+                let absent = m.noterVisite()
+                // La tour d'abord : ses capacités disent si elle sait rassembler.
+                var essais = 0
+                while !m.disponible && essais < 40 {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    essais += 1
+                }
+                guard m.disponible else { return }
+                guard absent else { await m.chargerSiAncien(); return }
+                // Jamais par-dessus une autre feuille (nouveautés, réglages).
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if app.reglagesOuverts || app.nouveautes.affichees != nil { await m.chargerSiAncien(); return }
                 await m.auRetour(absent: true)
             }
     }
