@@ -71,6 +71,10 @@ public final class ClientAPI: @unchecked Sendable {
     /// coupure réseau peut alors être rejouée sans double effet. Faux face à une
     /// tour pas encore mise à jour — elle referait l'écriture.
     public var rejeuSur = false
+    /// La tour sait dire sa file du quota Motion (motion-file-v1) : pendant
+    /// qu'une écriture attend, l'app la lit et la passe à `surFileMotion`.
+    public var fileMotionSue = false
+    public var surFileMotion: (@MainActor @Sendable (AttenteMotion?) -> Void)?
 
     /// `coffre` : par défaut le Keychain ; avec une session fournie (tests,
     /// aperçus), la mémoire — un test ne touche jamais au vrai trousseau.
@@ -108,6 +112,8 @@ public final class ClientAPI: @unchecked Sendable {
             c.percentEncodedQuery = String(morceaux[1])
             url = c.url ?? url
         }
+        // Ce que tu utilises vraiment (24/10) : un geste compté, sans contenu.
+        CompteursUsage.partages.noter(methode: methode, chemin: String(morceaux[0]), corps: corps)
         var r = URLRequest(url: url)
         r.httpMethod = methode
         r.timeoutInterval = delai
@@ -274,7 +280,7 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Les projets Motion ouverts (onglet Projets), si la tour sait les lire.
     public func projets() async throws -> ListeProjets {
-        try await json(ListeProjets.self, "api/projets", delai: 20)
+        try await json(ListeProjets.self, "api/projets", delai: DelaisMotion.lecture)
     }
 
     public func etatSujet(_ id: String, etat: String) async throws {
@@ -418,10 +424,14 @@ public final class ClientAPI: @unchecked Sendable {
         if let idCommande { corps["idCommande"] = idCommande }
         let chemin = p.versAgenda ? "api/google/apply" : "api/motion/apply"
         let rejouable = rejeuSur && (corps["propositionId"] != nil || idCommande != nil)
-        do {
-            return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: 60)
-        } catch ErreurAPI.reseau where rejouable {
-            return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: 60)
+        // La tour peut faire attendre l'écriture dans la file du quota Motion :
+        // le délai le couvre (DelaisMotion), et la carte dit l'attente.
+        return try await avecSuiviFile(!p.versAgenda) {
+            do {
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: DelaisMotion.ecriture)
+            } catch ErreurAPI.reseau where rejouable {
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: DelaisMotion.ecriture)
+            }
         }
     }
 
@@ -527,7 +537,7 @@ public final class ClientAPI: @unchecked Sendable {
         guard let id = p.ledgerId else { return RetourAnnulation(ok: true, dejaAnnule: true) }
         do {
             return try await json(RetourAnnulation.self, p.versAgenda ? "api/google/undo" : "api/motion/undo",
-                                  methode: "POST", corps: ["id": id], delai: 60)
+                                  methode: "POST", corps: ["id": id], delai: DelaisMotion.ecriture)
         } catch ErreurAPI.serveur(409, let m) where m.hasPrefix("Déjà annulé") {
             return RetourAnnulation(ok: true, dejaAnnule: true)
         }

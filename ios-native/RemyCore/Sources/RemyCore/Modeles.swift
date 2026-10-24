@@ -112,6 +112,9 @@ public final class AppModel {
     public let rituel: RituelModel
     /// « À trancher », la revue du dimanche et le tri des retards (24/10).
     public let aTrancher: ATrancherModel
+    /// La file du quota Motion pendant qu'une écriture attend (motion-file-v1,
+    /// 24/10) : la carte dit « En file chez Motion : ~20 s ». nil : rien à dire.
+    public var attenteMotion: AttenteMotion?
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -162,10 +165,14 @@ public final class AppModel {
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
+        api.surFileMotion = { [weak self] a in
+            self?.attenteMotion = a?.visible == true ? a : nil
+        }
         tableau.restaurer()
         if let v = rangement?.copie(VersionServeur.self, Rangement.serveur)?.valeur {
             serveur = v
             api.rejeuSur = v.sait("propositions-v1")
+            api.fileMotionSue = v.sait("motion-file-v1")
         }
     }
 
@@ -318,6 +325,7 @@ public final class AppModel {
         if let v = try? await api.versionServeur() {
             serveur = v
             api.rejeuSur = v.sait("propositions-v1")
+            api.fileMotionSue = v.sait("motion-file-v1")
             try? tableau.rangement?.garder(v, le: Date(), Rangement.serveur)
         }
     }
@@ -1442,6 +1450,7 @@ public final class ChatModel {
         // Un message « Envoyer après » visait l'autre fil : il revient au composeur.
         if conv.id != idCourant { reprendreFile() }
         interrompreFlux()
+        activiteLe = Date()
         idCourant = conv.id
         titre = conv.title
         origine = conv.origine
@@ -1528,9 +1537,25 @@ public final class ChatModel {
         focusDemande = true
     }
 
+    /// Dernier geste sur le fil ouvert (ouvert, message envoyé) : un fil laissé
+    /// ouvert depuis un autre jour est refermé au retour sur l'onglet.
+    @ObservationIgnored public private(set) var activiteLe: Date?
+
+    /// Retour sur l'onglet Rémy : le fil du jour plutôt que celui d'hier (24/10).
+    /// Jamais pendant une réponse, ni avec un brouillon ou un message en file.
+    @discardableResult
+    public func ouvrirFilDuJour(maintenant: Date = Date()) -> Bool {
+        guard idCourant != nil, !envoi, fileEnvoi.isEmpty, origine == nil,
+              brouillon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              Fils.aRefermer(derniereActivite: activiteLe, maintenant: maintenant) else { return false }
+        fermer()
+        return true
+    }
+
     public func fermer() {
         reprendreFile()
         interrompreFlux()
+        activiteLe = nil
         idCourant = nil
         titre = ""
         origine = nil
@@ -1636,6 +1661,7 @@ public final class ChatModel {
             return nil
         }
         envoi = true
+        activiteLe = Date()
         generation += 1
         let g = generation
         if idCourant == nil {
