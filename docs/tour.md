@@ -95,12 +95,16 @@ ne sort de la tour, et les titres de fenêtres ne sont jamais gardés.
 | Réglage (`remy.env`) | Rôle |
 | --- | --- |
 | `REMY_ACTIVITE_PC=off` | coupe tout côté tour (l'app ne peut plus l'allumer) |
-| `REMY_ACTIVITE_EXCLURE` | applis jamais comptées, séparées par des virgules (`keepass,banque`) |
+| `REMY_ACTIVITE_EXCLURE` | applis (ou domaines) jamais comptées, séparées par des virgules (`keepass,banque`) ; ce qui l'était s'efface au relevé suivant, et un navigateur emporte tous les sites relevés |
 | `REMY_ACTIVITE_CATEGORIES` | corriger une catégorie (`monjeu=jeux,outil=developpement`) |
 | `REMY_ACTIVITE_PC_JOURS` | durée de conservation (défaut 90 jours) |
 | `REMY_ACTIVITYWATCH_URL` | si ActivityWatch n'écoute pas sur `http://127.0.0.1:5600` |
 
 Si l'app affiche « ActivityWatch ne répond pas » : `aw-qt` n'est pas lancé (ou
 plus) ; relance-le, puis tire l'écran vers le bas pour relever tout de suite.
+Si elle affiche « aw-watcher-window (ou aw-watcher-afk) n'écrit plus depuis… » :
+ActivityWatch répond, mais ce guetteur s'est arrêté et plus rien n'est compté ;
+relance-le depuis l'icône d'ActivityWatch près de l'horloge (menu des modules),
+ou quitte et relance `aw-qt`, puis tire pour relever.
 « Tout effacer » vide ce que Rémy a gardé, sans toucher à ActivityWatch.
 

@@ -214,16 +214,17 @@ http.createServer((req, res) => {
   ];
   const absences = [ev(0, 140, { status: "not-afk" }), ev(140, 160, { status: "afk" }), ev(160, 330, { status: "not-afk" })];
   const web = [ev(110, 170, { url: "https://developer.example.org/docs/fetch", title: "Documentation", incognito: false })];
-  const seaux = {
-    "aw-watcher-window_tour-demo": { id: "aw-watcher-window_tour-demo", type: "currentwindow", hostname: "tour-demo" },
-    "aw-watcher-afk_tour-demo": { id: "aw-watcher-afk_tour-demo", type: "afkstatus", hostname: "tour-demo" },
+  // Des guetteurs qui tournent : leur dernier événement est toujours frais.
+  const seaux = () => ({
+    "aw-watcher-window_tour-demo": { id: "aw-watcher-window_tour-demo", type: "currentwindow", hostname: "tour-demo", last_updated: new Date().toISOString() },
+    "aw-watcher-afk_tour-demo": { id: "aw-watcher-afk_tour-demo", type: "afkstatus", hostname: "tour-demo", last_updated: new Date().toISOString() },
     "aw-watcher-web-chrome_tour-demo": { id: "aw-watcher-web-chrome_tour-demo", type: "web.tab.current", hostname: "tour-demo" },
-  };
+  });
   http.createServer((req, res) => {
     const u = new URL(req.url, "http://aw");
     res.setHeader("Content-Type", "application/json");
     if (u.pathname === "/api/0/info") return res.end(JSON.stringify({ hostname: "tour-demo", version: "v0.13.2", testing: false }));
-    if (u.pathname === "/api/0/buckets/") return res.end(JSON.stringify(seaux));
+    if (u.pathname === "/api/0/buckets/") return res.end(JSON.stringify(seaux()));
     const m = u.pathname.match(/^\/api\/0\/buckets\/([^/]+)\/events$/);
     if (!m) {
       res.statusCode = 404;
