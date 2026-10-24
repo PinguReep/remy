@@ -170,8 +170,8 @@ notes privées, sur la tour.
   de catégorie `remy.proposition` (« Oui » demande l'appareil déverrouillé ;
   « Plus tard » = 3 h), relues au retour au premier plan (pas de push). La
   catégorie s'**ajoute** aux catégories existantes ; le délégué
-  (`DeleguePropositions`) ne se pose que si aucun autre ne l'est : un délégué
-  d'app posé ailleurs doit transmettre à `NotificationsPropositions.repondre`.
+  (`DeleguePropositions`) passe devant celui qui est déjà posé (reposé au
+  retour au premier plan) et lui transmet tout ce qui n'est pas une proposition.
 
 ## Chaîne d'écriture (Motion, Google Agenda)
 

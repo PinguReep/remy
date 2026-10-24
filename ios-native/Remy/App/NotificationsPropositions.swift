@@ -25,16 +25,25 @@ enum NotificationsPropositions {
     /// écraser), le délégué, et la relecture au retour au premier plan.
     static func brancher(_ modele: AppModel) {
         app = modele
-        let centre = UNUserNotificationCenter.current()
-        if centre.delegate == nil { centre.delegate = delegue }
+        poserDelegue()
         Task { await enregistrerCategorie() }
         if observateur == nil {
             observateur = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
                 Task { @MainActor in
+                    poserDelegue()
                     if let a = NotificationsPropositions.app { await rafraichir(a) }
                 }
             }
         }
+    }
+
+    /// Notre délégué passe devant celui qui serait déjà posé (rendez-vous du
+    /// matin, rappels…) et lui transmet tout ce qui n'est pas une proposition.
+    static func poserDelegue() {
+        let centre = UNUserNotificationCenter.current()
+        guard centre.delegate !== delegue else { return }
+        delegue.suivant = centre.delegate
+        centre.delegate = delegue
     }
 
     static func enregistrerCategorie() async {
@@ -139,20 +148,38 @@ enum NotificationsPropositions {
     }
 }
 
-/// Le délégué des notifications quand aucun autre n'est posé. Un délégué de
-/// l'app posé ailleurs doit transmettre à `NotificationsPropositions.repondre`
-/// (catégorie « remy.proposition ») et montrer la bannière au premier plan.
+/// Le délégué des notifications de propositions. Ce qui n'en est pas une va au
+/// délégué posé avant lui (`suivant`), s'il y en a un ; sinon les rappels
+/// gardent leur comportement d'avant (rien au premier plan).
 final class DeleguePropositions: NSObject, UNUserNotificationCenterDelegate {
+    weak var suivant: UNUserNotificationCenterDelegate?
+
+    private static func estProposition(_ n: UNNotification) -> Bool {
+        n.request.content.categoryIdentifier == NotificationsPropositions.categorie
+            || n.request.identifier.hasPrefix("retour-proposition-")
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Une proposition se voit aussi app ouverte ; les rappels gardent leur comportement d'avant.
-        let proposition = notification.request.content.categoryIdentifier == NotificationsPropositions.categorie
-            || notification.request.identifier.hasPrefix("retour-proposition-")
-        completionHandler(proposition ? [.banner, .list, .sound] : [])
+        // Une proposition se voit aussi app ouverte.
+        if Self.estProposition(notification) { return completionHandler([.banner, .list, .sound]) }
+        if let s = suivant, s.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
+            s.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
+        } else {
+            completionHandler([])
+        }
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
+        guard Self.estProposition(response.notification) else {
+            if let s = suivant, s.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
+                s.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
+            } else {
+                completionHandler()
+            }
+            return
+        }
         let action = response.actionIdentifier
         let info = response.notification.request.content.userInfo
         Task { @MainActor in
