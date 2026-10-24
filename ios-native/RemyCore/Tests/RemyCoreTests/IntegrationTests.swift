@@ -170,6 +170,22 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(m.elements.first?.action, "Durée changée", "\(m.elements)")
             XCTAssertEqual(m.annulable, true)
         }
+        // 24/10 : « À trancher » rassemble ce qui attend ; « Plus tard » l'écarte et s'annule ;
+        // la revue de la semaine se décode telle que la tour la rend.
+        if v.sait("a-trancher-v1") {
+            let tri = try await app.api.aTrancher()
+            let ids = Set((tri.groupes ?? []).map(\.id))
+            XCTAssertTrue(ids.isSuperset(of: ["cartes", "doublons", "idees", "fils"]), "\(ids)")
+            XCTAssertFalse(tri.retards?.isEmpty ?? true, "la démo a des tâches en retard")
+            let cle = try XCTUnwrap(tri.groupes?.first { $0.id == "fils" }?.lignes.first?.cle)
+            try await app.api.reporterTri(cle)
+            let apres = try await app.api.aTrancher()
+            XCTAssertFalse((apres.groupes ?? []).flatMap(\.lignes).contains { $0.cle == cle })
+            try await app.api.annulerReportTri(cle)
+            let revue = try await app.api.revue()
+            XCTAssertEqual(revue.domaines?.first?.nom, "Boutiques", "\(revue.domaines ?? [])")
+            XCTAssertFalse(revue.appris?.isEmpty ?? true)
+        }
         // Contrat : chaque réponse que l'app lit se décode, telle que le serveur la rend.
         _ = try await app.api.memoire()
         _ = try await app.api.journal()

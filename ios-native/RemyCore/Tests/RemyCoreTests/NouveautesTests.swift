@@ -14,7 +14,7 @@ final class NouveautesTests: XCTestCase {
 
     func testLePremierLancementNeMontreQueLaDerniereMiseAJour() {
         let r = suite()
-        let a = app(["modeles-v1", "lieux-v1", "jauge-v1", "compactage-v1", "regles-v1"], reglages: r)
+        let a = app(["modeles-v1", "lieux-v1", "jauge-v1", "compactage-v1", "regles-v1", "a-trancher-v1"], reglages: r)
         a.nouveautes.verifier()
         let derniere = Nouveautes.catalogue.map(\.serie).max()!
         XCTAssertEqual(Set(a.nouveautes.affichees?.entrees.map(\.serie) ?? []), [derniere], "l'historique ne s'impose pas")

@@ -11,7 +11,10 @@ struct ReglagesView: View {
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @AppStorage("theme") private var theme = "auto"
     @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
+    @AppStorage(ATrancherModel.cleRevue) private var revueDimanche = true
     @State private var memoire = false
+    @State private var triOuvert = false
+    @State private var revueOuverte = false
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
     @State private var lieuxOuverts = false
@@ -138,6 +141,27 @@ struct ReglagesView: View {
                     ligne("Nouveautés", sous: nouveautesSous, symbole: "sparkles") {
                         nouveautesOuvertes = true
                     }
+                    if app.aTrancher.disponible {
+                        ligne("À trancher", sous: "Cartes, rappels, articles, vieux fils, idées : un geste chacun.", symbole: "tray.2") {
+                            triOuvert = true
+                        }
+                        ligne("Revue de la semaine", sous: "Fait, glissé, idées, trois décisions. Sans IA.", symbole: "calendar.badge.checkmark") {
+                            revueOuverte = true
+                        }
+                        Toggle(isOn: $revueDimanche) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Revue du dimanche").font(Police.texte(16, .medium))
+                                Text("Proposée sur Aujourd'hui le dimanche, 10 minutes. Coupée : seulement depuis ici.")
+                                    .font(Police.texte(13))
+                                    .foregroundStyle(Palette.encre2)
+                            }
+                        }
+                        .tint(Palette.signal)
+                        .foregroundStyle(Palette.encre)
+                        .padding(.vertical, 10)
+                        .frame(minHeight: 60)
+                        .overlay(alignment: .bottom) { Filet() }
+                    }
                     ligne("Prototypes de design", sous: "Lot 1 : deux directions à essayer, sur des données fictives.",
                           symbole: "paintpalette") {
                         prototypes = true
@@ -176,6 +200,8 @@ struct ReglagesView: View {
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .sheet(isPresented: $modelesOuverts) { ModelesVue() }
         .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
+        .sheet(isPresented: $triOuvert) { ATrancherFeuille() }
+        .sheet(isPresented: $revueOuverte) { RevueDimanche() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
