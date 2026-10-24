@@ -92,17 +92,18 @@ public struct ChargeJour: Codable, Sendable, Equatable {
     public enum Niveau: Equatable, Sendable { case libre, leger, charge, deborde }
 
     /// Libre (rien de placé), léger, chargé (80 % du disponible ou plus),
-    /// débordé (plus que le disponible). Sans horaires connus : au-delà de 8 h.
+    /// débordé (plus que le disponible). Sans horaires connus, ou un jour
+    /// sans horaires de travail (Motion place alors ailleurs) : au-delà de 8 h.
     public var niveau: Niveau {
         guard taches > 0 else { return .libre }
-        guard let d = disponible else { return taches > 8 * 60 ? .charge : .leger }
+        guard let d = disponible, travail != 0 else { return taches > 8 * 60 ? .charge : .leger }
         if taches > d { return .deborde }
         return Double(taches) >= Double(d) * 0.8 ? .charge : .leger
     }
 
     /// Entre 0 et 1 : la part du disponible déjà prise (1 si ça déborde).
     public var remplissage: Double {
-        guard let d = disponible else { return min(1, Double(taches) / Double(8 * 60)) }
+        guard let d = disponible, travail != 0 else { return min(1, Double(taches) / Double(8 * 60)) }
         guard d > 0 else { return taches > 0 ? 1 : 0 }
         return min(1, Double(taches) / Double(d))
     }
