@@ -11,6 +11,7 @@ console.log = () => {};
 console.warn = () => {};
 
 const appels = [];
+let reponse = "Noté.";
 const glm = http.createServer((req, res) => {
   let b = "";
   req.on("data", (c) => (b += c));
@@ -27,7 +28,7 @@ const glm = http.createServer((req, res) => {
       return res.end(JSON.stringify({ choices: [{ message: { content: "NO_UPDATE" }, finish_reason: "stop" }], usage: {} }));
     }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
-    res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Noté." }, finish_reason: "stop" }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: reponse }, finish_reason: "stop" }] })}\n\n`);
     res.end("data: [DONE]\n\n");
   });
 });
@@ -60,4 +61,25 @@ test("« acheter des ampoules » : pas de mémoire ; dans « Faire connaissance 
   await (await post(`/api/conversations/${s.id}/messages`, { text: "acheter des ampoules" })).text();
   await attendre(() => appels.includes("memoire"));
   assert.ok(appels.includes("memoire"), JSON.stringify(appels));
+});
+
+test("la réponse à une question de Rémy sur Sam nourrit la mémoire ; « oui » à une offre, non", async () => {
+  const c = await (await post("/api/conversations", {})).json();
+  reponse = "Noté. Tu te lèves à quelle heure, d'habitude ?";
+  await (await post(`/api/conversations/${c.id}/messages`, { text: "Bonjour" })).text();
+  await new Promise((r) => setTimeout(r, 100));
+  appels.length = 0;
+  reponse = "Noté.";
+  await (await post(`/api/conversations/${c.id}/messages`, { text: "vers 7 h" })).text();
+  await attendre(() => appels.includes("memoire"));
+  assert.ok(appels.includes("memoire"), JSON.stringify(appels));
+
+  reponse = "Tu veux que je l'ajoute à ta liste ?";
+  await (await post(`/api/conversations/${c.id}/messages`, { text: "du pain" })).text();
+  await new Promise((r) => setTimeout(r, 100));
+  appels.length = 0;
+  reponse = "C'est fait.";
+  await (await post(`/api/conversations/${c.id}/messages`, { text: "oui" })).text();
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(!appels.includes("memoire"), JSON.stringify(appels));
 });
