@@ -35,7 +35,7 @@ public enum Nouveautes {
             .init(symbole: "chart.bar.xaxis", titre: "La semaine d'un coup d'œil",
                   texte: "Par jour : les heures prévues contre tes heures libres, les rendez-vous, les échéances, et ce que Motion place trop tard. Lu dans Motion et ton agenda, sans IA."),
             .init(symbole: "wifi.slash", titre: "Même sans réseau",
-                  texte: "La dernière vue reçue reste sur l'iPhone, datée. Toucher un jour l'ouvre à l'échelle."),
+                  texte: "La dernière vue reçue reste sur l'iPhone, datée. Toucher un jour l'ouvre à l'échelle ; glisse vers la gauche ou la droite pour passer au jour d'à côté."),
         ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
