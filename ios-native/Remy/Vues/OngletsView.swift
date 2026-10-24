@@ -9,7 +9,8 @@ import RemyCore
 final class EtatInterface {
     /// La tâche ouverte dans « Gérer ».
     var gerer: ElementJour?
-    /// La journée à l'échelle (appui long sur la suite).
+    /// La journée à l'échelle (bouton « À l'échelle » ou appui long sur la
+    /// suite), avec demain et les 7 jours.
     var journeeEtendue = false
     var captureOuverte = false
     var boiteOuverte = false
@@ -185,7 +186,7 @@ extension OngletsView {
                 ui.gerer = j?.items?.first { !$0.estRendezVous && $0.duree != nil } ?? j?.items?.first { !$0.estRendezVous }
             }
             ui.choixDemo = 15
-        case "journee-etendue": ui.journeeEtendue = true
+        case "journee-etendue", "semaine", "demain": ui.journeeEtendue = true
         case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
