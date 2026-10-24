@@ -142,8 +142,16 @@ struct OngletsView: View {
         // Un lien remy://capture (widget) : la capture s'ouvre, une autre
         // feuille fermée d'abord (iOS n'en présente qu'une à la fois).
         .task(id: app.lien) { await ouvrirLien() }
-        // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert.
-        .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
+        // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert — ou
+        // un écran neuf si ce fil date d'un autre jour (fil du jour, 24/10).
+        .onChange(of: app.onglet) { _, o in
+            let vue: FonctionUsage = o == .remy ? FonctionUsage.remy : o == .projets ? FonctionUsage.projets : FonctionUsage.aujourdhui
+            CompteursUsage.partages.noter(vue)
+            if o == .remy {
+                app.chat.ouvrirFilDuJour()
+                app.chat.marquerVu()
+            }
+        }
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
         // L'activité en direct suit la journée (prolongée, cochée, l'heure
@@ -172,6 +180,10 @@ struct OngletsView: View {
         }
         .task(id: scene) {
             guard scene == .active else { return }
+            // Ce que tu utilises vraiment (24/10) : une ouverture, sans contenu.
+            CompteursUsage.partages.noter(.ouverture)
+            // Laissée ouverte sur Rémy depuis hier : le fil du jour.
+            if app.onglet == .remy { app.chat.ouvrirFilDuJour() }
             // La localisation (20/10) : capteurs rebranchés, positions en attente envoyées.
             if app.lieux.disponible {
                 CapteurLocalisation.partage.brancher(app.lieux)
@@ -300,6 +312,7 @@ extension OngletsView {
         case "journee-etendue", "semaine", "demain": ui.journeeEtendue = true
         case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])
         case "nouveautes-activite-pc": app.nouveautes.montrerPourCapture(["activite-pc"])
+        case "nouveautes-fil-du-jour": app.nouveautes.montrerPourCapture(["fil-du-jour"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"

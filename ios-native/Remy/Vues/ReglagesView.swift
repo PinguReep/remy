@@ -29,6 +29,7 @@ struct ReglagesView: View {
     @State private var reglages: Reglages?
     @State private var changementSecours = false
     @State private var diagnostic = false
+    @State private var usage = false
 
     var body: some View {
         let d = app.tableau.donnees
@@ -47,6 +48,8 @@ struct ReglagesView: View {
                     ligne("Ouvrir le site", sous: "Le site te redemandera le mot de passe.", symbole: "safari") {
                         ouvrirURL(app.api.base)
                     }
+                    // J1.8 (24/10) : compté sur l'iPhone, sans contenu.
+                    ligne("Ce que tu utilises vraiment", sous: ResumeUsage.de(CompteursUsage.partages).phrase, symbole: "chart.bar") { usage = true }
                     if let c = d?.couts {
                         info("Coût des 30 derniers jours", valeur: Format.usd(c.jours30), symbole: "creditcard")
                     }
@@ -189,6 +192,7 @@ struct ReglagesView: View {
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $diagnostic) { DiagnosticVue() }
+            .navigationDestination(isPresented: $usage) { UsageVue() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fermer") { fermer() }.font(Police.texte(16, .semibold))
@@ -228,6 +232,20 @@ struct ReglagesView: View {
             guard ecran == "modeles" || ecran == "nouveautes-liste" || ecran == "priorites" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if ecran == "modeles" { modelesOuverts = true } else if ecran == "priorites" { prioritesOuvertes = true } else { nouveautesOuvertes = true }
+        }
+        .task {
+            // Captures de la CI : « Ce que tu utilises vraiment », gestes fictifs.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "usage" else { return }
+            let c = CompteursUsage.partages
+            c.remettreAZero()
+            let jour: Double = 86_400
+            c.noter(.ouverture, le: Date().addingTimeInterval(-19 * jour))
+            let gestes: [(FonctionUsage, Int)] = [(.aujourdhui, 64), (.terminer, 41), (.remy, 30), (.parler, 27), (.capture, 18), (.listes, 9), (.gerer, 6)]
+            for (f, n) in gestes {
+                for i in 0..<n { c.noter(f, le: Date().addingTimeInterval(-Double(i % 20) * jour)) }
+            }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            usage = true
         }
         .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.

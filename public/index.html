@@ -264,6 +264,14 @@
   .conv-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 10px 0; }
   .conv-item.pinned .label { color: var(--fg); }
   .conv-item.active { color: var(--fg); background: var(--bg-2); border-left-color: var(--signal); font-weight: 600; }
+  /* Échanges d'un seul aller-retour de plus de 14 jours : repliés, jamais supprimés (24/10). */
+  .conv-replies > summary {
+    min-height: 44px; display: flex; align-items: center; padding: 0 20px;
+    font-size: 13px; color: var(--fg-3); cursor: pointer; list-style: none;
+  }
+  .conv-replies > summary::-webkit-details-marker { display: none; }
+  .conv-replies > summary::before { content: "›"; margin-right: 8px; transition: transform .15s; }
+  .conv-replies[open] > summary::before { transform: rotate(90deg); }
   @media (hover: hover) { .conv-item:hover { background: var(--bg-2); color: var(--fg); } }
   .conv-item button {
     width: 32px; height: 36px; flex: none; display: grid; place-items: center;
@@ -2083,6 +2091,11 @@ async function refreshList() {
   const compte = $("#conv-count");
   if (compte) compte.textContent = derniersConvs.length ? String(derniersConvs.length).padStart(2, "0") : "";
   renderConvsMini();
+  // Un seul échange il y a plus de 14 jours (24/10) : replié en bas de la liste.
+  const limiteRepli = Date.now() - 14 * 86_400_000;
+  const court = (c) => !c.origine && !c.pinned && c.id !== currentId && typeof c.messages === "number" && c.messages <= 2 && (c.updatedAt || 0) < limiteRepli;
+  const replies = document.createElement("details");
+  replies.className = "conv-replies";
   for (const c of convs) {
     const item = document.createElement("div");
     item.className = "conv-item" + (c.id === currentId ? " active" : "");
@@ -2153,7 +2166,13 @@ async function refreshList() {
     item.append(label, pin, ren, del);
     if (c.pinned) item.classList.add("pinned");
     item.onclick = () => openConv(c.id);
-    listEl.appendChild(item);
+    (court(c) ? replies : listEl).appendChild(item);
+  }
+  if (replies.childElementCount) {
+    const resume = document.createElement("summary");
+    resume.textContent = `Échanges courts, plus de 14 jours (${replies.childElementCount})`;
+    replies.prepend(resume);
+    listEl.appendChild(replies);
   }
 }
 
@@ -5459,13 +5478,24 @@ if ("serviceWorker" in navigator) {
 }
 
 // ---------- Init ----------
+// La conversation s'ouvre sur le fil du jour (24/10) : le plus récent touché
+// aujourd'hui. Sinon un écran neuf — avant, c'était le premier de la liste
+// (l'épinglé, ou un fil de la semaine dernière) et chaque question s'y empilait.
+// Le dernier fil reste à un geste dans la liste.
+function filDuJour(convs) {
+  return (convs || [])
+    .filter((c) => !c.origine && !c.systeme && (c.updatedAt || 0) >= minuitLocal())
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
+}
+
 async function init() {
   if (window.innerWidth <= 720) $("#sidebar").classList.add("hidden");
   try {
     const convs = await api.list();
     await refreshList();
     showToday(true);
-    if (convs.length) openConv(convs[0].id, null, { garderVue: true });
+    const duJour = filDuJour(convs);
+    if (duJour) openConv(duJour.id, null, { garderVue: true });
     else showChat(false);
     loadBriefing();
     probeStt();

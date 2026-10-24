@@ -240,6 +240,7 @@ jobs:
           capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
           capture 6f-priorites-clair light priorites
           capture 6-reglages-sombre dark reglages
+          capture 6f-usage-clair light usage
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
           capture 8b-vocal-en-attente-sombre dark vocal-en-attente
