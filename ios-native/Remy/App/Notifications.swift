@@ -64,8 +64,7 @@ enum Notifications {
     /// d'inventer. Rien si c'est coupé ou si iOS refuse les notifications.
     static func planifierRituel(_ r: RituelTour?, prepareA: Date?, reglages: ReglagesRituel) async {
         let centre = UNUserNotificationCenter.current()
-        let ids = (0..<joursRituel).flatMap { ["rituel-matin-\($0)", "rituel-soir-\($0)"] }
-        centre.removePendingNotificationRequests(withIdentifiers: ids)
+        centre.removePendingNotificationRequests(withIdentifiers: idsRituel)
         let etat = await centre.notificationSettings()
         guard [.authorized, .provisional, .ephemeral].contains(etat.authorizationStatus) else { return }
         let maintenant = Date()
@@ -82,6 +81,18 @@ enum Notifications {
                 await ajouter(centre, id: "rituel-soir-\(i)", titre: n.titre, sousTitre: nil, corps: n.corps, quand: quand, quoi: "soir")
             }
         }
+    }
+
+    private static var idsRituel: [String] {
+        (0..<joursRituel).flatMap { ["rituel-matin-\($0)", "rituel-soir-\($0)"] }
+    }
+
+    /// Déconnecté (ou jeton révoqué) : plus rien de personnel ne sonne ni ne
+    /// reste affiché ; la reconnexion reprogramme.
+    static func oublierRituel() {
+        let centre = UNUserNotificationCenter.current()
+        centre.removePendingNotificationRequests(withIdentifiers: idsRituel)
+        centre.removeDeliveredNotifications(withIdentifiers: idsRituel)
     }
 
     private static func ajouter(_ centre: UNUserNotificationCenter, id: String, titre: String, sousTitre: String?,

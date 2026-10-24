@@ -93,6 +93,10 @@ struct RacineView: View {
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
+        // Déconnecté : le briefing et le bilan programmés (titres de tâches) s'effacent.
+        .onChange(of: app.phase) { _, p in
+            if p == .connexion { Notifications.oublierRituel() }
+        }
         .animation(.easeOut(duration: 0.2), value: app.phase)
     }
 }
