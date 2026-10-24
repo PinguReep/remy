@@ -77,9 +77,11 @@ test("les réponses locales déjà enregistrées avec un prix d'Opus s'affichent
     { role: "assistant", content: "d", model: "zai-org/GLM-5.3", tier: "raisonnement", usd: 0.03 },
     { role: "user", content: "e" },
     { role: "assistant", content: "f", model: "claude-sonnet-5", tier: "dégradé", usd: 0.0123 },
+    { role: "user", content: "g" },
+    { role: "assistant", content: "h", usd: 0.02 },
   ] });
   const lue = await (await envoyer("GET", "/api/conversations/c-couts")).json();
-  assert.deepEqual(lue.messages.filter((m) => m.role === "assistant").map((m) => m.usd), [0, 0, 0.0123]);
+  assert.deepEqual(lue.messages.filter((m) => m.role === "assistant").map((m) => m.usd), [0, 0, 0.0123, 0.02], "sans modèle noté : le prix reste");
   assert.equal(modeleFacture("claude-haiku-4-5"), true);
   assert.equal(modeleFacture("GLM-5.3"), false);
   assert.equal(corrigerCoutsLocaux(null), null, "rien à corriger : pas d'erreur");
