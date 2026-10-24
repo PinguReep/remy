@@ -170,4 +170,7 @@ test("apprend-on quelque chose sur Sam ? (test déterministe, sans IA)", () => {
   }
   assert.equal(indiceWeb("Le programme du cinéma ce soir ?"), true);
   assert.equal(indiceWeb("Prépare la réunion de jeudi"), false);
+  assert.equal(indiceWeb("Qu'est-ce qui est en retard ?"), false, "la suggestion de l'app ne cherche rien");
+  assert.equal(indiceWeb("Qui est le maire de Lyon ?"), true);
+  assert.equal(apprendSurSam("Ma sœur arrive samedi"), true, "« œ » lu comme « oe »");
 });
