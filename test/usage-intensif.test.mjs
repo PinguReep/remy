@@ -128,6 +128,28 @@ test("un rappel déjà en cours n'est pas recréé (« payer le loyer » ×14) ;
   assert.deepEqual(c.ecrireRappels([{ id: "loyer-nov", texte: "Payer le loyer" }]).dejaLa, []);
 });
 
+test("même texte, autre jour : deux rappels (la cotisation du 1er novembre et celle du 1er décembre)", () => {
+  const nov = Date.parse("2026-11-01T08:00:00Z");
+  const dec = Date.parse("2026-12-01T08:00:00Z");
+  assert.deepEqual(c.ecrireRappels([{ id: "cot-nov", texte: "Régler la cotisation", quand: nov }]).dejaLa, []);
+  assert.deepEqual(c.ecrireRappels([{ id: "cot-dec", texte: "régler la cotisation", quand: dec }]).dejaLa, [], "une autre date : un autre rappel");
+  // Le même jour, à une autre heure : le même rappel.
+  assert.deepEqual(c.ecrireRappels([{ id: "cot-nov-midi", texte: "Régler la cotisation", quand: nov + 3 * 3600_000 }]).dejaLa.map((x) => x.existant), ["cot-nov"]);
+  // Sans date : fondu dans l'un des deux, aucune date ne bouge.
+  assert.equal(c.ecrireRappels([{ id: "cot-sans", texte: "Régler la cotisation" }]).dejaLa.length, 1);
+  const cot = c.lireRappels().filter((r) => c.cleTexte(r.texte) === "regler la cotisation");
+  assert.deepEqual(cot.map((r) => r.quand), [nov, dec]);
+  // Import Apple : le lundi et le jeudi du même lot restent deux rappels.
+  const lundi = Date.parse("2026-11-02T18:00:00Z");
+  const jeudi = Date.parse("2026-11-05T18:00:00Z");
+  const r = c.ecrireRappels([
+    { id: "apple:poub-lun", texte: "Sortir les poubelles", quand: lundi, source: "apple" },
+    { id: "apple:poub-jeu", texte: "Sortir les poubelles", quand: jeudi, source: "apple" },
+  ]);
+  assert.deepEqual(r.dejaLa, []);
+  assert.equal(c.lireRappels().filter((x) => x.texte === "Sortir les poubelles").length, 2);
+});
+
 // --- 3. « Déjà dans Motion » n'est pas un échec ----------------------------------------
 
 test("déjà dans Motion : statut neutre, rien d'annulable, l'historique dit « Déjà là »", async () => {
@@ -143,6 +165,12 @@ test("déjà dans Motion : statut neutre, rien d'annulable, l'historique dit « 
   assert.equal(e.etat, "deja_la");
   assert.equal(e.elements[0].action, "Déjà là");
   assert.equal(e.annulable, false);
+  // « Annuler » quand même (ancienne carte du site) : refusé, le journal reste juste.
+  const u = await envoyer("POST", "/api/motion/undo", { id: r.body.ledgerId });
+  assert.equal(u.status, 409);
+  assert.equal(u.body.error, "rien");
+  assert.equal(page({ limite: 1 }).entrees[0].etat, "deja_la", "pas « annulée »");
+  assert.equal(motion.ouvertes().length, 1, "la tâche d'origine est toujours là");
 });
 
 // --- 7. Historique paginé et filtrable --------------------------------------------------
@@ -288,6 +316,31 @@ test("une règle identique n'est pas recréée ; une voisine est fusionnée", ()
   // Une autre tâche reste une autre règle.
   regles.creerRegle({ ...RASAGE, nom: "Repassage", tache: { nom: "Repasser une chemise" } });
   assert.equal(regles.listerRegles().length, 2);
+});
+
+test("une règle redemandée avec un autre délai ou une autre durée prend le réglage de la carte validée", async () => {
+  const avant = regles.listerRegles().find((r) => r.tache.nom === "Rasage");
+  assert.equal(avant.avantMin, 180);
+  const r = regles.creerRegle({ ...RASAGE, avant_minutes: 60 });
+  assert.equal(r.id, avant.id);
+  assert.equal(r.fusionnee, true);
+  assert.equal(r.avantMin, 60);
+  const r2 = regles.creerRegle({ ...RASAGE, avant_minutes: 60, tache: { nom: "Rasage", duree: 30 } });
+  assert.equal(r2.tache.duree, 30);
+  assert.equal(regles.listerRegles().filter((x) => x.tache.nom === "Rasage").length, 1, "toujours une seule règle");
+  // Validée depuis le chat, la même carte : « déjà là », rien de fait.
+  await store.putConversation({
+    id: "regle-bis", title: "t", createdAt: Date.now(), updatedAt: Date.now(),
+    messages: [
+      { role: "user", content: "x" },
+      { role: "assistant", content: "je propose", proposal: { id: "p-regle-bis", source: "regle", actions: [{ type: "regle", ...RASAGE, avant_minutes: 60, tache: { nom: "Rasage", duree: 30 } }], statut: "en_attente" } },
+    ],
+  });
+  const v = await envoyer("POST", "/api/conversations/regle-bis/propositions/p-regle-bis/regle");
+  assert.equal(v.status, 200);
+  assert.equal(v.body.regles[0].deja, true);
+  assert.deepEqual(v.body.bilan.faits, []);
+  assert.equal(v.body.bilan.dejaLa.length, 1);
 });
 
 test("une seule action par événement et par tâche, même avec des règles en double d'avant", async () => {
