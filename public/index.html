@@ -257,7 +257,7 @@
   #conv-list { flex: 1; overflow-y: auto; padding: 0 0 12px; }
   .conv-item {
     position: relative; display: flex; align-items: center; gap: 2px;
-    min-height: 44px; padding: 0 6px 0 20px; cursor: pointer;
+    min-height: 44px; padding: 0 0 0 20px; cursor: pointer;
     font-size: 14px; color: var(--fg-2);
     border-left: 3px solid transparent;
   }
@@ -274,7 +274,7 @@
   .conv-replies[open] > summary::before { transform: rotate(90deg); }
   @media (hover: hover) { .conv-item:hover { background: var(--bg-2); color: var(--fg); } }
   .conv-item button {
-    width: 32px; height: 36px; flex: none; display: grid; place-items: center;
+    width: 44px; height: 44px; flex: none; display: grid; place-items: center;
     border: 0; background: none; color: var(--fg-3); padding: 0;
   }
   .conv-item button svg { width: 15px; height: 15px; }
@@ -300,7 +300,7 @@
     padding: 6px 0 calc(8px + env(safe-area-inset-bottom));
     display: grid; grid-template-columns: 1fr 1fr;
   }
-  #sidebar footer .rail-btn { font-size: 13px; padding: 0 20px; min-height: 42px; gap: 10px; }
+  #sidebar footer .rail-btn { font-size: 13px; padding: 0 20px; min-height: 44px; gap: 10px; }
   #sidebar footer .rail-btn svg { width: 16px; height: 16px; }
   #sidebar footer #logout { color: var(--fg-3); }
   #backdrop { display: none; position: fixed; inset: 0; background: var(--scrim); z-index: 55; }
@@ -518,6 +518,10 @@
   .cap-ligne .lbl-mono { color: var(--fg-3); flex: 1; min-width: 160px; }
   .cap-etat { margin-top: 12px; font-size: 13.5px; color: var(--fg-2); }
   .cap-etat:empty { display: none; }
+  .cap-choix { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .cap-choix:empty { display: none; }
+  .cap-choix .btn { flex: 1 1 140px; }
+  .cap-quoi { color: var(--fg); }
   .cap-etat ul { margin: 6px 0 0; padding: 0; list-style: none; }
   .cap-etat li { padding: 6px 0 6px 16px; border-top: 1px solid var(--hair); position: relative; color: var(--fg); }
   .cap-etat li::before { content: ""; position: absolute; left: 0; top: 13px; width: 6px; height: 6px; background: var(--signal); }
@@ -738,6 +742,8 @@
   .prop.ko .p-head::before { content: "! "; color: var(--danger); }
   .p-err { display: block; font-weight: 400; color: var(--danger); font-size: 13px; margin-top: 2px; }
   .prop li.defaite .quoi { text-decoration: line-through; color: var(--fg-2); }
+  .prop .p-regle { padding: 10px 12px 0; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+  .prop.regle .p-why { padding-bottom: 10px; }
 
   #empty-state { flex: 1; display: grid; place-items: center; padding: 24px; text-align: left; position: relative; }
   #empty-state .halo { display: none; }
@@ -1169,7 +1175,7 @@
 
       <section class="mod mod-cap">
         <div class="mod-h mono"><span class="n">03</span><h2>Capture</h2><span class="aside">Sans question</span></div>
-        <textarea id="dash-cap" class="cap-zone" rows="3" placeholder="Colle un bout de conversation ChatGPT ou Claude, une idée, une note…"
+        <textarea id="dash-cap" class="cap-zone" rows="3" placeholder="Une tâche en quelques mots, une idée, ou un bout de conversation ChatGPT ou Claude…"
           autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true"></textarea>
         <div class="cap-ligne">
           <span class="lbl-mono">Rémy l'absorbe en silence</span>
@@ -1840,6 +1846,111 @@ function renderAutorisation(block, a, active) {
   return el;
 }
 
+// Pendant « Application dans Motion… » : la tour dit si l'écriture attend la
+// file du quota Motion (12 requêtes/min), et combien de temps environ. Rend
+// la fonction qui arrête le suivi.
+function suivreFileMotion(status, texteBase) {
+  let fini = false;
+  let minuteur = null;
+  const tour = async () => {
+    if (fini) return;
+    try {
+      const r = await apiFetch("/api/motion/file");
+      const f = r.ok ? await r.json() : null;
+      if (fini) return;
+      const s = Math.ceil((f?.attenteMs || 0) / 1000);
+      status.textContent = f?.pause429 > 0
+        ? `Motion demande une pause (trop de requêtes) : nouvel essai dans ~${s} s`
+        : f?.enAttente > 0 && s >= 2
+          ? `En file : Motion limite à ${f.quota} requêtes/min, ~${s} s`
+          : texteBase;
+    } catch {}
+    if (!fini) minuteur = setTimeout(tour, 2000);
+  };
+  minuteur = setTimeout(tour, 1200);
+  return () => {
+    fini = true;
+    clearTimeout(minuteur);
+  };
+}
+
+// « Non merci » : visible tout de suite, enregistré sur la tour pour que la
+// proposition ne revienne pas au rechargement.
+function boutonNonMerci(block, el, prop) {
+  const refuse = document.createElement("button");
+  refuse.className = "btn btn-ghost";
+  refuse.textContent = "Non merci";
+  refuse.onclick = async () => {
+    const place = el.nextSibling;
+    el.remove();
+    if (!prop.id || !currentId) return toast("Proposition écartée — rien n'a été modifié.");
+    try {
+      const r = await apiFetch(`/api/conversations/${encodeURIComponent(currentId)}/propositions/${encodeURIComponent(prop.id)}/refus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.message || d.error || "Refus non enregistré");
+      prop.statut = "refuse";
+      toast("Proposition écartée — rien n'a été modifié.");
+    } catch (err) {
+      block.insertBefore(el, place);
+      if (!(err instanceof AuthError)) toast("« Non merci » pas enregistré : " + (err.message || "réessaie."));
+    }
+  };
+  return refuse;
+}
+
+// La carte « Nouvelle règle » : ce que fera la règle, « Créer la règle » ou
+// « Non merci ». Créée sur la tour d'un geste ; elle se coupe ensuite dans
+// l'app iPhone (Réglages › Règles de Rémy).
+function renderRegle(block, prop) {
+  const el = document.createElement("div");
+  const creee = prop.statut === "applique";
+  el.className = "prop regle" + (creee ? " done" : "");
+  const a = (prop.actions || []).find((x) => x?.type === "regle") || prop.actions?.[0] || {};
+  el.innerHTML =
+    "<div class='p-head'>" + (creee ? "Règle créée" : "Nouvelle règle") + "</div>" +
+    "<div class='p-regle'>" + mdEscape(a.nom || "(sans nom)") + "</div>" +
+    (a.description ? "<div class='p-why'>" + mdEscape(a.description) + "</div>" : "") +
+    "<div class='p-actions'><span class='p-status'></span></div>";
+  const status = el.querySelector(".p-status");
+  if (creee) {
+    status.textContent = "Avant chaque événement qui correspond, Rémy te proposera la tâche.";
+    return el;
+  }
+  const refuse = boutonNonMerci(block, el, prop);
+  const go = document.createElement("button");
+  go.className = "btn btn-primary";
+  go.textContent = "Créer la règle";
+  go.onclick = async () => {
+    if (!prop.id || !currentId) return toast("Règle introuvable : recharge la conversation.");
+    // La proposition n'est enregistrée qu'à la fin de la réponse.
+    if (sending && envoiConv === currentId) return toast("Rémy finit sa réponse — réessaie dans un instant.");
+    go.disabled = refuse.disabled = true;
+    status.textContent = "Création de la règle…";
+    try {
+      const r = await apiFetch(`/api/conversations/${encodeURIComponent(currentId)}/propositions/${encodeURIComponent(prop.id)}/regle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.message || d.error || `Erreur ${r.status}`);
+      prop.statut = "applique";
+      el.replaceWith(renderRegle(block, prop));
+      toast("Règle créée ✓ — Rémy y pensera avant chaque événement qui correspond.");
+    } catch (err) {
+      go.disabled = refuse.disabled = false;
+      status.textContent = "";
+      if (!(err instanceof AuthError)) toast("Règle pas créée : " + (err.message || "réessaie."));
+    }
+  };
+  el.querySelector(".p-actions").append(refuse, go);
+  return el;
+}
+
 // Rend la carte de proposition sous un message de Rémy. L'état vient du
 // serveur (base SQLite, Lot 0) : en_attente | applique | echec | refuse, plus
 // `annulee` et `annulationRatee`. `prop.id` rend « Appliquer » idempotent
@@ -1848,6 +1959,10 @@ function renderAutorisation(block, a, active) {
 function renderProposal(block, prop, index) {
   block.querySelector(".prop")?.remove();
   if (prop.statut === "refuse") return document.createComment("proposition refusée");
+  // Une règle (« avant chaque sortie, me raser ») n'est ni Motion ni l'agenda :
+  // elle a sa carte et sa route (24/10 : elle s'affichait comme Motion, et
+  // « Appliquer » répondait « concerne undefined »).
+  if (prop.source === "regle") return renderRegle(block, prop);
   const el = document.createElement("div");
   const applique = prop.statut === "applique";
   const echec = prop.statut === "echec";
@@ -1970,29 +2085,7 @@ function renderProposal(block, prop, index) {
     return el;
   }
 
-  const refuse = document.createElement("button");
-  refuse.className = "btn btn-ghost";
-  refuse.textContent = "Non merci";
-  refuse.onclick = async () => {
-    // Visible tout de suite ; enregistré sur la tour pour ne pas revenir.
-    const place = el.nextSibling;
-    el.remove();
-    if (!prop.id || !currentId) return toast("Proposition écartée — rien n'a été modifié.");
-    try {
-      const r = await apiFetch(`/api/conversations/${encodeURIComponent(currentId)}/propositions/${encodeURIComponent(prop.id)}/refus`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.message || d.error || "Refus non enregistré");
-      prop.statut = "refuse";
-      toast("Proposition écartée — rien n'a été modifié.");
-    } catch (err) {
-      block.insertBefore(el, place);
-      if (!(err instanceof AuthError)) toast("« Non merci » pas enregistré : " + (err.message || "réessaie."));
-    }
-  };
+  const refuse = boutonNonMerci(block, el, prop);
 
   const go = document.createElement("button");
   go.className = "btn btn-primary";
@@ -2001,6 +2094,7 @@ function renderProposal(block, prop, index) {
     go.disabled = true;
     refuse.disabled = true;
     status.textContent = S.encours;
+    const finFile = S === SOURCES.motion ? suivreFileMotion(status, S.encours) : () => {};
     try {
       if (prop.source === "carnet") {
         if (!prop.id || !currentId) throw new Error("Proposition sans identifiant : redemande à Rémy.");
@@ -2020,7 +2114,7 @@ function renderProposal(block, prop, index) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actions: prop.actions, resume: prop.resume, convId: currentId, index, propositionId: prop.id, ...(confirmer ? { confirmer: true } : {}) }),
-      });
+      }).finally(finFile);
       let r = await envoyer(false);
       let d = await r.json().catch(() => ({}));
       // Périmée (ancienne, ou date passée) : jamais appliquée sans le dire (24/10).
@@ -2334,6 +2428,11 @@ function showRetry(block, bubble, text, message) {
   btn.className = "retry-btn";
   btn.textContent = "Réessayer";
   btn.onclick = () => {
+    // Le texte remis dans le champ part d'ici : pas de second exemplaire.
+    if (inputEl.value.trim() === text.trim()) {
+      inputEl.value = "";
+      inputEl.dispatchEvent(new Event("input"));
+    }
     block.previousElementSibling?.remove(); // la bulle utilisateur au-dessus
     block.remove();
     sendMessage(text);
@@ -2341,44 +2440,92 @@ function showRetry(block, bubble, text, message) {
   block.appendChild(btn);
 }
 
+// Le message n'est pas (ou plus) sur la tour : il revient dans le champ, et
+// la bulle dit pourquoi, avec « Réessayer ». Un nouvel envoi du même texte
+// remplace ce bloc au lieu d'empiler les échecs.
+function envoiRate(block, bubble, text, message) {
+  if (!inputEl.value.trim()) {
+    inputEl.value = text;
+    inputEl.dispatchEvent(new Event("input"));
+  }
+  block.dataset.envoiRate = text;
+  showRetry(block, bubble, text, message);
+}
+
+const TOUR_MUETTE = "La tour ne répond pas — Tailscale est-il actif ? Le PC est-il allumé ?";
+
 // La connexion est morte en cours de route (verrouillage d'écran, changement
-// d'app, réseau) mais le serveur, lui, continue et sauvegarde la réponse.
-// On re-interroge la conversation jusqu'à la retrouver.
-async function recoverReply(convId, text, block, name, bubble) {
+// d'app, réseau). Deux cas :
+// - `recu` : la tour a ouvert le flux, elle a donc le message et continue à
+//   répondre ; on re-interroge la conversation jusqu'à retrouver la réponse ;
+// - sinon, rien ne dit que le message est arrivé : on regarde s'il est sur la
+//   tour ; si elle reste muette ~20 s, on s'arrête et le texte revient dans
+//   le champ (jamais « échoué côté serveur » pour un message jamais parti).
+async function recoverReply(convId, text, block, name, bubble, { recu = true, debut = Date.now() } = {}) {
   bubble.classList.remove("error");
   bubble.innerHTML =
     "<span class='typing-dots'><i></i><i></i><i></i></span>" +
-    "<div class='recover-note'>Connexion interrompue — récupération de la réponse…</div>";
+    "<div class='recover-note'></div>";
+  const note = bubble.querySelector(".recover-note");
+  note.textContent = recu ? "Connexion interrompue — récupération de la réponse…" : "La tour tarde à répondre — nouvel essai…";
 
   const deadline = Date.now() + 150_000;
+  let muetteDepuis = recu ? null : debut;
   while (Date.now() < deadline) {
-    await sleep(document.hidden ? 1000 : 4000);
+    // Ni flux ni conversation depuis ~20 s : le message n'est pas parti.
+    if (!recu && muetteDepuis !== null && Date.now() - muetteDepuis >= 20_000) {
+      return envoiRate(block, bubble, text, (navigator.onLine ? TOUR_MUETTE : "Hors ligne.") + " Ton message est revenu dans le champ.");
+    }
+    await sleep(document.hidden ? 1000 : recu ? 4000 : 2000);
     if (document.hidden) continue; // on attend le retour au premier plan
-    if (!navigator.onLine) continue;
+    if (!navigator.onLine) {
+      note.textContent = "Hors ligne — en attente de connexion…";
+      continue;
+    }
+    // Une tour muette peut aussi laisser la requête pendue : 8 s au plus.
+    const delai = new AbortController();
+    const minuteur = setTimeout(() => delai.abort(), 8_000);
     try {
-      const conv = await api.get(convId);
+      const r = await apiFetch(`/api/conversations/${convId}`, { signal: delai.signal });
+      if (!r.ok) throw new ErreurServeur(`Erreur ${r.status}`);
+      const conv = await r.json();
+      clearTimeout(minuteur);
+      muetteDepuis = null;
       const msgs = conv.messages || [];
       const iUser = msgs.map((m) => (m.role === "user" ? m.content : null)).lastIndexOf(text);
       if (iUser === -1) {
-        // Le serveur a annulé le message : on peut réessayer sans doublon.
-        return showRetry(block, bubble, text, "La requête a échoué côté serveur.");
+        // Jamais arrivé, ou annulé par la tour après une erreur : réessai sans doublon.
+        return envoiRate(block, bubble, text, recu
+          ? "La tour n'a pas gardé ton message (erreur pendant la réponse) : il est revenu dans le champ."
+          : "Ton message n'est pas arrivé à la tour : il est revenu dans le champ.");
       }
+      recu = true;
+      note.textContent = "Connexion interrompue — récupération de la réponse…";
       const reply = msgs.slice(iUser + 1).find((m) => m.role === "assistant");
       if (reply) {
         bubble.classList.remove("error");
         bubble.innerHTML = renderMarkdown(reply.content);
+        setModelChip(name, reply.model, reply.tier, reply.usd);
         convMsgCount = msgs.length;
         scrollDown(false);
         return;
       }
       // Sinon : toujours en cours de génération, on continue à attendre.
     } catch (err) {
+      clearTimeout(minuteur);
       if (err instanceof AuthError) return;
+      if (err instanceof ErreurServeur) continue; // la tour répond, mal : on insiste
+      muetteDepuis ??= Date.now();
+      note.textContent = TOUR_MUETTE + " Nouvel essai…";
+      // La tour a le message : la réponse l'attendra dans la conversation.
+      if (recu && Date.now() - muetteDepuis >= 20_000) break;
     }
   }
   bubble.classList.add("error");
   bubble.innerHTML = "";
-  bubble.textContent = "Impossible de récupérer la réponse.";
+  bubble.textContent = muetteDepuis
+    ? TOUR_MUETTE + " Ton message est bien arrivé : la réponse t'attendra dans la conversation."
+    : "Impossible de récupérer la réponse.";
   const btn = document.createElement("button");
   btn.className = "retry-btn";
   btn.textContent = "Recharger la conversation";
@@ -2500,6 +2647,13 @@ async function sendMessage(text, inCall = false, reprise = null) {
   majEnvoi();
 
   if (!reprise) {
+    // Le même texte renvoyé après un échec (depuis le champ) : l'ancien bloc
+    // d'échec et sa bulle s'effacent.
+    for (const b of messagesEl.querySelectorAll(".assistant-block[data-envoi-rate]")) {
+      if (b.dataset.envoiRate !== text) continue;
+      b.previousElementSibling?.remove();
+      b.remove();
+    }
     addUserBubble(text);
     convMsgCount += 1;
   }
@@ -2508,17 +2662,26 @@ async function sendMessage(text, inCall = false, reprise = null) {
 
   let serverError = false;
   let gotDone = false;
+  let recu = false; // la tour a ouvert le flux : elle a le message
+  const debut = Date.now();
   const convId = currentId;
 
   try {
+    // La tour ouvre le flux tout de suite : sans réponse en 20 s, elle est
+    // injoignable (Tailscale coupé, PC éteint) — inutile d'attendre la minute
+    // du système.
+    const delai = new AbortController();
+    const minuteur = setTimeout(() => delai.abort(), 20_000);
     const resp = await apiFetch(
       reprise ? `/api/conversations/${currentId}/autorisations/${encodeURIComponent(reprise.id)}` : `/api/conversations/${currentId}/messages`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(reprise ? { accord: reprise.accord } : { text, call: inCall }),
+        signal: delai.signal,
       },
-    );
+    ).finally(() => clearTimeout(minuteur));
+    recu = resp.ok;
     if (!resp.ok || !resp.body) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.message || err.error || `Erreur ${resp.status}`);
@@ -2631,7 +2794,7 @@ async function sendMessage(text, inCall = false, reprise = null) {
       bubble.classList.add("error");
       bubble.textContent = "Connexion coupée pendant la recherche — rouvre la conversation pour voir la réponse.";
     } else if (!gotDone && !serverError) {
-      await recoverReply(currentId, text, block, name, bubble);
+      await recoverReply(convId, text, block, name, bubble, { recu: true });
       callHooks?.onError?.("Connexion interrompue.");
     }
   } catch (err) {
@@ -2642,10 +2805,16 @@ async function sendMessage(text, inCall = false, reprise = null) {
     } else if (reprise) {
       bubble.classList.add("error");
       bubble.textContent = err.message || "Recherche impossible — réessaie.";
-    } else {
-      // Échec réseau (« Load failed »…) : le serveur a peut-être fini quand même.
-      await recoverReply(currentId, text, block, name, bubble);
+    } else if (recu || !(err instanceof ErreurServeur) && /Tour injoignable/.test(err?.message || "")) {
+      // Échec réseau (« Load failed »…) : la tour a peut-être le message, et
+      // peut-être même fini ; sinon le texte revient dans le champ.
+      await recoverReply(convId, text, block, name, bubble, { recu, debut });
       callHooks?.onError?.("Connexion interrompue.");
+    } else {
+      // La tour a répondu, mais par un refus (4xx/5xx) : elle n'a rien gardé.
+      if (!reprise) convMsgCount -= 1;
+      envoiRate(block, bubble, text, err.message || "La tour a refusé le message — réessaie.");
+      callHooks?.onError?.(err.message || "Refusé.");
     }
   } finally {
     sending = false;
@@ -2727,6 +2896,7 @@ const MEMORY_SECTIONS = [
 ];
 
 let setupEtats = {};
+let setupCerveau = null; // « local » (les Sparks, 0 €) ou « cloud » (Claude), dit par la tour
 let setupConvs = {};
 let setupCouverture = {}; // { idDeSession: [idDeRepère…] } — analysé par Rémy
 
@@ -2793,6 +2963,7 @@ function absorberSetup(setup) {
   setupConvs = setup?.convs || {};
   setupCouverture = setup?.couverture || {};
   setupVuA = setup?.updatedAt || setupVuA;
+  setupCerveau = setup?.cerveau || setupCerveau;
 }
 
 // La jauge d'avancement DANS la conversation : Sam voit où il en est de la
@@ -2853,7 +3024,10 @@ function boutonAnalyse() {
   note.className = "su-sub";
   note.textContent = analyseEnCours
     ? "Il relit ta mémoire et tes conversations pour cocher ce qu'il sait déjà."
-    : "Rémy relit ta mémoire et tes conversations pour cocher ce qu'il sait déjà. Un appel IA, de quelques centimes à ~0,10 € selon la taille de ton historique.";
+    : "Rémy relit ta mémoire et tes conversations pour cocher ce qu'il sait déjà. " +
+      (setupCerveau === "local"
+        ? "Un appel au modèle local (tes Sparks) : 0 €."
+        : "Un appel IA, de quelques centimes à ~0,10 € selon la taille de ton historique.");
   b.onclick = async () => {
     if (analyseEnCours || !navigator.onLine) {
       if (!navigator.onLine) toast("Hors ligne — reconnecte-toi pour lancer l'analyse.");
@@ -4332,15 +4506,126 @@ async function envoyerCapture(texte) {
   return d;
 }
 
+// Ce que Rémy a retenu d'une capture (et pas juste « c'est enregistré »).
+function direRetenu(etat, d) {
+  etat.innerHTML = d.ajouts?.length
+    ? "<span class='lbl-mono'>Retenu</span><ul>" + d.ajouts.map((a) => "<li>" + mdEscape(a) + "</li>").join("") + "</ul>"
+    : d.memoire === false
+      ? mdEscape(d.message ? "Gardé. " + d.message : "Gardé. Rémy n'a rien pu en tirer tout de suite — il le relira cette nuit.")
+      : "Rien de nouveau : il le savait déjà.";
+}
+
+// Échec d'une capture courte : la raison, et les deux choix de nouveau (le
+// texte est toujours dans la zone).
+function rateCapture(texte, quoi, err) {
+  choixCaptureCourte(texte);
+  // « Motion n'est pas connecté » n'a pas de point : la phrase suivante en a besoin.
+  const raison = String(err?.message || "erreur inconnue").replace(/[\s.!?…]*$/, "");
+  $("#dash-cap-etat .cap-choix-q").textContent = `${quoi} : ${raison}. Réessaie, ou range-la autrement.`;
+}
+
+// Une note de quelques mots (« acheter des piles AAA ») part directement,
+// sans conversation : une tâche Motion (sans IA, comme « Noter » sur
+// l'iPhone), ou « Retenir » (Rémy la garde en mémoire, telle quelle).
+function choixCaptureCourte(texte) {
+  const zone = $("#dash-cap");
+  const etat = $("#dash-cap-etat");
+  etat.innerHTML = "<div class='cap-choix-q'>Note courte : où la ranger ?</div><div class='cap-choix'></div>";
+  const ligne = etat.querySelector(".cap-choix");
+  const tache = document.createElement("button");
+  tache.className = "btn btn-signal";
+  tache.textContent = "Tâche Motion";
+  const retenir = document.createElement("button");
+  retenir.className = "btn btn-ghost";
+  retenir.textContent = "Retenir";
+  ligne.append(tache, retenir);
+  const horsLigne = () => {
+    if (navigator.onLine) return false;
+    toast("Hors ligne — ton texte reste là, réessaie une fois connecté.");
+    return true;
+  };
+
+  tache.onclick = async () => {
+    if (horsLigne()) return;
+    tache.disabled = retenir.disabled = true;
+    etat.querySelector(".cap-choix-q").textContent = "Ajout dans Motion…";
+    const finFile = suivreFileMotion(etat.querySelector(".cap-choix-q"), "Ajout dans Motion…");
+    try {
+      const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const r = await apiFetch("/api/motion/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actions: [{ type: "creer", nom: texte.slice(0, 200) }], resume: "Noté depuis le site", idCommande: `capture-${id}` }),
+      }).finally(finFile);
+      const d = await r.json().catch(() => ({}));
+      const res = Array.isArray(d.results) ? d.results[0] : null;
+      if (!r.ok || d.echecs || res?.ok === false) throw new Error(res?.erreur || d.message || d.error || `Erreur ${r.status}`);
+      if (zone.value.trim() === texte) zone.value = "";
+      etat.innerHTML = "<span class='lbl-mono'>Ajoutée à Motion</span> <span class='cap-quoi'></span><div class='cap-choix'></div>";
+      etat.querySelector(".cap-quoi").textContent = `« ${texte} » — Motion lui trouve un créneau.`;
+      dashAt = 0;
+      if (d.ledgerId) {
+        const annuler = document.createElement("button");
+        annuler.className = "btn btn-ghost";
+        annuler.textContent = "Annuler";
+        annuler.onclick = async () => {
+          annuler.disabled = true;
+          try {
+            const u = await apiFetch("/api/motion/undo", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: d.ledgerId }),
+            });
+            const x = await u.json().catch(() => ({}));
+            if (!u.ok || x.ok === false) throw new Error(x.message || x.error || `Erreur ${u.status}`);
+            etat.textContent = `Retirée de Motion : « ${texte} ».`;
+            if (!zone.value.trim()) zone.value = texte;
+          } catch (err) {
+            annuler.disabled = false;
+            if (!(err instanceof AuthError)) toast("Pas retirée de Motion : " + err.message);
+          }
+        };
+        etat.querySelector(".cap-choix").appendChild(annuler);
+      }
+    } catch (err) {
+      if (err instanceof AuthError) return;
+      rateCapture(texte, "Pas ajoutée à Motion", err);
+    }
+  };
+
+  retenir.onclick = async () => {
+    if (horsLigne()) return;
+    tache.disabled = retenir.disabled = true;
+    etat.querySelector(".cap-choix-q").textContent = "Rémy retient…";
+    try {
+      // Sam a choisi lui-même ce qu'il faut garder : la note entière, telle quelle.
+      const r = await apiFetch("/api/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choisis: [texte], source: "note" }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || d.message || `Erreur ${r.status}`);
+      if (zone.value.trim() === texte) zone.value = "";
+      direRetenu(etat, d);
+      dashAt = 0;
+    } catch (err) {
+      if (err instanceof AuthError) return;
+      rateCapture(texte, "Pas retenu", err);
+    }
+  };
+}
+
 $("#dash-cap-go").addEventListener("click", async () => {
   const zone = $("#dash-cap");
   const etat = $("#dash-cap-etat");
   const bouton = $("#dash-cap-go");
   const texte = zone.value.trim();
-  if (texte.length < 30) {
-    etat.textContent = "Un peu court — colle au moins quelques phrases.";
-    return;
+  if (!texte) {
+    etat.textContent = "Écris ou colle quelque chose d'abord.";
+    return zone.focus();
   }
+  if (texte.length < 30) return choixCaptureCourte(texte);
   if (!navigator.onLine) return void (etat.textContent = "Hors ligne — ton texte reste là, réessaie une fois connecté.");
   bouton.disabled = true;
   bouton.textContent = "Rémy lit…";
@@ -4348,11 +4633,7 @@ $("#dash-cap-go").addEventListener("click", async () => {
   try {
     const d = await envoyerCapture(texte);
     zone.value = "";
-    etat.innerHTML = d.ajouts?.length
-      ? "<span class='lbl-mono'>Retenu</span><ul>" + d.ajouts.map((a) => "<li>" + mdEscape(a) + "</li>").join("") + "</ul>"
-      : d.memoire === false
-        ? mdEscape(d.message ? "Gardé. " + d.message : "Gardé. Rémy n'a rien pu en tirer tout de suite — il le relira cette nuit.")
-        : "Rien de nouveau : il le savait déjà.";
+    direRetenu(etat, d);
     dashAt = 0; // la mémoire a bougé : le module Système se remettra à jour
   } catch (err) {
     if (!(err instanceof AuthError)) etat.textContent = "Échec : " + err.message + " — ton texte est toujours là, réessaie.";
@@ -5037,7 +5318,8 @@ function micUI(state) {
   $("#composer form").classList.toggle("rec", state === "rec");
   if (state === "rec") {
     if (micPlaceholder === null) micPlaceholder = inputEl.placeholder;
-    inputEl.placeholder = "Je t'écoute… ✓ pour valider, ✕ pour annuler";
+    // Court : le champ ne fait qu'une ligne au repos (il débordait sur deux).
+    inputEl.placeholder = "Je t'écoute… ✓ valide, ✕ annule";
   } else if (micPlaceholder !== null) {
     inputEl.placeholder = micPlaceholder;
     micPlaceholder = null;
