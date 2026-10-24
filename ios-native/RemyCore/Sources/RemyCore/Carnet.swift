@@ -497,6 +497,16 @@ public final class CarnetModel {
         }
     }
 
+    /// Remet des rappels retirés (« Annuler » d'une fusion de doublons, 24/10) :
+    /// réécrire la même ligne la fait revenir sur la tour.
+    public func remettre(_ remis: [Rappel]) {
+        let nouveaux = remis.filter { r in !rappels.contains(where: { $0.id == r.id }) }
+        guard !nouveaux.isEmpty else { return }
+        rappels.append(contentsOf: nouveaux)
+        trierRappels()
+        ecrire(.rappels(nouveaux))
+    }
+
     /// L'import des rappels de l'iPhone : par lots, rejouable (les identifiants
     /// « apple:… » ne doublent jamais).
     public func importer(_ importes: [Rappel], listes nouvellesListes: [Liste]) {

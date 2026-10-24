@@ -136,6 +136,8 @@ struct OngletsView: View {
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
+        // « À trancher », la revue du dimanche, le tri des retards (24/10).
+        .feuillesTri()
         .task { await demo() }
         // Un lien remy://capture (widget) : la capture s'ouvre, une autre
         // feuille fermée d'abord (iOS n'en présente qu'une à la fois).
@@ -339,6 +341,10 @@ extension OngletsView {
         case "boite": ui.boiteOuverte = true
         case "briefing": ui.briefingOuvert = true
         case "bilan": ui.bilanOuvert = true
+        case "a-trancher", "retards":
+            await app.aTrancher.charger()
+            app.aTrancher.feuille = ecran == "retards" ? .retards : .aTrancher
+        case "revue": app.aTrancher.feuille = .revue
         default: break
         }
     }

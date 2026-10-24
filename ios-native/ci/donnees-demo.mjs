@@ -170,4 +170,18 @@ carnet.ecrireNotes("d-site", [
 ]);
 carnet.ecrireNotes("d-cuisine", [{ id: "n4", texte: "Devis plombier" }]);
 carnet.rattacher("t1", "d-demo");
+// 24/10 : de quoi trancher (un rappel redit, un vieux rappel sans date, des
+// idées) et une semaine à revoir (trois coches, deux hypothèses de la nuit).
+carnet.ecrireRappels([{ id: "r7", texte: "Rappeler Hugo" }]);
+const { db } = await import("../../lib/db.js");
+db().prepare("UPDATE rappels SET cree_a = ? WHERE id IN ('r5', 'r7')").run(now - 10 * 24 * H);
+carnet.ecrireDossier("idees", { nom: "Idées", parent: null, ordre: -2 });
+carnet.ecrireNotes("idees", [
+  { id: "n-idee-1", texte: "Un atelier bougies parfumées pour les fêtes" },
+  { id: "n-idee-2", texte: "Proposer la démo vocale aux salons de coiffure" },
+]);
+const coche = db().prepare("INSERT INTO journal (id, ts, source, origine, resume, etat, actions, results, annulations, annule, maj_a) VALUES (?, ?, 'motion', 'tap', 'Coché depuis l''app', 'appliquee', '[]', ?, '{}', 0, ?)");
+[["j-demo-1", 2, "Écrire la fiche produit", "Boutiques", 45], ["j-demo-2", 3, "Photos des bougies", "Boutiques", 30], ["j-demo-3", 4, "Arroser les plantes", null, 10]]
+  .forEach(([id, jours, nom, projet, duree]) => coche.run(id, now - jours * 24 * H, JSON.stringify([{ ok: true, type: "terminer", nom, projet, avant: { duration: duree } }]), now - jours * 24 * H));
+w("briefings.json", [{ text: "- Tu avances mieux sur la boutique le matin que le soir (70 %)\n- Les tâches du vendredi glissent souvent au lundi (60 %)\n- Question douce : la démo avant le site ?", generatedAt: now - 2 * 24 * H }]);
 console.log("seed ok");

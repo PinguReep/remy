@@ -110,6 +110,8 @@ public final class AppModel {
     public let nouveautes: NouveautesModel
     /// Le rendez-vous quotidien (rituel-v1, 24/10) : briefing et bilan.
     public let rituel: RituelModel
+    /// « À trancher », la revue du dimanche et le tri des retards (24/10).
+    public let aTrancher: ATrancherModel
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -140,6 +142,7 @@ public final class AppModel {
         self.activitePC = ActivitePCModel(api: api)
         self.nouveautes = NouveautesModel(reglages: reglages)
         self.rituel = RituelModel(api: api, rangement: rangement)
+        self.aTrancher = ATrancherModel(api: api, reglages: reglages)
         tableau.app = self
         projets.app = self
         semaine.app = self
@@ -155,6 +158,7 @@ public final class AppModel {
         activitePC.app = self
         nouveautes.app = self
         rituel.app = self
+        aTrancher.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
@@ -241,6 +245,7 @@ public final class AppModel {
         historique.vider()
         carnet.vider()
         rituel.vider()
+        aTrancher.vider()
         onglet = .aujourdhui
         reglagesOuverts = false
         message = nil
