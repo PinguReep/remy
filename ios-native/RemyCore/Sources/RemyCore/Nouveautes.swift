@@ -86,6 +86,14 @@ public enum Nouveautes {
             .init(symbole: "tray.and.arrow.down", titre: "Plus de tâche par erreur",
                   texte: "Une pensée sans action claire va dans « Idées » (Projets), pas dans Motion. « Appeler le garage » reste une tâche. Réglages › Capture pour revenir à l'ancien comportement."),
         ]),
+        Nouveaute(id: "semaine", serie: 3, date: "24 oct.", titre: "Demain et les 7 jours", capacite: "semaine-v1", pages: [
+            .init(symbole: "calendar.day.timeline.left", titre: "« À l'échelle », à côté de LA SUITE",
+                  texte: "Aujourd'hui, Demain ou 7 jours. Demain s'affiche en entier, à l'échelle, avec les mêmes gestes : toucher une tâche ouvre « Gérer »."),
+            .init(symbole: "chart.bar.xaxis", titre: "La semaine d'un coup d'œil",
+                  texte: "Par jour : les heures prévues contre tes heures libres, les rendez-vous, les échéances, et ce que Motion place trop tard. Lu dans Motion et ton agenda, sans IA."),
+            .init(symbole: "wifi.slash", titre: "Même sans réseau",
+                  texte: "La dernière vue reçue reste sur l'iPhone, datée. Toucher un jour l'ouvre à l'échelle ; glisse vers la gauche ou la droite pour passer au jour d'à côté."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

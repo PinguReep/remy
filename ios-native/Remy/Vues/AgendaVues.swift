@@ -192,6 +192,7 @@ struct RendezVousPanneau: View {
 
     private func horaires(_ maintenant: Millis) -> String {
         var bits = ["\(Format.heure(e.debut)) – \(Format.heure(e.finEffective))"]
+        if let j = Format.autreJour(e.debut) { bits.insert(j, at: 0) }
         if let l = e.lieu, !l.isEmpty { bits.append(l) }
         if e.fait == true { bits.append("faite") } else if Jour.etat(e, maintenant: maintenant) == .encours { bits.append("en cours") }
         return bits.joined(separator: " · ")
