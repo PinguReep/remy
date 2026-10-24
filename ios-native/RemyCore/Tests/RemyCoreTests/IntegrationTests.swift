@@ -197,7 +197,9 @@ final class IntegrationTests: XCTestCase {
             let ligne = try XCTUnwrap(p(), "la proposition de démo")
             let rangs = try XCTUnwrap(SelectionLignes.rangs(ligne.proposition?.actions ?? [], decoches: [0]))
             XCTAssertEqual(rangs, [1])
-            let fait = await app.chat.appliquer(ligne, rangs: rangs)
+            // Le fil de démo date d'un mois : la proposition est périmée
+            // (propositions-perimees-v1), Sam confirme en gardant sa sélection.
+            let fait = await app.chat.appliquer(ligne, confirmer: v.sait("propositions-perimees-v1"), rangs: rangs)
             XCTAssertTrue(fait, app.toast ?? "")
             XCTAssertEqual(p()?.proposition?.bilan?.ecartees, ["Trier les chutes de cire"])
             let jour = try await app.api.tableauDeBord(frais: true).journee
