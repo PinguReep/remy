@@ -508,9 +508,19 @@ public final class ATrancherModel {
         } catch { echec(error, "« Non » pas enregistré") }
     }
 
+    /// Le carnet de l'iPhone pas encore lu : rien n'est « déjà fait », on attend.
+    private func carnetLu() -> CarnetModel? {
+        guard let carnet = app?.carnet else { return nil }
+        guard carnet.misAJour != nil else {
+            app?.dire("Le carnet n'est pas encore lu : réessaie dans un instant.")
+            return nil
+        }
+        return carnet
+    }
+
     /// Les doublons partent, le rappel gardé reste ; « Annuler » les remet.
     private func fusionner(_ l: LigneATrancher) {
-        guard let carnet = app?.carnet else { return }
+        guard let carnet = carnetLu() else { return }
         let ids = Set(l.doublons ?? [])
         let retires = carnet.rappels.filter { ids.contains($0.id) }
         guard !retires.isEmpty else {
@@ -525,7 +535,7 @@ public final class ATrancherModel {
     }
 
     private func supprimerRappel(_ l: LigneATrancher) {
-        guard let carnet = app?.carnet else { return }
+        guard let carnet = carnetLu() else { return }
         guard let r = carnet.rappels.first(where: { $0.id == l.rappelId }) else {
             masquer(l)
             app?.dire("Ce rappel n'est plus là.")
@@ -536,7 +546,7 @@ public final class ATrancherModel {
     }
 
     private func retirerArticles(_ l: LigneATrancher) {
-        guard let carnet = app?.carnet else { return }
+        guard let carnet = carnetLu() else { return }
         guard let liste = carnet.listes.first(where: { $0.id == l.listeId }) else {
             masquer(l)
             app?.dire("Cette liste n'existe plus.")
