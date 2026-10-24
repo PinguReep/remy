@@ -2173,6 +2173,35 @@ public final class ChatModel {
         }
     }
 
+    /// Sam valide les courses ou le rappel proposés par Rémy (24/10) : la tour
+    /// les écrit dans le carnet, puis l'iPhone relit le carnet (le rappel daté
+    /// sonne alors ici). Vrai si c'est écrit.
+    @discardableResult
+    public func validerCarnet(_ ligne: LigneChat) async -> Bool {
+        guard let convId = idCourant, let p = ligne.proposition, let pid = p.id else {
+            app?.dire("Cette proposition n'a pas d'identifiant : redemande-la à Rémy.")
+            return false
+        }
+        do {
+            let bilan = try await api.validerCarnet(convId: convId, propositionId: pid)
+            if let i = lignes.firstIndex(where: { $0.id == ligne.id }) {
+                lignes[i].proposition?.statut = "applique"
+                if let bilan { lignes[i].proposition?.bilan = bilan }
+            }
+            await app?.carnet.charger()
+            let faits = bilan?.faits ?? []
+            app?.dire(faits.isEmpty ? "C'est dans ton carnet." : "Ajouté : \(faits.joined(separator: ", ")).")
+            return true
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return false }
+            if let e = error as? ErreurAPI, case .serveur(409, _) = e { app?.signaler(error); await ouvrir(convId); return false }
+            var raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            if raison.hasSuffix(".") { raison.removeLast() }
+            app?.dire("Pas ajouté : \(raison). Réessaie, ou ajoute-le à la main dans Projets.")
+            return false
+        }
+    }
+
     /// « Non merci » : la carte disparaît tout de suite et le refus est
     /// enregistré, pour qu'elle ne revienne pas au rechargement. Si la tour ne
     /// l'a pas noté, la carte revient et c'est dit.

@@ -52,6 +52,8 @@ struct RemyApp: App {
         Raccourcis.app = modele
         ActiviteEnDirect.partagee.brancher(modele)
         DelegueNotifications.partage.app = modele
+        // Les propositions des règles et de la nuit : notifications Oui / Plus tard.
+        NotificationsPropositions.brancher(modele)
         return modele
     }
 
@@ -209,7 +211,7 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle":
+        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle", "carnet":
             app.chat.fermer()
             app.onglet = .remy
         case "remy-fil", "ajuster", "ajuster-rappel", "proposition-partielle":
@@ -231,7 +233,7 @@ enum Demo {
                     app.dictee.interrompre()
                 }
             }
-        case "reglages", "lieux", "modeles", "nouveautes-liste", "activite-pc":
+        case "reglages", "lieux", "modeles", "nouveautes-liste", "activite-pc", "priorites":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand":

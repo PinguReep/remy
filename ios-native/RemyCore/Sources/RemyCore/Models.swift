@@ -460,6 +460,12 @@ public struct ActionProposee: Codable, Equatable, Sendable {
     public var rang: Int?
     /// Catégories (identifiants d'étiquettes) que la tâche gardera, créée.
     public var etiquettes: [String]?
+    /// Carnet (24/10) : la liste et ses articles (type « liste »), ou le
+    /// rappel et son heure ISO (type « rappel »).
+    public var liste: String?
+    public var articles: [String]?
+    public var texte: String?
+    public var quand: String?
 
     public init(type: String? = nil, nom: String? = nil, nouveau_nom: String? = nil, titre: String? = nil,
                 nouveau_titre: String? = nil, echeance: String? = nil, debut: String? = nil, fin: String? = nil,
@@ -665,6 +671,8 @@ public struct ConseilTour: Codable, Sendable, Equatable {
         public var texte: String
         public var pourquoi: [String]?
         public var tache: String?
+        /// La priorité déclarée que ce conseil sert (vérifiée par la tour), ou nil.
+        public var priorite: String?
         public var genereA: Millis?
         public var source: String?
     }

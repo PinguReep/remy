@@ -146,6 +146,21 @@ private struct EnTeteRemy: View {
                                                       proposition: Proposition(id: "p-demo", source: "regle", resume: nil, actions: [a], statut: "en_attente")))
                 return
             }
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "carnet" {
+                // Des courses et un rappel proposés par Rémy, avant « Ajouter ».
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: "Ajoute du lait et des œufs, et rappelle-moi d'appeler Léa demain à 9 h."))
+                var liste = ActionProposee(type: "liste")
+                liste.liste = "Courses"
+                liste.articles = ["lait", "œufs"]
+                var rappel = ActionProposee(type: "rappel")
+                rappel.texte = "Appeler Léa"
+                let demain = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+                rappel.quand = ISO8601DateFormatter().string(from: demain.addingTimeInterval(9 * 3600))
+                app.chat.montrerPourCapture(LigneChat(deToi: false, texte: "Je te propose ça : le lait et les œufs dans tes courses, et un rappel demain matin.",
+                                                      proposition: Proposition(id: "p-demo-carnet", source: "carnet", resume: nil, actions: [liste, rappel], statut: "en_attente")))
+                return
+            }
             guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "jauge" else { return }
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             let reponses: [(String, String, MesuresReponse)] = [
@@ -478,7 +493,8 @@ private struct LigneMessage: View {
                 }
                 if let p = ligne.proposition {
                     // Une règle de Rémy (19/10) n'est pas une tâche : sa propre carte.
-                    if p.source == "regle" { CarteRegle(ligne: ligne, p: p) } else { PropositionView(ligne: ligne, p: p) }
+                    // Les courses et les rappels (24/10) vont dans le carnet, pas dans Motion.
+                    if p.source == "regle" { CarteRegle(ligne: ligne, p: p) } else if p.source == "carnet" { CarteCarnet(ligne: ligne, p: p) } else { PropositionView(ligne: ligne, p: p) }
                 }
                 if let a = ligne.autorisation { AutorisationView(ligne: ligne, a: a) }
             }

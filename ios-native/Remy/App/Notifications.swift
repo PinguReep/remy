@@ -17,7 +17,9 @@ enum Notifications {
                                  icon: UNNotificationActionIcon(systemImageName: symboles[a] ?? "bell"))
         }
         let categorie = UNNotificationCategory(identifier: ActionRappel.categorie, actions: actions, intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([categorie])
+        // Toutes les catégories de l'app, en une fois (iOS remplace l'ensemble) :
+        // les rappels et les propositions qui attendent (Oui, Plus tard).
+        UNUserNotificationCenter.current().setNotificationCategories([categorie, NotificationsPropositions.categorieNotification])
     }
 
     /// Demande la permission (une fois) ; rend vrai si les rappels peuvent sonner.
@@ -134,7 +136,8 @@ extension Notification.Name {
 /// le carnet de l'iPhone change, la file part vers la tour, les notifications
 /// sont reprogrammées. Un toucher ouvre Projets › Rappels.
 /// Seul délégué des notifications de l'app : il sert aussi le rendez-vous
-/// quotidien (briefing du matin, bilan du soir : `userInfo["rituel"]`).
+/// quotidien (briefing du matin, bilan du soir : `userInfo["rituel"]`) et les
+/// propositions qui attendent (`NotificationProposition`).
 final class DelegueNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let partage = DelegueNotifications()
     weak var app: AppModel?
@@ -150,6 +153,16 @@ final class DelegueNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Une proposition qui attendait (règles, nuit) : Oui, Plus tard, ou le fil.
+        if NotificationProposition.est(response.notification) {
+            let action = response.actionIdentifier
+            let info = response.notification.request.content.userInfo
+            Task { @MainActor in
+                _ = await NotificationsPropositions.repondre(action: action, info: info)
+                completionHandler()
+            }
+            return
+        }
         // Le rendez-vous quotidien : « matin » (Briefing) ou « soir » (Bilan).
         if let quoi = response.notification.request.content.userInfo["rituel"] as? String {
             Task { @MainActor in RouteRituel.partagee.demande = quoi }

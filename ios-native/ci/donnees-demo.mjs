@@ -105,6 +105,18 @@ w("conversations.json", {
           autorisation: { id: "a-demo", type: "web", statut: "en_attente", contexte: false, requete: "La piscine de Valmont est ouverte ce soir ?" } },
       ],
     },
+    // 24/10 : des courses et un rappel proposés par Rémy (test d'intégration du carnet).
+    {
+      id: "c-carnet", title: "Courses de la semaine", createdAt: now - 160 * H, updatedAt: now - 159 * H,
+      messages: [
+        { role: "user", content: "Ajoute des bougies chauffe-plat, et rappelle-moi d'appeler Léa." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose ça : les bougies dans tes courses, et un rappel.",
+          proposal: { id: "p-carnet-demo", source: "carnet", statut: "en_attente", resume: "", actions: [
+            { type: "liste", liste: "Courses", articles: ["Bougies chauffe-plat"] },
+            { type: "rappel", texte: "Appeler Léa pour le marché de Noël" },
+          ] } },
+      ],
+    },
   ],
 });
 w("memory.json", { text: "## Identité & contexte\nSam, 31 ans, Lyon. Monte une boutique de bougies.\n\n## Objectifs\n- Lancer la démo avant octobre\n\n## Préférences\n- Réponses courtes\n\n## Personnes\n- Léa, sa compagne\n- Hugo, associé\n\n## Projets en cours\n- Boutique de bougies\n\n## Habitudes & fonctionnement\n- Travaille tard\n\n## Hypothèses\n", updatedAt: now - 2 * H });
@@ -184,4 +196,11 @@ const coche = db().prepare("INSERT INTO journal (id, ts, source, origine, resume
 [["j-demo-1", 2, "Écrire la fiche produit", "Boutiques", 45], ["j-demo-2", 3, "Photos des bougies", "Boutiques", 30], ["j-demo-3", 4, "Arroser les plantes", null, 10]]
   .forEach(([id, jours, nom, projet, duree]) => coche.run(id, now - jours * 24 * H, JSON.stringify([{ ok: true, type: "terminer", nom, projet, avant: { duration: duree } }]), now - jours * 24 * H));
 w("briefings.json", [{ text: "- Tu avances mieux sur la boutique le matin que le soir (70 %)\n- Les tâches du vendredi glissent souvent au lundi (60 %)\n- Question douce : la démo avant le site ?", generatedAt: now - 2 * 24 * H }]);
+// 24/10 : les priorités déclarées de Sam (fictives), la première il y a 3 semaines.
+const priorites = await import("../../lib/priorites.js");
+priorites.enregistrerPriorites([
+  { id: "p-musique", titre: "La musique", pourquoi: "Jouer me rend calme toute la semaine", mots: ["musique", "guitare", "répétition"] },
+  { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"] },
+  { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Je les vois trop peu depuis la rentrée", mots: ["Léa", "Hugo"] },
+], { base: 0, maintenant: now - 21 * 24 * H });
 console.log("seed ok");
