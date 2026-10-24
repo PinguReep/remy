@@ -736,7 +736,6 @@
   .prop li.defaite .quoi { text-decoration: line-through; color: var(--fg-2); }
   .prop .p-regle { padding: 10px 12px 0; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
   .prop.regle .p-why { padding-bottom: 10px; }
-  .p-file { display: block; margin-top: 2px; color: var(--fg-3); }
 
   #empty-state { flex: 1; display: grid; place-items: center; padding: 24px; text-align: left; position: relative; }
   #empty-state .halo { display: none; }
@@ -1907,6 +1906,8 @@ function renderRegle(block, prop) {
   go.textContent = "Créer la règle";
   go.onclick = async () => {
     if (!prop.id || !currentId) return toast("Règle introuvable : recharge la conversation.");
+    // La proposition n'est enregistrée qu'à la fin de la réponse.
+    if (sending && envoiConv === currentId) return toast("Rémy finit sa réponse — réessaie dans un instant.");
     go.disabled = refuse.disabled = true;
     status.textContent = "Création de la règle…";
     try {
