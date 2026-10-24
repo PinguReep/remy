@@ -203,6 +203,28 @@ test("guetteur arrêté, seau encore là : pas d'alerte au réveil, alerte au re
   assert.equal(etat().message, null);
 });
 
+test("écran verrouillé, Sam absent : aw-watcher-window se tait sans alerte ; Sam revenu, l'alerte", async () => {
+  const verrou = Date.now() - H;
+  aw.absences.push(ev(verrou, Date.now(), { status: "afk" }));
+  const absences = aw.absences;
+  // Ce qu'aw-watcher-afk a vu depuis : absent, rien d'autre.
+  aw.absences = [ev(verrou, Date.now(), { status: "afk" })];
+  aw.maj = { fenetre: verrou, afk: null };
+  await pc.collecter();
+  await pc.collecter();
+  assert.equal(etat().message, null, "absent : le silence de la fenêtre s'explique");
+  assert.equal(etat().fenetre, true);
+  // Revenu depuis 5 min, et la fenêtre se tait toujours : arrêtée.
+  aw.absences = [ev(verrou, Date.now() - 5 * MIN, { status: "afk" }), ev(Date.now() - 5 * MIN, Date.now(), { status: "not-afk" })];
+  await pc.collecter();
+  assert.match(etat().message, /^aw-watcher-window n'écrit plus depuis/);
+  assert.equal(etat().fenetre, false);
+  aw.absences = absences;
+  aw.maj = { fenetre: null, afk: null };
+  await pc.collecter();
+  assert.equal(etat().message, null);
+});
+
 test("ActivityWatch redémarré (injoignable au relevé d'avant) : pas d'alerte au premier relevé", async () => {
   aw.eteint = true;
   await pc.collecter();

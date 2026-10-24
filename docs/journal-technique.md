@@ -296,7 +296,9 @@ notes privées, sur la tour.
   (`last_updated`, ou `metadata.end` d'aw-server-rust) date de plus de 10 min
   avant le relevé d'avant, `fenetre`/`afk` passent à false avec « … n'écrit plus
   depuis HH:MM ». Pas d'alerte au réveil de la tour ni après un redémarrage
-  d'ActivityWatch (relevé d'avant injoignable). 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
+  d'ActivityWatch (relevé d'avant injoignable), ni pour une fenêtre muette
+  pendant que Sam est absent (écran verrouillé) : il faut 2 min de présence
+  (aw-watcher-afk) depuis son dernier événement. 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
   `GET/PUT/DELETE /api/activite-pc`, `POST /api/activite-pc/collecte`.
   La note « Activité du PC » (aujourd'hui et 7 jours par catégorie, présentée
   comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude ;
