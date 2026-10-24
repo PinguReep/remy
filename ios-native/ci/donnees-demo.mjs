@@ -184,8 +184,10 @@ carnet.ecrireNotes("d-cuisine", [{ id: "n4", texte: "Devis plombier" }]);
 carnet.rattacher("t1", "d-demo");
 // 24/10 : de quoi trancher (un rappel redit, un vieux rappel sans date, des
 // idées) et une semaine à revoir (trois coches, deux hypothèses de la nuit).
-carnet.ecrireRappels([{ id: "r7", texte: "Rappeler Hugo" }]);
+// Le rappel redit, laissé par une tour d'avant l'anti-doublon du carnet (qui
+// le fondrait aujourd'hui dans r2) : posé directement en base.
 const { db } = await import("../../lib/db.js");
+db().prepare("INSERT INTO rappels (id, texte, quand, fait, source, supprime, cree_a, maj_a) VALUES ('r7', 'Rappeler Hugo', NULL, 0, 'remy', 0, ?, ?)").run(now, now);
 db().prepare("UPDATE rappels SET cree_a = ? WHERE id IN ('r5', 'r7')").run(now - 10 * 24 * H);
 carnet.ecrireDossier("idees", { nom: "Idées", parent: null, ordre: -2 });
 carnet.ecrireNotes("idees", [
