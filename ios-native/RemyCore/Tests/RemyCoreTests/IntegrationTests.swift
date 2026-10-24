@@ -53,6 +53,12 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(c.differe, true)
         }
         XCTAssertFalse(ApercuMaintenant.pour(t.journee, maintenant: Date()).phrase().isEmpty)
+        // 24/10 : la file du quota Motion se lit ; au repos, la carte n'en dit rien.
+        if v.sait("motion-file-v1") {
+            let f = try await app.api.fileMotion()
+            XCTAssertEqual(f.enFile, 0)
+            XCTAssertFalse(f.visible)
+        }
         // Réglages : le secours Claude se lit et se règle (sans objet en démo : pas de GLM).
         let r = try await app.api.reglages()
         XCTAssertEqual(r.secoursCloudSansObjet, true)
