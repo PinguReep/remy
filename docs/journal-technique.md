@@ -303,6 +303,28 @@ notes privées, sur la tour.
   s'ouvre que si la tour a sa capacité ; vue = fermée (finie, « Plus tard » ou
   balayée), gardée dans les UserDefaults. Jamais en démo, jamais par-dessus une
   dictée, un appel ou les réglages.
+- « À trancher », revue du dimanche, tri des retards (`lib/a-trancher.js`,
+  `RemyCore/ATrancher.swift`, `ATrancherVues.swift`, 24/10). La tour
+  rassemble (`GET /api/a-trancher`) en lisant toutes les conversations d'UNE
+  seule lecture (`store.toutesLesConversations`, sinon un fichier relu par fil) ;
+  un fil qui porte une carte en attente n'est pas proposé à la suppression.
+  Les gestes passent par les chemins existants : « Oui » = chaîne d'écriture
+  (la proposition est relue dans la conversation stockée), « Non » = refus
+  enregistré, défait par `POST /api/a-trancher/rouvrir` (seul un refus se
+  rouvre) ; rappels, doublons, articles = carnet de l'iPhone (hors ligne,
+  avec son « Annuler ») ; un fil supprimé attend les 6 s du bandeau avant de
+  partir (la suppression d'un fil est définitive). « Plus tard » = report daté
+  de 7 jours dans `meta` (pas de migration : plusieurs branches en ajoutaient
+  en parallèle). La revue (`GET /api/revue`) est déterministe : coches
+  « terminer » du journal sur 7 jours (le projet est maintenant noté dans le
+  résultat Motion), échéances passées encore ouvertes (cache Motion), rappels
+  faits, et les puces « … (70 %) » déjà écrites par la nuit — aucun nouvel
+  appel. Les trois décisions vivent dans `meta`, pour la semaine qui suit
+  quand elles sont prises un dimanche. Côté iPhone, la revue est proposée le
+  dimanche (Réglages › Revue du dimanche pour la couper) ; après plus de 3
+  jours sans ouvrir l'app, « On trie tes retards ? » (tâches Motion en retard
+  et rappels datés passés). « Abandonner » une tâche la clôt dans Motion
+  (pas d'état « abandonné » côté Motion), annulable par le journal.
 - Réglages › Modèle (`RemyCore/ModelesLocaux.swift`, `ModelesVue`) :
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
