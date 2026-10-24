@@ -89,7 +89,7 @@ struct GererPanneau: View {
                 action("En parler à Rémy", detail: choix != nil ? "Est-ce raisonnable de prolonger ? Rien ne part sans toi" : "Une question prête, envoyée seulement si tu le décides",
                        symbole: "bubble.left") {
                     if let m = choix {
-                        demander(Brouillons.raisonnable(e, minutes: m, impact: ImpactProlongation.de(e, minutes: m, journee: app.tableau.journee)))
+                        demander(Brouillons.raisonnable(e, minutes: m, impact: ImpactProlongation.de(e, minutes: m, journee: app.semaine.journee(contenant: e) ?? app.tableau.journee)))
                     } else {
                         demander(e.sansCreneau && e.retard == true ? Brouillons.retard(e.resume) : Brouillons.tache(e.titre))
                     }
@@ -191,7 +191,7 @@ struct GererPanneau: View {
                     }
                 }
                 if let m = choix {
-                    let i = ImpactProlongation.de(e, minutes: m, journee: app.tableau.journee)
+                    let i = ImpactProlongation.de(e, minutes: m, journee: app.semaine.journee(contenant: e) ?? app.tableau.journee)
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: i.conflit != nil ? "exclamationmark.triangle.fill" : "info.circle")
@@ -230,6 +230,8 @@ struct GererPanneau: View {
     /// « 10:15 – 11:30 · il reste 50 min · 1 h 15 au total »
     private func horaires(maintenant: Millis, reste: Int) -> String {
         var bits = ["\(Format.heure(e.debut)) – \(Format.heure(e.finEffective))"]
+        // Ouverte depuis Demain ou les 7 jours : le jour d'abord.
+        if let j = Format.autreJour(e.debut) { bits.insert(j, at: 0) }
         if Jour.etat(e, maintenant: maintenant) == .encours { bits.append("il reste \(Format.duree(minutes: reste))") }
         bits.append("\(Format.duree(minutes: e.dureeTotale)) au total")
         return bits.joined(separator: " · ")
@@ -432,23 +434,36 @@ struct ModifierTache: View {
 /// La journée à l'échelle (spec §4.3) : une tâche de 15 min n'a pas la hauteur
 /// d'une tâche de deux heures. Deux éléments qui se chevauchent se partagent la
 /// largeur. Fermeture : toucher à l'extérieur, ou la croix.
+/// Depuis le 24/10 (semaine-v1) : Aujourd'hui | Demain | 7 jours, et un jour
+/// de la semaine touché s'ouvre à l'échelle, avec les mêmes gestes.
 struct JourneeEtendue: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
     private let echelle: CGFloat = 1.15
+    @State private var portee: PorteeEchelle = .aujourdhui
 
     var body: some View {
-        let items = app.tableau.journee?.items ?? []
-        let bornes = Self.heures(items)
-        let premiere = bornes.0
-        let derniere = bornes.1
-        let places = Couloirs.de(items)
         VStack(spacing: 0) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Format.jourTitre(Date())).font(Police.titre(22)).foregroundStyle(Palette.encre)
-                    Text("Les durées sont à l'échelle").font(Police.texte(13)).foregroundStyle(Palette.encre2)
+            HStack(alignment: .center, spacing: 0) {
+                if SegmentEchelle.estJour(portee) {
+                    Button {
+                        Haptique.leger()
+                        withAnimation(.easeOut(duration: 0.18)) { portee = .semaine }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Palette.encre)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Retour aux 7 jours")
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(titre).font(Police.titre(22)).foregroundStyle(Palette.encre)
+                    Text(sousTitre).font(Police.texte(13)).foregroundStyle(Palette.encre2)
+                }
+                .padding(.leading, SegmentEchelle.estJour(portee) ? 0 : 18)
                 Spacer()
                 Button { ui.journeeEtendue = false } label: {
                     Image(systemName: "xmark")
@@ -462,55 +477,196 @@ struct JourneeEtendue: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Fermer")
             }
-            .padding(.leading, 18)
             .padding(.trailing, 8)
             .padding(.vertical, 10)
-            Rectangle().fill(Palette.filet).frame(height: 1)
-            if items.isEmpty {
-                Text("Rien à heure fixe aujourd'hui.")
-                    .font(Police.texte(15))
-                    .foregroundStyle(Palette.encre2)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollViewReader { defilement in
-                    ScrollView {
-                        ZStack(alignment: .topLeading) {
-                            grille(premiere...derniere)
-                            GeometryReader { g in
-                                let largeur = g.size.width - 64
-                                ForEach(items, id: \.cle) { e in
-                                    let p = places[e.cle] ?? Couloirs.Place(index: 0, total: 1)
-                                    let l = largeur / CGFloat(p.total)
-                                    bloc(e)
-                                        .frame(width: l - 2, height: hauteur(e))
-                                        .offset(x: 60 + l * CGFloat(p.index), y: y(e.debut, depuis: premiere))
-                                        .onTapGesture { ouvrir(e) }
-                                }
-                                ligneMaintenant(largeur: g.size.width, depuis: premiere, jusqua: derniere)
-                            }
-                        }
-                        .frame(height: CGFloat(derniere - premiere) * 60 * echelle + 24)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
-                    }
-                    .scrollIndicators(.hidden)
-                    .task {
-                        try? await Task.sleep(nanoseconds: 60_000_000)
-                        let h = max(premiere, min(derniere, Format.minuteDuJour(Date()) / 60 - 1))
-                        defilement.scrollTo("h\(h)", anchor: .top)
-                    }
-                }
+            if app.semaine.disponible {
+                SegmentEchelle(portee: $portee)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
             }
+            Rectangle().fill(Palette.filet).frame(height: 1)
+            contenu
+                // Glisser ← → : le jour suivant ou précédent (le défilement
+                // vertical de la frise reste libre).
+                .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { g in
+                    let dx = g.translation.width
+                    guard abs(dx) > 70, abs(dx) > abs(g.translation.height) * 2 else { return }
+                    decaler(dx < 0 ? 1 : -1)
+                })
         }
         .containerRelativeFrame(.vertical) { hauteur, _ in hauteur * 0.92 }
         .carte(rayon: 26)
+        .onAppear {
+            // Captures de la CI : la vue demandée d'emblée.
+            let env = ProcessInfo.processInfo.environment
+            guard env["REMY_DEMO_MDP"] != nil else { return }
+            if env["REMY_DEMO_ECRAN"] == "semaine" { portee = .semaine }
+            if env["REMY_DEMO_ECRAN"] == "demain" { portee = .demain }
+        }
+        .task(id: portee) {
+            guard portee != .aujourdhui else { return }
+            // Relue si elle a plus d'une minute (ou vient de l'iPhone) ; sinon
+            // celle de l'ouverture de l'app suffit.
+            let vieille = app.semaine.misAJour.map { Date().timeIntervalSince($0) > 60 } ?? true
+            if vieille || app.semaine.copieLocale { await app.semaine.charger() }
+        }
     }
 
-    /// De la première heure utile à la dernière (8 h – 22 h au moins).
-    static func heures(_ items: [ElementJour]) -> (Int, Int) {
+    /// Le jour d'à côté, dans les 7 jours (rien depuis la vue des 7 jours).
+    private func decaler(_ sens: Int) {
+        guard app.semaine.disponible else { return }
+        let auj = Format.jourISO(Date())
+        let demain = SemaineModel.demainISO()
+        let actuel: String
+        switch portee {
+        case .aujourdhui: actuel = auj
+        case .demain: actuel = demain
+        case .jour(let iso): actuel = iso
+        case .semaine: return
+        }
+        var jours = app.semaine.jours().map(\.jour)
+        if jours.isEmpty { jours = [auj, demain] }
+        guard let i = jours.firstIndex(of: actuel), jours.indices.contains(i + sens) else { return }
+        let cible = jours[i + sens]
+        Haptique.leger()
+        withAnimation(.easeOut(duration: 0.18)) {
+            portee = cible == auj ? .aujourdhui : cible == demain ? .demain : .jour(cible)
+        }
+    }
+
+    private var titre: String {
+        switch portee {
+        case .aujourdhui: return Format.jourTitre(Date())
+        case .demain: return "Demain"
+        case .semaine: return "Les 7 jours"
+        case .jour(let iso): return app.semaine.jour(iso)?.titreLong ?? iso
+        }
+    }
+
+    private var sousTitre: String {
+        switch portee {
+        case .semaine: return "Heures prévues sur tes heures libres"
+        case .demain:
+            let d = app.semaine.demain()?.titreLong
+            return (d.map { $0 + " · " } ?? "") + "les durées sont à l'échelle"
+        default: return "Les durées sont à l'échelle"
+        }
+    }
+
+    @ViewBuilder
+    private var contenu: some View {
+        switch portee {
+        case .aujourdhui:
+            frise(app.tableau.journee?.items ?? [], jour: Self.bornesAujourdhui(), aujourdhui: true, vide: "Rien à heure fixe aujourd'hui.")
+        case .demain:
+            jourVue(SemaineModel.demainISO(), vide: "Rien de prévu demain : ni rendez-vous, ni tâche placée par Motion.")
+        case .semaine:
+            VStack(spacing: 0) {
+                BandeauSemaine()
+                SemaineCompacte(ouvrirJour: { iso in
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        portee = iso == Format.jourISO(Date()) ? .aujourdhui : iso == SemaineModel.demainISO() ? .demain : .jour(iso)
+                    }
+                }, ouvrir: ouvrir)
+            }
+        case .jour(let iso):
+            jourVue(iso, vide: "Rien de prévu ce jour-là : ni rendez-vous, ni tâche placée par Motion.")
+        }
+    }
+
+    /// Un jour qui vient : sa charge, ses échéances pas encore tenues, puis la
+    /// frise à l'échelle.
+    @ViewBuilder
+    private func jourVue(_ iso: String, vide: String) -> some View {
+        VStack(spacing: 0) {
+            BandeauSemaine()
+            if let j = app.semaine.jour(iso), !j.estVide {
+                ResumeJour(j: j, ouvrir: ouvrir)
+                frise(j.items, jour: j.debut...max(j.debut + 3_600_000, j.fin ?? j.debut + 86_400_000),
+                      aujourdhui: false, vide: "Rien à heure fixe ce jour-là.")
+            } else {
+                EtatSemaine(vide: vide)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func frise(_ items: [ElementJour], jour: ClosedRange<Millis>, aujourdhui: Bool, vide: String) -> some View {
+        // Une tâche étalée sur plusieurs jours (découpée par Motion) : seul son
+        // bout de ce jour est dessiné ; la toucher ouvre la vraie.
+        let dessines = items.map { Self.dansLeJour($0, jour) }
+        let originaux: [String: ElementJour] = Dictionary(items.map { ($0.cle, $0) }, uniquingKeysWith: { a, _ in a })
+        let bornes = Self.heures(dessines, jour: jour)
+        let premiere = bornes.0
+        let derniere = bornes.1
+        let places = Couloirs.de(dessines)
+        if items.isEmpty {
+            Text(vide)
+                .font(Police.texte(15))
+                .foregroundStyle(Palette.encre2)
+                .multilineTextAlignment(.center)
+                .padding(20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollViewReader { defilement in
+                ScrollView {
+                    ZStack(alignment: .topLeading) {
+                        grille(premiere...derniere)
+                        GeometryReader { g in
+                            let largeur = g.size.width - 64
+                            ForEach(dessines, id: \.cle) { d in
+                                let e = originaux[d.cle] ?? d
+                                let p = places[d.cle] ?? Couloirs.Place(index: 0, total: 1)
+                                let l = largeur / CGFloat(p.total)
+                                bloc(e, hauteur: hauteur(d))
+                                    .frame(width: l - 2, height: hauteur(d))
+                                    .offset(x: 60 + l * CGFloat(p.index), y: y(d.debut, depuis: premiere))
+                                    .onTapGesture { ouvrir(e) }
+                            }
+                            if aujourdhui { ligneMaintenant(largeur: g.size.width, depuis: premiere, jusqua: derniere) }
+                        }
+                    }
+                    .frame(height: CGFloat(derniere - premiere) * 60 * echelle + 24)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                }
+                .scrollIndicators(.hidden)
+                .task {
+                    try? await Task.sleep(nanoseconds: 60_000_000)
+                    // Aujourd'hui : là où on en est ; un autre jour : son premier élément.
+                    let depart = (aujourdhui ? Format.minuteDuJour(Date()) / 60 : (dessines.map { Format.minuteDuJour($0.debut.date) / 60 }.min() ?? premiere)) - 1
+                    let h = max(premiere, min(derniere, depart))
+                    defilement.scrollTo("h\(h)", anchor: .top)
+                }
+            }
+            .id(aujourdhui ? "aujourdhui" : items.first?.cle ?? "jour")
+        }
+    }
+
+    /// De la première heure utile à la dernière (8 h – 22 h au moins). Fini à
+    /// minuit (ou après) : jusqu'au bout de la grille.
+    static func heures(_ items: [ElementJour], jour: ClosedRange<Millis>? = nil) -> (Int, Int) {
         let debuts = items.map { Format.minuteDuJour($0.debut.date) / 60 }
-        let fins = items.map { (Format.minuteDuJour($0.finEffective.date) + 59) / 60 }
+        let fins = items.map { e -> Int in
+            if let j = jour, e.finEffective >= j.upperBound { return 24 }
+            return (Format.minuteDuJour(e.finEffective.date) + 59) / 60
+        }
         return (max(0, min(8, debuts.min() ?? 8)), min(24, max(22, fins.max() ?? 22)))
+    }
+
+    /// Le bout d'un élément qui tombe dans ce jour.
+    static func dansLeJour(_ e: ElementJour, _ jour: ClosedRange<Millis>) -> ElementJour {
+        var d = e
+        d.debut = min(max(e.debut, jour.lowerBound), jour.upperBound)
+        d.fin = max(d.debut, min(e.finEffective, jour.upperBound))
+        return d
+    }
+
+    /// Aujourd'hui, de minuit à minuit (heure de l'iPhone).
+    static func bornesAujourdhui(_ maintenant: Date = Date()) -> ClosedRange<Millis> {
+        let d0 = Format.calendrier.startOfDay(for: maintenant)
+        let d1 = Format.calendrier.date(byAdding: .day, value: 1, to: d0) ?? d0.addingTimeInterval(86_400)
+        return d0.millis...max(d0.millis, d1.millis)
     }
 
     private func grille(_ heures: ClosedRange<Int>) -> some View {
@@ -539,9 +695,8 @@ struct JourneeEtendue: View {
     }
 
     @ViewBuilder
-    private func bloc(_ e: ElementJour) -> some View {
+    private func bloc(_ e: ElementJour, hauteur h: CGFloat) -> some View {
         let couleur = e.estRendezVous ? Palette.encre2 : Palette.projet(e.projet)
-        let h = hauteur(e)
         let passe = Jour.etat(e, maintenant: Date().millis) == .passe
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {

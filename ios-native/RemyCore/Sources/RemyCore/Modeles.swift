@@ -89,6 +89,8 @@ public final class AppModel {
     public let api: ClientAPI
     public let tableau: TableauModel
     public let projets: ProjetsModel
+    /// Demain et les 7 jours (semaine-v1, 24/10).
+    public let semaine: SemaineModel
     public let conseil: ConseilModel
     public let organisation: OrganisationModel
     public let historique: HistoriqueModel
@@ -125,6 +127,7 @@ public final class AppModel {
         self.api = api
         self.tableau = TableauModel(api: api, rangement: rangement)
         self.projets = ProjetsModel(api: api, rangement: rangement)
+        self.semaine = SemaineModel(api: api, rangement: rangement)
         self.conseil = ConseilModel(api: api)
         self.organisation = OrganisationModel(api: api)
         self.historique = HistoriqueModel(api: api)
@@ -139,6 +142,7 @@ public final class AppModel {
         self.rituel = RituelModel(api: api, rangement: rangement)
         tableau.app = self
         projets.app = self
+        semaine.app = self
         conseil.app = self
         organisation.app = self
         historique.app = self
@@ -195,6 +199,7 @@ public final class AppModel {
         } catch ErreurAPI.nonConnecte {
             tableau.vider()
             projets.vider()
+            semaine.vider()
             conseil.vider()
             organisation.vider()
             historique.vider()
@@ -230,6 +235,7 @@ public final class AppModel {
         chat.vider()
         tableau.vider()
         projets.vider()
+        semaine.vider()
         conseil.vider()
         organisation.vider()
         historique.vider()
@@ -266,7 +272,9 @@ public final class AppModel {
         async let k: Void = carnet.charger()
         async let o: Void = organisation.charger()
         async let r: Void = rituel.charger()
-        _ = await (p, k, o, r)
+        // Les 7 jours, pour les avoir hors ligne : sans IA ni Motion de plus.
+        async let s: Void = semaine.charger()
+        _ = await (p, k, o, r, s)
         // La tour répond : ce qui attendait sur l'iPhone part maintenant.
         if !tableau.envoi.isEmpty && !tableau.erreurReseau { await tableau.envoyerEnAttente() }
         // Installée avant le Lot 0 : l'app n'a qu'un cookie. Elle demande son
@@ -436,6 +444,7 @@ public final class AppModel {
             // liste, peut-être perdu) : rien de ta journée ne reste dessus.
             tableau.vider()
             projets.vider()
+            semaine.vider()
             conseil.vider()
             organisation.vider()
             historique.vider()

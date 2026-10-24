@@ -498,9 +498,15 @@ private struct LaSuite: View {
         let suite = items.filter { Jour.etat($0, maintenant: now) != .passe }
         let toute = journee?.toute ?? []
         VStack(alignment: .leading, spacing: 6) {
-            TitreSection(texte: "La suite")
-                .frame(minHeight: 28, alignment: .bottomLeading)
-                .padding(.horizontal, 22)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                TitreSection(texte: "La suite")
+                    .frame(minHeight: 28, alignment: .bottomLeading)
+                Spacer(minLength: 8)
+                // Visible, à portée de pouce : la journée, demain, les 7 jours (24/10).
+                BoutonEchelle { ui.journeeEtendue = true }
+            }
+            .padding(.leading, 22)
+            .padding(.trailing, 10)
             VStack(alignment: .leading, spacing: 0) {
                 if !toute.isEmpty {
                     Text("Toute la journée : " + toute.map(\.titre).joined(separator: " · "))
