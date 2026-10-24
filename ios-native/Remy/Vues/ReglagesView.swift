@@ -18,6 +18,7 @@ struct ReglagesView: View {
     @State private var reglesOuvertes = false
     @State private var lieuxOuverts = false
     @State private var modelesOuverts = false
+    @State private var activitePCOuverte = false
     @State private var nouveautesOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
@@ -124,6 +125,11 @@ struct ReglagesView: View {
                             lieuxOuverts = true
                         }
                     }
+                    if app.activitePC.disponible {
+                        ligne("Activité du PC", sous: activitePCSous, symbole: "desktopcomputer") {
+                            activitePCOuverte = true
+                        }
+                    }
                     if app.chat.reglesDisponibles {
                         ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
                             reglesOuvertes = true
@@ -178,6 +184,7 @@ struct ReglagesView: View {
         .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .sheet(isPresented: $modelesOuverts) { ModelesVue() }
+        .sheet(isPresented: $activitePCOuverte) { ActivitePCVue() }
         .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
         .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
         .task {
@@ -185,6 +192,16 @@ struct ReglagesView: View {
             reglages = try? await app.api.reglages()
         }
         .task { await app.modeles.charger() }
+        .task {
+            if ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] != "activite-pc" { await app.activitePC.charger() }
+        }
+        .task {
+            // Captures de la CI : l'écran Activité du PC, avec une semaine fictive.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "activite-pc" else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            app.activitePC.montrerPourCapture(ActivitePCDemo.vue())
+            activitePCOuverte = true
+        }
         .task {
             // Captures de la CI : l'écran Modèle, sur le serveur de démo.
             let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"]
@@ -394,6 +411,14 @@ struct ReglagesView: View {
     private var nouveautesSous: String {
         let n = app.nouveautes.historique.filter { app.nouveautes.estNouvelle($0) && app.nouveautes.existe($0) }.count
         return n > 0 ? "\(n) nouvelle\(n > 1 ? "s" : "") à découvrir" : "Les tutoriels des mises à jour, à revoir"
+    }
+
+    /// « Coupée », « Aujourd'hui : 3 h 10 actives », « ActivityWatch ne répond pas ».
+    private var activitePCSous: String {
+        guard let v = app.activitePC.vue else { return "Le temps passé dans tes applis, d'après ActivityWatch" }
+        if !v.actif { return v.coupeParLaTour ? "Coupée sur la tour" : "Coupée" }
+        if v.probleme != nil { return "Allumée, mais ActivityWatch ne répond pas" }
+        return v.aujourdhui.total >= 60 ? "Aujourd'hui : \(ActivitePC.duree(v.aujourdhui.total)) actives" : "Allumée : rien encore aujourd'hui"
     }
 
     private var version: String {

@@ -225,6 +225,7 @@ extension OngletsView {
             ui.choixDemo = 15
         case "journee-etendue": ui.journeeEtendue = true
         case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])
+        case "nouveautes-activite-pc": app.nouveautes.montrerPourCapture(["activite-pc"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"

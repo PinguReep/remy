@@ -45,6 +45,14 @@ public enum Nouveautes {
             .init(symbole: "mic", titre: "Siri et le bouton Action",
                   texte: "« Dis Siri, noter dans Rémy », ou « Que dois-je faire maintenant avec Rémy ? ». Bouton Action : Réglages de l'iPhone › Bouton Action › Raccourci › Rémy › « Capturer avec Rémy »."),
         ]),
+        Nouveaute(id: "activite-pc", serie: 3, date: "24 oct.", titre: "Le temps passé sur ton PC", capacite: "activite-pc-v1", pages: [
+            .init(symbole: "desktopcomputer", titre: "Ce que tu fais sur ta tour",
+                  texte: "Réglages › Activité du PC. ActivityWatch, installé sur la tour, note l'appli au premier plan ; Rémy n'en garde que le temps actif, par appli et par catégorie."),
+            .init(symbole: "lock.shield", titre: "Rien ne sort de chez toi",
+                  texte: "Les titres de fenêtres ne sont jamais gardés, un site se réduit à son domaine. Coupé par défaut, gardé 90 jours, effaçable d'un geste. Exclus une appli d'un glissement."),
+            .init(symbole: "chart.bar", titre: "Des repères pour Rémy",
+                  texte: "Le modèle local sait « développement 3 h 10 aujourd'hui » et s'en sert pour t'aider, jamais pour te juger. Claude ne reçoit jamais ces relevés ; avec le secours Claude, il peut lire ce que Rémy t'en a dit."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

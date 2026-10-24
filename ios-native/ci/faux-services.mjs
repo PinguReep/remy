@@ -1,4 +1,4 @@
-// Faux Motion (:9998) et faux Google Calendar (:9995) : une journée réaliste,
+// Faux Motion (:9998), faux Google Calendar (:9995), faux ActivityWatch (:9993) : une journée réaliste,
 // relative à « maintenant », pour les captures de la CI. Aucune donnée réelle.
 // bord avec une journée réaliste. Tout est relatif à « maintenant ».
 import http from "node:http";
@@ -200,4 +200,41 @@ http.createServer((req, res) => {
     }));
   });
 }).listen(9994);
+// Faux ActivityWatch (:9993, API REST /api/0) : la fenêtre au premier plan et
+// la présence, sur les 6 dernières heures. Les titres sont là comme sur une
+// vraie tour : la tour ne doit jamais les garder.
+{
+  const debut = Math.floor((now - 6 * H) / 60_000) * 60_000;
+  const ev = (de, a, data) => ({ id: de, timestamp: new Date(debut + de * 60_000).toISOString(), duration: (a - de) * 60, data });
+  const fenetres = [
+    ev(0, 110, { app: "Code.exe", title: "boutique.js — Code" }),
+    ev(110, 170, { app: "chrome.exe", title: "Documentation — Chrome" }),
+    ev(170, 195, { app: "Discord.exe", title: "#général — Discord" }),
+    ev(195, 330, { app: "Code.exe", title: "panier.js — Code" }),
+  ];
+  const absences = [ev(0, 140, { status: "not-afk" }), ev(140, 160, { status: "afk" }), ev(160, 330, { status: "not-afk" })];
+  const web = [ev(110, 170, { url: "https://developer.example.org/docs/fetch", title: "Documentation", incognito: false })];
+  // Des guetteurs qui tournent : leur dernier événement est toujours frais.
+  const seaux = () => ({
+    "aw-watcher-window_tour-demo": { id: "aw-watcher-window_tour-demo", type: "currentwindow", hostname: "tour-demo", last_updated: new Date().toISOString() },
+    "aw-watcher-afk_tour-demo": { id: "aw-watcher-afk_tour-demo", type: "afkstatus", hostname: "tour-demo", last_updated: new Date().toISOString() },
+    "aw-watcher-web-chrome_tour-demo": { id: "aw-watcher-web-chrome_tour-demo", type: "web.tab.current", hostname: "tour-demo" },
+  });
+  http.createServer((req, res) => {
+    const u = new URL(req.url, "http://aw");
+    res.setHeader("Content-Type", "application/json");
+    if (u.pathname === "/api/0/info") return res.end(JSON.stringify({ hostname: "tour-demo", version: "v0.13.2", testing: false }));
+    if (u.pathname === "/api/0/buckets/") return res.end(JSON.stringify(seaux()));
+    const m = u.pathname.match(/^\/api\/0\/buckets\/([^/]+)\/events$/);
+    if (!m) {
+      res.statusCode = 404;
+      return res.end("{}");
+    }
+    const id = decodeURIComponent(m[1]);
+    const liste = id.includes("window") ? fenetres : id.includes("afk") ? absences : web;
+    const a = Date.parse(u.searchParams.get("start") || "1970-01-01");
+    const b = Date.parse(u.searchParams.get("end") || "2999-01-01");
+    res.end(JSON.stringify(liste.filter((e) => Date.parse(e.timestamp) + e.duration * 1000 >= a && Date.parse(e.timestamp) <= b).reverse()));
+  }).listen(9993);
+}
 console.log("mocks prêts");
