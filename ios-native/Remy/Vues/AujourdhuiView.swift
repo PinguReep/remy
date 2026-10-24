@@ -134,6 +134,7 @@ private struct Contenu: View {
                 ATraiter(journee: j, demander: demander).id("a-traiter")
             }
             FaireConnaissance().id("connaissance")
+            CarteATrancher().id("a-trancher")
         }
     }
 }

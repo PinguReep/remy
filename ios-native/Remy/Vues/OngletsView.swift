@@ -120,6 +120,8 @@ struct OngletsView: View {
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
+        // « À trancher », la revue du dimanche, le tri des retards (24/10).
+        .feuillesTri()
         .task { await demo() }
         // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert.
         .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
@@ -226,6 +228,10 @@ extension OngletsView {
         case "noeud":
             ui.cheminProjets = [.noeud(env["REMY_DEMO_ANCRE"] ?? "motion:p1")]
         case "boite": ui.boiteOuverte = true
+        case "a-trancher", "retards":
+            await app.aTrancher.charger()
+            app.aTrancher.feuille = ecran == "retards" ? .retards : .aTrancher
+        case "revue": app.aTrancher.feuille = .revue
         default: break
         }
     }

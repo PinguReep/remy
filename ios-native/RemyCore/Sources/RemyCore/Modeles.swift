@@ -104,6 +104,8 @@ public final class AppModel {
     public let modeles: ModelesModel
     /// Les mini tutoriels des mises à jour (21/10).
     public let nouveautes: NouveautesModel
+    /// « À trancher », la revue du dimanche et le tri des retards (24/10).
+    public let aTrancher: ATrancherModel
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -126,6 +128,7 @@ public final class AppModel {
         self.lieux = LieuxModel(api: api, reglages: reglages)
         self.modeles = ModelesModel(api: api)
         self.nouveautes = NouveautesModel(reglages: reglages)
+        self.aTrancher = ATrancherModel(api: api, reglages: reglages)
         tableau.app = self
         projets.app = self
         conseil.app = self
@@ -138,6 +141,7 @@ public final class AppModel {
         lieux.app = self
         modeles.app = self
         nouveautes.app = self
+        aTrancher.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
@@ -215,6 +219,7 @@ public final class AppModel {
         organisation.vider()
         historique.vider()
         carnet.vider()
+        aTrancher.vider()
         onglet = .aujourdhui
         reglagesOuverts = false
         message = nil

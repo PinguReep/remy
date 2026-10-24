@@ -45,6 +45,10 @@ async function semer() {
   // Un fil d'un seul échange, ancien ; un récent ; un épinglé.
   await store.putConversation({ id: "c-seul", title: "Idée de cadeau pour Léa", createdAt: maintenant - 30 * JOUR, updatedAt: maintenant - 30 * JOUR, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] });
   await store.putConversation({ id: "c-recent", title: "Hier", createdAt: maintenant - JOUR, updatedAt: maintenant - JOUR, messages: [{ role: "user", content: "x" }, { role: "assistant", content: "y" }] });
+  await store.putConversation({ id: "c-carte", title: "Une carte", createdAt: maintenant - 30 * JOUR, updatedAt: maintenant - 30 * JOUR, messages: [
+    { role: "user", content: "Rappelle-moi la vidange" },
+    { role: "assistant", content: "Je propose.", proposal: { id: "p-vidange", source: "motion", resume: "Vidange", actions: [{ type: "creer", nom: "Vidange" }], statut: "en_attente" } },
+  ] });
   await store.putConversation({ id: "c-epingle", title: "Le fil du jour", pinned: true, createdAt: maintenant - 40 * JOUR, updatedAt: maintenant - 40 * JOUR, messages: [] });
   // Rappels : sans date ancien, sans date récent, en double, fait.
   carnet.ecrireRappels([
@@ -72,16 +76,16 @@ test("À trancher rassemble ce qui s'empile, groupé, sans ce qui est réglé", 
   await semer();
   const r = await (await envoyer("GET", "/api/a-trancher")).json();
   const g = Object.fromEntries(r.groupes.map((x) => [x.id, x]));
-  assert.deepEqual(g.cartes.lignes.map((l) => l.propositionId), ["p-garage"], "la refusée n'attend plus");
-  assert.equal(g.cartes.lignes[0].convId, "c-vieux");
+  assert.deepEqual(g.cartes.lignes.map((l) => l.propositionId).sort(), ["p-garage", "p-vidange"], "la refusée n'attend plus");
+  assert.equal(g.cartes.lignes.find((l) => l.propositionId === "p-garage").convId, "c-vieux");
   assert.equal(g.cartes.lignes[0].source, "motion");
   assert.deepEqual(g.doublons.lignes.map((l) => [l.rappelId, l.doublons]), [["r-2", ["r-1"]]], "on garde celui qui a une date");
   assert.deepEqual(g.rappels.lignes.map((l) => l.rappelId), ["r-ancien"], "un rappel récent a le temps d'être rangé");
   assert.equal(g.articles.lignes[0].texte, "Courses : 2 articles pris");
   assert.equal(g.articles.lignes[0].listeId, "l-courses");
   assert.deepEqual(g.idees.lignes.map((l) => l.noteId), ["n1"]);
-  assert.deepEqual(g.fils.lignes.map((l) => l.convId), ["c-seul"], "ni le récent ni l'épinglé");
-  assert.equal(r.total, 6);
+  assert.deepEqual(g.fils.lignes.map((l) => l.convId), ["c-seul"], "ni le récent, ni l'épinglé, ni celui qui porte une carte");
+  assert.equal(r.total, 7);
   assert.deepEqual(r.retards, [], "sans Motion, pas de retard inventé");
 });
 
@@ -103,10 +107,10 @@ test("« Plus tard » écarte une ligne pour une semaine, et s'annule", async ()
 test("« Non » se rouvre (Annuler) ; une carte jamais refusée ne se rouvre pas", async () => {
   assert.equal((await envoyer("POST", "/api/conversations/c-vieux/propositions/p-garage/refus")).status, 200);
   let r = await (await envoyer("GET", "/api/a-trancher")).json();
-  assert.equal(r.groupes.find((g) => g.id === "cartes"), undefined);
+  assert.ok(!r.groupes.find((g) => g.id === "cartes").lignes.some((l) => l.propositionId === "p-garage"));
   assert.equal((await envoyer("POST", "/api/a-trancher/rouvrir", { propositionId: "p-garage" })).status, 200);
   r = await (await envoyer("GET", "/api/a-trancher")).json();
-  assert.deepEqual(r.groupes.find((g) => g.id === "cartes").lignes.map((l) => l.propositionId), ["p-garage"]);
+  assert.ok(r.groupes.find((g) => g.id === "cartes").lignes.some((l) => l.propositionId === "p-garage"));
   assert.equal((await envoyer("POST", "/api/a-trancher/rouvrir", { propositionId: "p-garage" })).status, 409);
 });
 
