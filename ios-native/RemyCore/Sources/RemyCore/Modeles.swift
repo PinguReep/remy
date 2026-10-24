@@ -106,6 +106,8 @@ public final class AppModel {
     public let activitePC: ActivitePCModel
     /// Les mini tutoriels des mises à jour (21/10).
     public let nouveautes: NouveautesModel
+    /// Le rendez-vous quotidien (rituel-v1, 24/10) : briefing et bilan.
+    public let rituel: RituelModel
     /// L'iPhone n'a aucun réseau (mode avion, pas de Wi-Fi ni de données) —
     /// posé par l'app. Différent de « Rémy injoignable » (Tailscale coupé).
     public private(set) var horsLigne = false
@@ -134,6 +136,7 @@ public final class AppModel {
         self.modeles = ModelesModel(api: api)
         self.activitePC = ActivitePCModel(api: api)
         self.nouveautes = NouveautesModel(reglages: reglages)
+        self.rituel = RituelModel(api: api, rangement: rangement)
         tableau.app = self
         projets.app = self
         conseil.app = self
@@ -147,6 +150,7 @@ public final class AppModel {
         modeles.app = self
         activitePC.app = self
         nouveautes.app = self
+        rituel.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
@@ -195,6 +199,7 @@ public final class AppModel {
             organisation.vider()
             historique.vider()
             carnet.vider()
+            rituel.vider()
             phase = .connexion
         } catch {
             // Hors ligne au lancement : on montre l'app quand même, et chaque
@@ -229,6 +234,7 @@ public final class AppModel {
         organisation.vider()
         historique.vider()
         carnet.vider()
+        rituel.vider()
         onglet = .aujourdhui
         reglagesOuverts = false
         message = nil
@@ -259,7 +265,8 @@ public final class AppModel {
         async let p: Void = projets.charger()
         async let k: Void = carnet.charger()
         async let o: Void = organisation.charger()
-        _ = await (p, k, o)
+        async let r: Void = rituel.charger()
+        _ = await (p, k, o, r)
         // La tour répond : ce qui attendait sur l'iPhone part maintenant.
         if !tableau.envoi.isEmpty && !tableau.erreurReseau { await tableau.envoyerEnAttente() }
         // Installée avant le Lot 0 : l'app n'a qu'un cookie. Elle demande son
@@ -433,6 +440,7 @@ public final class AppModel {
             organisation.vider()
             historique.vider()
             carnet.vider()
+            rituel.vider()
             phase = .connexion
             return
         }

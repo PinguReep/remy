@@ -21,6 +21,8 @@ const taches = [
   { id: "t7", name: "Plus tard", dueDate: t(9, 0, 6), workspace: { id: "w1" } },
   // Un titre très long : il doit passer à la ligne, jamais déborder.
   { id: "t9", name: "Préparer le dossier complet de subvention pour la rénovation énergétique de l'atelier de la rue des Lilas", scheduledStart: t(15, 15), scheduledEnd: t(16, 0), dueDate: t(19), duration: 45, project: { id: "p3", name: "Voyage à Porto et autres projets personnels au long cours" }, workspace: { id: "w1" } },
+  // Placée par Motion APRÈS son échéance : le bandeau « menacée » (24/10).
+  { id: "t10", name: "Envoyer les visuels à l'imprimeur", scheduledStart: new Date(now + 20 * H).toISOString(), scheduledEnd: new Date(now + 21 * H).toISOString(), dueDate: new Date(now + 6 * H).toISOString(), priority: "HIGH", duration: 60, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   { id: "t8", name: "Retoucher les photos", dueDate: t(20, 0, 2), duration: 90, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
 ];
 const evenements = [
