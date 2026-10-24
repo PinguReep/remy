@@ -136,6 +136,11 @@ final class ParcoursQuotidien: ParcoursBase {
             try saisir("Hugo préfère qu'on lui écrive plutôt que de l'appeler, surtout le lundi.", dans: champ)
             try etape("texte-tape", attendu: [ident("capture.genre.retenir")])
             auditerCibles("Noter (+)")
+            // Une préférence, pas un rendez-vous : « surtout le lundi » n'est pas une date.
+            constat("Une information à retenir qui cite un jour (« surtout le lundi ») est devinée « Rappel » pour lundi 9 h : tout jour de la semaine est lu comme une date (AnalyseDate, GenreCapture.deviner).",
+                    siFaux: !ident("capture.genre.rappel").isSelected)
+            constat("« Plusieurs choses ? Rémy les range une à une » s'affiche pour une seule phrase (une virgule suffit à la déclencher).",
+                    siFaux: !boutonContenant("Plusieurs choses").exists)
             try toucher(ident("capture.genre.retenir"), "puce Retenir")
             try etape("genre-retenir", attendu: [ident("capture.valider")])
             try toucher(ident("capture.valider"), "Retenir")
