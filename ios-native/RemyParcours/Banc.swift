@@ -210,15 +210,19 @@ class ParcoursBase: XCTestCase {
     }
 
     /// Les zones tactiles de l'écran affiché, mesurées (DoD : 44 pt au moins).
-    /// Un seul aller-retour (snapshot) ; seuls les boutons visibles comptent.
+    /// Un seul aller-retour (snapshot) ; seuls les boutons visibles comptent, et
+    /// seulement ceux de l'app : les contrôles système (barre de navigation,
+    /// segments, interrupteurs, dates, poignée de feuille) gardent leur taille Apple.
     @MainActor
     func auditerCibles(_ ecran: String) {
         guard let racine = try? app.snapshot() else { return }
         let visible = racine.frame
         var petites: [String] = []
+        let systeme: [XCUIElement.ElementType] = [.navigationBar, .segmentedControl, .switch, .datePicker, .keyboard, .toolbar, .searchField]
         func parcourir(_ s: XCUIElementSnapshot) {
+            if systeme.contains(s.elementType) || ["Poignée de feuille", "Sheet Grabber"].contains(s.label) { return }
             let f = s.frame
-            if [.button, .switch, .segmentedControl].contains(s.elementType), f.width >= 1, f.height >= 1,
+            if s.elementType == .button, f.width >= 1, f.height >= 1,
                visible.intersects(f), f.height < 43.5 || f.width < 43.5 {
                 let nom = s.label.isEmpty ? (s.identifier.isEmpty ? "sans libellé" : s.identifier) : s.label
                 petites.append("« \(nom.prefix(40)) » \(Int(f.width.rounded()))×\(Int(f.height.rounded()))")
