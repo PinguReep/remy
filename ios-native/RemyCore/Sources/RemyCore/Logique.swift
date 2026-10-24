@@ -64,6 +64,35 @@ public enum Fils {
         guard titre.range(of: #"^\d{2}/\d{2}/\d{4} · (Journée|Nocturne)$"#, options: .regularExpression) != nil else { return false }
         return !titre.hasPrefix(Format.dateFil(maintenant))
     }
+
+    /// Un seul échange (une question, une réponse) il y a plus de 14 jours :
+    /// replié dans la liste, jamais supprimé (24/10 : à J30, 143 fils sur 150
+    /// n'avaient que deux messages). Épinglé ou importé : jamais replié.
+    public static let joursAvantRepli = 14
+    public static func estEchangeCourtAncien(_ c: ConversationResume, maintenant: Date) -> Bool {
+        guard c.origine == nil, c.pinned != true, let n = c.messages, n <= 2, let maj = c.updatedAt else { return false }
+        let limite = Format.calendrier.date(byAdding: .day, value: -joursAvantRepli, to: maintenant) ?? maintenant
+        return maj.date < limite
+    }
+
+    /// L'onglet Rémy s'ouvre sur le fil du jour (24/10) : un fil qui n'a pas
+    /// bougé aujourd'hui est refermé au retour sur l'onglet, pour que la
+    /// question suivante ne tombe pas dans une conversation sans rapport (et ne
+    /// renvoie pas 40 messages au modèle). Le dernier fil reste à un geste
+    /// (« Reprendre », la liste).
+    public static func aRefermer(derniereActivite: Date?, maintenant: Date) -> Bool {
+        guard let d = derniereActivite else { return false }
+        return !Format.calendrier.isDate(d, inSameDayAs: maintenant)
+    }
+
+    /// Le fil à proposer sur l'écran vide : le plus récent touché aujourd'hui,
+    /// hors fils importés ou tenus par Rémy ; à défaut, le plus récent tout court.
+    public static func aReprendre(_ convs: [ConversationResume], maintenant: Date) -> (fil: ConversationResume, duJour: Bool)? {
+        let propres = convs.filter { $0.origine == nil }
+        guard let dernier = propres.max(by: { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }) else { return nil }
+        let duJour = dernier.updatedAt.map { Format.calendrier.isDate($0.date, inSameDayAs: maintenant) } ?? false
+        return (dernier, duJour)
+    }
 }
 
 /// La réflexion date-t-elle de la nuit dernière ? (générée depuis hier 18 h)

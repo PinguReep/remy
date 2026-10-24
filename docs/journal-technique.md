@@ -307,6 +307,47 @@ notes privées, sur la tour.
   « Automatique » ou un modèle chargé sur les Sparks, vérifié par la tour.
   Claude n'est pas dans la liste, exprès (V8).
 
+## Alléger et mesurer (nuit du 24/10)
+
+- Modèle local (`lib/allegement.js`) : ~4 appels par message (routeur,
+  réponse, relance après outil, mémoire, titre), même pour « acheter des
+  ampoules ». Le routeur n'est appelé que si un AUTRE cerveau peut répondre à
+  ce message : recherche web autorisée et message qui y ressemble (expression
+  large : un faux positif coûte l'appel d'avant, un oubli ferait répondre le
+  local sans proposer la recherche), ou conseil confié à Claude
+  (`REMY_CONSEIL_CLOUD=on` : une expression régulière ne décide jamais seule
+  d'envoyer une conversation chez un tiers). Sinon le palier se décide sans
+  IA : réflexe (court et simple), raisonnement (organiser, rédiger, long),
+  conseil (décision). Web coupé ou conversation privée + message « web » :
+  palier `web` sans appel, pour garder la note « je ne peux pas chercher ».
+  La mémoire n'est réécrite que si l'échange apprend quelque chose sur Sam
+  (préférence, habitude, fait de sa vie, état, « retiens que ») ; une étape
+  « Faire connaissance » la nourrit toujours. `REMY_ALLEGEMENT=off` rend
+  l'ancien comportement. Mesure (`test/allegement.test.mjs`, faux modèle qui
+  compte, 7 messages types, délais des Sparks ÷ 100) : 22 appels → 10
+  (3,1 → 1,4 par message), temps modèle divisé par 2,9 (aux délais réels,
+  ~234 s → ~82 s pour la journée), attente de Sam jusqu'à « done » divisée
+  par 2 (lancer avec `REMY_MESURE=1`).
+- File du quota Motion (`GET /api/motion/file`, `motion-file-v1`) : la tour
+  calcule, d'après sa fenêtre glissante et le nombre de requêtes en attente,
+  quand partira la dernière (aucun appel à Motion). Pendant une écriture,
+  l'app la lit toutes les 2 s après 1,5 s (`ClientAPI.avecSuiviFile`) et la
+  carte, comme la feuille de capture, dit « En file chez Motion : ~N s ».
+  Délais de l'app alignés (`DelaisMotion`) : écriture et annulation 150 s
+  (deux fenêtres d'une minute + le délai de Motion), Projets 75 s (mesuré :
+  58 s). Avant, l'iPhone abandonnait à 60 s et 20 s pendant que la tour écrivait.
+- Fil du jour : l'onglet Rémy referme un fil laissé ouvert depuis un autre
+  jour (jamais pendant une réponse, ni avec un brouillon ou un message en
+  file) ; « Reprendre » le rouvre d'un geste. Le site ouvre le fil touché
+  aujourd'hui, sinon un écran neuf (avant : le premier de la liste, souvent
+  l'épinglé). Liste iPhone : les échanges d'un seul aller-retour de plus de
+  14 jours sont repliés (jamais supprimés).
+- Compteurs d'usage (`RemyCore/Usage.swift`, Réglages › Ce que tu utilises
+  vraiment) : par fonction et par jour, sur l'iPhone seulement, 60 jours.
+  Comptés : les onglets, l'ouverture, et les écritures vers la tour reconnues
+  (`FonctionUsage.de`, dans `ClientAPI.requete`) ; du corps, seul le TYPE
+  d'action est lu. Ni lectures, ni envois automatiques (lieux, signe de vie).
+
 ## CI
 
 - `ios-native.yml` : build, tests du cœur, intégration contre `server.js` avec de
