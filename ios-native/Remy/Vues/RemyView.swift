@@ -796,6 +796,8 @@ private struct PropositionView: View {
     let p: Proposition
     @State private var enCours = false
     @State private var ajustement: DemandeAjustement?
+    /// Pendant « Oui, fais-le » : la file du quota Motion, dite par la tour.
+    @State private var noteFile: String?
 
     /// Sam peut régler une ligne (date, durée, catégorie, rappel) avant de dire oui.
     private var ajustable: Bool {
@@ -940,13 +942,14 @@ private struct PropositionView: View {
                     // Tant que Rémy écrit, la proposition n'est pas enregistrée.
                     .disabled(ligne.enCours)
                 }
-                Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
-                               : "Pour changer un détail, réponds-le simplement à Rémy.")
+                Text(noteFile ?? (ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
+                                            : "Pour changer un détail, réponds-le simplement à Rémy."))
                     .font(Police.texte(13))
-                    .foregroundStyle(Palette.encre3)
+                    .foregroundStyle(noteFile == nil ? Palette.encre3 : Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .disabled(enCours)
+            .task(id: enCours) { await suivreFile() }
             .padding(14)
             .overlay(alignment: .top) { Filet() }
         } else if !(p.annulationRatee ?? []).isEmpty {
@@ -979,6 +982,19 @@ private struct PropositionView: View {
         if p.versAgenda { return "Fait, dans ton agenda." }
         if let e = p.bilan?.espace { return "Fait, dans « \(e) »." }
         return "Fait, dans ton planning."
+    }
+
+    /// Tant que l'écriture vers Motion attend : « En file : Motion limite à
+    /// 12 requêtes/min, ~20 s » (si la tour sait le dire).
+    private func suivreFile() async {
+        noteFile = nil
+        guard enCours, !p.versAgenda, app.serveur?.sait("motion-file-v1") == true else { return }
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        while enCours, !Task.isCancelled {
+            if let f = try? await app.api.fileMotion() { noteFile = f.phrase }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        noteFile = nil
     }
 
     private func agir(_ f: @escaping () async -> Void) {
