@@ -25,6 +25,10 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
 - **Identifiants d'accessibilité** seulement là où le libellé ne suffit pas
   (onglets, « + », Terminer / Gérer, champ et genres du « + ») : rien ne change
   à l'écran ni pour VoiceOver.
+- **Schéma « Remy » écrit en clair** dans `project.yml` : déclarer le schéma
+  `RemyParcours` suffit à empêcher Xcode de créer les autres tout seul, et
+  `ios-native.yml`, les prototypes et l'archive TestFlight appellent
+  `-scheme Remy`. `ios-parcours.yml` échoue s'il disparaît.
 - `workflow_dispatch` seulement : une minute macOS compte pour dix.
 
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
