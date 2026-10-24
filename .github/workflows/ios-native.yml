@@ -208,6 +208,11 @@ jobs:
           capture 11c-bilan-clair light bilan
           capture 11d-bilan-sombre dark bilan
           capture 11e-menacee-clair light aujourdhui menacee
+          capture 3zd-carte-a-trancher-clair light aujourdhui a-trancher
+          capture 3ze-a-trancher-clair light a-trancher
+          capture 3zf-a-trancher-sombre dark a-trancher
+          capture 3zg-revue-clair light revue
+          capture 3zh-retards-sombre dark retards
           capture 4-remy-clair light remy
           capture 4b-remy-sombre dark remy
           capture 4c-recherche-web-sombre dark remy-fil c6

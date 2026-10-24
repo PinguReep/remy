@@ -94,6 +94,14 @@ public enum Nouveautes {
             .init(symbole: "wifi.slash", titre: "Même sans réseau",
                   texte: "La dernière vue reçue reste sur l'iPhone, datée. Toucher un jour l'ouvre à l'échelle ; glisse vers la gauche ou la droite pour passer au jour d'à côté."),
         ]),
+        Nouveaute(id: "a-trancher", serie: 3, date: "24 oct.", titre: "À trancher, et la revue du dimanche", capacite: "a-trancher-v1", pages: [
+            .init(symbole: "tray.2", titre: "Ce qui s'empile, d'un geste",
+                  texte: "Cartes en attente, rappels sans date ou en double, articles pris, vieux fils, idées : tout est réuni dans « À trancher », sur Aujourd'hui. Oui, Non, Plus tard… toujours avec « Annuler »."),
+            .init(symbole: "calendar.badge.checkmark", titre: "Le dimanche, 10 minutes",
+                  texte: "Ta semaine par projet, tes idées, trois décisions pour la suite, et ce que Rémy a remarqué la nuit. Sans IA en plus. Réglages › Revue du dimanche pour la couper."),
+            .init(symbole: "arrow.uturn.backward", titre: "De retour après une absence ?",
+                  texte: "Après plus de 3 jours, Rémy propose de trier tes retards ligne par ligne : Fait, Demain ou Abandonner."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
