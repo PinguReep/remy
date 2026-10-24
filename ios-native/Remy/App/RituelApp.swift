@@ -42,8 +42,8 @@ final class DelegueApp: NSObject, UIApplicationDelegate, UNUserNotificationCente
     }
 }
 
-/// Rafraîchir le briefing en arrière-plan quand iOS le permet (une heure avant
-/// le matin choisi, au plus tôt) : la notification part avec le contenu frais.
+/// Rafraîchir le rendez-vous en arrière-plan quand iOS le permet (une heure
+/// avant le prochain, briefing ou bilan) : la notification part avec le contenu frais.
 enum FondRituel {
     static let identifiant = "com.pingureep.remy.rituel"
 
@@ -59,14 +59,12 @@ enum FondRituel {
 
     /// Prochain passage demandé à iOS (rien si le rendez-vous est coupé).
     static func programmer() {
-        let r = ReglagesRituel.lire()
-        guard r.matin || r.soir else {
+        guard let quand = Rituel.prochainReveil(ReglagesRituel.lire(), apres: Date()) else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: identifiant)
             return
         }
-        let heure = r.matin ? max(0, r.heureMatin - 60) : max(0, r.heureSoir - 60)
         let requete = BGAppRefreshTaskRequest(identifier: identifiant)
-        requete.earliestBeginDate = Rituel.prochains(minutes: heure, apres: Date(), nombre: 1).first
+        requete.earliestBeginDate = quand
         try? BGTaskScheduler.shared.submit(requete)
     }
 

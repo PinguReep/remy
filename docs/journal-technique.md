@@ -153,18 +153,23 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
 - **Notifications locales** (pas d'APNs) : coupées par défaut, proposées une
   fois sur l'accueil. Chaque notification porte le briefing de SON jour
   (aujourd'hui ou demain, vu par la tour) ; sans contenu pour ce jour, elle
-  invite à ouvrir Rémy. Préparée depuis plus de 3 h : le sous-titre le dit.
+  invite à ouvrir Rémy. Préparée depuis plus de 3 h : le sous-titre le dit
+  (et une source muette reste dite). Le soir, les chiffres (« 2 faits, 3
+  restent ») seulement s'ils ont moins de 3 h : relus le matin, ils seraient
+  faux ; sinon la notification reste générique.
   4 jours programmés d'avance (les rappels gardent 54 places sur les 64 d'iOS).
 - **Arrière-plan** : `BGAppRefreshTask` `com.pingureep.remy.rituel`, demandé une
-  heure avant le briefing ; iOS choisit le moment (ou pas). Le jeton du
-  trousseau est lisible après le premier déverrouillage.
+  heure avant le prochain rendez-vous allumé (briefing ou bilan) ; iOS choisit
+  le moment (ou pas). Le jeton du trousseau est lisible après le premier
+  déverrouillage. Notifications refusées dans iOS : Réglages le dit.
 - **Bilan** : « tout ce qui reste → demain » = UNE proposition Motion (une
   écriture, un « Annuler ») ; même heure demain, bornée à 9 h–20 h. La ligne
   « comment ça s'est passé » est rangée comme une capture `source: bilan`
   (avec les faits du jour) : la réflexion de nuit lit déjà les captures.
-- **Capture** : une pensée sans action claire (verbe d'action en tête, « il
-  faut », une durée) va dans le dossier « Idées », plus dans Motion. Réglable
-  (`capture.parDefaut`).
+- **Capture** : une pensée sans action claire (verbe d'action en tête, à
+  l'infinitif ou à l'impératif, « il faut », une durée) va dans le dossier
+  « Idées », plus dans Motion. Réglable (`capture.parDefaut`) ; une tour sans
+  dossiers garde l'ancien comportement.
 - **Réglages** : Diagnostic (temps de réponse, jauge et tok/s du chat masqués
   par défaut, appui du planning) ; les prototypes de design ne sont plus
   proposés (le code reste pour `ios-prototypes.yml`).

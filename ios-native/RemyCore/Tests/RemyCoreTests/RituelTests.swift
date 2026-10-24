@@ -74,8 +74,37 @@ final class RituelTests: XCTestCase {
 
     func testLeSoirNeReprendQueLeBilanDuJour() throws {
         let r = try rituel()
-        XCTAssertTrue(Rituel.notificationSoir(r.soir, declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal).corps.hasPrefix("1 fait"))
-        XCTAssertTrue(Rituel.notificationSoir(r.soir, declenchement: date("2026-10-24T19:30:00Z"), calendrier: cal).corps.hasPrefix("Fait, glissé"))
+        let fin = date("2026-10-23T18:00:00Z") // relu à 20 h
+        XCTAssertTrue(Rituel.notificationSoir(r.soir, prepareA: fin, declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal).corps.hasPrefix("1 fait"))
+        XCTAssertTrue(Rituel.notificationSoir(r.soir, prepareA: fin, declenchement: date("2026-10-24T19:30:00Z"), calendrier: cal).corps.hasPrefix("Fait, glissé"))
+    }
+
+    func testLeSoirNeDitPasDesChiffresDuMatin() throws {
+        let r = try rituel()
+        // Relu à 8 h : « 1 fait » serait faux à 21 h 30, la notification reste générique.
+        let n = Rituel.notificationSoir(r.soir, prepareA: date("2026-10-23T06:00:00Z"), declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal)
+        XCTAssertTrue(n.corps.hasPrefix("Fait, glissé"), n.corps)
+        XCTAssertTrue(Rituel.notificationSoir(r.soir, prepareA: nil, declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal).corps.hasPrefix("Fait, glissé"))
+    }
+
+    func testUneSourceMuetteResteDiteMemeAncienne() throws {
+        var b = try rituel().demain!
+        b.avertissement = "Motion n'a pas répondu : ce briefing peut être incomplet."
+        let n = Rituel.notificationMatin(b, prepareA: date("2026-10-23T20:10:00Z"), declenchement: date("2026-10-24T05:30:00Z"), calendrier: cal)
+        XCTAssertTrue(n.sousTitre?.hasPrefix("Préparé hier") == true)
+        XCTAssertTrue(n.corps.contains("Motion n'a pas répondu"), n.corps)
+    }
+
+    func testLeReveilEnFondVisePlusProche() {
+        let apres = date("2026-10-23T12:00:00Z") // 14 h à Paris
+        XCTAssertNil(Rituel.prochainReveil(ReglagesRituel(), apres: apres, calendrier: cal), "coupé : aucun réveil")
+        let matin = Rituel.prochainReveil(ReglagesRituel(matin: true), apres: apres, calendrier: cal)
+        XCTAssertEqual(matin.map { Rituel.cleJour($0, calendrier: cal) }, "2026-10-24")
+        XCTAssertEqual(matin.map { cal.component(.hour, from: $0) }, 6, "une heure avant 7 h 30")
+        // Le soir allumé aussi : le bilan de ce soir passe avant le briefing de demain.
+        let deux = Rituel.prochainReveil(ReglagesRituel(matin: true, soir: true), apres: apres, calendrier: cal)
+        XCTAssertEqual(deux.map { Rituel.cleJour($0, calendrier: cal) }, "2026-10-23")
+        XCTAssertEqual(deux.map { cal.component(.hour, from: $0) }, 20)
     }
 
     func testToutCeQuiResteADemainEnUneEcriture() throws {
@@ -126,6 +155,13 @@ final class CaptureIdeesTests: XCTestCase {
         XCTAssertEqual(GenreCapture.deviner("Me renseigner sur les assurances"), .tache)
         XCTAssertEqual(GenreCapture.deviner("Il faut que je trie mes mails"), .tache)
         XCTAssertEqual(GenreCapture.deviner("Studio : 90 min pour la démo"), .tache)
+        // Dicté à l'impératif, comme on se parle.
+        XCTAssertEqual(GenreCapture.deviner("Appelle le garage"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Envoie le devis à Léa"), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Achète des ampoules"), .tache)
+        // Un nom qui ressemble à un verbe reste une idée.
+        XCTAssertEqual(GenreCapture.deviner("Livre de cuisine pour l'hiver"), .idee)
+        XCTAssertEqual(GenreCapture.deviner("Note sur le mix du refrain"), .idee)
     }
 
     func testReglablePourRevenirAMotion() {

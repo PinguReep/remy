@@ -494,6 +494,10 @@ struct ReglagesRituelVue: View {
             }
         }
         .foregroundStyle(Palette.encre)
+        // Allumé, puis refusé dans les réglages de l'iPhone : rien ne sonnerait, c'est dit ici.
+        .task(id: matin || soir) {
+            refuse = (matin || soir) ? await Notifications.refusees() : false
+        }
     }
 
     static func texteHeure(_ minutes: Int) -> String {
