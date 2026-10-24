@@ -60,7 +60,10 @@ jobs:
         working-directory: ios-native
         run: |
           xcodegen generate
-          xcodebuild -list -project Remy.xcodeproj
+          xcodebuild -list -project Remy.xcodeproj | tee schemas.txt
+          # Le schéma « Remy » sert au build de chaque PR et à TestFlight : il
+          # doit exister à côté de celui des parcours.
+          grep -Eq "^[[:space:]]+Remy$" schemas.txt || { echo "::error::Schéma « Remy » absent du projet généré"; exit 1; }
 
       - name: Choisir et démarrer le simulateur
         id: sim

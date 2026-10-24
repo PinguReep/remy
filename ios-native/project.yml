@@ -100,8 +100,24 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
 schemes:
-  # Le schéma « Remy » reste créé automatiquement (build, TestFlight) ; celui-ci
-  # ne sert qu'aux parcours.
+  # Dès qu'un schéma est déclaré ici, Xcode ne crée plus les autres tout seul :
+  # « Remy » (build de la CI, captures, archive TestFlight) est donc écrit en
+  # clair, tel qu'il était créé jusque-là.
+  Remy:
+    build:
+      targets:
+        Remy: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  # Les parcours joués sur le simulateur (ios-parcours.yml) seulement.
   RemyParcours:
     build:
       targets:
