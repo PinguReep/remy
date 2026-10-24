@@ -55,9 +55,12 @@ async function semer() {
     { id: "r-ancien", texte: "Changer les essuie-glaces" },
     { id: "r-recent", texte: "Acheter des ampoules" },
     { id: "r-1", texte: "Appeler le garage" },
-    { id: "r-2", texte: "appeler  le Garage.", quand: maintenant + JOUR },
     { id: "r-fait", texte: "Payer la cantine", fait: true },
   ]);
+  // Un doublon laissé par une tour d'avant l'anti-doublon du carnet (qui le
+  // fondrait aujourd'hui dans r-1) : posé directement en base.
+  db().prepare("INSERT INTO rappels (id, texte, quand, fait, source, supprime, cree_a, maj_a) VALUES ('r-2', 'appeler  le Garage.', ?, 0, 'remy', 0, ?, ?)")
+    .run(maintenant + JOUR, maintenant, maintenant);
   vieillir("rappels", "r-ancien", 10);
   vieillir("rappels", "r-1", 9);
   // Une liste avec des articles pris.
