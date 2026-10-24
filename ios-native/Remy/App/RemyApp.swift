@@ -90,8 +90,13 @@ struct RacineView: View {
                 ConnexionView()
                     .transition(.opacity)
             case .pret:
-                OngletsView()
-                    .transition(.opacity)
+                if let e = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"], e.hasPrefix("partage-") {
+                    // CI : la feuille de partage, contre la tour de démo.
+                    DemoPartageVue(ecran: e)
+                } else {
+                    OngletsView()
+                        .transition(.opacity)
+                }
             }
             }
         }
