@@ -46,6 +46,13 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(v.api, 1)
         XCTAssertTrue(v.sait("reglages"))
         XCTAssertEqual(app.serveur, v, "lue au chargement")
+        // 24/10 : la file du quota Motion se lit ; au repos, la carte n'en dit rien.
+        if v.sait("motion-file-v1") {
+            let f = try await app.api.fileMotion()
+            XCTAssertGreaterThan(f.quota, 0)
+            XCTAssertEqual(f.enAttente, 0)
+            XCTAssertNil(f.phrase)
+        }
         // Réglages : le secours Claude se lit et se règle (sans objet en démo : pas de GLM).
         let r = try await app.api.reglages()
         XCTAssertEqual(r.secoursCloudSansObjet, true)
