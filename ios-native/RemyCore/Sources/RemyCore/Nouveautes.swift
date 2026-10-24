@@ -29,6 +29,12 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "fil-du-jour", serie: 3, date: "24 oct.", titre: "Plus léger au quotidien", capacite: nil, pages: [
+            .init(symbole: "sun.horizon", titre: "Rémy s'ouvre sur ta journée",
+                  texte: "Le fil d'hier ne reste plus ouvert : l'onglet Rémy repart sur un écran neuf, et « Reprendre » rouvre le dernier fil d'un geste. Les échanges d'un seul message de plus de 14 jours sont repliés dans la liste."),
+            .init(symbole: "chart.bar", titre: "Ce que tu utilises vraiment",
+                  texte: "Réglages › Ce que tu utilises vraiment : les gestes que tu fais le plus, et ceux que tu ne touches jamais. Compté sur cet iPhone, sans aucun contenu, et rien ne part."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

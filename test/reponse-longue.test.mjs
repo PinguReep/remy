@@ -80,7 +80,7 @@ async function demander(texte) {
 test("une réflexion qui dépasse le budget est arrêtée, et Rémy conclut à partir de ses notes", async () => {
   scenario = "reflexion";
   requetes.length = 0;
-  const { evts } = await demander("Une très longue dictée…");
+  const { evts } = await demander("Une très longue dictée… ".repeat(20));
   const done = evts.find((e) => e.nom === "done");
   assert.ok(done, JSON.stringify(evts.find((e) => e.nom === "error")));
   assert.equal(done.data.text, "Voilà l'essentiel.");

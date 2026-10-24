@@ -199,9 +199,9 @@ private struct AccueilRemy: View {
 
     var body: some View {
         let chat = app.chat
-        let derniere = chat.conversations
-            .filter { $0.origine == nil }
-            .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
+        // Le fil du jour s'il y en a un, sinon le dernier : à un geste (24/10).
+        let reprise = Fils.aReprendre(chat.conversations, maintenant: Date())
+        let derniere = reprise?.fil
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -237,7 +237,8 @@ private struct AccueilRemy: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
-                            Text("Reprendre « \(d.title) »").font(Police.texte(14)).lineLimit(1)
+                            Text(reprise?.duJour == true ? "Reprendre le fil du jour « \(d.title) »" : "Reprendre « \(d.title) »")
+                                .font(Police.texte(14)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(Palette.encre2)
@@ -940,11 +941,20 @@ private struct PropositionView: View {
                     // Tant que Rémy écrit, la proposition n'est pas enregistrée.
                     .disabled(ligne.enCours)
                 }
-                Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
-                               : "Pour changer un détail, réponds-le simplement à Rémy.")
-                    .font(Police.texte(13))
-                    .foregroundStyle(Palette.encre3)
-                    .fixedSize(horizontal: false, vertical: true)
+                // La tour fait attendre l'écriture dans la file du quota Motion
+                // (24/10) : on dit combien de temps, au lieu de « … » muet.
+                if enCours, let a = app.attenteMotion {
+                    Label(a.phrase, systemImage: "hourglass")
+                        .font(Police.texte(13, .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
+                                   : "Pour changer un détail, réponds-le simplement à Rémy.")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .disabled(enCours)
             .padding(14)
@@ -1599,6 +1609,7 @@ struct ConversationsView: View {
     @State private var aSupprimer: ConversationResume?
     @State private var anciennesOuvertes = false
     @State private var importeesOuvertes = false
+    @State private var courtesOuvertes = false
 
     var body: some View {
         let toutes = app.chat.conversations.sorted {
@@ -1612,7 +1623,13 @@ struct ConversationsView: View {
         }
         let importees = toutes.filter { $0.origine != nil }
         let anciennes = toutes.filter { $0.origine == nil && Fils.estAncienFilDuJour($0.title, maintenant: maintenant) }
-        let principales = toutes.filter { $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) }
+        // Un seul échange il y a plus de 14 jours (24/10) : replié, jamais effacé.
+        let courtes = toutes.filter {
+            $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) && Fils.estEchangeCourtAncien($0, maintenant: maintenant)
+        }
+        let principales = toutes.filter {
+            $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) && !Fils.estEchangeCourtAncien($0, maintenant: maintenant)
+        }
 
         NavigationStack {
             List {
@@ -1651,6 +1668,14 @@ struct ConversationsView: View {
                                     .padding(.top, 6)
                             }
                         }
+                    }
+                    if !courtes.isEmpty {
+                        DisclosureGroup(isExpanded: $courtesOuvertes) {
+                            ForEach(courtes) { c in ligne(c) }
+                        } label: {
+                            titreGroupe("Échanges courts, plus de \(Fils.joursAvantRepli) jours (\(courtes.count))")
+                        }
+                        .listRowBackground(Palette.fond)
                     }
                     if !anciennes.isEmpty {
                         DisclosureGroup(isExpanded: $anciennesOuvertes) {

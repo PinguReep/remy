@@ -398,6 +398,13 @@ struct CaptureView: View {
             }
             .disabled(choisis.isEmpty || envoi || choisis.contains { !$0.pret })
             .opacity(choisis.isEmpty || choisis.contains { !$0.pret } ? 0.45 : 1)
+            // File du quota Motion (24/10) : l'attente se dit, la feuille reste ouverte.
+            if envoi, let a = app.attenteMotion {
+                Label(a.phrase, systemImage: "hourglass")
+                    .font(Police.texte(13, .medium))
+                    .foregroundStyle(Palette.encre2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
