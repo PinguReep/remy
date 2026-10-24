@@ -22,8 +22,13 @@ targets:
     platform: iOS
     sources:
       - path: Remy
+      # Intentions partagées avec les widgets (activité en direct, contrôle).
+      - path: Intentions
     dependencies:
       - package: RemyCore
+      # Embarquées dans l'app (PlugIns) : widgets et feuille de partage (24/10).
+      - target: RemyWidgets
+      - target: RemyPartage
     info:
       path: Support/Info.plist
       properties:
@@ -37,6 +42,14 @@ targets:
         # (feuilles, alertes, menus). Le design de Rémy est plat et à angles
         # droits : on garde l'apparence classique, cohérente avec le site.
         UIDesignRequiresCompatibility: true
+        # Activités en direct (écran verrouillé, Dynamic Island) : 24/10.
+        NSSupportsLiveActivities: true
+        # remy://capture (widget, raccourci) ouvre la capture ; remy://projets…
+        # ouvre l'onglet (LienRemy dans RemyCore).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.pingureep.remy
+            CFBundleURLSchemes:
+              - remy
         # L'adresse de la tour, posée à la compilation (secret de la CI) ; vide :
         # l'app la demande une fois. Jamais écrite dans le dépôt.
         RemyAdresseTour: $(REMY_ADRESSE_TOUR)
@@ -72,9 +85,80 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.pingureep.remy
         PRODUCT_NAME: Remy
+        # Trousseau partagé avec les extensions (pas de groupe d'app : Apple
+        # refuse de l'enregistrer par l'API). Son groupe est celui par défaut de
+        # l'app : le jeton déjà rangé reste lisible.
+        CODE_SIGN_ENTITLEMENTS: Remy/Remy.entitlements
         REMY_ADRESSE_TOUR: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+
+  # Widgets (WidgetKit, 24/10). Même version que l'app (TestFlight l'exige),
+  # même équipe et signature automatique (DEVELOPMENT_TEAM vient de la CI).
+  # Lit seulement le trousseau partagé (adresse de la tour, jeton).
+  RemyWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RemyWidgets
+      - path: Commun
+      - path: Intentions
+    dependencies:
+      - package: RemyCore
+    info:
+      path: Support/RemyWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: Rémy
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: fr
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pingureep.remy.widgets
+        PRODUCT_NAME: RemyWidgets
+        CODE_SIGN_ENTITLEMENTS: RemyWidgets/RemyWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  # Feuille de partage (24/10) : un texte, un lien ou une image vers Rémy.
+  # Pour l'instant « Bientôt ». Lit seulement le trousseau partagé.
+  RemyPartage:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RemyPartage
+      - path: Commun
+    dependencies:
+      - package: RemyCore
+    info:
+      path: Support/RemyPartage-Info.plist
+      properties:
+        CFBundleDisplayName: Rémy
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: fr
+        UIDesignRequiresCompatibility: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PartageViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pingureep.remy.partage
+        PRODUCT_NAME: RemyPartage
+        CODE_SIGN_ENTITLEMENTS: RemyPartage/RemyPartage.entitlements
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES

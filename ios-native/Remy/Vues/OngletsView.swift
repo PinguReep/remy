@@ -121,10 +121,27 @@ struct OngletsView: View {
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
         .task { await demo() }
+        // Un lien remy://capture (widget) : la capture s'ouvre, une autre
+        // feuille fermée d'abord (iOS n'en présente qu'une à la fois).
+        .task(id: app.lien) { await ouvrirLien() }
         // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert.
         .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
+        // L'activité en direct suit la journée (prolongée, cochée, l'heure
+        // passée) et démarre seule si Sam le veut ; rien en arrière-plan. Le
+        // widget « Maintenant » se relit si ce qu'il montre a changé.
+        .onChange(of: app.tableau.journee) { _, j in
+            WidgetsAJour.journee(j)
+            Task { await ActiviteEnDirect.partagee.suivre() }
+        }
+        .task(id: scene) {
+            guard scene == .active else { return }
+            while !Task.isCancelled {
+                await ActiviteEnDirect.partagee.suivre()
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
         // Signe de vie tant que l'app est au premier plan : c'est la mesure
         // d'activité (le temps passé devant Rémy, pas le temps où il existe).
         // Une dictée de plusieurs minutes : l'écran ne se verrouille pas (le
@@ -167,6 +184,27 @@ struct OngletsView: View {
 }
 
 extension OngletsView {
+    /// Le lien n'est retiré qu'à la fin : changer `app.lien` annule cette tâche
+    /// (task(id:)), et l'attente avec.
+    fileprivate func ouvrirLien() async {
+        guard app.lien == .capture else { return }
+        let ouverte = app.reglagesOuverts || ui.choixTache || ui.historiqueOuvert || ui.boiteOuverte
+            || ui.filtreDemo || ui.onboardingDemo != nil || ui.modifier != nil || app.nouveautes.affichees != nil
+        app.reglagesOuverts = false
+        ui.choixTache = false
+        ui.historiqueOuvert = false
+        ui.boiteOuverte = false
+        ui.filtreDemo = false
+        ui.onboardingDemo = nil
+        ui.modifier = nil
+        if app.nouveautes.affichees != nil { app.nouveautes.fermer() }
+        ui.gerer = nil
+        // La feuille fermée doit finir de descendre avant d'en présenter une autre.
+        if ouverte { try? await Task.sleep(nanoseconds: 450_000_000) }
+        ui.captureOuverte = true
+        app.lien = nil
+    }
+
     /// Captures de la CI : ouvre le panneau demandé une fois la journée chargée.
     /// Inactif sans les variables d'environnement de démonstration.
     fileprivate func demo() async {
@@ -186,7 +224,7 @@ extension OngletsView {
             }
             ui.choixDemo = 15
         case "journee-etendue": ui.journeeEtendue = true
-        case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
+        case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"
