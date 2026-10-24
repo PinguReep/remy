@@ -76,5 +76,10 @@ final class SemaineTests: XCTestCase {
         XCTAssertNil(i.conflit, "le podologue commence après la nouvelle fin")
         XCTAssertEqual(i.tachesDecalees, 1)
         XCTAssertEqual(SemaineModel.demainISO(Date(timeIntervalSince1970: 1_793_001_600)), "2026-10-27")
+        // « Gérer » ouvert depuis les 7 jours dit le jour.
+        let lundi10h = Date(timeIntervalSince1970: 1_793_001_600)
+        XCTAssertNil(Format.autreJour(1_793_005_200_000, maintenant: lundi10h), "aujourd'hui : rien")
+        XCTAssertEqual(Format.autreJour(1_793_088_000_000, maintenant: lundi10h), "Demain")
+        XCTAssertEqual(Format.autreJour(1_793_260_800_000, maintenant: lundi10h), "Jeu 29")
     }
 }

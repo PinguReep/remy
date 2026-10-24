@@ -202,6 +202,20 @@ extension Rangement {
     static let semaine = "semaine.json"
 }
 
+extension Format {
+    /// Le jour d'un élément qui n'est pas d'aujourd'hui : « Demain »,
+    /// « Lun 26 » (nil aujourd'hui). Pour « Gérer » ouvert depuis les 7 jours.
+    public static func autreJour(_ ms: Millis, maintenant: Date = Date()) -> String? {
+        let cal = calendrier
+        let jour = cal.startOfDay(for: ms.date)
+        let auj = cal.startOfDay(for: maintenant)
+        guard jour != auj else { return nil }
+        if let demain = cal.date(byAdding: .day, value: 1, to: auj), jour == demain { return "Demain" }
+        let nom = jourSemaine(jour)
+        return nom.prefix(1).uppercased() + nom.dropFirst().prefix(2) + " \(cal.component(.day, from: jour))"
+    }
+}
+
 extension ClientAPI {
     /// Les `jours` à venir, aujourd'hui compris (semaine-v1).
     public func semaine(jours: Int = 7) async throws -> Semaine {
