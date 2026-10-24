@@ -133,6 +133,35 @@ notes privées, sur la tour.
   `Projets/` dans le coffre, bloc « Projets » dans le chat (conversation passée
   en privé).
 
+## 2026-10-24 — Demain et les 7 jours, sans IA (semaine-v1)
+
+- **Constat** : l'app ne montrait que la journée en cours, et la vue à
+  l'échelle n'était atteignable que par un appui long. « Qu'ai-je demain ? »
+  passait par le modèle (latence, coût).
+- **Tour** : `GET /api/semaine?jours=7` (`lib/semaine.js`, pur, testé à l'heure
+  de Paris, changement d'heure compris). Par jour : la frise, les rendez-vous
+  « journée entière », les échéances (menacée = placée après l'échéance ou pas
+  placée), la charge (minutes de tâches placées, plafonnées à leur durée, contre
+  les plages de l'horaire Motion moins les rendez-vous qui les recouvrent) et ce
+  que Motion place après l'échéance.
+- **Quota Motion** : aucune requête de plus. `GET /tasks` rend déjà les créneaux
+  des jours suivants : la liste en cache de l'accueil sert telle quelle. Les
+  horaires (`/schedules`) passent par le même cache de 10 min que l'instantané
+  (`horairesMotion`, même choix d'horaire que `nomHoraire`).
+- **Agenda** : une requête pour toute la période (250 événements au plus), dans
+  un cache par période (4 au plus, 2 min, lectures simultanées partagées) : ouvrir
+  les 7 jours ne chasse plus la journée de l'accueil. Une écriture vide tout.
+- **iPhone** : bouton « À l'échelle » à côté de LA SUITE ; segment Aujourd'hui |
+  Demain | 7 jours (boutons de 44 pt, pas le segment système). Toucher un jour
+  l'ouvre à l'échelle ; toucher une tâche ouvre « Gérer », dont l'estimation de
+  prolongation lit les voisins du bon jour (`SemaineModel.journee(contenant:)`).
+  La dernière vue est gardée dans `semaine.json` (comme la journée), datée,
+  relue au lancement et effacée à la déconnexion. Chargée avec le reste au
+  lancement : sans IA ni Motion de plus, seulement l'agenda.
+- **Tests** : `test/semaine.test.mjs` (faux Motion à quota, faux agenda qui
+  compte ses lectures), `SemaineTests` (décodage tolérant, charge en mots),
+  intégration contre `server.js` avec les horaires du faux Motion de la CI.
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont

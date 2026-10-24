@@ -187,6 +187,8 @@ struct GererPanneau: View {
     /// « 10:15 – 11:30 · il reste 50 min · 1 h 15 au total »
     private func horaires(maintenant: Millis, reste: Int) -> String {
         var bits = ["\(Format.heure(e.debut)) – \(Format.heure(e.finEffective))"]
+        // Ouverte depuis Demain ou les 7 jours : le jour d'abord.
+        if let j = Format.autreJour(e.debut) { bits.insert(j, at: 0) }
         if Jour.etat(e, maintenant: maintenant) == .encours { bits.append("il reste \(Format.duree(minutes: reste))") }
         bits.append("\(Format.duree(minutes: e.dureeTotale)) au total")
         return bits.joined(separator: " · ")
