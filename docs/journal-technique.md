@@ -282,16 +282,26 @@ notes privées, sur la tour.
   le chemin, onglets privés ignorés). **Les titres de fenêtres ne sont jamais
   écrits** (test : absents du fichier de la base). Catégories par table
   (`CATEGORIES`, sans IA), réglables (`REMY_ACTIVITE_CATEGORIES=appli=jeux,…` ou
-  `categories` depuis l'API) ; `REMY_ACTIVITE_EXCLURE` + exclusions de l'app :
-  jamais comptées (ce qui l'était s'efface). Premier allumage : depuis minuit ;
+  `categories` depuis l'API) ; `REMY_ACTIVITE_EXCLURE` + exclusions de l'app
+  (applis ou domaines ; « .app » n'est pas retiré, agenda.app reste un domaine) :
+  jamais comptées, et ce qui l'était s'efface (pour la tour, au relevé suivant).
+  Exclure un navigateur efface tous les sites relevés (un domaine gardé ne dit
+  pas quel navigateur l'a vu) et ignore les onglets de son seau web
+  (`navigateurDuSeau`), écrits même quand il est derrière. Premier allumage : depuis minuit ;
   rallumée après une coupure voulue, ou après « tout effacer » : à partir de
   maintenant (le passé d'ActivityWatch n'est pas relu) ; après une panne de la
   tour, 7 jours rattrapés au plus. ActivityWatch absent : `joignable: false` et
   un message avec quoi faire, un seul avertissement au journal, réessai au
-  relevé suivant. 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
+  relevé suivant. Un guetteur arrêté garde son seau : si sa dernière écriture
+  (`last_updated`, ou `metadata.end` d'aw-server-rust) date de plus de 10 min
+  avant le relevé d'avant, `fenetre`/`afk` passent à false avec « … n'écrit plus
+  depuis HH:MM ». Pas d'alerte au réveil de la tour ni après un redémarrage
+  d'ActivityWatch (relevé d'avant injoignable). 90 jours (`REMY_ACTIVITE_PC_JOURS`, job `activite-pc-purge`).
   `GET/PUT/DELETE /api/activite-pc`, `POST /api/activite-pc/collecte`.
   La note « Activité du PC » (aujourd'hui et 7 jours par catégorie, présentée
-  comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude.
+  comme des repères) n'entre que dans la consigne de GLM, jamais chez Claude ;
+  avec le secours Claude, ce que GLM en a dit dans la conversation peut lui
+  être relu (historique, réflexion de nuit), comme le reste de la conversation.
   `REMY_ACTIVITE_PC=off` coupe tout. Il n'existe pas encore d'analyse
   hebdomadaire où les ranger : `bilanSemaine()` rend les totaux par catégorie
   des 7 derniers jours et des 7 d'avant (sans IA), repris dans la vue
