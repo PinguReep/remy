@@ -119,9 +119,10 @@ struct FeuillePartage: View {
             .accessibilityLabel("Rémy")
             Spacer()
             // Toujours là pendant l'envoi : une tour éteinte ferait attendre
-            // jusqu'au délai de la requête.
+            // jusqu'au délai de la requête. « Fermer » alors, pas « Annuler » :
+            // la tour a peut-être déjà tout reçu, et le garde.
             if !estRecu {
-                BoutonTexteSeul(titre: "Annuler", action: modele.annuler)
+                BoutonTexteSeul(titre: estEnvoi ? "Fermer" : "Annuler", action: modele.annuler)
             }
         }
         .padding(.leading, 20)
@@ -131,6 +132,11 @@ struct FeuillePartage: View {
 
     private var estRecu: Bool {
         if case .recu = modele.etat { return true }
+        return false
+    }
+
+    private var estEnvoi: Bool {
+        if case .envoi = modele.etat { return true }
         return false
     }
 
@@ -203,7 +209,7 @@ struct FeuillePartage: View {
                 .font(.system(size: 20, weight: .semibold, design: .serif))
                 .foregroundStyle(Teinte.encre)
             Text(modele.lent
-                 ? "Rémy le lit avec le modèle local : ça peut prendre une minute. Garde cette feuille ouverte."
+                 ? "Rémy le lit avec le modèle local : ça peut prendre jusqu'à trois minutes. Garde cette feuille ouverte pour voir son reçu."
                  : "Rémy le lit et le classe.")
                 .font(.system(size: 15))
                 .foregroundStyle(Teinte.encre2)
@@ -288,6 +294,20 @@ struct CarteApercu: View {
                     .foregroundStyle(Teinte.encre2)
                     .fixedSize(horizontal: false, vertical: true)
                 if let t = contenu.image?.texteLu {
+                    Text(t)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Teinte.encre)
+                        .lineLimit(4)
+                }
+                // Le lien et le texte joints partent avec l'image : on les montre.
+                if let l = contenu.lien {
+                    Text(l.absoluteString)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(Teinte.encre2)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
+                if let t = contenu.texte {
                     Text(t)
                         .font(.system(size: 14))
                         .foregroundStyle(Teinte.encre)
