@@ -455,9 +455,13 @@ public final class ClientAPI: @unchecked Sendable {
     // MARK: Règles de Rémy (regles-v1)
 
     /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.
-    public func validerRegle(convId: String, propositionId: String) async throws {
+    /// Rend ce qu'elle en a fait : créée, déjà là, ou mise à jour (24/10).
+    @discardableResult
+    public func validerRegle(convId: String, propositionId: String) async throws -> RetourRegle {
         let pid = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
-        try await envoyer("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST", corps: [:])
+        let d = try await brut("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST",
+                               corps: try JSONSerialization.data(withJSONObject: [String: Any]()))
+        return RetourRegle(d)
     }
 
     public func regles() async throws -> [RegleRemy] {

@@ -143,6 +143,32 @@ public struct RegleRemy: Decodable, Identifiable, Equatable, Sendable {
 
 public struct ListeRegles: Decodable, Sendable { public var regles: [RegleRemy] }
 
+/// Ce que la tour a fait d'une règle validée (24/10) : une règle redemandée
+/// n'est pas recréée — rendue telle quelle (`deja`) ou réglée comme la carte
+/// (`fusionnee`). Une réponse illisible ou rejouée compte comme « créée ».
+public struct RetourRegle: Equatable, Sendable {
+    public var deja = false
+    public var miseAJour = false
+
+    public init(deja: Bool = false, miseAJour: Bool = false) {
+        self.deja = deja
+        self.miseAJour = miseAJour
+    }
+
+    init(_ d: Data) {
+        let regles = ((try? JSONSerialization.jsonObject(with: d)) as? [String: Any])?["regles"] as? [[String: Any]] ?? []
+        deja = !regles.isEmpty && regles.allSatisfy { $0["deja"] as? Bool == true }
+        miseAJour = regles.contains { $0["fusionnee"] as? Bool == true }
+    }
+
+    /// Le message de l'app après « Créer la règle ».
+    public var phrase: String {
+        if deja { return "Cette règle existait déjà : rien n'a changé." }
+        if miseAJour { return "Règle mise à jour comme sur la carte : Rémy te proposera la tâche avant chaque événement qui correspond." }
+        return "Règle créée : Rémy te proposera la tâche avant chaque événement qui correspond."
+    }
+}
+
 /// Ce que rend une vérification des règles (compteurs).
 public struct BilanRegles: Decodable, Sendable {
     public var regles: Int

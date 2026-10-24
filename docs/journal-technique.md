@@ -174,6 +174,25 @@ l'accumulation qui casse. Corrigé :
   fois par lot au lieu d'une fois par tâche : 6 requêtes Motion au lieu de 10
   pour 5 tâches, sous le quota (12/min) au lieu d'une attente d'une minute.
 
+Revue contradictoire, corrigé dans la foulée :
+
+- **Rappels** : même texte ET même jour (heure de Sam), ou l'un des deux sans
+  date, font le même rappel. Le loyer du 1er novembre et celui du 1er décembre
+  en font deux (avant : le second disparaissait, notification comprise) ;
+  « Ranger en rappel » dit « déjà là » au lieu d'une fausse date.
+- **Annuler un ajout fondu** : la suppression d'un doublon que la tour a fondu
+  sort de la file ; elle n'efface plus l'article ou le rappel d'origine.
+- **Règle redemandée avec un autre délai ou une autre durée** : la carte validée
+  l'emporte (délai, durée, priorité). L'app dit « existait déjà » ou « mise à
+  jour », plus jamais « créée » à tort.
+- **« Déjà là » ne s'annule pas** : 409 `rien` (avant : journal passé en
+  « annulée » sans rien défaire) ; le site n'affiche plus « Annuler » sur une
+  carte où tout existait déjà.
+- **Historique** : un filtre touché pendant une lecture relance une lecture, la
+  dernière gagne. **Carte ajustée** : plus marquée périmée dans l'app.
+  **Annuler « Retirer les pris »** : les articles reviennent par lots de 100
+  (la tour n'en écrit que 100 par envoi).
+
 ## Chaîne d'écriture (Motion, Google Agenda)
 
 - Rémy **propose**, rien n'est écrit sans « Oui ». Les actions appliquées sont

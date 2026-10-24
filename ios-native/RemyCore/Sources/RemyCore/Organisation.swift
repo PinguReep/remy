@@ -440,6 +440,8 @@ public final class HistoriqueModel {
     public private(set) var chargementSuite = false
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI
+    /// Numéro de la dernière lecture : une réponse d'un filtre quitté est ignorée.
+    @ObservationIgnored private var lecture = 0
 
     public init(api: ClientAPI) { self.api = api }
 
@@ -448,20 +450,27 @@ public final class HistoriqueModel {
     public var paginable: Bool { app?.serveur?.sait("historique-v2") == true }
 
     public func charger() async {
-        guard disponible, !chargement else { return }
+        guard disponible else { return }
+        // Un filtre touché pendant une lecture relance une lecture : la dernière gagne.
+        lecture += 1
+        let n = lecture
         chargement = true
-        defer { chargement = false }
+        defer { if n == lecture { chargement = false } }
         do {
             if paginable {
                 let p = try await api.pageHistorique(filtre: filtre)
+                guard n == lecture else { return }
                 entrees = p.entrees
                 suite = p.suite
             } else {
-                entrees = try await api.historique()
+                let e = try await api.historique()
+                guard n == lecture else { return }
+                entrees = e
                 suite = nil
             }
             erreur = nil
         } catch {
+            guard n == lecture else { return }
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
             erreur = (error as? LocalizedError)?.errorDescription ?? "Historique illisible."
         }
@@ -480,8 +489,10 @@ public final class HistoriqueModel {
         guard paginable, let avant = suite, !chargementSuite else { return }
         chargementSuite = true
         defer { chargementSuite = false }
+        let n = lecture
         do {
             let p = try await api.pageHistorique(avant: avant, filtre: filtre)
+            guard n == lecture else { return } // filtre changé entre-temps
             let connus = Set(entrees.map(\.id))
             entrees += p.entrees.filter { !connus.contains($0.id) }
             suite = p.suite

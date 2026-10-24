@@ -81,6 +81,24 @@ final class UsageIntensifPurTests: XCTestCase {
         // La file se garde sur l'iPhone : le nouveau cas se relit.
         let relu = try JSONDecoder().decode(OperationCarnet.self, from: JSONEncoder().encode(lot))
         XCTAssertEqual(relu, lot)
+        // Effacer un doublon fondu sort de la file (l'original reste).
+        XCTAssertTrue(OperationCarnet.supprimerRappel(id: "fantome").effaceUnDoublon(["fantome": "orig"]))
+        XCTAssertTrue(OperationCarnet.supprimerElement(liste: "L", id: "fantome").effaceUnDoublon(["fantome": "orig"]))
+        XCTAssertFalse(OperationCarnet.supprimerRappel(id: "autre").effaceUnDoublon(["fantome": "orig"]))
+        XCTAssertFalse(OperationCarnet.elements(liste: "L", [ElementListe(id: "fantome", texte: "lait")]).effaceUnDoublon(["fantome": "orig"]))
+    }
+
+    func testRetourDUneRegleValidee() {
+        let deja = RetourRegle(Data(#"{"ok":true,"statut":"applique","regles":[{"id":"regle-1","nom":"Rasage","deja":true}]}"#.utf8))
+        XCTAssertEqual(deja, RetourRegle(deja: true))
+        XCTAssertEqual(deja.phrase, "Cette règle existait déjà : rien n'a changé.")
+        let fusion = RetourRegle(Data(#"{"ok":true,"regles":[{"id":"regle-1","fusionnee":true}]}"#.utf8))
+        XCTAssertEqual(fusion, RetourRegle(miseAJour: true))
+        XCTAssertTrue(fusion.phrase.hasPrefix("Règle mise à jour"))
+        // Neuve, rejouée (ids seulement) ou illisible : « créée ».
+        for j in [#"{"regles":[{"id":"regle-2","nom":"Rasage"}]}"#, #"{"ok":true,"rejoue":true,"regles":["regle-1"]}"#, "pas du json"] {
+            XCTAssertTrue(RetourRegle(Data(j.utf8)).phrase.hasPrefix("Règle créée"), j)
+        }
     }
 }
 
@@ -95,6 +113,7 @@ final class UsageIntensifTests: XCTestCase {
         FauxServeur.corps = [:]
         FauxServeur.historique = [:]
         FauxServeur.requetes = [:]
+        FauxServeur.delais = [:]
     }
 
     private func app(_ capacites: [String]) -> AppModel {
@@ -234,5 +253,114 @@ final class UsageIntensifTests: XCTestCase {
         let p = try XCTUnwrap(a.chat.lignes.first { $0.id == ligne.id }?.proposition)
         XCTAssertEqual(p.statut, "applique")
         XCTAssertNil(p.perimee)
+    }
+
+    // --- Revue du 24/10 ---------------------------------------------------------------
+
+    func testMemeTexteAutreJourFaitDeuxRappels() async throws {
+        let a = app([])
+        let cal = Format.calendrier
+        let nov = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9)))
+        let dec = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 12, day: 1, hour: 9)))
+        let r1 = try XCTUnwrap(a.carnet.noterRappel("Payer le loyer", quand: nov))
+        let r2 = try XCTUnwrap(a.carnet.noterRappel("payer le loyer", quand: dec))
+        XCTAssertFalse(r2.dejaLa, "le loyer de décembre n'est pas celui de novembre")
+        XCTAssertNotEqual(r1.rappel.id, r2.rappel.id)
+        // Le même jour, à une autre heure : le même rappel.
+        let r3 = try XCTUnwrap(a.carnet.noterRappel("Payer le loyer", quand: nov.addingTimeInterval(3 * 3600)))
+        XCTAssertTrue(r3.dejaLa)
+        XCTAssertEqual(r3.rappel.id, r1.rappel.id)
+        XCTAssertEqual(a.carnet.rappels.map(\.quand), [nov.millis, dec.millis])
+        // Sans date : le même que l'un des deux, aucune date ne bouge.
+        XCTAssertTrue(try XCTUnwrap(a.carnet.noterRappel("payer le loyer", quand: nil)).dejaLa)
+        XCTAssertEqual(a.carnet.rappels.count, 2)
+    }
+
+    func testNoterPuisAnnulerAvantLEnvoiNEffacePasLOriginal() async throws {
+        let a = app([]) // hors ligne : tout attend dans la file
+        let r = try XCTUnwrap(a.carnet.noterRappel("Payer le loyer", quand: nil))
+        a.carnet.supprimer(r.rappel) // « Annuler » du toast de la capture
+        let l = try XCTUnwrap(a.carnet.creerListe("Courses"))
+        let ajoutes = a.carnet.ajouter(["lait"], a: l)
+        a.carnet.retirer(ajoutes, de: l)
+        FauxServeur.reponses = [
+            "POST /api/rappels": [(200, #"{"ok":true,"dejaLa":[{"id":"\#(r.rappel.id)","existant":"ORIG","texte":"Payer le loyer"}]}"#)],
+            "PUT /api/listes/\(l.id)": [(200, #"{"ok":true}"#)],
+            "POST /api/listes/\(l.id)/elements": [(200, #"{"ok":true,"dejaLa":[{"id":"\#(ajoutes[0].id)","existant":"ORIG-LAIT","texte":"lait"}]}"#)],
+        ]
+        a.serveur = VersionServeur(api: 1, serveur: "0.7.0", capacites: ["listes-v1"])
+        await a.carnet.envoyer()
+        XCTAssertTrue(a.carnet.enAttente.isEmpty)
+        XCTAssertEqual(FauxServeur.recues, ["POST /api/rappels", "PUT /api/listes/\(l.id)", "POST /api/listes/\(l.id)/elements"],
+                       "aucun DELETE de l'original")
+    }
+
+    func testAnnulerRetirerLesPrisRendTousLesArticles() async throws {
+        let a = app([]) // hors ligne : on lit la file
+        let l = try XCTUnwrap(a.carnet.creerListe("Courses"))
+        a.carnet.ajouter((1...150).map { "article \($0)" }, a: l)
+        for e in a.carnet.listes[0].elements { a.carnet.basculer(e, dans: a.carnet.listes[0]) }
+        a.carnet.effacerCoches(a.carnet.listes[0])
+        XCTAssertTrue(a.carnet.listes[0].elements.isEmpty)
+        let avant = a.carnet.enAttente.count
+        a.message?.annuler?()
+        XCTAssertEqual(a.carnet.listes[0].elements.count, 150)
+        let lots = a.carnet.enAttente.dropFirst(avant).compactMap { op -> Int? in
+            if case let .elements(_, e) = op { return e.count }
+            return nil
+        }
+        XCTAssertEqual(lots, [100, 50], "la tour n'écrit que 100 articles par envoi")
+    }
+
+    func testUneRegleRedemandeeNEstPasDiteCreee() async throws {
+        let a = app(["regles-v1"])
+        let filRegle = #"{"id":"c1","title":"x","messages":[{"role":"user","content":"Avant chaque sortie, rasage."},{"role":"assistant","content":"Je te propose cette règle.","proposal":{"id":"p1","source":"regle","actions":[{"type":"regle","nom":"Rasage avant une sortie"}],"statut":"en_attente"}}]}"#
+        FauxServeur.reponses = [
+            "GET /api/conversations/c1": [(200, filRegle)],
+            "GET /api/conversations": [(200, "[]")],
+            "POST /api/conversations/c1/propositions/p1/regle": [(200, #"{"ok":true,"statut":"applique","regles":[{"id":"regle-1","nom":"Rasage avant une sortie","deja":true}],"bilan":{"faits":[],"regles":["regle-1"],"dejaLa":["Rasage avant une sortie"]}}"#)],
+        ]
+        _ = await a.chat.ouvrir("c1")
+        let ligne = try XCTUnwrap(a.chat.lignes.first { $0.proposition != nil })
+        let ok = await a.chat.validerRegle(ligne)
+        XCTAssertTrue(ok)
+        XCTAssertEqual(a.toast, "Cette règle existait déjà : rien n'a changé.")
+        let p = try XCTUnwrap(a.chat.lignes.first { $0.id == ligne.id }?.proposition)
+        XCTAssertTrue(p.appliquee)
+        XCTAssertTrue(p.toutDejaLa, "la carte dit « Règle déjà là »")
+    }
+
+    func testUneCartePerimeeAjusteeEstRemiseANeuf() async throws {
+        let a = app(["propositions-perimees-v1", "propositions-ajustables-v1"])
+        FauxServeur.reponses["GET /api/conversations/c1"] = [(200, fil)]
+        FauxServeur.reponses["GET /api/conversations"] = [(200, "[]")]
+        FauxServeur.reponses["POST /api/conversations/c1/propositions/p1/ajuster"] = [(200, #"{"ok":true,"statut":"en_attente","actions":[{"type":"creer","nom":"Acheter abonnement pour Tom","duree":30,"rang":0}]}"#)]
+        _ = await a.chat.ouvrir("c1")
+        let ligne = try XCTUnwrap(a.chat.lignes.first { $0.proposition != nil })
+        XCTAssertEqual(ligne.proposition?.perimee, true)
+        let ok = await a.chat.ajuster(ligne, rang: 0, champs: ["duree": 30])
+        XCTAssertTrue(ok)
+        let p = try XCTUnwrap(a.chat.lignes.first { $0.id == ligne.id }?.proposition)
+        XCTAssertEqual(p.ajustee, true)
+        XCTAssertNil(p.perimee)
+        XCTAssertNil(p.raisonPeremption)
+    }
+
+    func testUnFiltreTouchePendantUneLectureGagne() async throws {
+        let a = app(["historique-v1", "historique-v2"])
+        let entree = { (id: String, etat: String) in #"{"id":"\#(id)","ts":1000,"source":"motion","origine":"Toi","etat":"\#(etat)","elements":[{"objet":"Appeler","action":"Créée"}]}"# }
+        FauxServeur.reponses = ["GET /api/historique": [
+            (200, #"{"entrees":[\#(entree("tout-1", "appliquee"))],"suite":null}"#),
+            (200, #"{"entrees":[\#(entree("annulee-1", "annulee"))],"suite":null}"#),
+        ]]
+        FauxServeur.delais["GET /api/historique"] = 300_000_000
+        let premiere = Task { await a.historique.charger() }
+        try await Task.sleep(nanoseconds: 50_000_000) // la lecture « Tout » est en route
+        await a.historique.filtrer(.annulee)
+        await premiere.value
+        XCTAssertEqual(FauxServeur.recues.filter { $0 == "GET /api/historique" }.count, 2, "le filtre relance une lecture")
+        XCTAssertEqual(a.historique.filtre, .annulee)
+        XCTAssertEqual(a.historique.entrees.map(\.id), ["annulee-1"], "la réponse de « Tout » est ignorée")
+        XCTAssertFalse(a.historique.chargement)
     }
 }

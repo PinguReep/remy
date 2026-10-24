@@ -20,7 +20,7 @@ struct CarteRegle: View {
                 Image(systemName: p.appliquee ? "checkmark.circle.fill" : "arrow.triangle.branch")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(p.appliquee ? Palette.encre2 : Palette.signal)
-                Text(p.appliquee ? "Règle créée" : "Nouvelle règle")
+                Text(p.appliquee ? (p.toutDejaLa ? "Règle déjà là" : "Règle créée") : "Nouvelle règle")
                     .font(Police.texte(15, .semibold))
                     .foregroundStyle(Palette.encre)
             }
