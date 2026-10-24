@@ -29,6 +29,20 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "priorites", serie: 3, date: "24 oct.", titre: "Dis à Rémy ce qui compte", capacite: "priorites-v1", pages: [
+            .init(symbole: "star", titre: "Tes 3 à 5 priorités",
+                  texte: "Réglages › Ce qui compte : écris-les avec leur pourquoi. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
+            .init(symbole: "clock.badge.exclamationmark", titre: "Ce qui n'a pas bougé",
+                  texte: "Sans trace d'activité depuis une semaine, une priorité est marquée « négligée », avec sa dernière trace. Chaque version reste sur ta tour."),
+        ]),
+        Nouveaute(id: "carnet-remy", serie: 3, date: "24 oct.", titre: "Les courses et les rappels, en parlant", capacite: "carnet-outils-v1", pages: [
+            .init(symbole: "cart", titre: "« Ajoute du lait »",
+                  texte: "Rémy te propose l'article dans Courses, et « rappelle-moi d'appeler Léa demain à 9 h » devient un rappel qui sonne ici, pas une tâche Motion. Rien n'est écrit avant « Ajouter »."),
+        ]),
+        Nouveaute(id: "propositions-notif", serie: 3, date: "24 oct.", titre: "Oui ou Plus tard, depuis la notification", capacite: "propositions-attente-v1", pages: [
+            .init(symbole: "bell.badge", titre: "Les propositions viennent à toi",
+                  texte: "Les tâches proposées par tes règles et les sujets de plus pour la nuit arrivent en notification. Appui long : « Oui » l'applique, « Plus tard » la ramène dans 3 h."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

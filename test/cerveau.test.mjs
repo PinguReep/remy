@@ -148,6 +148,9 @@ test("négligée depuis N jours : la dernière trace qui reprend ses mots, sinon
   assert.equal(n[3].joursSans, 20);
   assert.match(n[3].constat, /aucune trace depuis qu'elle est déclarée, il y a 20 jours/);
   assert.deepEqual(priorites.motsDe({ titre: "Finir le projet de bougies" }), ["bougies"], "les mots vides ne reconnaissent rien");
+  assert.equal(priorites.reconnait(["boutique"], "Stratégie de lancement — boutiques en ligne"), true, "au pluriel près");
+  assert.equal(priorites.reconnait(["Léa"], "Déjeuner avec lea"), true, "sans accents ni casse");
+  assert.equal(priorites.reconnait(["bougie"], "Bougeoir ancien"), false, "mot entier");
 });
 
 test("les traces viennent de la tour : écriture validée, rappel fait, titre de conversation", async () => {

@@ -33,6 +33,13 @@ struct ConseilPanneau: View {
                             .contentTransition(.opacity)
                             .animation(.easeOut(duration: 0.2), value: texte)
                         source(glm: glm, tour: tour)
+                        if glm != nil, let prio = tour?.conseil?.priorite {
+                            // Le lien vers une priorité déclarée, vérifié par la tour (jamais inventé).
+                            Label("Sert ta priorité « \(prio) »", systemImage: "star.fill")
+                                .font(Police.texte(14, .medium))
+                                .foregroundStyle(Palette.signal)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         pourquoi(glm?.pourquoi ?? local?.pourquoi ?? [], journee: j, maintenant: maintenant)
                         actions(texte: texte, tache: glm?.tache, journee: j)
                     }

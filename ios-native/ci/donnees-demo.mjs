@@ -80,6 +80,18 @@ w("conversations.json", {
           autorisation: { id: "a-demo", type: "web", statut: "en_attente", contexte: false, requete: "La piscine de Valmont est ouverte ce soir ?" } },
       ],
     },
+    // 24/10 : des courses et un rappel proposés par Rémy (test d'intégration du carnet).
+    {
+      id: "c-carnet", title: "Courses de la semaine", createdAt: now - 160 * H, updatedAt: now - 159 * H,
+      messages: [
+        { role: "user", content: "Ajoute des bougies chauffe-plat, et rappelle-moi d'appeler Léa." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose ça : les bougies dans tes courses, et un rappel.",
+          proposal: { id: "p-carnet-demo", source: "carnet", statut: "en_attente", resume: "", actions: [
+            { type: "liste", liste: "Courses", articles: ["Bougies chauffe-plat"] },
+            { type: "rappel", texte: "Appeler Léa pour le marché de Noël" },
+          ] } },
+      ],
+    },
   ],
 });
 w("memory.json", { text: "## Identité & contexte\nSam, 31 ans, Lyon. Monte une boutique de bougies.\n\n## Objectifs\n- Lancer la démo avant octobre\n\n## Préférences\n- Réponses courtes\n\n## Personnes\n- Léa, sa compagne\n- Hugo, associé\n\n## Projets en cours\n- Boutique de bougies\n\n## Habitudes & fonctionnement\n- Travaille tard\n\n## Hypothèses\n", updatedAt: now - 2 * H });
@@ -145,4 +157,11 @@ carnet.ecrireNotes("d-site", [
 ]);
 carnet.ecrireNotes("d-cuisine", [{ id: "n4", texte: "Devis plombier" }]);
 carnet.rattacher("t1", "d-demo");
+// 24/10 : les priorités déclarées de Sam (fictives), la première il y a 3 semaines.
+const priorites = await import("../../lib/priorites.js");
+priorites.enregistrerPriorites([
+  { id: "p-musique", titre: "La musique", pourquoi: "Jouer me rend calme toute la semaine", mots: ["musique", "guitare", "répétition"] },
+  { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"] },
+  { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Je les vois trop peu depuis la rentrée", mots: ["Léa", "Hugo"] },
+], { base: 0, maintenant: now - 21 * 24 * H });
 console.log("seed ok");
