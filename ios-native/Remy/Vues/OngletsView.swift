@@ -129,8 +129,12 @@ struct OngletsView: View {
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
         // L'activité en direct suit la journée (prolongée, cochée, l'heure
-        // passée) et démarre seule si Sam le veut ; rien en arrière-plan.
-        .onChange(of: app.tableau.journee) { _, _ in Task { await ActiviteEnDirect.partagee.suivre() } }
+        // passée) et démarre seule si Sam le veut ; rien en arrière-plan. Le
+        // widget « Maintenant » se relit si ce qu'il montre a changé.
+        .onChange(of: app.tableau.journee) { _, j in
+            WidgetsAJour.journee(j)
+            Task { await ActiviteEnDirect.partagee.suivre() }
+        }
         .task(id: scene) {
             guard scene == .active else { return }
             while !Task.isCancelled {

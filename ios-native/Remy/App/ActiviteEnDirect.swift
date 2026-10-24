@@ -26,6 +26,9 @@ final class ActiviteEnDirect {
     /// Les tâches déjà montrées (ou fermées d'un glissement) : jamais relancées
     /// d'office ; « Commencer » les relance.
     private var dejaVues: Set<String> = []
+    /// Les tâches dont un bouton de l'activité est en train d'agir : un
+    /// deuxième toucher n'y refait rien, et le suivi n'y touche pas.
+    private var occupees: Set<String> = []
     private weak var app: AppModel?
 
     /// L'activité affichée (une à la fois).
@@ -56,13 +59,18 @@ final class ActiviteEnDirect {
                 return
             }
             await a.end(nil, dismissalPolicy: .immediate)
+            // Pendant l'attente, un autre appel (suivi, double toucher) a pu
+            // la lancer : jamais deux activités pour la même tâche.
+            if let b = actuelle, b.attributes.id == e.id { return }
         }
         do {
             _ = try Activity<ActiviteTache>.request(attributes: attributs,
                                      content: ActivityContent(state: etat, staleDate: etat.fin, relevanceScore: 100),
                                      pushType: nil)
         } catch {
-            // Trop d'activités, ou coupées entre-temps : l'app reste la référence.
+            // Trop d'activités, coupées entre-temps, ou l'app déjà en
+            // arrière-plan : l'app reste la référence, le suivi réessaiera.
+            dejaVues.remove(e.id)
             print("Activité en direct refusée : \(error.localizedDescription)")
         }
     }
@@ -75,7 +83,8 @@ final class ActiviteEnDirect {
         let a = actuelle
         let suivie = a.map { (id: $0.attributes.id, fin: $0.content.state.fin) }
         let gestes = SuiviActivite.gestes(journee: app.tableau.journee, maintenant: Date().millis, suivie: suivie,
-                                          auto: auto && autorisee, dejaVues: dejaVues)
+                                          auto: auto && autorisee, dejaVues: dejaVues,
+                                          copie: app.tableau.copieLocale, occupees: occupees)
         for g in gestes {
             switch g {
             case .mettreAJour(let e):
@@ -112,7 +121,9 @@ final class ActiviteEnDirect {
     /// « Terminer » : « Fait » s'affiche tout de suite ; la coche part comme
     /// depuis l'app (2 s d'annulation, file d'envoi si pas de réseau).
     func terminerDepuisActivite(id: String, titre: String) async {
-        guard let app else { return }
+        // Un deuxième toucher pendant le premier : rien de plus.
+        guard let app, occupees.insert(id).inserted else { return }
+        defer { occupees.remove(id) }
         let a = activite(id)
         if let a {
             var etat = a.content.state
@@ -124,8 +135,13 @@ final class ActiviteEnDirect {
         guard let a else { return }
         var etat = a.content.state
         switch issue {
-        case .faite, .deja, .renoncee:
+        case .faite, .deja:
             await a.end(ActivityContent(state: etat, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(4)))
+        case .renoncee:
+            // « Annuler » touché dans l'app pendant le délai : la tâche reste en cours.
+            etat.terminee = false
+            etat.message = nil
+            await a.update(ActivityContent(state: etat, staleDate: etat.fin))
         case .enAttente:
             etat.message = "Pas de réseau : partira dès que Rémy sera joignable."
             await a.end(ActivityContent(state: etat, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(30)))
@@ -140,12 +156,21 @@ final class ActiviteEnDirect {
     /// « +15 min » : la prolongation de « Gérer » (durée absolue, annulable
     /// depuis l'historique). La nouvelle fin s'affiche quand Motion a dit oui.
     func prolongerDepuisActivite(id: String, minutes: Int) async {
-        guard let app, let a = activite(id) else { return }
-        var etat = a.content.state
+        // Un deuxième toucher pendant le premier : rien de plus (sinon la
+        // barre gagnerait 30 min quand Motion n'en a reçu que 15 de plus).
+        guard let app, let a = activite(id), occupees.insert(id).inserted else { return }
+        defer { occupees.remove(id) }
+        // Le toucher se voit tout de suite ; la nouvelle fin, quand Motion a dit oui.
+        var avant = a.content.state
+        avant.message = "+\(minutes) min : Motion recalcule…"
+        await a.update(ActivityContent(state: avant, staleDate: avant.fin))
         // Lancée en arrière-plan : la journée gardée sur l'iPhone, si besoin.
         if app.tableau.donnees == nil { app.tableau.restaurer() }
-        let e = app.tableau.donnees?.journee?.items?.first { $0.type == "tache" && $0.id == id } ?? a.attributes.element(etat)
-        if await app.tableau.prolonger(e, de: minutes) {
+        let e = app.tableau.donnees?.journee?.items?.first { $0.type == "tache" && $0.id == id } ?? a.attributes.element(avant)
+        let ok = await app.tableau.prolonger(e, de: minutes)
+        // Relue après l'attente : c'est l'état affiché maintenant qui compte.
+        var etat = a.content.state
+        if ok {
             etat.fin = max(etat.fin, Date()).addingTimeInterval(Double(minutes) * 60)
             etat.duree = e.duree.map { $0 + minutes }
             etat.message = "+\(minutes) min · Motion recalcule la suite"
