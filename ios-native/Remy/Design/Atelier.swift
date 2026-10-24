@@ -358,7 +358,7 @@ struct Surimpression<Contenu: View>: View {
                 .offset(y: (visible ? 0 : 60) + glisse)
                 .opacity(visible ? 1 : 0)
                 // Glisser pour fermer, tant que le panneau ne défile pas.
-                .simultaneousGesture(defile ? nil : glisser)
+                .simultaneousGesture(glisser, including: defile ? .subviews : .all)
                 .accessibilityAddTraits(.isModal)
             }
         }
