@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "hors-app", serie: 3, date: "24 oct.", titre: "Rémy sans ouvrir l'app", capacite: nil, pages: [
+            .init(symbole: "timer", titre: "La tâche en cours, partout",
+                  texte: "Touche « Commencer » : la tâche reste sur l'écran verrouillé et dans la Dynamic Island, avec « Terminer » et « +15 min ». Réglages › Activité en direct pour la couper."),
+            .init(symbole: "square.grid.2x2", titre: "Deux widgets",
+                  texte: "Appui long sur l'écran d'accueil › « + » › Rémy : « Maintenant » (ta tâche, puis la suivante) et « Capturer ». Aussi sur l'écran verrouillé, et « Capturer » dans le Centre de contrôle (iOS 18)."),
+            .init(symbole: "mic", titre: "Siri et le bouton Action",
+                  texte: "« Dis Siri, noter dans Rémy », ou « Que dois-je faire maintenant avec Rémy ? ». Bouton Action : Réglages de l'iPhone › Bouton Action › Raccourci › Rémy › « Capturer avec Rémy »."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
