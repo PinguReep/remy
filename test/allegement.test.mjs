@@ -139,6 +139,8 @@ test("palier sans routeur : cerveau unique, web, conseil confié à Claude", () 
   assert.equal(palierDeterministe("acheter des ampoules"), "reflexe");
   assert.equal(palierDeterministe("Organise ma semaine"), "raisonnement");
   assert.equal(palierDeterministe("Je devrais démissionner ?"), "conseil");
+  assert.equal(palierDeterministe("J'hésite entre deux offres"), "conseil");
+  assert.equal(palierDeterministe("je devrais acheter du pain"), "reflexe", "une envie n'est pas une décision");
   assert.equal(palierDeterministe("ok", { complexe: true }), "raisonnement");
   assert.equal(palierDeterministe("x".repeat(200)), "raisonnement");
   // Web autorisé : un message qui y ressemble passe par le routeur.
