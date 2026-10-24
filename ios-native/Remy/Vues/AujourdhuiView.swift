@@ -137,7 +137,7 @@ private struct Contenu: View {
                     .id("menacee")
             }
             PropositionRituel()
-            if app.rituel.disponible, !app.rituel.bilanRange, Calendar.current.component(.hour, from: maintenant) >= 18 {
+            if app.rituel.disponible, !app.rituel.bilanRange, Format.calendrier.component(.hour, from: maintenant) >= 18 {
                 EntreeBilan { ui.bilanOuvert = true }
                     .padding(.horizontal, 16)
             }
