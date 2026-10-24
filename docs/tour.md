@@ -72,3 +72,39 @@ version précédente (tables ajoutées, jamais retirées).
   `scripts\spark-relier.ps1 -Spark <adresse> -Epingler`, puis
   `node scripts\spark-tester.mjs --cible <compte>@<adresse>:/sauvegardes`.
 - Vérifier toute la chaîne : `scripts\verifier-tour.ps1`.
+
+## Activité du PC (ActivityWatch)
+
+Rémy peut savoir combien de temps tu passes dans chaque appli de la tour
+(développement, navigateur, jeux…), d'après [ActivityWatch](https://activitywatch.net),
+un logiciel libre qui tourne sur la tour elle-même. Rémy le lit en local ; rien
+ne sort de la tour, et les titres de fenêtres ne sont jamais gardés.
+
+1. Sur la tour, télécharge l'installeur Windows depuis activitywatch.net
+   (`activitywatch-v….-windows-x86_64-setup.exe`) et installe-le.
+2. Lance **ActivityWatch** (`aw-qt`, l'icône apparaît près de l'horloge) et fais-le
+   démarrer avec Windows : coche l'option de démarrage proposée par l'installeur,
+   ou ajoute un raccourci vers `aw-qt.exe` dans `shell:startup` (Win + R).
+3. Vérifie qu'il répond : <http://127.0.0.1:5600> s'ouvre dans le navigateur de
+   la tour et montre la journée.
+4. Facultatif : l'extension « ActivityWatch Web Watcher » de ton navigateur, pour
+   le détail par site (le domaine seulement, jamais l'adresse complète).
+5. Dans l'app : Réglages › **Activité du PC** › allume. Le premier relevé lit la
+   journée depuis minuit, puis toutes les 20 minutes.
+
+| Réglage (`remy.env`) | Rôle |
+| --- | --- |
+| `REMY_ACTIVITE_PC=off` | coupe tout côté tour (l'app ne peut plus l'allumer) |
+| `REMY_ACTIVITE_EXCLURE` | applis (ou domaines) jamais comptées, séparées par des virgules (`keepass,banque`) ; ce qui l'était s'efface au relevé suivant, et un navigateur emporte tous les sites relevés |
+| `REMY_ACTIVITE_CATEGORIES` | corriger une catégorie (`monjeu=jeux,outil=developpement`) |
+| `REMY_ACTIVITE_PC_JOURS` | durée de conservation (défaut 90 jours) |
+| `REMY_ACTIVITYWATCH_URL` | si ActivityWatch n'écoute pas sur `http://127.0.0.1:5600` |
+
+Si l'app affiche « ActivityWatch ne répond pas » : `aw-qt` n'est pas lancé (ou
+plus) ; relance-le, puis tire l'écran vers le bas pour relever tout de suite.
+Si elle affiche « aw-watcher-window (ou aw-watcher-afk) n'écrit plus depuis… » :
+ActivityWatch répond, mais ce guetteur s'est arrêté et plus rien n'est compté ;
+relance-le depuis l'icône d'ActivityWatch près de l'horloge (menu des modules),
+ou quitte et relance `aw-qt`, puis tire pour relever.
+« Tout effacer » vide ce que Rémy a gardé, sans toucher à ActivityWatch.
+
