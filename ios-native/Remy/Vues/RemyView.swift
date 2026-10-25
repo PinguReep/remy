@@ -376,6 +376,22 @@ private struct Fil: View {
                 suitLaFin = true
                 proxy.scrollTo("fin", anchor: .bottom)
             }
+            // Une proposition arrive au bout de la réponse : la carte grandit le
+            // fil d'un coup, sans nouveau mot ni nouvelle ligne, et restait sous
+            // le clavier (« Oui, fais-le » caché). Le clavier se range — le
+            // brouillon reste dans le composeur — et le fil descend jusqu'au
+            // bas de la carte. Pas si Sam est remonté lire, ni sous son doigt.
+            .onChange(of: chat.lignes.last.flatMap { $0.proposition == nil ? nil : $0.id }) { _, id in
+                guard id != nil, !defile, suitLaFin || chat.lignes.dropLast().last?.deToi == true else { return }
+                clavier = false
+                suitLaFin = true
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("fin", anchor: .bottom) }
+                Task { @MainActor in
+                    // Le clavier descendu, la zone du fil a grandi : encore en bas.
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("fin", anchor: .bottom) }
+                }
+            }
             .onAppear { proxy.scrollTo("fin", anchor: .bottom) }
         }
     }

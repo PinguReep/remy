@@ -176,7 +176,10 @@ struct ToastView: View {
                 .onTapGesture { if m.annuler == nil { app.message = nil } }
                 .task(id: m.id) {
                     let secondes = m.duree ?? (m.annuler == nil ? 4 : 6)
-                    try? await Task.sleep(nanoseconds: UInt64(secondes * 1_000_000_000))
+                    // Annulée (la feuille du « + » se referme avec sa copie) :
+                    // rien n'est effacé. La copie de l'écran dessous garde le
+                    // message, et son « Annuler », jusqu'à son heure.
+                    do { try await Task.sleep(nanoseconds: UInt64(secondes * 1_000_000_000)) } catch { return }
                     if app.message?.id == m.id { app.message = nil }
                 }
                 .accessibilityElement(children: .contain)

@@ -341,8 +341,13 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         let interrogatifs = ["est-ce", "qu'est-ce", "quand ", "comment ", "pourquoi ", "combien ", "quel ", "quelle ", "quels ", "quelles ", "où "]
         if interrogatifs.contains(where: { t.hasPrefix($0) }) { return .question }
         if t.count >= 120 { return .retenir }
-        if AnalyseDate.extraire(t, maintenant: maintenant) != nil { return .rappel }
         if t.hasPrefix("rappelle") || t.hasPrefix("rappel ") || t.hasPrefix("n'oublie pas") || t.hasPrefix("fais-moi penser") { return .rappel }
+        if let d = AnalyseDate.extraire(t, maintenant: maintenant) {
+            // Un jour sans heure pour une action claire (« Envoyer le devis
+            // vendredi ») : une tâche avec cette échéance, pas un rappel à 9 h
+            // inventé. Un rappel, c'est une heure dite, ou « rappelle-moi ».
+            return !d.heureDite && actionClaire(t) ? .tache : .rappel
+        }
         if ["projet ", "nouveau projet", "sous-projet", "sous projet", "catégorie ", "categorie ", "nouvelle catégorie"].contains(where: { t.hasPrefix($0) }) { return .projet }
         if articles(t).count >= 2 { return .liste }
         return actionClaire(t) ? .tache : parDefaut

@@ -209,6 +209,27 @@ final class AccueilTests: XCTestCase {
         XCTAssertEqual(a.toast, "Ajoutée à Motion : « Appeler le garage ». Il lui trouve un créneau.")
     }
 
+    /// Parcours P07 : « Envoyer le devis à Hugo vendredi », forcée en tâche,
+    /// partait sans échéance. Le jour compris part comme date limite (fin de
+    /// journée, jamais un créneau) et la confirmation le dit.
+    func testUneTacheDateeGardeSonEcheance() async throws {
+        FauxServeur.reponses = [
+            "GET /api/dashboard": [(200, "{}")],
+            "POST /api/motion/apply": [(200, #"{"ledgerId":"L7","echecs":0,"results":[{"ok":true,"type":"creer","nom":"Envoyer le devis à Hugo"}]}"#)],
+        ]
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = Format.fuseau
+        let jeudi = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 10, minute: 40)))
+        let d = try XCTUnwrap(AnalyseDate.extraire("Envoyer le devis à Hugo vendredi", maintenant: jeudi))
+        let a = app()
+        let ok = await a.noterTache(d.reste, echeance: d.echeance)
+        XCTAssertTrue(ok)
+        let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
+        XCTAssertEqual(action["nom"] as? String, "Envoyer le devis à Hugo")
+        XCTAssertEqual(action["echeance"] as? String, "2026-10-16T23:00:00+02:00")
+        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Envoyer le devis à Hugo », à faire d'ici vendredi 16 octobre.")
+    }
+
     func testRetenirDepuisLePlus() async throws {
         FauxServeur.reponses = ["POST /api/capture": [(200, #"{"ajouts":["Sam veut un studio à Porto"],"memoire":true}"#)]]
         let a = app()

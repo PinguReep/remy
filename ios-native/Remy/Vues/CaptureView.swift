@@ -291,7 +291,10 @@ struct CaptureView: View {
     private var apercu: String {
         guard !propre.isEmpty else { return micro ? "Écris ou dicte : Rémy devine où le ranger." : "Écris, Rémy devine où le ranger." }
         switch genre {
-        case .tache: return "Tâche → Motion lui trouvera un créneau"
+        case .tache:
+            // Le jour compris reste une date limite, jamais un créneau fixe.
+            guard let d = dateLue else { return "Tâche → Motion lui trouvera un créneau" }
+            return "Tâche → Motion lui trouvera un créneau avant l'échéance : \(Format.echeanceLongue(d.echeance))"
         case .idee:
             guard projetPret else { return "Les Idées arriveront avec la mise à jour de ta tour." }
             return "Idée → gardée dans « Idées » (Projets), rien n'est planifié"
@@ -349,7 +352,11 @@ struct CaptureView: View {
         switch genre {
         case .tache:
             // « Déjà dans Motion » compte comme réussi : la feuille se ferme.
-            if await app.noterTache(propre) { finir() } else { Haptique.erreur() }
+            // Le jour compris (« vendredi ») part comme échéance, même si le
+            // genre a été changé à la main.
+            let d = dateLue
+            let titre = d.map { $0.reste.isEmpty ? propre : $0.reste } ?? propre
+            if await app.noterTache(titre, echeance: d?.echeance) { finir() } else { Haptique.erreur() }
         case .idee:
             if await app.organisation.noterIdee(propre) { finir() } else { Haptique.erreur() }
         case .liste:
@@ -371,6 +378,9 @@ struct CaptureView: View {
             let texteRappel = (d?.reste.isEmpty == false) ? d!.reste : AnalyseDate.sansFormule(propre)
             let etiquettes = etiquetteRetiree ? nil : etiquetteDevinee.map { [$0.id] }
             guard let n = app.carnet.noterRappel(texteRappel, quand: d?.quand, etiquettes: etiquettes) else { return }
+            // L'autorisation d'iOS d'abord : la confirmation et son « Annuler »
+            // ne s'usent pas derrière la question du système.
+            if d != nil { await Notifications.demander() }
             if n.dejaLa {
                 app.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».")
             } else {
@@ -379,7 +389,6 @@ struct CaptureView: View {
                     app.carnet.supprimer(r)
                 })
             }
-            if d != nil { await Notifications.demander() }
             finir()
         case .retenir:
             if await app.retenirNote(propre) { finir() } else { Haptique.erreur() }

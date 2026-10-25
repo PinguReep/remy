@@ -356,11 +356,15 @@ public final class AppModel {
     /// de Rémy garde le lien.
     /// Le « + » : une tâche de plus dans Motion, qui lui trouvera un créneau.
     /// La tour refuse un doublon (même nom déjà ouvert) et le dit.
+    /// `echeance` : le jour compris dans la phrase (« vendredi »), une date
+    /// limite et jamais un créneau — Motion place la tâche avant.
     @discardableResult
-    public func noterTache(_ titre: String) async -> Bool {
+    public func noterTache(_ titre: String, echeance: Date? = nil) async -> Bool {
         let t = titre.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return false }
-        let p = Proposition(source: "motion", resume: "Noté depuis l'app", actions: [ActionProposee(type: "creer", nom: String(t.prefix(200)))])
+        let p = Proposition(source: "motion", resume: "Noté depuis l'app", actions: [
+            ActionProposee(type: "creer", nom: String(t.prefix(200)), echeance: echeance.map { Format.isoAvecFuseau($0) }),
+        ])
         do {
             let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
             let res = r.results?.first
@@ -388,7 +392,8 @@ public final class AppModel {
                     }
                 }
             }
-            dire("Ajoutée à Motion : « \(t) ». Il lui trouve un créneau.", annuler: annuler)
+            dire("Ajoutée à Motion : « \(t) »" + (echeance.map { ", à faire d'ici \(Format.echeanceLongue($0))." } ?? ". Il lui trouve un créneau."),
+                 annuler: annuler)
             await tableau.apresGeste()
             return true
         } catch {
