@@ -498,20 +498,25 @@ class ParcoursBase: XCTestCase {
     /// Les alertes système (notifications…) : accepter si elles apparaissent.
     /// `tantQue` : on cesse d'attendre dès que l'écran a continué sans elle
     /// (autorisation déjà donnée), pour ne pas laisser filer la confirmation.
+    /// `capture` : la photo de l'alerte, prise seulement si elle est là.
     @MainActor
-    func accepterAlerteSysteme(_ delai: TimeInterval = 3, tantQue encore: (() -> Bool)? = nil) {
+    func accepterAlerteSysteme(_ delai: TimeInterval = 3, tantQue encore: (() -> Bool)? = nil, capture: String? = nil) {
         let tremplin = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let fin = Date().addingTimeInterval(delai)
         repeat {
+            // Déjà fini (l'autorisation était donnée, la feuille s'est fermée) :
+            // sur un runner lent, chaque requête au tremplin coûte des secondes,
+            // pendant que la confirmation de l'app s'use (P14, 25/10).
+            if let encore, !encore() { return }
             for libelle in ["Allow", "Autoriser", "OK"] {
                 let b = tremplin.buttons[libelle]
                 if b.exists {
+                    if let capture { capturer(capture) }
                     compter()
                     b.tap()
                     return
                 }
             }
-            if let encore, !encore() { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         } while Date() < fin
     }
