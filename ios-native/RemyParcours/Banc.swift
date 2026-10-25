@@ -364,6 +364,23 @@ class ParcoursBase: XCTestCase {
         gestesEtape += 1
     }
 
+    /// Fait défiler d'un tiers d'écran, sans élan, jusqu'à ce que l'élément soit
+    /// touchable (au plus `essais` gestes). Un toucher pendant que l'écran glisse
+    /// encore ne fait que l'arrêter : vu le 25/10 sur « Terminer », passé sous les
+    /// cartes du matin, que le défilement automatique de XCUITest ratait.
+    @MainActor
+    func amenerDoucement(_ e: XCUIElement, essais: Int = 5) {
+        var n = 0
+        while n < essais && e.exists && !e.isHittable {
+            compter()
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)),
+                       withVelocity: .slow, thenHoldForDuration: 0.3)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            n += 1
+        }
+    }
+
     /// Fait défiler jusqu'à ce que l'élément soit touchable (au plus `essais` balayages).
     @MainActor
     func amener(_ e: XCUIElement, dans conteneur: XCUIElement? = nil, essais: Int = 6) {
