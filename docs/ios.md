@@ -161,7 +161,10 @@ tag) avant l'échéance.
   notées sans réseau (tâche, idée, Retenir, dossier) dans `captures.json`
   (`RemyCore/EnvoiCaptures.swift`), chacune avec l'identifiant que la tour
   reconnaît (jamais deux tâches). En tête d'Aujourd'hui : « N en attente
-  d'envoi », toucher = la liste (envoyer, retirer, renvoyer).
+  d'envoi », toucher = la liste (envoyer, retirer, renvoyer). Une panne
+  passagère (502, 503, quota Motion) la fait repartir seule, de plus en plus
+  espacée ; seul un refus attend « Renvoyer ». Une session refusée (401) ne
+  l'efface pas ; la déconnexion voulue, si.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

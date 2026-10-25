@@ -266,6 +266,55 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   Nouveautés série 3 : « Rémy cherche sur le web » (`recherche-locale-v1`) et
   « Noté sans réseau, envoyé ensuite ».
 
+## 2026-10-25 — Contre-relecture de la capture hors ligne
+
+- **Panne passagère ≠ refus** (`NatureEchec`, `EnvoiCaptures.swift`) : 502
+  (Rémy arrêté derrière Tailscale Serve), 503 (base indisponible), 429, 408,
+  et un résultat Motion `ok:false` de nature quota / serveur / délai / réseau
+  (nouveau champ `nature` du résultat, `lib/motion.js` ; une tour plus ancienne
+  est lue à son « réessaie ») : la capture reste, sans raison, et repart seule
+  à 1, 2, 5 puis 15 min (`reports`, `partApres`) ; la liste dit « Dernier
+  essai : … ». Feuille ouverte : gardée, la feuille se ferme. « Envoyer
+  maintenant » n'attend pas l'heure. Sans réponse nette (coupure, 500, 504,
+  réponse illisible) : comme une coupure. Seul un vrai refus (400, 404, 409…)
+  attend Sam. Côté tour, renvoyer la même clé après un échec la refait une
+  fois (`test/capture-passagere.test.mjs`).
+- **Retirée pendant la vidange** : la boucle relit la file avant chaque
+  envoi, `envoyerCapture` vérifie que la capture y est encore.
+- **401** : la session refusée n'efface plus les captures
+  (`vider(garderCaptures:)`), la vidange s'arrête au premier refus, le
+  message le dit et l'écran de connexion compte les captures (le nombre, pas
+  le texte). Seule la déconnexion voulue les efface.
+- **« ne partira pas »** n'est dit que si aucun envoi n'est resté sans
+  réponse ; sinon « Retirée de la file… peut-être déjà arrivée : vérifie
+  dans Motion ». Une réponse nette de la tour (même clé) lève le doute.
+- **Tour ancienne** (Retenir sans `capture-idempotente-v1`) : le doute
+  (`peutEtreRecue`) est écrit AVANT l'envoi avec la tentative ; l'app tuée en
+  route, la capture propose « Renvoyer ».
+- **Rémy déjà su injoignable** : le « + » garde la capture sans essayer, la
+  feuille se ferme, la file l'essaie derrière. Sinon un seul essai court
+  (30 s, sans rejeu), puis la file avec la même clé — plus 2 × 150 s
+  feuille ouverte.
+- **Échéance déjà passée à l'envoi** : envoyée telle quelle, et dit (« son
+  échéance … était déjà passée : elle y est en retard »), dans la liste aussi.
+- **captures.json relu élément par élément** : un illisible est mis de côté
+  (`captures-illisibles.json`, ajouté, jamais écrasé) et compté.
+- **Dates** : ponctuation après le numéro (« avant le 3. », « Avant le 3,
+  … » : Whisper ponctue) ; « vendredi de la semaine prochaine » ; « début /
+  milieu / mi- (de la) semaine prochaine » restent des flous ; « le 20 du
+  mois prochain » ; « avant le 3 à 14h » vise le 3 à 14 h (la veille seulement
+  sans heure) ; « d ici », « jusqu a », « au plus tard » ; « Avant la réunion,
+  … » garde son « Avant » (le lien part avec la date, pas en tête) ; « Appeler
+  le 15 », « pour le 10 km », « pour le 5 à 7 » ne sont pas des dates ;
+  « Rappelle-moi le 3 d'appeler… », « le 3 dans la matinée » le sont. Un
+  rappel du jour, 9 h passé, sonne à l'heure pleine suivante. L'aperçu montre
+  l'année quand ce n'est pas celle-ci (« fin octobre » dit le 1er novembre).
+  « Nouveau rappel » (Carnet) prend le texte comme le « + ». « avant mardi »
+  reste mardi (veille stricte : dates chiffrées seulement, à trancher).
+- **Parcours P22** : `POST /panne` du pilote (502 à tout sur le port de la
+  tour) ; tâche gardée, « Dernier essai : Erreur 502 », pas de « Renvoyer »,
+  « Envoyer maintenant », une seule tâche dans le faux Motion.
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit

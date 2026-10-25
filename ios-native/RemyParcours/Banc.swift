@@ -74,6 +74,8 @@ enum Pilote {
 
     static func couperTour() { demander("/couper") }
     static func relancerTour() { demander("/relancer") }
+    /// Rémy arrêté derrière Tailscale : le port répond 502 à tout.
+    static func mettreEnPanne() { demander("/panne") }
 
     /// Les tâches de ce nom dans le faux Motion (nil : le pilote n'a pas répondu).
     static func compterTaches(_ nom: String) -> Int? {
