@@ -32,7 +32,11 @@ notes privées, sur la tour.
   date), et la liste des pages lues (titres encadrés : écrits par les pages).
   Ses pages lues rejoignent celles de la réponse : la vérification des chiffres
   (`chiffresAVerifier`) marche comme avant, sur ce que la salle blanche a lu ;
-  une recherche qui n'a rien lu laisse tous les chiffres « de mémoire ».
+  une recherche qui n'a rien lu — ou une question refusée par le filtre —
+  laisse tous les chiffres « de mémoire » (« À vérifier »). Pour la vitesse, la
+  tour lance elle-même la première recherche avec la question (la salle blanche
+  commence par lire : un appel de modèle de moins), et la réflexion du premier
+  tour de la salle blanche est légère (`effort: "low"` : choisir une page).
   Plafonds : `REMY_RECHERCHER_MAX` appels par message (2), et une durée totale
   `REMY_SALLE_BLANCHE_DELAI_MS` (120 s) partagée par ces appels — chaque boucle
   reçoit le temps qui reste (70 % pour chercher, le reste pour conclure, puis
@@ -46,66 +50,119 @@ notes privées, sur la tour.
   au moins 10 chiffres), carte (13 à 19 chiffres, somme de Luhn ; 14 chiffres
   = un SIRET, permis), numéro de sécurité sociale, adresse postale (numéro +
   voie ; une voie ambiguë — place, cours, route — seulement devant un nom
-  propre : « 10 cours de piano » passe) ; et le **lexique** : les mots rares et
-  noms propres de la mémoire, du profil (prénom, `REMY_VOCABULAIRE` : toujours
-  personnels, même courants), du planning, de l'agenda, des lieux, de
-  l'activité, des sujets de la nuit, et de ce que `motion_lister` lit en route.
-  « Rare » = absent de `lib/mots-courants.js` (le français courant, le
-  vocabulaire des recherches et des gabarits de Rémy, avec pluriels et formes
-  conjuguées), des villes, pays et régions, des organismes publics (Urssaf,
-  CAF…) et des produits (iPhone, Doctolib…), des communes de la Base Adresse
-  de la tour (`geo.db`, lues une fois), de la commune qui suit un code postal,
-  et de `REMY_FILTRE_PERMIS`. Les nombres seuls (années, montants, heures) ne
-  sont pas au lexique ; un identifiant (« SECRET-MEMOIRE-42 ») l'est en entier,
-  et se retrouve écrit en morceaux. Comparaison sans accents ni majuscules,
-  pluriel ôté. Hors privé, les mots que Sam vient d'écrire dans son message
-  sont exemptés (il demande lui-même). Refus → au modèle principal : la raison
-  et les termes à retirer (il reformule) ; à la salle blanche : un refus SANS
-  raison ni terme, et elle conclut aussitôt (`stop`) — sinon une page piégée
-  pourrait lui faire sonder la mémoire mot à mot (le refus serait un oracle) et
-  trahir la réponse par le lien qu'elle ouvre ensuite. Un lexique de 60 000
-  caractères se construit en ~0,1 s, une vérification prend moins d'1 ms.
+  propre : « 10 cours de piano » passe) ; et le **lexique**, tiré de la
+  mémoire, du planning, de l'agenda, des lieux, de l'activité, des sujets de
+  la nuit et de ce que `motion_lister` lit en route. Le lexique est
+  STRUCTUREL : les noms propres (majuscule hors début de phrase ; en tête de
+  phrase, collé à un autre nom propre : « Hugo Lemoine » ; le point d'une
+  abréviation, « M. », n'ouvre pas de phrase), les sigles inconnus, les
+  identifiants (un mot avec des chiffres, un numéro de 6 chiffres et plus ;
+  « SECRET-MEMOIRE-42 » en entier, retrouvé écrit en morceaux), le nom qui suit
+  un titre ou un verbe d'appel (« Dr », « Maître », « chez », « appeler »…),
+  même en minuscules, et tout mot rare d'une ligne de santé (une ligne qui
+  parle de traitement, médicament, maladie, ordonnance… ou sous un titre
+  « Santé »). Le profil (prénom, `REMY_VOCABULAIRE`) y est en entier, même
+  courant. Les noms communs en minuscules de la mémoire et du planning n'y
+  sont PAS : ce sont les sujets mêmes des recherches (« pompe à chaleur »,
+  « combles perdus »). Un nom propre se compare exactement (« Trouvère » n'est
+  pas une forme de « trouver ») ; un composé courant (« week-end »,
+  « auto-entrepreneur ») ne laisse pas ses morceaux. N'en font jamais partie :
+  les mots courants (`lib/mots-courants.js`, ~2 200 formes), les villes, pays,
+  régions, massifs et stations, les organismes et aides publics (Urssaf, CAF,
+  MaPrimeRénov', BNC…), les produits et plateformes (iPhone, Etsy…), les
+  communes de la Base Adresse de la tour (`geo.db`, lues une fois, gardées
+  d'un message à l'autre), la commune qui suit un code postal, et
+  `REMY_FILTRE_PERMIS`. Avant d'être lu, le texte est **nettoyé** (NFKC :
+  pleine chasse et lettres mathématiques ; caractères invisibles ; sosies
+  cyrilliques et grecs), comparé sans accents ni majuscules, pluriel ôté ; un
+  mot écrit avec des chiffres (« F0ntanel ») et un terme coupé par des espaces
+  ou des points (« Font anel », « F.o.n.t.a.n.e.l ») sont retrouvés — pas après
+  un article (« du pont » n'est pas « Dupont »), ni quand tous les morceaux
+  sont des mots courants. Hors privé, ce que Sam vient d'écrire dans son
+  message est exempté (il demande lui-même). Refus → au modèle principal : la
+  raison et les termes à retirer (il reformule), et, quand c'est possible, que
+  Sam peut écrire le mot lui-même ; au-delà de 2 refus dans un message, plus
+  rien n'est relu ni lancé (« Budget de reformulation atteint ») et il conclut.
+  À la salle blanche : un refus SANS raison ni terme, et elle conclut aussitôt
+  (`stop`) — sinon une page piégée pourrait lui faire sonder la mémoire mot à
+  mot (le refus serait un oracle) et trahir la réponse par le lien qu'elle
+  ouvre ensuite ; le modèle principal, lui, apprend que sa recherche a été
+  arrêtée par le filtre (`arret_filtre`) et peut la reposer autrement. Un
+  lexique de 60 000 caractères se construit en ~0,1 s, une vérification prend
+  environ 1 ms.
+- **Claude aussi** (secours, cerveau cloud). Il reçoit la mémoire et le
+  planning dans sa consigne, et gardait `browse_page` sans filtre ni
+  provenance (relecture du 25/10) : une page piégée pouvait lui faire ouvrir
+  `https://ailleurs/?x=<un nom>`. Le filtre est désormais construit dès qu'un
+  outil web peut être offert (pas seulement pour la recherche locale) et
+  passé à Claude : son `browse_page` relit l'adresse ET les clics ; sans ses
+  outils web à lui (`web_search`, `web_fetch`, carte V8), la même provenance
+  que le modèle local (liens de Sam hors privé, sites officiels sans « ? »).
 - **Journal.** Chaque requête qui sort : l'étape « Rémy cherche « … » » et la
   ligne `recherche` du panneau des coûts, comme avant ; la question passée à la
   salle blanche : l'étape « Rémy lance une recherche à part : « … » » et une
   ligne `salle blanche` (fournisseur glm, 0 $, ses jetons). Chaque refus :
   l'étape « Requête bloquée par le filtre (raison) — Rémy reformule… » et une
   ligne `recherche` du fournisseur `filtre` : « refusée (terme personnel) : Dr
-  ••• médecin avis » — la raison, la requête sans ce qui l'a fait refuser. Une
-  page refusée (provenance ou filtre) : son hôte seulement, jamais le chemin.
+  ••• médecin avis » — la raison, la requête sans ce qui l'a fait refuser ;
+  dans la salle blanche, l'étape dit « Recherche arrêtée par le filtre » (rien
+  ne s'y reformule) et sa ligne `salle blanche` finit par « (arrêtée par le
+  filtre) ». Une page refusée (provenance ou filtre) : son hôte seulement,
+  jamais le chemin. Le libellé est stocké avec chaque ligne ; la page web et
+  l'app n'affichent encore que les totaux par genre (à faire côté app).
 - **Conversations privées.** La recherche y est possible derrière le réglage
   `recherchePrivee` (`PUT /api/reglages`, booléen), **coupé par défaut** : rien
   de privé ne part sans l'accord de Sam. `REMY_RECHERCHE_PRIVEE=off` le
   verrouille côté tour ; `REMY_SALLE_BLANCHE=off` aussi (jamais de recherche
-  privée sans salle blanche). En privé, le lexique prend en plus TOUTE la
-  conversation (messages de Sam et de Rémy, résumé du compactage), et le
-  message en cours n'exempte rien : seuls des mots courants, des villes, des
-  organismes ou des produits sortent. La salle blanche n'y reçoit aucun lien de
-  la conversation. Le réglage est relu au moment de lancer la recherche (coupé
+  privée sans salle blanche). En privé, le lexique prend en plus la
+  conversation : sa part structurelle (noms propres, identifiants, lignes de
+  santé) pour TOUS les messages, de Sam et de Rémy, message en cours compris,
+  et tous les mots rares des messages ANTÉRIEURS de Sam (et du résumé du
+  compactage). Le message en cours n'exempte que ces mots rares antérieurs
+  (Sam les réécrit : il redemande), jamais un nom, un identifiant ni un terme
+  de la mémoire ; ses noms communs à lui passent (première version : tout mot
+  rare de la conversation, message en cours compris — deux questions
+  réalistes sur trois refusées). La salle blanche n'y reçoit aucun lien de la
+  conversation. Le réglage est relu au moment de lancer la recherche (coupé
   pendant la réponse : refusé). `GET /api/reglages` dit `recherchePrivee`
   (effectif), `recherchePriveeReglage`, `recherchePriveeVerrouillee`,
   `salleBlanche` ; capacité `recherche-privee-v1` — l'app iPhone affichera le
   réglage à son prochain build.
-- **Ce qui sort désormais** : la question (filtrée) ne sort PAS — elle va à la
-  salle blanche, sur la tour ; sortent ses requêtes (filtrées) vers le moteur,
-  et les pages qu'elle ouvre (rendues par le moteur, données par Sam hors
+- **Ce qui sort désormais** : la question (filtrée) va à la salle blanche, sur
+  la tour, et part telle quelle au moteur comme première recherche (lancée par
+  la tour : la salle blanche l'aurait reprise de toute façon) ; sortent ensuite
+  ses requêtes (filtrées) vers le moteur, et les pages qu'elle ouvre (rendues par le moteur, données par Sam hors
   privé, ou site officiel sans « ? » — chemin filtré). **Ce qui ne peut plus
   sortir** par une page piégée : la mémoire, le planning, la conversation —
-  la salle blanche ne les a pas ; et si le modèle principal les écrit dans sa
-  question, le filtre les arrête.
-- **Limites.** Un nom qui est aussi un mot courant (« Rose », « Pierre ») n'est
-  pas au lexique (sauf s'il est au profil) ; un mot courant de la mémoire peut
-  sortir (« dentiste ») ; un identifiant épelé autrement (« S E C R E T ») ou
-  paraphrasé passe ; une question générale peut encore trahir un sujet (« effets
-  du lithium » écrit par Sam lui-même hors privé). La liste de mots courants
-  est faite main : un mot oublié bloque à tort, et le modèle reformule. Une
-  page piégée peut encore orienter la synthèse (mauvaise information) — c'est
-  la vérification des chiffres et les passages cités qui le montrent. Chaque
-  recherche coûte au moins deux appels de plus au modèle local (la salle
-  blanche lit puis synthétise) ; `REMY_SALLE_BLANCHE=off` revient au chemin
-  direct du même jour (filtre gardé, jamais en privé). Sur une tour avec
-  `REMY_RECHERCHE=off`, le navigateur reste l'outil direct du modèle principal
-  (sans salle blanche, comme avant).
+  la salle blanche ne les a pas ; et si le modèle principal (ou Claude en
+  secours) en écrit un nom, un numéro, un identifiant ou un terme de santé
+  dans sa question ou une adresse, le filtre l'arrête — même déguisé (sosies,
+  invisibles, chiffres, espaces insérés). Ses sujets, eux, peuvent sortir
+  (voir Limites).
+- **Limites.** Les SUJETS de Sam peuvent sortir : un nom commun de sa mémoire
+  (« pompe à chaleur », « orthodontie ») n'est pas bloqué hors d'une ligne de
+  santé — c'est voulu (sinon une recherche sur trois était refusée), et un
+  sujet seul n'identifie personne. Un nom propre écrit en minuscules sans
+  indice (« fontanel 14h » en tête de tâche), ou en tête de phrase sans autre
+  nom collé (« Fontanel : rappeler »), n'est pas au lexique ; un nom qui est
+  aussi un mot courant (« Rose », « Pierre ») non plus, sauf au profil. Un
+  terme épelé en mots, paraphrasé, coupé après un article (« Du pont ») ou en
+  deux mots courants (« Bois dur » pour « Boisdur ») passe. Les listes de mots
+  courants, lieux et produits sont faites main : un produit absent (« Tern
+  GSD ») bloque à tort — Rémy propose alors à Sam d'écrire le mot lui-même. Les
+  numéros (téléphone, e-mail) sont refusés même écrits par Sam : impossible de
+  chercher « qui m'appelle avec ce numéro ». Le web de Claude AUTORISÉ par la
+  carte V8 (`web_search`, `web_fetch`, côté Anthropic) échappe au filtre : par
+  défaut il ne reçoit que la question (« question seule »), et avec le
+  contexte, c'est le choix explicite de Sam. Une page piégée peut encore
+  orienter la synthèse (mauvaise information) — c'est la vérification des
+  chiffres et les passages cités (montants, pourcentages, durées, dates ;
+  centrés sur le chiffre) qui le montrent. Chaque recherche coûte un appel de
+  plus que le chemin direct au modèle local (4 au lieu de 3 pour une recherche
+  et une page lue), non mesuré sur les Sparks ; `REMY_SALLE_BLANCHE=off`
+  revient au chemin direct du même jour (filtre gardé, jamais en privé). Sur
+  une tour avec `REMY_RECHERCHE=off`, le navigateur reste l'outil direct du
+  modèle principal (sans salle blanche), mais filtré.
 
 ## 2026-10-25 — Recherche locale : le modèle local cherche et lit lui-même
 
