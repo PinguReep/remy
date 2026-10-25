@@ -108,3 +108,60 @@ relance-le depuis l'icône d'ActivityWatch près de l'horloge (menu des modules)
 ou quitte et relance `aw-qt`, puis tire pour relever.
 « Tout effacer » vide ce que Rémy a gardé, sans toucher à ActivityWatch.
 
+## Recherche web (modèle local)
+
+Depuis le 25/10, le modèle local cherche et lit lui-même sur le web, depuis la
+tour : un moteur de recherche, puis la lecture des pages (sans JavaScript ; le
+navigateur reste pour les autres). Ni Claude ni carte « Tu autorises ? ». Ce qui
+sort : la requête, vers le moteur, puis les pages ouvertes. Jamais pour une
+conversation privée ; le réglage « Recherche web » de l'app coupe tout.
+
+| Réglage (`remy.env`) | Rôle |
+| --- | --- |
+| `REMY_RECHERCHE` | `duckduckgo` (défaut, sans clé ni installation), `searxng`, ou `off` (plus de recherche locale : on retrouve la recherche par Claude, sur autorisation) |
+| `REMY_SEARXNG_URL` | l'adresse de SearXNG, pour `REMY_RECHERCHE=searxng` (ex. `http://<spark>:8090`) |
+| `REMY_RECHERCHE_MAX` | recherches par message (défaut 4) |
+| `REMY_LECTURE_MAX` | pages lues par message (défaut 6) |
+| `REMY_RECHERCHE_DELAI_MS` / `REMY_LECTURE_DELAI_MS` | délai d'une recherche (8 s) / d'une page (15 s) |
+| `REMY_WEB_SEARCH=off` | coupe toute recherche web, locale comme par Claude |
+
+Après un changement de `remy.env`, relance l'installeur avec le même `-Ref` :
+il redémarre Rémy.
+
+### Si DuckDuckGo se met à bloquer : SearXNG sur un Spark
+
+DuckDuckGo peut répondre par une vérification anti-robot quand la tour cherche
+beaucoup. Rémy le dit alors en clair (« DuckDuckGo bloque les recherches… ») et
+n'insiste pas pendant 5 minutes. La parade durable : SearXNG, un métamoteur libre,
+sur un Spark (il interroge plusieurs moteurs à la fois ; rien d'autre ne part).
+
+1. Sur le Spark (Docker installé), sur un port libre — pas celui du modèle :
+
+   ```bash
+   mkdir -p ~/searxng
+   docker run -d --name searxng --restart unless-stopped -p 8090:8080 \
+     -v ~/searxng:/etc/searxng searxng/searxng:latest
+   ```
+
+2. Au premier démarrage, il écrit `~/searxng/settings.yml` (avec sa clé secrète).
+   Ouvre-le et ajoute `json` aux formats, puis coupe le limiteur (seule la tour
+   l'interroge) :
+
+   ```yaml
+   search:
+     formats:
+       - html
+       - json
+   server:
+     limiter: false
+   ```
+
+   puis `docker restart searxng`.
+3. Depuis la tour : `curl.exe "http://<spark>:8090/search?q=test&format=json"` doit
+   rendre du JSON (un 403 : `json` manque encore dans `formats`).
+4. Dans `remy.env` : `REMY_RECHERCHE=searxng` et `REMY_SEARXNG_URL=http://<spark>:8090`,
+   puis relance l'installeur. Rémy dit en clair si SearXNG ne répond pas, refuse
+   le JSON, ou si ses moteurs sont muets.
+
+SearXNG ne doit écouter que le réseau local : ne le publie ni sur Internet ni
+par Tailscale Funnel.

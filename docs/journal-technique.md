@@ -4,6 +4,71 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-25 — Recherche locale : le modèle local cherche et lit lui-même
+
+- **Quoi** (`lib/recherche.js`, capacité `recherche-locale-v1`) : deux outils
+  dans la boucle d'outils du modèle local, sur le principe d'Hermes Agent
+  (Nous Research) — `chercher_web({ requete, nombre? })` et `lire_page({ url })`.
+  Le modèle décide seul de chercher, comme Claude ; plus de carte « Tu
+  autorises ? » ni de Claude quand le cerveau est local. Un message « web »
+  reste local (palier `web` = réflexion bornée, sans appel au routeur :
+  `palierSansRouteur(…, { rechercheLocale })`) ; les outils sont là pour tout
+  message, le modèle juge. Le chemin Claude (V8) reste pour `REMY_CERVEAU=cloud`
+  et pour une tour sans recherche locale (`REMY_RECHERCHE=off`). Une ancienne
+  carte à laquelle Sam répond « non » est respectée (réponse locale sans web).
+- **Moteurs** (`REMY_RECHERCHE`) : `duckduckgo` par défaut, sans clé — POST sur
+  `html.duckduckgo.com/html/` avec des en-têtes de navigateur (sans eux :
+  202/503), puis `lite.duckduckgo.com/lite/` si le premier bloque ; une seule
+  lecture pour les deux mises en page (liens `result__a` / `result-link`,
+  extrait entre un lien et le suivant, redirection `/l/?uddg=` décodée,
+  publicités `y.js` écartées). La vérification anti-robot (202, `anomaly-modal`)
+  est reconnue : bloqué partout, une erreur claire, et 5 min sans réessayer
+  (chaque essai prolonge le blocage). `searxng` : l'API JSON
+  (`REMY_SEARXNG_URL`), 403 → « ajoute json à search.formats », moteurs muets
+  dits. Toute panne remonte au modèle en message clair, jamais muette.
+- **lire_page** : `telechargerSur` du navigateur (même garde anti-SSRF, chaque
+  redirection revérifiée), avec un délai total (`signal`) et un plafond de
+  taille (`maxOctets`, 3 Mo) ajoutés en options. Texte de `<main>` ou
+  `<article>` s'il porte le contenu, sinon `<body>` ; sans scripts, styles,
+  menus, pied de page ; une ligne de tableau reste une ligne (« Prestations de
+  services | 83 600 € | 77 700 € » : un seuil sans libellé ne veut rien dire).
+  10 000 caractères. Date : métadonnées de mise à jour, puis « mis à jour /
+  vérifié le … » dans le texte, puis la publication. PDF : refus clair.
+- **Consigne** (`consigneRecherche`, ajoutée par `lib/glm.js` quand les outils
+  sont là ; sinon « dis que tu ne peux pas chercher d'ici ») : chercher sans
+  demander dès que c'est récent, chiffré, réglementaire, local ou incertain ;
+  sources officielles d'abord ; un chiffre vient d'une page lue dans CETTE
+  réponse ; citer site, lien, date ; « pas trouvé » plutôt qu'inventer ;
+  budget (`REMY_RECHERCHE_MAX`, `REMY_LECTURE_MAX`). 12 tours d'outils au lieu
+  de 8 quand la recherche est là.
+- **Fiabilité sans IA** (`chiffresAVerifier`) : après la réponse, les montants
+  (€, k€, %) et années qu'elle avance mais qu'aucun texte lu pendant ce tour ne
+  contient (résultats, pages, leurs dates) sont signalés en une ligne
+  (« _À vérifier (absent des pages lues) : …_ »), enregistrée avec la réponse.
+  Prudent : nombres comparés par valeur (1 000 € = 1000 € = 1.000 €, 12,5 % =
+  12.5%, 77,7 k€ = 77 700 €), généreux côté sources (« 77 700 » vaut aussi 77
+  et 700), rien de ce que la question contenait, rien dans les liens, et rien
+  du tout si Rémy n'a rien lu ce tour-ci.
+- **Verrous** : conversation privée → aucun outil web (`navigateur` faux : une
+  page piégée pourrait faire chercher « <ce que Sam vient de confier> ») ;
+  réglage « Recherche web » coupé ou `REMY_WEB_SEARCH=off` → aucun outil.
+  Hors privé, une page lue pourrait pousser le modèle à mettre du contexte dans
+  une requête : risque accepté par le propriétaire (25/10), le même que
+  `browse_page`.
+- **Visible** : étapes « Rémy cherche « … » » (`web`) et « Rémy lit <site> »
+  (`navigateur`) — l'app a déjà leurs icônes ; chaque recherche dans le panneau
+  des coûts (kind `recherche`, 0 $, fournisseur = moteur, modèle = point
+  d'entrée, « (échec) » si ratée). `GET /api/reglages` dit `rechercheLocale`
+  (le moteur, ou null). L'app dit encore « Passe par Claude » sous le réglage
+  « Recherche web » : à revoir côté iPhone, qui peut lire `rechercheLocale`.
+- **Essai réel** (25/10, depuis une machine de développement) : « ACRE
+  conditions 2026 urssaf » et « seuil micro-entreprise chiffre d'affaires
+  2026 » → 6 résultats chacun par `html.duckduckgo.com` en moins d'une seconde,
+  premiers résultats officiels (urssaf.fr, entreprendre.service-public.gouv.fr)
+  lus en 0,8 à 1,4 s avec leur date ; `lite.duckduckgo.com` lu aussi (6
+  résultats). Pas de blocage pendant l'essai ; une vérification anti-robot vue
+  plus tôt après une rafale de requêtes sans en-têtes.
+
 ## 2026-10-24 — Feuille de partage : texte, lien, image vers la tour
 
 - Texte et lien : la capture existante (`POST /api/capture`), source
@@ -741,6 +806,7 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
   IA : réflexe (court et simple), raisonnement (organiser, rédiger, long),
   conseil (décision). Web coupé ou conversation privée + message « web » :
   palier `web` sans appel, pour garder la note « je ne peux pas chercher ».
+  Recherche locale (25/10) : palier `web` sans appel aussi — le modèle cherche.
   La mémoire n'est réécrite que si l'échange apprend quelque chose sur Sam
   (préférence, habitude, fait de sa vie, état, « retiens que », y compris
   à la forme négative, un rejet comme « ne me propose plus », une correction)
