@@ -342,15 +342,46 @@ public enum GenreCapture: String, CaseIterable, Sendable {
         if interrogatifs.contains(where: { t.hasPrefix($0) }) { return .question }
         if t.count >= 120 { return .retenir }
         if t.hasPrefix("rappelle") || t.hasPrefix("rappel ") || t.hasPrefix("n'oublie pas") || t.hasPrefix("fais-moi penser") { return .rappel }
+        // Ce que Sam annonce lui-même passe avant la date : « idée : un clip
+        // pour vendredi » reste une idée, « projet bougies pour lundi » un dossier.
+        if t.range(of: #"^id[ée]es?\b"#, options: .regularExpression) != nil { return .idee }
+        if ["projet ", "nouveau projet", "sous-projet", "sous projet", "catégorie ", "categorie ", "nouvelle catégorie"].contains(where: { t.hasPrefix($0) }) { return .projet }
         if let d = AnalyseDate.extraire(t, maintenant: maintenant) {
             // Un jour sans heure pour une action claire (« Envoyer le devis
             // vendredi ») : une tâche avec cette échéance, pas un rappel à 9 h
             // inventé. Un rappel, c'est une heure dite, ou « rappelle-moi ».
-            return !d.heureDite && actionClaire(t) ? .tache : .rappel
+            // Le jour peut venir en tête (« Demain, appeler le plombier ») :
+            // l'action se lit aussi dans la phrase sans sa date.
+            return !d.heureDite && (actionClaire(t) || actionClaire(d.reste)) ? .tache : .rappel
         }
-        if ["projet ", "nouveau projet", "sous-projet", "sous projet", "catégorie ", "categorie ", "nouvelle catégorie"].contains(where: { t.hasPrefix($0) }) { return .projet }
         if articles(t).count >= 2 { return .liste }
         return actionClaire(t) ? .tache : parDefaut
+    }
+
+    /// Le texte d'une tâche ou d'un rappel noté avec une date. La phrase sans
+    /// la date quand celle-ci était au bout (« Envoyer le devis vendredi » →
+    /// « Envoyer le devis », « Demain, appeler le plombier » → « Appeler le
+    /// plombier ») ; sinon la phrase entière, sans la formule de demande :
+    /// « Préparer la réunion de demain avec Hugo » ne devient pas « Préparer
+    /// la réunion de avec Hugo ». La date part à côté (échéance ou heure du
+    /// rappel). Une tâche avec une heure dite (genre changé à la main) garde
+    /// son heure dans le titre.
+    public static func texte(_ texte: String, date d: AnalyseDate.Resultat?, genre: GenreCapture) -> String {
+        let propre = texte.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entier = AnalyseDate.sansFormule(propre)
+        guard let d, !d.reste.isEmpty else { return genre == .tache ? propre : entier }
+        if genre == .tache && d.heureDite { return entier }
+        func plie(_ s: String) -> String {
+            s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Format.locale)
+                .replacingOccurrences(of: #"[\s,;:.!…-]+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+        }
+        let reste = plie(d.reste), tout = plie(entier)
+        let auBout = tout.hasPrefix(reste) || tout.hasSuffix(reste)
+        // « Relire le compte rendu de », « Payer la facture du » : la date
+        // tenait au reste de la phrase.
+        let coupe = reste.range(of: #"(?:^|\s)(?:de|du|des|d'|d’|ou|et|entre|la|le|les|l'|au|aux|a|avec|sur|en|par|chez|dans|sans)$"#, options: .regularExpression) != nil
+        return auBout && !coupe ? d.reste : entier
     }
 
     /// Des verbes d'action courants (à l'infinitif, sans accents).
