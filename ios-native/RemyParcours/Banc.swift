@@ -104,9 +104,13 @@ class ParcoursBase: XCTestCase {
     func confirmationApresFeuille(_ message: String, champ: XCUIElement) throws {
         let toast = texte(message)
         let pendant = toast.waitForExistence(timeout: 3)
-        try etape("feuille-fermee", absent: [champ], delai: 10)
-        let apres = toast.exists
-        let annuler = bouton("Annuler").exists
+        // Regardé dès que la feuille est partie, avant la capture : le message
+        // vit 6 s depuis le geste, et chaque requête XCUITest sur l'accueil
+        // (chargé depuis le build 37) prend son temps (vu : 12 s pour l'étape).
+        let fermee = attendreDisparition(champ, delai: 10)
+        let apres = fermee && toast.exists
+        let annuler = apres && bouton("Annuler").exists
+        try etape("feuille-fermee", absent: [champ], delai: 2)
         noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")")
         verifier("Après le « + », la confirmation (« \(message)… ») et son « Annuler » doivent rester visibles une fois la feuille refermée.",
                  apres && annuler)
