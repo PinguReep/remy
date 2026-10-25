@@ -424,7 +424,13 @@ const chrome = [process.env.BROWSE_EXECUTABLE, "/opt/pw-browsers/chromium", "/us
   (p) => p && fs.existsSync(p),
 );
 
-test("browse_page : ce qu'il lit compte pour la vérification des chiffres (lire_page en 403 → navigateur)", { timeout: 60_000, skip: !chrome && "aucun Chromium sur cette machine" }, async () => {
+// Sur le runner Windows, Chromium met ~40 s à faire ce travail et affame les
+// fichiers de tests voisins (un délai de connexion de 10 s y a sauté, 25/10) :
+// la logique testée ne dépend pas du système, elle l'est sous Linux ; le
+// navigateur lui-même reste testé sous Windows (test/navigateur.test.mjs).
+const sauterNavigateur = !chrome ? "aucun Chromium sur cette machine" : process.platform === "win32" ? "Chromium trop lent sur le runner Windows (logique testée sous Linux)" : false;
+
+test("browse_page : ce qu'il lit compte pour la vérification des chiffres (lire_page en 403 → navigateur)", { timeout: 60_000, skip: sauterNavigateur }, async () => {
   process.env.BROWSE_EXECUTABLE = chrome;
   delete process.env.REMY_BROWSE;
   try {
