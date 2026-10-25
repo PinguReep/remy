@@ -385,6 +385,20 @@ class ParcoursBase: XCTestCase {
         }
     }
 
+    /// L'élément est à l'écran tel qu'il s'ouvre : touchable, et tout entier
+    /// entre le haut de la fenêtre et la barre d'onglets (qui le cacherait
+    /// sans qu'XCUITest le dise toujours).
+    @MainActor
+    func visibleSansDefiler(_ e: XCUIElement) -> Bool {
+        guard e.exists, e.isHittable else { return false }
+        let fenetre = app.windows.firstMatch.frame
+        let barre = onglet("aujourdhui")
+        let bas = barre.exists ? min(barre.frame.minY, fenetre.maxY) : fenetre.maxY
+        let f = e.frame
+        noter(String(format: "« %@ » de %.0f à %.0f pt (bas utile %.0f pt)", e.label, f.minY, f.maxY, bas))
+        return f.minY >= fenetre.minY && f.maxY <= bas
+    }
+
     /// Fait défiler jusqu'à ce que l'élément soit touchable (au plus `essais` balayages).
     @MainActor
     func amener(_ e: XCUIElement, dans conteneur: XCUIElement? = nil, essais: Int = 6) {
