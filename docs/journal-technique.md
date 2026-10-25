@@ -154,6 +154,10 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   rouges) et le déjeuner était passé (P12). Les faux services décalent ce qui
   chevauche la tâche en cours juste après elle ; P12 part de la ligne « Toute la
   journée », présente à toute heure.
+- **La carte « Maintenant » sous le pli** (build 37) : l'échéance menacée et
+  l'offre du briefing passent au-dessus. Le défilement automatique de XCUITest
+  ratait « Terminer » (toucher pendant l'élan) : `amenerDoucement` défile sans
+  élan avant de toucher. C'est aussi un constat de P02, laissé à trancher.
 
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 

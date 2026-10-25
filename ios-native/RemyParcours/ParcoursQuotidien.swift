@@ -54,6 +54,10 @@ final class ParcoursQuotidien: ParcoursBase {
             lancer()
             try attendreAccueil()
             try etape("maintenant", attendu: [texte("Finaliser la démo de la boutique"), texte("min restantes"), ident("maintenant.terminer")])
+            // Vu sur le build 37 : l'échéance menacée, l'offre du briefing (et le
+            // bilan, le soir) passent au-dessus ; la carte du moment est sous le pli.
+            constat("À l'ouverture, la carte « Maintenant » (et « Terminer ») est sous le pli : l'échéance menacée et l'offre du briefing (le bilan, le soir) passent devant ; il faut défiler pour voir quoi faire.",
+                    siFaux: ident("maintenant.terminer").isHittable)
             auditerCibles("Aujourd'hui")
             let conseil = boutonContenant("conseil")
             try toucher(conseil, "conseil du moment")
@@ -74,6 +78,7 @@ final class ParcoursQuotidien: ParcoursBase {
             lancer()
             try attendreAccueil()
             try etape("maintenant", attendu: [texte("Finaliser la démo de la boutique"), ident("maintenant.terminer")])
+            amenerDoucement(ident("maintenant.terminer"))
             try toucher(ident("maintenant.terminer"), "Terminer")
             try etape("faite-avec-annuler", attendu: [texte("« Finaliser la démo de la boutique » : fait.")], delai: 6)
             try etape("et-maintenant", attendu: [texte("terminée. Et maintenant ?")], delai: 20)
@@ -111,11 +116,16 @@ final class ParcoursQuotidien: ParcoursBase {
         jouer("P04", "Prolonger la tâche en cours de 15 min") {
             lancer()
             try attendreAccueil()
+            amenerDoucement(ident("maintenant.gerer"))
             try toucher(ident("maintenant.gerer"), "Gérer")
-            try etape("gerer", attendu: [bouton("+15 min"), boutonContenant("Replanifier ou modifier")])
+            // Le panneau refait par l'ergonomie (24/10) : puces « +15 min »
+            // (« Prolonger de 15 minutes » pour VoiceOver), « Décaler » en un toucher.
+            let plus15 = bouton("Prolonger de 15 minutes")
+            try etape("gerer", attendu: [plus15, bouton("Décaler : demain")])
             auditerCibles("Gérer")
-            try toucher(bouton("+15 min"), "+15 min")
-            let prolonger = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Prolonger ")).firstMatch
+            try toucher(plus15, "+15 min")
+            let prolonger = nomme(app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "Prolonger de 15 min", "Prolonger quand même")).firstMatch,
+                                  "bouton « Prolonger de 15 min »")
             try etape("impact-estime", attendu: [prolonger, texte("Estimation")])
             try toucher(prolonger, "Prolonger")
             try etape("prolongee", attendu: [texte("+15 min. Motion recalcule la suite.")], delai: 15)
@@ -127,14 +137,16 @@ final class ParcoursQuotidien: ParcoursBase {
         jouer("P05", "Décaler la tâche en cours à demain") {
             lancer()
             try attendreAccueil()
+            amenerDoucement(ident("maintenant.gerer"))
             try toucher(ident("maintenant.gerer"), "Gérer")
-            try etape("gerer", attendu: [boutonContenant("Replanifier ou modifier")])
-            try toucher(boutonContenant("Replanifier ou modifier"), "Replanifier")
-            try etape("dates", attendu: [bouton("Demain"), bouton("Dans une semaine")])
-            try toucher(bouton("Demain"), "Demain")
+            // « Décaler » est dans le panneau (ergonomie, 24/10) : un toucher.
+            let demain = bouton("Décaler : demain")
+            try etape("gerer", attendu: [demain, bouton("Choisir une date")])
+            try toucher(demain, "Demain")
             try etape("decalee", attendu: [texte("à faire d'ici")], delai: 15)
-            constat("Décaler laisse le panneau « Gérer » ouvert (« Prolonger » le referme) ; le message de confirmation se pose par-dessus ses actions.",
-                    siFaux: !bouton("+15 min").exists)
+            // Levé par l'ergonomie : Décaler referme le panneau, comme Prolonger.
+            verifier("Décaler referme le panneau « Gérer » : le message ne se pose plus sur ses actions.",
+                     attendreDisparition(demain, delai: 5))
         }
     }
 
@@ -398,10 +410,14 @@ final class ParcoursQuotidien: ParcoursBase {
             try attendreAccueil()
             try etape("journee", attendu: [ident("maintenant.terminer")])
             Pilote.couperTour()
+            amenerDoucement(ident("maintenant.terminer"))
             try toucher(ident("maintenant.terminer"), "Terminer")
             try etape("coche-sans-tour", attendu: [texte("joignable")], delai: 20)
             // Tirer pour rafraîchir : l'écran doit dire pourquoi rien ne vient.
+            // La carte du moment est sous le pli (build 37) : l'écran a défilé
+            // pour « Terminer » ; le premier geste le ramène en haut, le second tire.
             tirerPourRafraichir()
+            if !texte("injoignable").waitForExistence(timeout: 8) { tirerPourRafraichir() }
             try etape("tirer-pour-rafraichir", attendu: [texte("injoignable")], delai: 20)
             Pilote.relancerTour()
             try toucher(bouton("Réessayer"), "Réessayer")
