@@ -199,9 +199,9 @@ final class ParcoursQuotidien: ParcoursBase {
             try toucher(ident("capture.genre.tache"), "puce Tâche")
             try etape("revient-en-tache", attendu: [texte("Motion lui trouvera un créneau"), echeance])
             try toucher(ident("capture.valider"), "Ajouter à Motion")
-            try confirmationApresFeuille("Ajoutée à Motion", champ: champ)
-            verifier("La confirmation dit l'échéance transmise à Motion (« à faire d'ici vendredi … »).",
-                     texte("à faire d'ici vendredi").exists)
+            // « Ajoutée à Motion : « … », à faire d'ici vendredi … » : l'échéance est
+            // partie, et le message est regardé tant qu'il vit (6 s).
+            try confirmationApresFeuille("à faire d'ici vendredi", champ: champ)
         }
     }
 
