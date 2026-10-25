@@ -14,7 +14,7 @@ public struct MessageBas: Identifiable, Equatable {
     /// que le temps où « Annuler » n'envoie rien). Sinon 4 s, ou 6 s avec « Annuler ».
     public let duree: Double?
     /// Le libellé du bouton d'`annuler` : « Annuler » le plus souvent, ou ce
-    /// que le geste propose à la place (« Garder en rappel », hors ligne).
+    /// que le geste propose à la place.
     public let libelle: String
 
     public init(texte: String, annuler: (@MainActor () -> Void)? = nil, duree: Double? = nil, libelle: String = "Annuler") {
@@ -362,66 +362,20 @@ public final class AppModel {
     /// La tour refuse un doublon (même nom déjà ouvert) et le dit.
     /// `echeance` : le jour compris dans la phrase (« vendredi »), une date
     /// limite et jamais un créneau — Motion place la tâche avant.
-    /// `garderEnRappel` : sans réseau, la tâche ne part pas (rien ne la met en
-    /// file) ; le « + » propose alors d'en faire un rappel, gardé sur
-    /// l'iPhone, quand une date a été comprise. Avant le 25/10, une phrase
-    /// datée devenait toujours un rappel : elle ne se perdait pas hors ligne.
+    /// Sans réseau (25/10) : la tâche attend sur l'iPhone, telle que comprise,
+    /// et part dès que Rémy est joignable (`TableauModel.noter`). Rend vrai si
+    /// elle est partie ou gardée ; faux si la tour ou Motion l'a refusée (le
+    /// texte reste dans le champ).
     @discardableResult
-    public func noterTache(_ titre: String, echeance: Date? = nil, garderEnRappel: (@MainActor () -> Void)? = nil) async -> Bool {
+    public func noterTache(_ titre: String, echeance: Date? = nil) async -> Bool {
         let t = titre.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return false }
-        let p = Proposition(source: "motion", resume: "Noté depuis l'app", actions: [
-            ActionProposee(type: "creer", nom: String(t.prefix(200)), echeance: echeance.map { Format.isoAvecFuseau($0) }),
-        ])
-        do {
-            let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString)
-            let res = r.results?.first
-            if r.toutDejaLa {
-                // Déjà là n'est pas un échec : la feuille se ferme (24/10).
-                dire("Déjà dans Motion : « \(t) ».")
-                return true
-            }
-            if (r.echecs ?? 0) > 0 || res?.ok == false {
-                dire("Pas ajouté à Motion : \(res?.erreur ?? "raison inconnue").")
-                return false
-            }
-            var annuler: (@MainActor () -> Void)? = nil
-            if let ledger = r.ledgerId {
-                annuler = { [weak self] in
-                    Task {
-                        guard let self else { return }
-                        do {
-                            let a = try await self.api.annuler(Proposition(source: "motion", resume: nil, actions: [], ledgerId: ledger))
-                            self.dire(a.ok == false ? "Impossible de retirer « \(t) » de Motion." : "Retirée de Motion : « \(t) ».")
-                            await self.tableau.apresGeste()
-                        } catch {
-                            self.signaler(error)
-                        }
-                    }
-                }
-            }
-            dire("Ajoutée à Motion : « \(t) »" + (echeance.map { ", à faire d'ici \(Format.echeanceLongue($0))." } ?? ". Il lui trouve un créneau."),
-                 annuler: annuler)
-            // La journée se relit derrière : attendre ici gardait la feuille
-            // ouverte (jusqu'à 30 s sur la tour) pendant que la confirmation
-            // et son « Annuler » s'usaient dessous.
-            tableau.apresGesteSansAttendre()
-            return true
-        } catch {
-            if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e); return false }
-            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
-            if case .reseau = error as? ErreurAPI, let garderEnRappel {
-                dire("Pas ajouté à Motion : \(raison) Garde-la en rappel sur l'iPhone, ou réessaie plus tard.",
-                     annuler: garderEnRappel, duree: 10, libelle: "Garder en rappel")
-                return false
-            }
-            dire("Pas ajouté à Motion : \(raison) Ton texte est toujours là.")
-            return false
-        }
+        return await tableau.noter(CaptureFigee(genre: .tache, texte: String(t.prefix(200)), echeance: echeance))
     }
 
     /// Le « + », genre « Retenir » : Rémy garde l'idée en mémoire, sans
-    /// conversation. Au moins 30 caractères (il la distille).
+    /// conversation. Au moins 30 caractères (il la distille). Sans réseau,
+    /// elle attend sur l'iPhone comme une tâche.
     @discardableResult
     public func retenirNote(_ texte: String) async -> Bool {
         let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -429,15 +383,7 @@ public final class AppModel {
             dire("Encore quelques mots pour que Rémy puisse le retenir.")
             return false
         }
-        do {
-            dire(try await api.capturer(t, source: "note").phrase)
-            return true
-        } catch {
-            if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e); return false }
-            let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
-            dire("Pas retenu : \(raison) Ton texte est toujours là.")
-            return false
-        }
+        return await tableau.noter(CaptureFigee(genre: .retenir, texte: t))
     }
 
     public func organiserJournee() async {
@@ -586,7 +532,10 @@ public final class TableauModel {
     @ObservationIgnored let api: ClientAPI
     /// nil : rien sur le disque (tests, aperçus).
     @ObservationIgnored public let rangement: Rangement?
-    @ObservationIgnored private var envoisEnCours: Set<String> = []
+    @ObservationIgnored var envoisEnCours: Set<String> = []
+    /// Les captures que le « + » envoie en ce moment, feuille ouverte : pas
+    /// encore « en attente » (la ligne d'Aujourd'hui ne les compte pas).
+    var enEnvoiDirect: Set<String> = []
     /// Le temps (secondes) pendant lequel une coche s'annule sans rien envoyer.
     /// Sam l'a voulu court : « deux secondes, pas plus ».
     @ObservationIgnored public var delaiAnnulation: Double = 2
@@ -609,7 +558,8 @@ public final class TableauModel {
             misAJour = c.le
             copieLocale = true
         }
-        envoi = r.copie([Commande].self, Rangement.envoi)?.valeur ?? []
+        // Les gestes, puis les captures du « + » (un fichier chacun).
+        envoi = (r.copie([Commande].self, Rangement.envoi)?.valeur ?? []) + (r.copie([Commande].self, Rangement.captures)?.valeur ?? [])
         for c in envoi {
             guard case let .terminer(tache, titre) = c.geste, !cochees.contains(where: { $0.id == tache }) else { continue }
             cochees.append(Cochee(id: tache, titre: titre, ledgerId: nil, enCours: false,
@@ -617,11 +567,15 @@ public final class TableauModel {
         }
     }
 
-    /// Les gestes qui attendent le réseau (le délai d'annulation passé).
+    /// Les gestes qui attendent le réseau (le délai d'annulation passé). Les
+    /// captures du « + » sont comptées à part (`capturesEnAttente`).
     public var gestesEnAttente: Int {
         let enDelai = Set(cochees.filter(\.enAttente).compactMap(\.commande))
-        return envoi.filter { !enDelai.contains($0.id) }.count
+        return envoi.filter { $0.capture == nil && !enDelai.contains($0.id) }.count
     }
+
+    /// Quelque chose peut repartir seul (le retour de la tour, chaque minute).
+    public var aEnvoyer: Bool { gestesEnAttente > 0 || capturesEnAttente.contains { partSeule($0) } }
 
     /// La commande d'une coche encore dans la file d'envoi.
     public func commande(de c: Cochee) -> Commande? {
@@ -641,6 +595,7 @@ public final class TableauModel {
         envoi = []
         rangement?.effacer(Rangement.journee)
         rangement?.effacer(Rangement.envoi)
+        rangement?.effacer(Rangement.captures)
         rangement?.effacer(Rangement.serveur)
     }
 
@@ -714,18 +669,30 @@ public final class TableauModel {
         return await envoyer(commande, reprise: false)
     }
 
-    /// Renvoie les gestes restés sur l'iPhone (réseau revenu, app relancée),
-    /// dans l'ordre. S'arrête au premier échec réseau : inutile d'insister.
+    /// Renvoie les gestes et les captures restés sur l'iPhone (réseau revenu,
+    /// app relancée ou revenue au premier plan), dans l'ordre. S'arrête au
+    /// premier échec réseau : inutile d'insister. Une capture qui attend Sam
+    /// (refusée, ou peut-être déjà reçue) ne repart pas seule.
     public func envoyerEnAttente() async {
+        var envoyees: [String] = []
         for c in envoi where c.partApres <= Date() {
             if cochees.first(where: { $0.commande == c.id })?.enAttente == true { continue }
-            if await envoyer(c, reprise: true) == .enAttente { break }
+            if c.capture != nil && !partSeule(c) { continue }
+            let issue = await envoyer(c, reprise: true)
+            if issue == .enAttente { break }
+            if issue == .faite, let capture = c.capture { envoyees.append(capture.texte) }
+        }
+        // Plusieurs captures parties d'un coup : un seul message les dit toutes.
+        if envoyees.count > 1 {
+            app?.dire("Envoyé : \(envoyees.count) captures en attente (" + envoyees.prefix(2).map { "« \(CaptureFigee.court($0)) »" }.joined(separator: ", ")
+                      + (envoyees.count > 2 ? "…" : "") + ").")
         }
     }
 
     /// Envoie une commande de la file. `reprise` : renvoi automatique, qui ne
     /// répète pas « pas de réseau » à chaque essai, mais dit quand c'est parti.
-    private func envoyer(_ commande: Commande, reprise: Bool) async -> IssueCoche {
+    func envoyer(_ commande: Commande, reprise: Bool) async -> IssueCoche {
+        if commande.capture != nil { return await envoyerCapture(commande, reprise: reprise) }
         guard case let .terminer(id, titre) = commande.geste else { return .echec }
         guard envoisEnCours.insert(commande.id).inserted else { return .deja }
         defer { envoisEnCours.remove(commande.id) }
@@ -798,18 +765,18 @@ public final class TableauModel {
 
     // MARK: File d'envoi sur le disque
 
-    private func ajouter(_ c: Commande) {
+    func ajouter(_ c: Commande) {
         envoi.append(c)
         sauverEnvoi()
     }
 
-    private func retirer(_ id: String) {
+    func retirer(_ id: String) {
         guard envoi.contains(where: { $0.id == id }) else { return }
         envoi.removeAll { $0.id == id }
         sauverEnvoi()
     }
 
-    private func modifier(_ id: String, _ changement: (inout Commande) -> Void) {
+    func modifier(_ id: String, _ changement: (inout Commande) -> Void) {
         guard let i = envoi.firstIndex(where: { $0.id == id }) else { return }
         changement(&envoi[i])
         sauverEnvoi()
@@ -817,11 +784,14 @@ public final class TableauModel {
 
     private func sauverEnvoi() {
         guard let r = rangement else { return }
-        if envoi.isEmpty { r.effacer(Rangement.envoi); return }
-        do {
-            try r.garder(envoi, le: Date(), Rangement.envoi)
-        } catch {
-            app?.dire("L'iPhone n'a pas pu garder ce geste : il sera perdu si l'app se ferme avant l'envoi.")
+        for (nom, file) in [(Rangement.envoi, envoi.filter { $0.capture == nil }), (Rangement.captures, envoi.filter { $0.capture != nil })] {
+            if file.isEmpty { r.effacer(nom); continue }
+            do {
+                try r.garder(file, le: Date(), nom)
+            } catch {
+                app?.dire(nom == Rangement.envoi ? "L'iPhone n'a pas pu garder ce geste : il sera perdu si l'app se ferme avant l'envoi."
+                                                 : "L'iPhone n'a pas pu garder cette capture : elle sera perdue si l'app se ferme avant l'envoi.")
+            }
         }
     }
 

@@ -204,6 +204,68 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   écrire (ni sa dictée) ; le fil descend seulement. Le second défilement ne
   ramène plus en bas un Sam qui a posé le doigt pour remonter.
 
+## 2026-10-25 — Capture hors ligne : une vraie file d'envoi, et des échéances larges
+
+- **File d'envoi des captures** (`RemyCore/EnvoiCaptures.swift`, décision du
+  propriétaire) : remplace « Garder en rappel ». Une tâche, une idée,
+  « Retenir » ou un dossier noté avec le « + » devient une `Commande`
+  (`.capture(CaptureFigee)`) : genre, titre, échéance figés au moment de la
+  capture, écrite sur le disque AVANT de partir. Feuille ouverte : envoi tout
+  de suite ; réseau coupé → « Pas de réseau : … partira dès que Rémy sera
+  joignable » avec « Annuler », la feuille se ferme. iPhone sans aucun réseau
+  (`horsLigne`) : rien n'est tenté. Elle repart au retour du réseau, au premier
+  plan, au lancement, et chaque minute (`TableauModel.envoyerEnAttente`) ;
+  plusieurs envoyées d'un coup : un seul message « Envoyé : N captures… ».
+- **Fichier à part** (`captures.json`, pas `envoi.json`) : un build plus
+  ancien réinstallé (TestFlight › Builds précédents) ne sait pas décoder le
+  nouveau cas ; dans le même fichier, il perdait toute sa file, coches comprises.
+- **Jamais deux fois** : l'identifiant de la capture part avec elle. Tâche :
+  `idCommande` (chaîne d'écriture du Lot 0, `propositions-v1`) — vérifié contre
+  la tour de démo, un renvoi après un redémarrage rend le même résultat et le
+  faux Motion n'a qu'une tâche. Idée et dossier : écrits par leur identifiant
+  (`PUT /api/dossiers/<id>`, note `id`), un renvoi réécrit la même ligne.
+  Retenir : nouveau `idCapture` (capacité `capture-idempotente-v1`) — la tour
+  garde la réponse dans la table `commandes` (source `capture`, aucune
+  migration) et la rend telle quelle (`rejoue: true`), sans rappeler le
+  modèle ; deux envois simultanés attendent la même absorption ; un refus
+  (400, 502) n'est pas retenu, il se retente. Tour sans la capacité : envoi
+  unique — la tentative est notée AVANT de partir ; coupée en route, la
+  capture est « peut-être déjà reçue » et attend Sam (« Renvoyer »), jamais
+  renvoyée à l'aveugle.
+- **Refus** (la tour ou Motion) : feuille ouverte, le texte reste dans le champ
+  et rien n'attend ; partie plus tard, elle reste dans la liste avec sa raison
+  (`raison`), ne repart pas seule, « Renvoyer » ou « Retirer » (avec
+  « Annuler »).
+- **Visible** : en tête d'Aujourd'hui, « N en attente d'envoi » (ou « à
+  revoir »), toucher = la liste (`FileEnvoiVue`) : texte, échéance ou endroit,
+  état, « Envoyer maintenant », « Retirer », « Renvoyer ». Dans le « + »,
+  quand Rémy est déjà su injoignable : « ce sera gardé sur l'iPhone ». Les
+  rappels et les listes, déjà locaux, ne changent pas. Parcours P21 : tâche
+  notée tour coupée, ligne « 1 en attente d'envoi », tour rallumée, retour au
+  premier plan, « Envoyé : … », une seule tâche dans le faux Motion
+  (`POST /compter` du pilote).
+- **Échéances larges** (`AnalyseDate`, décisions du 25/10) : « cette
+  semaine », « avant / d'ici la fin de la semaine », « dans la semaine » →
+  dimanche 23 h (semaine lundi → dimanche ; dimanche soir passé 23 h : 23 h 59) ;
+  « la semaine prochaine » → le dimanche suivant. « fin octobre », « fin du
+  mois », « avant la fin du mois (prochain) » → dernier jour du mois, 23 h ;
+  mois passé → l'an prochain. « avant le 3 (novembre, /11) » → la veille,
+  23 h (« avant » est strict ; la veille déjà passée → ce soir) ; « pour / d'ici
+  le 3 », « jusqu'au 3 », « le 3 » → le 3. Sans mois : le prochain 3, ce mois-ci
+  compris (« le 31 » saute les mois sans 31). « le 3 » seul ne se lit qu'en fin
+  de phrase ou devant une heure : « Visiter le 2 pièces », « Appeler le 06… »
+  ne sont pas des dates. Un jour de la semaine dit en plus l'emporte (plus tôt,
+  jamais raté). « début / mi- / courant novembre », « en novembre » : rien, le
+  flou reste dans le titre. Le titre suit la règle du 25/10 (la date ne part
+  que si elle était au bout) ; « Avant vendredi, … » perd aussi son lien en tête.
+- **Recherche web** : `GET /api/reglages` dit `rechercheLocale` (le moteur, PR
+  #17) ; présent, Réglages dit « Rémy cherche lui-même sur le web
+  (DuckDuckGo), sans passer par Claude. », cache « Envoi de contexte au
+  cloud » (sans objet), et Réglages › Modèle ne dit plus que Claude sert aux
+  recherches (capacité `recherche-locale-v1`). Absent : les anciens textes.
+  Nouveautés série 3 : « Rémy cherche sur le web » (`recherche-locale-v1`) et
+  « Noté sans réseau, envoyé ensuite ».
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit

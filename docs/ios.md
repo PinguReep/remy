@@ -157,6 +157,11 @@ tag) avant l'échéance.
   pas de push ; un bouton touché deux fois n'agit qu'une fois). L'app ouverte
   recharge le widget « Maintenant » quand ce qu'il montre change
   (`Remy/App/WidgetsAJour.swift`).
+- File d'envoi (25/10) : les coches dans `envoi.json`, les captures du « + »
+  notées sans réseau (tâche, idée, Retenir, dossier) dans `captures.json`
+  (`RemyCore/EnvoiCaptures.swift`), chacune avec l'identifiant que la tour
+  reconnaît (jamais deux tâches). En tête d'Aujourd'hui : « N en attente
+  d'envoi », toucher = la liste (envoyer, retirer, renvoyer).
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

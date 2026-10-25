@@ -89,7 +89,9 @@ struct ReglagesView: View {
                     activiteEnDirect
                     if let r = reglages, r.rechercheWeb != nil {
                         rechercheWeb(r)
-                        if r.rechercheWeb == true { contexteCloud(r) }
+                        // Rémy cherche lui-même (recherche locale) : rien ne part
+                        // au cloud pour chercher, ce réglage n'a plus d'objet.
+                        if r.rechercheWeb == true && r.moteurRecherche == nil { contexteCloud(r) }
                     }
                     if let r = reglages, r.secoursCloudSansObjet != true {
                         secours(r)
@@ -258,7 +260,7 @@ struct ReglagesView: View {
             Button("Se déconnecter", role: .destructive) { Task { await app.deconnecter() } }
             Button("Annuler", role: .cancel) {}
         } message: {
-            let attente = app.tableau.gestesEnAttente + app.carnet.enAttente.count
+            let attente = app.tableau.gestesEnAttente + app.carnet.enAttente.count + app.tableau.capturesEnAttente.count
             Text("Il faudra retaper le mot de passe pour revenir."
                  + (attente == 0 ? "" : attente == 1 ? " Un changement pas encore envoyé sera perdu."
                                                      : " \(attente) changements pas encore envoyés seront perdus."))
@@ -292,8 +294,10 @@ struct ReglagesView: View {
         .overlay(alignment: .bottom) { Filet() }
     }
 
-    /// Recherche web (V8) : elle passe par Claude (Anthropic). Permise, Rémy
-    /// demande quand même l'accord à chaque recherche ; coupée, il répond sans.
+    /// Recherche web : avec la recherche locale (recherche-locale-v1, 25/10),
+    /// Rémy cherche lui-même (DuckDuckGo), sans Claude ; sinon (V8) elle passe
+    /// par Claude, et Rémy demande l'accord à chaque recherche. Coupée, il
+    /// répond sans le web.
     private func rechercheWeb(_ r: Reglages) -> some View {
         let force = r.rechercheWebCoupeeParLaTour == true
         return Toggle(isOn: Binding(
@@ -302,11 +306,7 @@ struct ReglagesView: View {
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Recherche web").font(Police.texte(16, .medium))
-                Text(force
-                     ? "Coupée sur la tour (REMY_WEB_SEARCH=off) : à rallumer là-bas."
-                     : r.rechercheWeb == true
-                        ? "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche."
-                        : "Coupée : Rémy répond sans le web, rien ne part chez Anthropic.")
+                Text(r.phraseRechercheWeb)
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -353,9 +353,9 @@ struct ReglagesView: View {
             defer { changementSecours = false }
             do {
                 if let web {
-                    reglages = try await app.api.changerRechercheWeb(web)
-                    app.dire(web ? "Recherche web permise : Rémy te demandera avant chaque recherche."
-                                 : "Recherche web coupée : Rémy répond sans le web.")
+                    let r = try await app.api.changerRechercheWeb(web)
+                    reglages = r
+                    app.dire(r.confirmationRechercheWeb(web))
                 } else if let contexte {
                     reglages = try await app.api.changerContexteCloud(contexte)
                     app.dire(contexte ? "Une recherche autorisée emportera la conversation et ta mémoire."

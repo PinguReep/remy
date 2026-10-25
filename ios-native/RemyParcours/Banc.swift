@@ -12,6 +12,20 @@ enum Banc {
     static var portPilote: UInt16 { UInt16(env["REMY_PARCOURS_PILOTE"] ?? "") ?? 3099 }
     /// La même tour, sous un autre nom : un trousseau vierge (jeton rangé par hôte).
     static var tourAutreNom: String { tour.replacingOccurrences(of: "127.0.0.1", with: "localhost") }
+
+    /// Le dimanche de cette semaine (lundi → dimanche), écrit comme l'aperçu du
+    /// « + » écrit une échéance (« dimanche 1 novembre », heure de Paris).
+    static var dimancheDeLaSemaine: String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Paris") ?? .current
+        let aujourdhui = cal.startOfDay(for: Date())
+        let ecart = (1 - cal.component(.weekday, from: aujourdhui) + 7) % 7
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.timeZone = cal.timeZone
+        f.dateFormat = "EEEE d MMMM"
+        return f.string(from: cal.date(byAdding: .day, value: ecart, to: aujourdhui) ?? aujourdhui)
+    }
 }
 
 /// Le pilote de la tour de démo (ios-native/RemyParcours/tour-pilote.mjs) :
@@ -60,6 +74,16 @@ enum Pilote {
 
     static func couperTour() { demander("/couper") }
     static func relancerTour() { demander("/relancer") }
+
+    /// Les tâches de ce nom dans le faux Motion (nil : le pilote n'a pas répondu).
+    static func compterTaches(_ nom: String) -> Int? {
+        // ASCII seulement dans la ligne de requête : le reste est encodé.
+        let sur = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        let q = nom.addingPercentEncoding(withAllowedCharacters: sur) ?? nom
+        let r = demander("/compter?nom=\(q)")
+        guard let m = r.range(of: #""n":(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(r[m].dropFirst(4))
+    }
 }
 
 private final class Tampon: @unchecked Sendable {

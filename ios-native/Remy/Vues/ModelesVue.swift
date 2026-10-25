@@ -51,7 +51,11 @@ struct ModelesVue: View {
                     } header: {
                         Text("Modèle")
                     } footer: {
-                        Text("Seuls les modèles chargés sur tes Sparks apparaissent ici : tes conversations restent chez toi. Claude ne sert qu'aux recherches web que tu autorises.")
+                        // La recherche locale (recherche-locale-v1, 25/10) : Claude ne cherche plus pour Rémy.
+                        Text("Seuls les modèles chargés sur tes Sparks apparaissent ici : tes conversations restent chez toi. "
+                             + (app.serveur?.sait("recherche-locale-v1") == true
+                                ? "Rémy cherche lui-même sur le web, sans Claude (Réglages › Recherche web)."
+                                : "Claude ne sert qu'aux recherches web que tu autorises."))
                             .font(Police.texte(12))
                     }
                 } else if let e = m.erreur {

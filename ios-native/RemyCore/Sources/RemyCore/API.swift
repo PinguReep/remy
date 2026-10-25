@@ -293,11 +293,15 @@ public final class ClientAPI: @unchecked Sendable {
     /// sur Sam. `differe` (capture-siri-v1) : la tour répond dès la capture
     /// reçue et l'absorbe ensuite (Siri n'attend que quelques secondes).
     /// « partage » : la feuille de partage (24/10) ; une tour plus ancienne le
-    /// lit comme « note ».
-    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil) async throws -> RetourCapture {
+    /// lit comme « note ». `idCapture` (capture-idempotente-v1, 25/10) : la
+    /// file d'envoi de l'iPhone ; renvoyée, la tour rend la même réponse sans
+    /// la retenir deux fois.
+    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil,
+                         idCapture: String? = nil) async throws -> RetourCapture {
         let s = ["note", "chatgpt", "claude", "web", "siri", "partage"].contains(source) ? source : "note"
         var corps: [String: Any] = ["texte": texte, "source": s]
         if differe { corps["differe"] = true }
+        if let idCapture { corps["idCapture"] = idCapture }
         return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: delai ?? (differe ? 15 : 90))
     }
 

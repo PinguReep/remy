@@ -12,6 +12,10 @@ public struct Rangement: Sendable {
 
     static let journee = "journee.json"
     static let envoi = "envoi.json"
+    /// Les captures du « + » qui attendent la tour (25/10). À part des gestes :
+    /// un build plus ancien, réinstallé, ne sait pas les lire et perdrait
+    /// sinon toute la file (ses coches comprises).
+    static let captures = "captures.json"
     /// Ce que la tour sait faire : hors ligne dès le lancement, l'app doit
     /// savoir qu'elle reconnaît un geste renvoyé (sinon elle n'oserait pas).
     static let serveur = "serveur.json"
@@ -74,10 +78,12 @@ extension Copie: Decodable where T: Decodable {}
 
 /// Un geste fait dans l'app, écrit sur le disque AVANT de partir. Son `id` est
 /// la clé envoyée au serveur (`idCommande`) : renvoyé après une coupure, il
-/// n'est pas refait. Les captures y viendront au J1.5.
+/// n'est pas refait. Une capture du « + » y vient aussi (25/10), figée telle
+/// que l'iPhone l'a comprise.
 public struct Commande: Codable, Identifiable, Equatable, Sendable {
     public enum Geste: Codable, Equatable, Sendable {
         case terminer(tache: String, titre: String)
+        case capture(CaptureFigee)
     }
 
     public let id: String
@@ -90,6 +96,16 @@ public struct Commande: Codable, Identifiable, Equatable, Sendable {
     /// « Annuler » touché alors qu'elle était peut-être arrivée : on la renvoie,
     /// puis on la défait.
     public var puisDefaire: Bool
+    /// Une capture qui ne repart plus seule : refusée par la tour ou Motion,
+    /// ou peut-être déjà reçue par une tour qui ne reconnaît pas un renvoi.
+    /// Elle attend Sam (« Renvoyer » ou « Retirer »), jamais perdue en silence.
+    public var raison: String?
+
+    /// La capture que porte cette commande, s'il s'agit d'une capture.
+    public var capture: CaptureFigee? {
+        if case let .capture(c) = geste { return c }
+        return nil
+    }
 
     public init(geste: Geste, creeLe: Date = Date(), delai: Double = 0, id: String = UUID().uuidString) {
         self.id = id
