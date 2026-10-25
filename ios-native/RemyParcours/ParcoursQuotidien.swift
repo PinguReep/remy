@@ -150,7 +150,8 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("feuille-noter", attendu: [champ])
             try saisir("Hugo préfère qu'on lui écrive plutôt que de l'appeler, surtout le lundi.", dans: champ)
             try etape("texte-tape", attendu: [ident("capture.genre.retenir")])
-            auditerCibles("Noter (+)")
+            // Les puces du « + » font 44 pt depuis l'ergonomie du 24/10 : vérifié.
+            auditerCibles("Noter (+)", strict: true)
             // Une préférence, pas un rendez-vous : « surtout le lundi » n'est pas une date.
             constat("Une information à retenir qui cite un jour (« surtout le lundi ») est devinée « Rappel » pour lundi 9 h : tout jour de la semaine est lu comme une date (AnalyseDate, GenreCapture.deviner).",
                     siFaux: !ident("capture.genre.rappel").isSelected)
@@ -280,31 +281,28 @@ final class ParcoursQuotidien: ParcoursBase {
         jouer("P12", "Parcourir la journée (à l'échelle) et chercher la semaine") {
             lancer()
             try attendreAccueil()
-            let dejeuner = boutonContenant("Déjeuner avec Léa")
-            amener(dejeuner)
-            try etape("la-suite", attendu: [dejeuner])
-            try appuiLong(dejeuner)
+            // L'appui long sur « La suite » ouvre la journée à l'échelle. Le planning
+            // suit l'heure du run (le déjeuner peut être passé : vu le 25/10 à 17 h) ;
+            // la ligne « Toute la journée » est là à toute heure.
+            let suite = texte("Toute la journée : Salon du design")
+            amener(suite)
+            try etape("la-suite", attendu: [suite])
+            try appuiLong(suite)
             let echelle = texte("Les durées sont à l'échelle")
             if !echelle.waitForExistence(timeout: 5) {
-                // Vu au 3e run : l'appui long a ouvert le panneau de la ligne, comme
-                // un simple toucher. Sam fermerait et réessaierait, plus longuement.
-                capturer("appui-pris-pour-un-toucher")
-                noter("appui long (0,8 s) sur une ligne de la suite pris pour un toucher : panneau de la ligne au lieu de la journée à l'échelle ; second essai à 1,5 s")
-                try fermerSurimpression()
-                try appuiLong(dejeuner, duree: 1.5)
+                capturer("appui-sans-effet")
+                noter("appui long (0,8 s) sur « La suite » sans effet ; second essai à 1,5 s")
+                try appuiLong(suite, duree: 1.5)
             }
-            try etape("journee-a-l-echelle", attendu: [echelle])
+            try etape("journee-a-l-echelle", attendu: [echelle, bouton("7 jours")])
+            // La semaine (24/10) : le constat « pas de vue semaine » est levé ; elle
+            // est à un toucher de la journée, et c'est vérifié ici.
+            try toucher(bouton("7 jours"), "7 jours")
+            try etape("sept-jours", attendu: [texte("Les 7 jours")])
+            try toucher(bouton("Demain"), "Demain")
+            try etape("demain", attendu: [texteI("les durées sont à l'échelle")])
             try fermerSurimpression()
-            try etape("retour", absent: [texte("Les durées sont à l'échelle")])
-            // La semaine : Sam la cherche sur l'accueil puis dans Projets.
-            balayerVersLeHaut()
-            balayerVersLeHaut()
-            try etape("bas-de-l-accueil")
-            try toucher(onglet("projets"), "onglet Projets")
-            try etape("projets", attendu: [texteI("Où tu mets ton énergie")])
-            let semaine = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", "semaine")).firstMatch
-            constat("Pas de vue « semaine » : ni l'accueil ni Projets ne montrent les jours à venir ; il faut demander à Rémy.",
-                    siFaux: semaine.exists)
+            try etape("retour", absent: [texte("Les durées sont à l'échelle"), texte("Les 7 jours")])
         }
     }
 
@@ -462,8 +460,9 @@ final class ParcoursQuotidien: ParcoursBase {
             let hTitreG = titreTache.frame.height
             let hOngletG = onglet("aujourdhui").frame.height
             noter(String(format: "titre de la carte (serif) %.0f → %.0f pt ; onglet « Aujourd'hui » (Inter) %.0f → %.0f pt", hTitre, hTitreG, hOnglet, hOngletG))
-            constat("Dynamic Type incohérent : les titres en serif (Police.titre, taille fixe) ne bougent pas, le texte courant (Inter) grandit sans plafond et se casse en plein mot (« restant/es », « Aujour/d'hui ») ou se tronque (« Boutiqu… »).",
-                    siFaux: hTitreG > hTitre * 1.3 || hOngletG < hOnglet * 1.3)
+            // Levé par l'ergonomie du 24/10 (titres en serif qui suivent la taille) : vérifié.
+            verifier("Dynamic Type : les titres en serif grandissent avec le texte courant (titre \(Int(hTitre)) → \(Int(hTitreG)) pt).",
+                     hTitreG > hTitre * 1.3 || hOngletG < hOnglet * 1.3)
             if !ident("maintenant.terminer").isHittable { noter("au plus grand, « Terminer » demande de défiler") }
             balayerVersLeHaut()
             try etape("defile")
@@ -479,16 +478,19 @@ final class ParcoursQuotidien: ParcoursBase {
         jouer("P20", "Le matin : trier les sujets de la nuit (« À voir avec Rémy »)") {
             lancer()
             try attendreAccueil()
-            try toucher(bouton("À voir avec Rémy"), "boîte « À voir avec Rémy »")
-            try etape("boite", attendu: [app.navigationBars["À voir avec Rémy"], bouton("C'est fait"), bouton("Laisser tomber")])
-            auditerCibles("À voir avec Rémy")
+            // Depuis le rendez-vous quotidien (24/10), les sujets de la nuit sont
+            // dans « Ton briefing » (même bouton en haut, autre libellé).
+            let briefing = app.navigationBars["Ton briefing"]
+            try toucher(bouton("Ton briefing et les sujets de la nuit"), "briefing et sujets de la nuit")
+            try etape("boite", attendu: [briefing, bouton("C'est fait"), bouton("Laisser tomber")])
+            auditerCibles("Ton briefing")
             try toucher(bouton("C'est fait"), "C'est fait")
             try etape("sujet-fait", attendu: [bouton("Rouvrir")], delai: 10)
             try toucher(bouton("Laisser tomber"), "Laisser tomber")
             try etape("sujet-laisse", attendu: [texte("Laissé de côté")], delai: 10)
             try toucher(bouton("En parler à Rémy"), "En parler à Rémy")
             let composeur = app.textViews["Écris à Rémy…"]
-            try etape("question-preparee", attendu: [composeur], absent: [app.navigationBars["À voir avec Rémy"]], delai: 10)
+            try etape("question-preparee", attendu: [composeur], absent: [briefing], delai: 10)
             let prepare = (composeur.value as? String) ?? ""
             noter("question préparée dans le composeur : \(prepare.isEmpty ? "vide" : "\(prepare.count) caractères")")
             constat("« En parler à Rémy » depuis un sujet de la nuit n'amène pas la question dans le composeur.",

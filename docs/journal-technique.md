@@ -146,7 +146,14 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   en 6 pages (au moins une), ne marque vues que celles-là, et ne revient pas
   dans le même lancement : la suite attend le lancement suivant.
 - Dans `RemyParcours`, un constat corrigé devient `verifier(…)` : un échec
-  rouge, avec sa capture, s'il revient.
+  rouge, avec sa capture, s'il revient (`auditerCibles(…, strict: true)` pour
+  un écran déjà à 44 pt).
+- **Parcours indépendants de l'heure** : la journée de démo a des rendez-vous à
+  heure fixe, la tâche en cours suit l'heure du run. Joués vers 17 h, « Point
+  hebdo » prenait la carte « Maintenant » (plus de « Terminer » : six parcours
+  rouges) et le déjeuner était passé (P12). Les faux services décalent ce qui
+  chevauche la tâche en cours juste après elle ; P12 part de la ligne « Toute la
+  journée », présente à toute heure.
 
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
