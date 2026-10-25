@@ -354,8 +354,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try toucher(ident("capture.valider"), "Créer le rappel")
             // La première fois, iOS demande l'autorisation des notifications,
             // avant la confirmation ; déjà donnée, la feuille se ferme aussitôt.
-            capturer("demande-notifications")
-            accepterAlerteSysteme(8, tantQue: { champ.exists })
+            accepterAlerteSysteme(8, tantQue: { champ.exists }, capture: "demande-notifications")
             try confirmationApresFeuille("Rappel : demain", champ: champ)
             try toucher(onglet("projets"), "onglet Projets")
             try toucher(bouton("Tout voir"), "Tout voir (rappels)")
