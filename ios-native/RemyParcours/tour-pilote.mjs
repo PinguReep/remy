@@ -5,6 +5,8 @@
 //   POST /reinitialiser  données de démo d'origine, journée recalée sur maintenant
 //   POST /couper         la tour s'éteint (Tailscale coupé, PC éteint…)
 //   POST /relancer       la tour revient
+//   POST /panne          Rémy arrêté derrière Tailscale Serve : le PC répond, mais
+//                        par une 502 à tout (une panne passagère, pas un refus)
 //   GET  /etat           { tour: true|false }
 //   POST /compter?nom=…  { n } : les tâches de ce nom dans le faux Motion (une
 //                        capture rejouée ne doit en créer qu'une)
@@ -75,7 +77,35 @@ async function attendre(url, essais = 60) {
   return false;
 }
 
+// Le faux Tailscale Serve d'un Rémy arrêté : 502 à tout, sur le port de la tour.
+let panne = null;
+async function mettreEnPanne() {
+  await arreter(tour);
+  if (panne) return;
+  const s = http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(502, { "Content-Type": "text/plain", Connection: "close" });
+    res.end("Bad Gateway");
+  });
+  await new Promise((ok, ko) => {
+    s.once("error", ko);
+    s.listen(PORT_TOUR, "127.0.0.1", ok);
+  });
+  panne = s;
+}
+
+async function finirPanne() {
+  if (!panne) return;
+  const s = panne;
+  panne = null;
+  await new Promise((ok) => {
+    s.close(() => ok());
+    s.closeAllConnections?.();
+  });
+}
+
 async function demarrerTour() {
+  await finirPanne();
   if (vivant(tour)) return true;
   tour = lancer("server.js", envTour());
   return attendre(`http://127.0.0.1:${PORT_TOUR}/api/health`);
@@ -184,7 +214,8 @@ http.createServer((req, res) => {
     if (u === "/etat") return repondre(200, { tour: vivant(tour) });
     if (req.method !== "POST") return repondre(405, {});
     if (u === "/reinitialiser") return enFile(reinitialiser).then((ok) => repondre(ok ? 200 : 500, { ok }), (e) => repondre(500, { erreur: String(e) }));
-    if (u === "/couper") return enFile(() => arreter(tour)).then(() => repondre(200, { ok: true }));
+    if (u === "/couper") return enFile(() => finirPanne().then(() => arreter(tour))).then(() => repondre(200, { ok: true }));
+    if (u === "/panne") return enFile(mettreEnPanne).then(() => repondre(200, { ok: true }), (e) => repondre(500, { erreur: String(e) }));
     if (u === "/relancer") return enFile(demarrerTour).then((ok) => repondre(ok ? 200 : 500, { ok }));
     if (u === "/compter") {
       const nom = new URL(req.url, "http://x").searchParams.get("nom") || "";
@@ -202,6 +233,7 @@ http.createServer((req, res) => {
 
 for (const s of ["SIGINT", "SIGTERM"]) {
   process.on(s, async () => {
+    await finirPanne();
     await arreter(tour);
     await arreter(faux);
     process.exit(0);

@@ -577,6 +577,18 @@ public struct ResultatAction: Codable, Sendable {
     /// Déjà dans Motion ou dans l'agenda : rien n'a été créé (24/10).
     public var dejaLa: Bool?
     public var note: String?
+    /// Pourquoi Motion n'a pas pu (capture-idempotente-v1) : quota, serveur,
+    /// delai, reseau… (passager) ou refus, supprimee, auth… (à revoir).
+    public var nature: String?
+
+    /// Un échec qui passera seul : Motion en quota, en panne, lent ou
+    /// injoignable. Une tour plus ancienne ne dit pas la nature : son message
+    /// « réessaie… » en tient lieu.
+    public var passager: Bool {
+        guard ok == false else { return false }
+        if let nature { return ["quota", "serveur", "delai", "reseau", "horaires", "liste"].contains(nature) }
+        return erreur?.localizedCaseInsensitiveContains("réessaie") == true
+    }
 
     /// Une tour d'avant le 24/10 rend un doublon comme un échec : relu ici.
     public var estDejaLa: Bool {

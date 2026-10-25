@@ -212,7 +212,7 @@ public final class AppModel {
             phase = .pret
             await chargerTout()
         } catch ErreurAPI.nonConnecte {
-            tableau.vider()
+            tableau.vider(garderCaptures: true)
             projets.vider()
             semaine.vider()
             conseil.vider()
@@ -421,8 +421,10 @@ public final class AppModel {
     public func signaler(_ erreur: Error) {
         if let e = erreur as? ErreurAPI, e == .nonConnecte {
             // La tour ne reconnaît plus cet appareil (déconnecté depuis la
-            // liste, peut-être perdu) : rien de ta journée ne reste dessus.
-            tableau.vider()
+            // liste, peut-être perdu) : rien de ta journée ne reste dessus. Les
+            // captures tapées ici et pas encore parties restent, comptées sur
+            // l'écran de connexion : elles partiront après la reconnexion.
+            tableau.vider(garderCaptures: true)
             projets.vider()
             semaine.vider()
             conseil.vider()
@@ -431,6 +433,14 @@ public final class AppModel {
             carnet.vider()
             rituel.vider()
             phase = .connexion
+            // Le dernier message promettait peut-être « partira dès que Rémy
+            // sera joignable » : on dit ce qui se passe vraiment.
+            let n = tableau.capturesEnAttente.count
+            if n > 0 {
+                dire("Session refusée par Rémy : reconnecte-toi. \(n) capture\(n > 1 ? "s" : "") notée\(n > 1 ? "s" : "") sur l'iPhone t'attend\(n > 1 ? "ent" : "") : elle\(n > 1 ? "s" : "") partir\(n > 1 ? "ont" : "a") ensuite.")
+            } else {
+                message = nil
+            }
             return
         }
         dire((erreur as? LocalizedError)?.errorDescription ?? "Action impossible — réessaie.")
@@ -536,6 +546,9 @@ public final class TableauModel {
     /// Les captures que le « + » envoie en ce moment, feuille ouverte : pas
     /// encore « en attente » (la ligne d'Aujourd'hui ne les compte pas).
     var enEnvoiDirect: Set<String> = []
+    /// Des captures qu'une autre version de l'app a laissées et que celle-ci
+    /// ne sait pas relire : gardées à part sur l'iPhone, jamais envoyées.
+    public private(set) var capturesIllisibles = 0
     /// Le temps (secondes) pendant lequel une coche s'annule sans rien envoyer.
     /// Sam l'a voulu court : « deux secondes, pas plus ».
     @ObservationIgnored public var delaiAnnulation: Double = 2
@@ -558,8 +571,12 @@ public final class TableauModel {
             misAJour = c.le
             copieLocale = true
         }
-        // Les gestes, puis les captures du « + » (un fichier chacun).
-        envoi = (r.copie([Commande].self, Rangement.envoi)?.valeur ?? []) + (r.copie([Commande].self, Rangement.captures)?.valeur ?? [])
+        // Les gestes, puis les captures du « + » (un fichier chacun). Les
+        // captures se relisent une à une : une illisible est mise de côté,
+        // jamais toute la file.
+        let captures = r.lireCaptures()
+        envoi = (r.copie([Commande].self, Rangement.envoi)?.valeur ?? []) + captures.lues
+        capturesIllisibles = r.nombreIllisibles()
         for c in envoi {
             guard case let .terminer(tache, titre) = c.geste, !cochees.contains(where: { $0.id == tache }) else { continue }
             cochees.append(Cochee(id: tache, titre: titre, ledgerId: nil, enCours: false,
@@ -583,8 +600,12 @@ public final class TableauModel {
     }
 
     /// Déconnexion, ou appareil plus reconnu par la tour : rien ne reste, ni
-    /// à l'écran ni sur le disque.
-    public func vider() {
+    /// à l'écran ni sur le disque. `garderCaptures` (session refusée par la
+    /// tour, pas déconnexion voulue) : les captures tapées sur l'iPhone et pas
+    /// encore parties restent (protégées par iOS, hors iCloud) et partiront
+    /// après la reconnexion — jamais perdues en silence. Seule la déconnexion
+    /// voulue, qui les compte avant, les efface.
+    public func vider(garderCaptures: Bool = false) {
         donnees = nil
         misAJour = nil
         copieLocale = false
@@ -592,10 +613,14 @@ public final class TableauModel {
         erreurReseau = false
         cochees = []
         aDefaire = []
-        envoi = []
+        envoi = garderCaptures ? envoi.filter { $0.capture != nil } : []
         rangement?.effacer(Rangement.journee)
         rangement?.effacer(Rangement.envoi)
-        rangement?.effacer(Rangement.captures)
+        if !garderCaptures {
+            rangement?.effacer(Rangement.captures)
+            rangement?.effacer(Rangement.capturesIllisibles)
+            capturesIllisibles = 0
+        }
         rangement?.effacer(Rangement.serveur)
     }
 
@@ -673,14 +698,22 @@ public final class TableauModel {
     /// app relancée ou revenue au premier plan), dans l'ordre. S'arrête au
     /// premier échec réseau : inutile d'insister. Une capture qui attend Sam
     /// (refusée, ou peut-être déjà reçue) ne repart pas seule.
-    public func envoyerEnAttente() async {
+    /// `force` (« Envoyer maintenant ») : une capture part même si son
+    /// prochain essai, après une panne passagère, n'est pas encore venu.
+    public func envoyerEnAttente(force: Bool = false) async {
         var envoyees: [String] = []
-        for c in envoi where c.partApres <= Date() {
-            if cochees.first(where: { $0.commande == c.id })?.enAttente == true { continue }
-            if c.capture != nil && !partSeule(c) { continue }
-            let issue = await envoyer(c, reprise: true)
+        for c in envoi {
+            // Relue à chaque tour : retirée pendant la vidange, elle ne part
+            // pas ; sinon, avec ses tentatives et sa raison à jour.
+            guard let actuelle = envoi.first(where: { $0.id == c.id }) else { continue }
+            guard actuelle.partApres <= Date() || (force && actuelle.capture != nil) else { continue }
+            if cochees.first(where: { $0.commande == actuelle.id })?.enAttente == true { continue }
+            if actuelle.capture != nil && !partSeule(actuelle) { continue }
+            let issue = await envoyer(actuelle, reprise: true)
+            // La tour ne reconnaît plus la session : inutile d'insister.
+            if app?.phase == .connexion { break }
             if issue == .enAttente { break }
-            if issue == .faite, let capture = c.capture { envoyees.append(capture.texte) }
+            if issue == .faite, let capture = actuelle.capture { envoyees.append(capture.texte) }
         }
         // Plusieurs captures parties d'un coup : un seul message les dit toutes.
         if envoyees.count > 1 {

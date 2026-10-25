@@ -176,7 +176,7 @@ private struct Bandeau: View {
         VStack(spacing: 8) {
             // Les captures du « + » qui attendent la tour (25/10) : en tête,
             // toucher = la liste (retirer, renvoyer).
-            if !captures.isEmpty {
+            if !captures.isEmpty || t.capturesIllisibles > 0 {
                 ligneCaptures(captures)
             }
             if let e = t.erreur {
@@ -213,9 +213,11 @@ private struct Bandeau: View {
     }
 
     private func ligneCaptures(_ captures: [Commande]) -> some View {
-        let aRevoir = captures.filter { $0.raison != nil }.count
+        let aRevoir = captures.filter { app.tableau.etat($0).aRevoir }.count
         let n = captures.count
-        let texte = aRevoir == n ? "\(n) capture\(n > 1 ? "s" : "") à revoir : pas partie\(n > 1 ? "s" : "")"
+        let illisibles = app.tableau.capturesIllisibles
+        let texte = n == 0 ? "\(illisibles) capture\(illisibles > 1 ? "s" : "") illisible\(illisibles > 1 ? "s" : "") gardée\(illisibles > 1 ? "s" : "") à part"
+            : aRevoir == n ? "\(n) capture\(n > 1 ? "s" : "") à revoir : pas partie\(n > 1 ? "s" : "")"
             : "\(n) en attente d'envoi" + (aRevoir > 0 ? ", dont \(aRevoir) à revoir" : "")
         return Button {
             Haptique.leger()

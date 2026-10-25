@@ -21,13 +21,22 @@ struct FileEnvoiVue: View {
                         .font(Police.texte(15))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
+                    let illisibles = app.tableau.capturesIllisibles
+                    if illisibles > 0 {
+                        // Laissées par une autre version de l'app : gardées à part, jamais envoyées ni effacées.
+                        Text("\(illisibles) capture\(illisibles > 1 ? "s" : "") d'une autre version de l'app, illisible\(illisibles > 1 ? "s" : "") ici : gardée\(illisibles > 1 ? "s" : "") à part sur l'iPhone, sans être envoyée\(illisibles > 1 ? "s" : "").")
+                            .font(Police.texte(13))
+                            .foregroundStyle(Palette.encre2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("attente.illisibles")
+                    }
                     ForEach(file) { c in ligne(c) }
                     if file.contains(where: { app.tableau.partSeule($0) }) {
                         BoutonA(titre: envoi ? "Envoi…" : "Envoyer maintenant", symbole: "arrow.up") {
                             guard !envoi else { return }
                             envoi = true
                             Task {
-                                await app.tableau.envoyerEnAttente()
+                                await app.tableau.envoyerEnAttente(force: true)
                                 if app.tableau.capturesEnAttente.contains(where: { app.tableau.partSeule($0) }) {
                                     app.dire("Rémy est toujours injoignable : elles partiront dès qu'il répond.")
                                 }
@@ -55,6 +64,7 @@ struct FileEnvoiVue: View {
 
     private func ligne(_ c: Commande) -> some View {
         let capture = c.capture
+        let etat = app.tableau.etat(c)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: icone(capture?.genre))
@@ -71,16 +81,16 @@ struct FileEnvoiVue: View {
                         .font(Police.texte(13))
                         .foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(c.raison ?? "Partira dès que Rémy sera joignable · notée \(Self.quand(c.creeLe))")
-                        .font(Police.texte(13, c.raison == nil ? .regular : .semibold))
-                        .foregroundStyle(c.raison == nil ? Palette.encre3 : Palette.danger)
+                    Text(etat.aRevoir ? etat.texte : "\(etat.texte) · notée \(Self.quand(c.creeLe))")
+                        .font(Police.texte(13, etat.aRevoir ? .semibold : .regular))
+                        .foregroundStyle(etat.aRevoir ? Palette.danger : Palette.encre3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 4) {
                 Spacer(minLength: 0)
-                if c.raison != nil {
+                if etat.aRevoir {
                     BoutonTexte("Renvoyer") { Task { await app.tableau.renvoyerCapture(c.id) } }
                         .accessibilityLabel("Renvoyer « \(capture?.texte ?? "") »")
                 }
@@ -90,7 +100,7 @@ struct FileEnvoiVue: View {
         }
         .padding(14)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(c.raison == nil ? Palette.filet : Palette.danger.opacity(0.5), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(etat.aRevoir ? Palette.danger.opacity(0.5) : Palette.filet, lineWidth: 1))
         .accessibilityElement(children: .contain)
     }
 
