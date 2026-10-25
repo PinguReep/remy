@@ -41,7 +41,8 @@ final class NouveautesTests: XCTestCase {
         m.verifier()
         XCTAssertEqual(Set(m.affichees?.entrees.map(\.id) ?? []), ["modele", "lieux"], "l'historique ne s'impose pas")
         XCTAssertFalse(m.estNouvelle(Self.essai[2]))
-        // Vu une fois : plus jamais à l'ouverture, même après un relancement.
+        // Parcouru jusqu'au bout : plus jamais à l'ouverture, même après un relancement.
+        m.pageVue(1)
         m.fermer()
         XCTAssertNil(m.affichees)
         let b = essai(["modeles-v1", "lieux-v1"], reglages: r)
@@ -119,6 +120,7 @@ final class NouveautesTests: XCTestCase {
         m1.verifier()
         XCTAssertEqual(m1.affichees?.entrees.map(\.id), ["a", "b"], "3 + 2 pages ; « c » ferait 7")
         XCTAssertEqual(m1.affichees?.pages.count, 5, "chaque entrée entière")
+        for i in 0..<5 { m1.pageVue(i) }
         m1.fermer()
         XCTAssertFalse(m1.estNouvelle(catalogue[0]))
         XCTAssertTrue(m1.estNouvelle(catalogue[2]), "pas montrée : pas vue")
@@ -128,6 +130,7 @@ final class NouveautesTests: XCTestCase {
         let m2 = lancement()
         m2.verifier()
         XCTAssertEqual(m2.affichees?.entrees.map(\.id), ["c", "d", "e"], "« x » attend la tour")
+        m2.pageVue(5)
         m2.fermer()
 
         let m3 = lancement()
@@ -138,6 +141,66 @@ final class NouveautesTests: XCTestCase {
         // Une entrée plus longue que la limite passe quand même, seule et entière.
         XCTAssertEqual(Nouveautes.lot(catalogue, pagesMax: 2).map(\.id), ["a"])
         XCTAssertEqual(Nouveautes.lot([], pagesMax: 6), [])
+    }
+
+    /// « Plus tard » (ou la feuille balayée) à la première page : l'entrée
+    /// affichée est vue, celles jamais atteintes restent nouvelles et viennent
+    /// au lancement suivant.
+    func testPlusTardLaisseNouvellesLesEntreesPasAtteintes() {
+        let p = Self.page
+        let catalogue = [
+            Nouveaute(id: "a", serie: 3, date: "", titre: "A", capacite: nil, pages: [p, p, p]),
+            Nouveaute(id: "b", serie: 3, date: "", titre: "B", capacite: nil, pages: [p, p]),
+        ]
+        let r = suite()
+        let a = app([], reglages: suite())
+        gardes.append(a)
+        let m1 = NouveautesModel(reglages: r, catalogue: catalogue)
+        m1.app = a
+        m1.verifier()
+        XCTAssertEqual(m1.affichees?.entrees.map(\.id), ["a", "b"])
+        m1.pageVue(1)
+        m1.fermer()
+        XCTAssertFalse(m1.estNouvelle(catalogue[0]), "affichée : vue")
+        XCTAssertTrue(m1.estNouvelle(catalogue[1]), "jamais atteinte : toujours nouvelle")
+        let m2 = NouveautesModel(reglages: r, catalogue: catalogue)
+        m2.app = a
+        m2.verifier()
+        XCTAssertEqual(m2.affichees?.entrees.map(\.id), ["b"], "au lancement suivant")
+        // La première page de « b » (page 3 du lot d'avant) suffit à la marquer.
+        XCTAssertEqual(LotNouveautes(id: "x", entrees: catalogue).entrees(jusqua: 3).map(\.id), ["a", "b"])
+        XCTAssertEqual(LotNouveautes(id: "x", entrees: catalogue).entrees(jusqua: 2).map(\.id), ["a"])
+    }
+
+    /// Le build 37 coupait sa feuille à 6 pages (« partage », « hors-app »)
+    /// et marquait vue toute la série 3 que la tour connaissait. Au premier
+    /// lancement d'après, ce qu'il n'a jamais montré redevient nouveau — une
+    /// fois : ce qui est vu ensuite le reste.
+    func testRepriseDesVuesDuBuild37() {
+        let r = suite()
+        // Les vues telles que le build 37 les a laissées : l'historique (séries
+        // 1 et 2) et toute la série 3 sans capacité (tour sans les nouvelles).
+        let serie3SansCapacite = Nouveautes.catalogue.filter { $0.serie == 3 && $0.capacite == nil }.map(\.id)
+        XCTAssertEqual(Array(serie3SansCapacite.prefix(2)), ["partage", "hors-app"], "les 6 premières pages du build 37")
+        let anciennes = Nouveautes.catalogue.filter { $0.serie < 3 }.map(\.id)
+        r.set((anciennes + serie3SansCapacite).sorted(), forKey: "nouveautes.vues")
+        let a = app([], reglages: r)
+        a.nouveautes.verifier()
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["au-pouce", "fil-du-jour"])
+        XCTAssertFalse(a.nouveautes.estNouvelle(Nouveautes.catalogue.first { $0.id == "partage" }!), "déjà montrée : pas revue")
+        XCTAssertFalse(a.nouveautes.estNouvelle(Nouveautes.catalogue.first { $0.id == "modele" }!), "l'historique ne bouge pas")
+        a.nouveautes.pageVue(a.nouveautes.affichees!.pages.count - 1)
+        a.nouveautes.fermer()
+        // Une seule fois : au lancement suivant, rien ne revient.
+        let b = app([], reglages: r)
+        b.nouveautes.verifier()
+        XCTAssertNil(b.nouveautes.affichees)
+        // Une installation neuve n'a rien à reprendre.
+        let neuve = suite()
+        let c = app([], reglages: neuve)
+        XCTAssertTrue(neuve.bool(forKey: "nouveautes.reprise37"))
+        c.nouveautes.verifier()
+        XCTAssertEqual(c.nouveautes.affichees?.entrees.first?.id, "partage")
     }
 
     func testRevoirDepuisLHistorique() {

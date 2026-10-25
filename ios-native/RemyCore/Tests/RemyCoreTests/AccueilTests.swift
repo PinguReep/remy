@@ -203,6 +203,7 @@ final class AccueilTests: XCTestCase {
         let a = app()
         let ok = await a.noterTache("  Appeler le garage ")
         XCTAssertTrue(ok)
+        await a.tableau.relectureApresGeste?.value
         let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
         XCTAssertEqual(action["type"] as? String, "creer")
         XCTAssertEqual(action["nom"] as? String, "Appeler le garage")
@@ -224,10 +225,58 @@ final class AccueilTests: XCTestCase {
         let a = app()
         let ok = await a.noterTache(d.reste, echeance: d.echeance)
         XCTAssertTrue(ok)
+        await a.tableau.relectureApresGeste?.value
         let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
         XCTAssertEqual(action["nom"] as? String, "Envoyer le devis à Hugo")
         XCTAssertEqual(action["echeance"] as? String, "2026-10-16T23:00:00+02:00")
         XCTAssertEqual(a.toast, "Ajoutée à Motion : « Envoyer le devis à Hugo », à faire d'ici vendredi 16 octobre.")
+    }
+
+    /// Contre-relecture du défaut 1 : la confirmation (« Ajoutée à Motion… »
+    /// et son « Annuler ») vit 6 s depuis qu'elle s'affiche. `noterTache`
+    /// attendait la relecture de la journée (jusqu'à 30 s sur la tour) avant
+    /// que la feuille du « + » se ferme : le message s'usait dessous. Il
+    /// rend la main tout de suite, la journée se relit derrière.
+    func testNoterUneTacheNAttendPasLaJournee() async throws {
+        FauxServeur.reponses = [
+            "GET /api/dashboard": [(200, "{}")],
+            "POST /api/motion/apply": [(200, #"{"ledgerId":"L8","echecs":0,"results":[{"ok":true,"type":"creer","nom":"Appeler le garage"}]}"#)],
+        ]
+        FauxServeur.delais = ["GET /api/dashboard": 3_000_000_000]
+        defer { FauxServeur.delais = [:] }
+        let a = app()
+        let debut = Date()
+        let ok = await a.noterTache("Appeler le garage")
+        XCTAssertTrue(ok)
+        XCTAssertLessThan(Date().timeIntervalSince(debut), 1.5, "la feuille se ferme sans attendre la journée")
+        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Appeler le garage ». Il lui trouve un créneau.")
+        XCTAssertNotNil(a.message?.annuler)
+        XCTAssertEqual(a.message?.libelle, "Annuler")
+        // La journée se relit quand même, derrière.
+        await a.tableau.relectureApresGeste?.value
+        XCTAssertTrue(FauxServeur.recues.contains("GET /api/dashboard"))
+    }
+
+    /// Contre-relecture : hors ligne, « Envoyer le devis vendredi » (devinée
+    /// Tâche depuis le 25/10) ne part pas — aucune file pour une création.
+    /// Avant, elle devenait un rappel gardé sur l'iPhone. Le message le
+    /// propose d'un geste ; sans date comprise, il dit seulement que le
+    /// texte reste.
+    func testHorsLigneUneTacheDateeProposeLeRappel() async throws {
+        defer { FauxServeur.coupures = [:] }
+        let a = app()
+        FauxServeur.coupures = ["POST /api/motion/apply": 10]
+        var garde = false
+        let ok = await a.noterTache("Envoyer le devis", echeance: Date(), garderEnRappel: { garde = true })
+        XCTAssertFalse(ok)
+        XCTAssertEqual(a.toast, "Pas ajouté à Motion : Impossible de joindre Rémy. Vérifie ta connexion. Garde-la en rappel sur l'iPhone, ou réessaie plus tard.")
+        XCTAssertEqual(a.message?.libelle, "Garder en rappel")
+        a.message?.annuler?()
+        XCTAssertTrue(garde)
+        let sansDate = await a.noterTache("Envoyer le devis")
+        XCTAssertFalse(sansDate)
+        XCTAssertEqual(a.toast, "Pas ajouté à Motion : Impossible de joindre Rémy. Vérifie ta connexion. Ton texte est toujours là.")
+        XCTAssertNil(a.message?.annuler)
     }
 
     func testRetenirDepuisLePlus() async throws {

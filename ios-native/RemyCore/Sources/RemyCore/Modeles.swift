@@ -13,12 +13,16 @@ public struct MessageBas: Identifiable, Equatable {
     /// Durée d'affichage imposée, en secondes (le bandeau d'une coche ne vit
     /// que le temps où « Annuler » n'envoie rien). Sinon 4 s, ou 6 s avec « Annuler ».
     public let duree: Double?
+    /// Le libellé du bouton d'`annuler` : « Annuler » le plus souvent, ou ce
+    /// que le geste propose à la place (« Garder en rappel », hors ligne).
+    public let libelle: String
 
-    public init(texte: String, annuler: (@MainActor () -> Void)? = nil, duree: Double? = nil) {
+    public init(texte: String, annuler: (@MainActor () -> Void)? = nil, duree: Double? = nil, libelle: String = "Annuler") {
         self.id = UUID()
         self.texte = texte
         self.annuler = annuler
         self.duree = duree
+        self.libelle = libelle
     }
 
     public static func == (a: MessageBas, b: MessageBas) -> Bool { a.id == b.id }
@@ -190,8 +194,8 @@ public final class AppModel {
     /// Rend l'identifiant du message : qui l'a posé peut le retirer, et
     /// seulement lui (un message plus récent reste affiché).
     @discardableResult
-    public func dire(_ texte: String, annuler: (@MainActor () -> Void)? = nil, duree: Double? = nil) -> UUID {
-        let m = MessageBas(texte: texte, annuler: annuler, duree: duree)
+    public func dire(_ texte: String, annuler: (@MainActor () -> Void)? = nil, duree: Double? = nil, libelle: String = "Annuler") -> UUID {
+        let m = MessageBas(texte: texte, annuler: annuler, duree: duree, libelle: libelle)
         message = m
         return m.id
     }
@@ -358,8 +362,12 @@ public final class AppModel {
     /// La tour refuse un doublon (même nom déjà ouvert) et le dit.
     /// `echeance` : le jour compris dans la phrase (« vendredi »), une date
     /// limite et jamais un créneau — Motion place la tâche avant.
+    /// `garderEnRappel` : sans réseau, la tâche ne part pas (rien ne la met en
+    /// file) ; le « + » propose alors d'en faire un rappel, gardé sur
+    /// l'iPhone, quand une date a été comprise. Avant le 25/10, une phrase
+    /// datée devenait toujours un rappel : elle ne se perdait pas hors ligne.
     @discardableResult
-    public func noterTache(_ titre: String, echeance: Date? = nil) async -> Bool {
+    public func noterTache(_ titre: String, echeance: Date? = nil, garderEnRappel: (@MainActor () -> Void)? = nil) async -> Bool {
         let t = titre.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return false }
         let p = Proposition(source: "motion", resume: "Noté depuis l'app", actions: [
@@ -394,11 +402,19 @@ public final class AppModel {
             }
             dire("Ajoutée à Motion : « \(t) »" + (echeance.map { ", à faire d'ici \(Format.echeanceLongue($0))." } ?? ". Il lui trouve un créneau."),
                  annuler: annuler)
-            await tableau.apresGeste()
+            // La journée se relit derrière : attendre ici gardait la feuille
+            // ouverte (jusqu'à 30 s sur la tour) pendant que la confirmation
+            // et son « Annuler » s'usaient dessous.
+            tableau.apresGesteSansAttendre()
             return true
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e); return false }
             let raison = (error as? LocalizedError)?.errorDescription ?? "erreur"
+            if case .reseau = error as? ErreurAPI, let garderEnRappel {
+                dire("Pas ajouté à Motion : \(raison) Garde-la en rappel sur l'iPhone, ou réessaie plus tard.",
+                     annuler: garderEnRappel, duree: 10, libelle: "Garder en rappel")
+                return false
+            }
             dire("Pas ajouté à Motion : \(raison) Ton texte est toujours là.")
             return false
         }
@@ -815,6 +831,14 @@ public final class TableauModel {
     public func apresGeste() async {
         await charger()
         relireBientot()
+    }
+
+    /// La relecture d'après un geste, lancée sans être attendue (le « + »
+    /// se ferme tout de suite) ; gardée pour que les tests l'attendent.
+    @ObservationIgnored public private(set) var relectureApresGeste: Task<Void, Never>?
+
+    public func apresGesteSansAttendre() {
+        relectureApresGeste = Task { [weak self] in await self?.apresGeste() }
     }
 
     @ObservationIgnored private var relecture: Task<Void, Never>?

@@ -292,9 +292,12 @@ struct CaptureView: View {
         guard !propre.isEmpty else { return micro ? "Écris ou dicte : Rémy devine où le ranger." : "Écris, Rémy devine où le ranger." }
         switch genre {
         case .tache:
-            // Le jour compris reste une date limite, jamais un créneau fixe.
+            // Le jour compris reste une date limite, jamais un créneau fixe. Le
+            // titre qui partira est montré tel quel : sans la date quand elle
+            // était au bout, la phrase entière sinon.
             guard let d = dateLue else { return "Tâche → Motion lui trouvera un créneau" }
-            return "Tâche → Motion lui trouvera un créneau avant l'échéance : \(Format.echeanceLongue(d.echeance))"
+            let titre = GenreCapture.texte(propre, date: d, genre: .tache)
+            return "Tâche « \(titre) » → Motion lui trouvera un créneau avant l'échéance : \(Format.echeanceLongue(d.echeance))"
         case .idee:
             guard projetPret else { return "Les Idées arriveront avec la mise à jour de ta tour." }
             return "Idée → gardée dans « Idées » (Projets), rien n'est planifié"
@@ -305,7 +308,7 @@ struct CaptureView: View {
         case .rappel:
             guard carnetPret else { return "Les rappels arriveront avec la mise à jour de ta tour." }
             guard let d = dateLue else { return "Rappel sans date (ajoute « demain 9h », « lundi », « le 12/11 »…)" }
-            return "Rappel → \(LigneRappel.quand(d.quand.millis)) : « \(d.reste.isEmpty ? AnalyseDate.sansFormule(propre) : d.reste) »"
+            return "Rappel → \(LigneRappel.quand(d.quand.millis)) : « \(GenreCapture.texte(propre, date: d, genre: .rappel)) »"
         case .retenir:
             let manque = GenreCapture.minimumRetenir - propre.count
             return manque > 0 ? "Retenir → encore \(manque) caractère\(manque > 1 ? "s" : "") pour que Rémy en tire quelque chose"
@@ -353,10 +356,15 @@ struct CaptureView: View {
         case .tache:
             // « Déjà dans Motion » compte comme réussi : la feuille se ferme.
             // Le jour compris (« vendredi ») part comme échéance, même si le
-            // genre a été changé à la main.
+            // genre a été changé à la main. Sans réseau, une phrase datée peut
+            // rester en rappel sur l'iPhone (elle le devenait avant le 25/10).
             let d = dateLue
-            let titre = d.map { $0.reste.isEmpty ? propre : $0.reste } ?? propre
-            if await app.noterTache(titre, echeance: d?.echeance) { finir() } else { Haptique.erreur() }
+            let titre = GenreCapture.texte(propre, date: d, genre: .tache)
+            var rappel: (@MainActor () -> Void)?
+            if d != nil && carnetPret {
+                rappel = { Task { await creerRappel(d) } }
+            }
+            if await app.noterTache(titre, echeance: d?.echeance, garderEnRappel: rappel) { finir() } else { Haptique.erreur() }
         case .idee:
             if await app.organisation.noterIdee(propre) { finir() } else { Haptique.erreur() }
         case .liste:
@@ -374,22 +382,7 @@ struct CaptureView: View {
             }
             finir()
         case .rappel:
-            let d = dateLue
-            let texteRappel = (d?.reste.isEmpty == false) ? d!.reste : AnalyseDate.sansFormule(propre)
-            let etiquettes = etiquetteRetiree ? nil : etiquetteDevinee.map { [$0.id] }
-            guard let n = app.carnet.noterRappel(texteRappel, quand: d?.quand, etiquettes: etiquettes) else { return }
-            // L'autorisation d'iOS d'abord : la confirmation et son « Annuler »
-            // ne s'usent pas derrière la question du système.
-            if d != nil { await Notifications.demander() }
-            if n.dejaLa {
-                app.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».")
-            } else {
-                let r = n.rappel
-                app.dire(d.map { "Rappel : \(LigneRappel.quand($0.quand.millis))." } ?? "Rappel noté, sans date.", annuler: {
-                    app.carnet.supprimer(r)
-                })
-            }
-            finir()
+            await creerRappel(dateLue)
         case .retenir:
             if await app.retenirNote(propre) { finir() } else { Haptique.erreur() }
         case .question:
@@ -407,6 +400,26 @@ struct CaptureView: View {
                 Haptique.erreur()
             }
         }
+    }
+
+    /// Un rappel du carnet, gardé sur l'iPhone (genre Rappel, ou une tâche
+    /// datée qui n'a pas pu partir hors ligne).
+    private func creerRappel(_ d: AnalyseDate.Resultat?) async {
+        let texteRappel = GenreCapture.texte(propre, date: d, genre: .rappel)
+        let etiquettes = etiquetteRetiree ? nil : etiquetteDevinee.map { [$0.id] }
+        guard let n = app.carnet.noterRappel(texteRappel, quand: d?.quand, etiquettes: etiquettes) else { return }
+        // L'autorisation d'iOS d'abord : la confirmation et son « Annuler »
+        // ne s'usent pas derrière la question du système.
+        if d != nil { await Notifications.demander() }
+        if n.dejaLa {
+            app.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».")
+        } else {
+            let r = n.rappel
+            app.dire(d.map { "Rappel : \(LigneRappel.quand($0.quand.millis))." } ?? "Rappel noté, sans date.", annuler: {
+                app.carnet.supprimer(r)
+            })
+        }
+        finir()
     }
 
     // MARK: Plusieurs intentions
