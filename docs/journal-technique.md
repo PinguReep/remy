@@ -4,6 +4,109 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-25 — Salle blanche et filtre des requêtes sortantes (recherche-privee-v1)
+
+- **Modèle de menace.** Le modèle principal a sous les yeux la mémoire de Sam,
+  son planning (Motion, agenda), ses lieux, l'activité du PC, les sujets de la
+  nuit et la conversation. Une page ou un extrait de résultat piégé (matière
+  externe) peut lui faire écrire une REQUÊTE qui emporte tout ça chez le moteur
+  (DuckDuckGo, ou SearXNG et les moteurs qu'il garde), ou composer l'adresse
+  d'une page de site officiel (`https://www.urssaf.fr/<un nom>`, permise par
+  `urlPermise` puisqu'elle n'a pas de « ? »). La provenance des adresses (même
+  jour) fermait les adresses fabriquées, pas ces deux voies — d'où, jusqu'ici,
+  aucune recherche en conversation privée.
+- **Salle blanche** (`lib/salle-blanche.js`). Le modèle principal n'a plus
+  `chercher_web`, `lire_page` ni `browse_page` : il a UN outil,
+  `rechercher({ question })`, où il écrit une question autonome. La tour lance
+  alors une boucle séparée du modèle local (la même machinerie, `lib/glm.js`,
+  `salleBlanche: true`) dont le contexte est : un prompt neutre, la question.
+  Ni mémoire, ni planning, ni conversation, ni profil — pas même le prénom :
+  ses relances disent « l'assistant », ses messages d'erreur « l'utilisateur »
+  (`anonyme`), sa consigne « les adresses données par la question ». Elle a
+  `chercher_web`, `lire_page`, `browse_page`, la règle de provenance (les liens
+  que Sam a donnés, jamais en privé), les budgets habituels, et rien d'autre
+  (ni Motion, ni agenda, ni carnet). Elle rend au modèle principal : sa synthèse
+  (encadrée `<matiere_externe>`), les **passages** qui portent ses chiffres,
+  retrouvés SANS IA dans les pages lues (`passagesCites` : pour chaque montant
+  ou pourcentage, la première ligne d'une page qui le contient, avec lien et
+  date), et la liste des pages lues (titres encadrés : écrits par les pages).
+  Ses pages lues rejoignent celles de la réponse : la vérification des chiffres
+  (`chiffresAVerifier`) marche comme avant, sur ce que la salle blanche a lu ;
+  une recherche qui n'a rien lu laisse tous les chiffres « de mémoire ».
+  Plafonds : `REMY_RECHERCHER_MAX` appels par message (2), et une durée totale
+  `REMY_SALLE_BLANCHE_DELAI_MS` (120 s) partagée par ces appels — chaque boucle
+  reçoit le temps qui reste (70 % pour chercher, le reste pour conclure, puis
+  coupure nette). Mode dégradé : boucle en panne, rien rendu, temps épuisé →
+  une erreur claire au modèle principal (« réponds sans le web et dis-le »),
+  l'étape « La recherche n'a pas abouti », et la ligne « (échec) » au panneau.
+- **Filtre déterministe** (`lib/filtre-sortie.js`), avant tout envoi : la
+  question de `rechercher`, chaque requête de `chercher_web`, et l'adresse de
+  chaque page qu'aucun moteur n'a rendue (décodée : `%20`, `+`). Refusé :
+  e-mail (même « [at] »), téléphone (français, international), IBAN (forme et
+  au moins 10 chiffres), carte (13 à 19 chiffres, somme de Luhn ; 14 chiffres
+  = un SIRET, permis), numéro de sécurité sociale, adresse postale (numéro +
+  voie ; une voie ambiguë — place, cours, route — seulement devant un nom
+  propre : « 10 cours de piano » passe) ; et le **lexique** : les mots rares et
+  noms propres de la mémoire, du profil (prénom, `REMY_VOCABULAIRE` : toujours
+  personnels, même courants), du planning, de l'agenda, des lieux, de
+  l'activité, des sujets de la nuit, et de ce que `motion_lister` lit en route.
+  « Rare » = absent de `lib/mots-courants.js` (le français courant, le
+  vocabulaire des recherches et des gabarits de Rémy, avec pluriels et formes
+  conjuguées), des villes, pays et régions, des organismes publics (Urssaf,
+  CAF…) et des produits (iPhone, Doctolib…), des communes de la Base Adresse
+  de la tour (`geo.db`, lues une fois), de la commune qui suit un code postal,
+  et de `REMY_FILTRE_PERMIS`. Les nombres seuls (années, montants, heures) ne
+  sont pas au lexique ; un identifiant (« SECRET-MEMOIRE-42 ») l'est en entier,
+  et se retrouve écrit en morceaux. Comparaison sans accents ni majuscules,
+  pluriel ôté. Hors privé, les mots que Sam vient d'écrire dans son message
+  sont exemptés (il demande lui-même). Refus → au modèle principal : la raison
+  et les termes à retirer (il reformule) ; à la salle blanche : un refus SANS
+  raison ni terme, et elle conclut aussitôt (`stop`) — sinon une page piégée
+  pourrait lui faire sonder la mémoire mot à mot (le refus serait un oracle) et
+  trahir la réponse par le lien qu'elle ouvre ensuite. Un lexique de 60 000
+  caractères se construit en ~0,1 s, une vérification prend moins d'1 ms.
+- **Journal.** Chaque requête qui sort : l'étape « Rémy cherche « … » » et la
+  ligne `recherche` du panneau des coûts, comme avant ; la question passée à la
+  salle blanche : l'étape « Rémy lance une recherche à part : « … » » et une
+  ligne `salle blanche` (fournisseur glm, 0 $, ses jetons). Chaque refus :
+  l'étape « Requête bloquée par le filtre (raison) — Rémy reformule… » et une
+  ligne `recherche` du fournisseur `filtre` : « refusée (terme personnel) : Dr
+  ••• médecin avis » — la raison, la requête sans ce qui l'a fait refuser. Une
+  page refusée (provenance ou filtre) : son hôte seulement, jamais le chemin.
+- **Conversations privées.** La recherche y est possible derrière le réglage
+  `recherchePrivee` (`PUT /api/reglages`, booléen), **coupé par défaut** : rien
+  de privé ne part sans l'accord de Sam. `REMY_RECHERCHE_PRIVEE=off` le
+  verrouille côté tour ; `REMY_SALLE_BLANCHE=off` aussi (jamais de recherche
+  privée sans salle blanche). En privé, le lexique prend en plus TOUTE la
+  conversation (messages de Sam et de Rémy, résumé du compactage), et le
+  message en cours n'exempte rien : seuls des mots courants, des villes, des
+  organismes ou des produits sortent. La salle blanche n'y reçoit aucun lien de
+  la conversation. Le réglage est relu au moment de lancer la recherche (coupé
+  pendant la réponse : refusé). `GET /api/reglages` dit `recherchePrivee`
+  (effectif), `recherchePriveeReglage`, `recherchePriveeVerrouillee`,
+  `salleBlanche` ; capacité `recherche-privee-v1` — l'app iPhone affichera le
+  réglage à son prochain build.
+- **Ce qui sort désormais** : la question (filtrée) ne sort PAS — elle va à la
+  salle blanche, sur la tour ; sortent ses requêtes (filtrées) vers le moteur,
+  et les pages qu'elle ouvre (rendues par le moteur, données par Sam hors
+  privé, ou site officiel sans « ? » — chemin filtré). **Ce qui ne peut plus
+  sortir** par une page piégée : la mémoire, le planning, la conversation —
+  la salle blanche ne les a pas ; et si le modèle principal les écrit dans sa
+  question, le filtre les arrête.
+- **Limites.** Un nom qui est aussi un mot courant (« Rose », « Pierre ») n'est
+  pas au lexique (sauf s'il est au profil) ; un mot courant de la mémoire peut
+  sortir (« dentiste ») ; un identifiant épelé autrement (« S E C R E T ») ou
+  paraphrasé passe ; une question générale peut encore trahir un sujet (« effets
+  du lithium » écrit par Sam lui-même hors privé). La liste de mots courants
+  est faite main : un mot oublié bloque à tort, et le modèle reformule. Une
+  page piégée peut encore orienter la synthèse (mauvaise information) — c'est
+  la vérification des chiffres et les passages cités qui le montrent. Chaque
+  recherche coûte au moins deux appels de plus au modèle local (la salle
+  blanche lit puis synthétise) ; `REMY_SALLE_BLANCHE=off` revient au chemin
+  direct du même jour (filtre gardé, jamais en privé). Sur une tour avec
+  `REMY_RECHERCHE=off`, le navigateur reste l'outil direct du modèle principal
+  (sans salle blanche, comme avant).
+
 ## 2026-10-25 — Recherche locale : le modèle local cherche et lit lui-même
 
 - **Quoi** (`lib/recherche.js`, capacité `recherche-locale-v1`) : deux outils
@@ -107,7 +210,8 @@ notes privées, sur la tour.
   (« cherche-la d'abord avec chercher_web ») et tracée au panneau des coûts.
   Risque résiduel : la REQUÊTE de recherche part au moteur (DuckDuckGo ou
   SearXNG), pas chez l'auteur de la page ; elle est visible dans l'étape
-  « Rémy cherche « … » » et au panneau des coûts.
+  « Rémy cherche « … » » et au panneau des coûts. (Fermé le même jour par la salle blanche
+  et le filtre des requêtes sortantes, ci-dessus.)
 - **Visible** : étapes « Rémy cherche « … » » (`web`) et « Rémy lit <site> »
   (`navigateur`) — l'app a déjà leurs icônes ; chaque recherche dans le panneau
   des coûts (kind `recherche`, 0 $, fournisseur = moteur, modèle = point
