@@ -122,6 +122,22 @@ public enum Nouveautes {
             .init(symbole: "chart.bar", titre: "Ce que tu utilises vraiment",
                   texte: "Réglages › Ce que tu utilises vraiment : les gestes que tu fais le plus, et ceux que tu ne touches jamais. Compté sur cet iPhone, sans aucun contenu, et rien ne part."),
         ]),
+        Nouveaute(id: "capture-hors-ligne", serie: 3, date: "25 oct.", titre: "Noté sans réseau, envoyé ensuite", capacite: nil, pages: [
+            .init(symbole: "tray.and.arrow.up", titre: "Rien ne se perd",
+                  texte: "Sans réseau, une tâche, une idée, « Retenir » ou un dossier noté avec le « + » attend sur l'iPhone, tel que tu l'as écrit, et part dès que Rémy répond. Une seule fois : jamais deux tâches dans Motion."),
+            .init(symbole: "list.bullet", titre: "« En attente d'envoi »",
+                  texte: "En haut d'Aujourd'hui, la ligne « 1 en attente d'envoi » : touche-la pour voir ce qui attend, l'envoyer tout de suite ou le retirer. Un refus de Motion y reste, avec sa raison."),
+            .init(symbole: "calendar", titre: "Des échéances comprises",
+                  texte: "« cette semaine » : jusqu'à dimanche soir. « fin octobre » : le 31. « avant le 3 » : le 2 au soir. Un flou comme « début novembre » reste dans le titre, sans date inventée."),
+        ]),
+        Nouveaute(id: "recherche-web", serie: 3, date: "25 oct.", titre: "Rémy cherche sur le web", capacite: "recherche-locale-v1", pages: [
+            .init(symbole: "globe", titre: "Lui-même, sans Claude",
+                  texte: "Une question récente, chiffrée ou réglementaire : Rémy cherche sur le web (DuckDuckGo) et lit les pages, avec le modèle de ta tour. Plus de carte « Tu autorises ? », rien ne part chez Claude."),
+            .init(symbole: "checkmark.shield", titre: "Ses sources, et ce qui reste à vérifier",
+                  texte: "Il cite le site, le lien et la date. Un chiffre qu'aucune page lue ne contient est signalé « à vérifier ». Une conversation privée ne cherche jamais."),
+            .init(symbole: "switch.2", titre: "À ta main",
+                  texte: "Réglages › Recherche web pour la couper : Rémy répond alors sans le web."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),

@@ -157,7 +157,7 @@ struct ToastView: View {
                             Haptique.leger()
                             annuler()
                         } label: {
-                            // « Annuler », ou ce que le geste propose (« Garder en rappel »).
+                            // « Annuler », ou ce que le geste propose à la place.
                             Text(m.libelle)
                                 .font(Police.texte(15, .semibold))
                                 .underline()

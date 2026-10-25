@@ -6,6 +6,8 @@
 //   POST /couper         la tour s'éteint (Tailscale coupé, PC éteint…)
 //   POST /relancer       la tour revient
 //   GET  /etat           { tour: true|false }
+//   POST /compter?nom=…  { n } : les tâches de ce nom dans le faux Motion (une
+//                        capture rejouée ne doit en créer qu'une)
 // Aucune vraie clé, aucune vraie donnée. Rien de ce fichier n'entre dans l'app.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -184,6 +186,12 @@ http.createServer((req, res) => {
     if (u === "/reinitialiser") return enFile(reinitialiser).then((ok) => repondre(ok ? 200 : 500, { ok }), (e) => repondre(500, { erreur: String(e) }));
     if (u === "/couper") return enFile(() => arreter(tour)).then(() => repondre(200, { ok: true }));
     if (u === "/relancer") return enFile(demarrerTour).then((ok) => repondre(ok ? 200 : 500, { ok }));
+    if (u === "/compter") {
+      const nom = new URL(req.url, "http://x").searchParams.get("nom") || "";
+      return fetch(`http://127.0.0.1:${P.motion}/v1/tasks`)
+        .then((r) => r.json())
+        .then((b) => repondre(200, { n: (b.tasks || []).filter((t) => t.name === nom).length }), (e) => repondre(500, { erreur: String(e) }));
+    }
     repondre(404, {});
   });
 }).listen(PORT_PILOTE, "127.0.0.1", async () => {

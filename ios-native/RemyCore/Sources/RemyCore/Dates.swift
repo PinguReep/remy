@@ -3,7 +3,9 @@ import Foundation
 /// Repère une date ou une heure dans une phrase française, sans réseau ni IA
 /// (spec §5, plan §5.8) : « Appeler le garage demain à 9h » → demain 9:00,
 /// reste « Appeler le garage ». Une date seule tombe à 9:00 ; une heure seule
-/// déjà passée tombe le lendemain.
+/// déjà passée tombe le lendemain. Les échéances larges (25/10) : « cette
+/// semaine » va jusqu'au dimanche, « fin octobre » au dernier jour du mois,
+/// « avant le 3 » à la veille ; un flou (« début novembre ») n'est jamais une date.
 public enum AnalyseDate {
     public struct Resultat: Equatable, Sendable {
         public let quand: Date
@@ -35,6 +37,24 @@ public enum AnalyseDate {
     static let motifJourSemaine = #"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"#
     /// Le moment d'un jour (« demain soir », « lundi après-midi ») : son heure.
     static let motifMoment = #"(matin(?:[ée]e)?|apr[eè]s[- ]midi|aprem|soir(?:[ée]e)?)\b"#
+    /// Ce qui mène à une échéance large (« d'ici la fin du mois », « pour
+    /// la fin de la semaine ») : retiré avec elle.
+    static let motifLien = #"(?:(?:avant|d['’]ici|pour|jusqu['’](?:à|a))\s+)?(?:(?:à\s+)?la\s+|en\s+)?"#
+    /// « cette semaine », « d'ici la fin de la semaine », « la semaine
+    /// prochaine » : jusqu'au dimanche (25/10). « la semaine » seule n'en est
+    /// pas une (« le menu de la semaine »).
+    static let motifSemaine = #"\b"# + motifLien
+        + #"(?:fin\s+de\s+(?:la\s+)?semaine(?:\s+prochaine)?|cette\s+semaine|dans\s+la\s+semaine(?:\s+prochaine)?|semaine\s+prochaine)\b"#
+    /// « fin octobre », « fin du mois », « avant la fin du mois prochain » :
+    /// le dernier jour du mois. « début novembre » reste un flou, jamais une date.
+    static let motifFinMois = #"\b"# + motifLien + #"fin\s+(?:(du\s+mois(?:\s+prochain)?|de\s+(?:ce\s+)?mois)|(?:d['’]\s*|de\s+)?"#
+        + motifMois + #"(?:\s+(20\d{2})\b)?)"#
+    /// Devant une date dite (« avant le 12/11 », « d'ici le 3 novembre »).
+    static let motifPrefixeDate = #"(avant|pour|d['’]ici|jusqu['’]au)"#
+    /// « avant le 3 », « pour le 3 », « d'ici le 3 », « jusqu'au 3 », « le 3 » :
+    /// un numéro de jour, sans mois. Pas « le 3e », « le 3h », « le 2 pièces ».
+    static let motifNumeroJour = #"\b(?:(avant|pour|d['’]ici)\s+le|(jusqu['’]au)|(le))\s+(\d{1,2})(?:er)?(?![\p{L}\d/:.,%€])"#
+        + #"(?!\s*(?:h|heures?|min(?:utes?)?|mn|ans?|jours?|mois|semaines?|fois|pi[eè]ces?|euros?|€|%)(?![\p{L}]))"#
 
     /// Le numéro d'un mois (« oct. » → 10).
     static func numeroMois(_ nom: String) -> Int? {
@@ -103,6 +123,25 @@ public enum AnalyseDate {
         // Le jour. Une date explicite (« lundi 2 novembre », « le 12/11 »)
         // passe avant le jour de la semaine qui l'accompagne.
         var finJour: Int?
+        func estAvant(_ prefixe: String?) -> Bool { prefixe?.lowercased() == "avant" }
+        /// « avant le 3 » : la veille. « Avant » est strict, et une échéance
+        /// plus tôt ne fait jamais rater (25/10). La veille déjà passée
+        /// (« avant le 3 », dit le 3) : aujourd'hui, jamais une date passée.
+        func veilleSi(_ avant: Bool, _ d: Date) -> Date {
+            guard avant, let v = cal.date(byAdding: .day, value: -1, to: d) else { return d }
+            return max(v, debut)
+        }
+        /// « le 3 » seul ne se lit qu'en fin de phrase ou devant une heure
+        /// (« Payer le loyer le 5 », « le 3 à 14h ») : « Visiter le 2 pièces »
+        /// n'est pas une date. « avant / pour / d'ici le 3 » se lit partout.
+        func numeroJour() -> NSTextCheckingResult? {
+            guard let re = try? NSRegularExpression(pattern: motifNumeroJour, options: [.caseInsensitive]) else { return nil }
+            return re.matches(in: t, range: NSRange(t.startIndex..., in: t)).first { m in
+                guard groupe(m, 3) != nil else { return true }
+                return chercheA(#"\s*(?:$|[,.;:!?…)]|(?:à|a|vers|au|dès|matin|soir|apr[eè]s|midi)(?![\p{L}]))"#,
+                                m.range.location + m.range.length) != nil
+            }
+        }
         if let m = cherche(#"\b(?:aujourd'hui|aujourd’hui|ce\s+matin|ce\s+soir|cet\s+apr[eè]s[- ]midi|cet\s+aprem)\b"#) {
             let mot = (groupe(m, 0) ?? "").lowercased()
             jour = debut
@@ -120,25 +159,56 @@ public enum AnalyseDate {
             jour = cal.date(byAdding: .day, value: 1, to: debut)
             retirer(m.range)
             finJour = m.range.location
-        } else if let m = cherche(#"\b(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b"#),
-                  let j = groupe(m, 1).flatMap(Int.init), let mo = groupe(m, 2).flatMap(Int.init),
+        } else if let m = cherche(#"\b(?:"# + motifPrefixeDate + #"\s+)?(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b"#),
+                  let j = groupe(m, 2).flatMap(Int.init), let mo = groupe(m, 3).flatMap(Int.init),
                   (1...31).contains(j), (1...12).contains(mo),
-                  let d = date(jour: j, mois: mo, annee: groupe(m, 3).flatMap(Int.init), apres: debut, cal: cal) {
-            jour = d
+                  let d = date(jour: j, mois: mo, annee: groupe(m, 4).flatMap(Int.init), apres: debut, cal: cal) {
+            jour = veilleSi(estAvant(groupe(m, 1)), d)
             retirer(m.range)
             finJour = m.range.location
-        } else if let m = cherche(#"\b(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})(?:er)?\s+"# + motifMois + #"(?:\s+(20\d{2})\b)?"#),
-                  let j = groupe(m, 1).flatMap(Int.init), let mo = groupe(m, 2).flatMap(numeroMois), (1...31).contains(j),
-                  let d = date(jour: j, mois: mo, annee: groupe(m, 3).flatMap(Int.init), apres: debut, cal: cal) {
-            jour = d
+        } else if let m = cherche(#"\b(?:"# + motifPrefixeDate + #"\s+)?(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})(?:er)?\s+"# + motifMois + #"(?:\s+(20\d{2})\b)?"#),
+                  let j = groupe(m, 2).flatMap(Int.init), let mo = groupe(m, 3).flatMap(numeroMois), (1...31).contains(j),
+                  let d = date(jour: j, mois: mo, annee: groupe(m, 4).flatMap(Int.init), apres: debut, cal: cal) {
+            jour = veilleSi(estAvant(groupe(m, 1)), d)
             retirer(m.range)
             finJour = m.range.location
+        // Un jour de la semaine passe avant « cette semaine » : « jeudi, cette
+        // semaine » vise jeudi, et une échéance plus tôt ne fait jamais rater.
         } else if let m = cherche(#"\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)(\s+prochain)?\b"#),
                   let nom = groupe(m, 1)?.lowercased(), let cible = jours.firstIndex(of: nom) {
             let actuel = cal.component(.weekday, from: maintenant) - 1
             let ecart = (cible - actuel + 7) % 7
             memeJourSemaine = ecart == 0 && groupe(m, 2) == nil
             jour = cal.date(byAdding: .day, value: ecart == 0 && !memeJourSemaine ? 7 : ecart, to: debut)
+            retirer(m.range)
+            finJour = m.range.location
+        } else if let m = cherche(motifSemaine) {
+            // Jusqu'au dimanche de cette semaine (lundi → dimanche), ou de la suivante.
+            let ecart = (1 - cal.component(.weekday, from: debut) + 7) % 7
+            let prochaine = (groupe(m, 0) ?? "").lowercased().contains("prochaine")
+            jour = cal.date(byAdding: .day, value: ecart + (prochaine ? 7 : 0), to: debut)
+            retirer(m.range)
+        } else if let m = cherche(motifFinMois),
+                  let premier = cal.date(from: cal.dateComponents([.year, .month], from: debut)) {
+            // Le mois dit, sinon celui-ci (ou le suivant) ; un mois passé : l'an prochain.
+            var mois: Date?
+            if let dit = groupe(m, 1) {
+                mois = cal.date(byAdding: .month, value: dit.lowercased().contains("prochain") ? 1 : 0, to: premier)
+            } else if let mo = groupe(m, 2).flatMap(numeroMois) {
+                var c = DateComponents()
+                c.year = groupe(m, 3).flatMap(Int.init) ?? cal.component(.year, from: debut)
+                c.month = mo
+                c.day = 1
+                mois = cal.date(from: c)
+                if groupe(m, 3) == nil, let x = mois, x < premier { mois = cal.date(byAdding: .year, value: 1, to: x) }
+            }
+            if let mois, let fin = cal.date(byAdding: DateComponents(month: 1, day: -1), to: mois) {
+                jour = fin
+                retirer(m.range)
+            }
+        } else if let m = numeroJour(), let n = groupe(m, 4).flatMap(Int.init),
+                  let d = prochain(jour: n, apres: debut, cal: cal) {
+            jour = veilleSi(estAvant(groupe(m, 1)), d)
             retirer(m.range)
             finJour = m.range.location
         }
@@ -231,6 +301,19 @@ public enum AnalyseDate {
         return d < debut ? cal.date(byAdding: .year, value: 1, to: d) : d
     }
 
+    /// Le prochain « 3 » à venir, aujourd'hui compris : ce mois-ci s'il n'est
+    /// pas passé, sinon le premier mois suivant qui a ce jour (« le 31 »).
+    static func prochain(jour n: Int, apres debut: Date, cal: Calendar) -> Date? {
+        guard (1...31).contains(n), let premier = cal.date(from: cal.dateComponents([.year, .month], from: debut)) else { return nil }
+        for k in 0..<13 {
+            guard let mois = cal.date(byAdding: .month, value: k, to: premier),
+                  let d = cal.date(byAdding: .day, value: n - 1, to: mois),
+                  cal.component(.month, from: d) == cal.component(.month, from: mois), d >= debut else { continue }
+            return d
+        }
+        return nil
+    }
+
     /// Les restes de liaison (« à », « le », virgules) autour des mots retirés,
     /// puis la formule de demande (« rappelle-moi de… »).
     static func nettoyer(_ t: String) -> String {
@@ -239,7 +322,8 @@ public enum AnalyseDate {
         s = s.replacingOccurrences(of: #"\s*[.!…]+\s*$"#, with: "", options: .regularExpression)
         // « … avant vendredi », « … d'ici lundi » : la date partie, le lien aussi.
         s = s.replacingOccurrences(of: #"(?i)\s(?:à|a|le|pour|vers|avant|d['’]ici|,)\s*$"#, with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"(?i)^\s*(?:à|le|pour|,)\s"#, with: "", options: .regularExpression)
+        // En tête aussi : « Avant vendredi, envoyer le devis ».
+        s = s.replacingOccurrences(of: #"(?i)^\s*(?:à|le|pour|avant|d['’]ici|,)\s"#, with: "", options: .regularExpression)
         return sansFormule(s.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",;:-"))))
     }
 

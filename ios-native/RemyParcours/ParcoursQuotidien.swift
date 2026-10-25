@@ -439,6 +439,56 @@ final class ParcoursQuotidien: ParcoursBase {
         }
     }
 
+    /// Décisions du 25/10 : une tâche notée tour coupée attend sur l'iPhone
+    /// (« 1 en attente d'envoi »), puis part toute seule au retour de la tour
+    /// — une seule fois dans Motion. « cette semaine » : une échéance au dimanche.
+    @MainActor
+    func test21_noterSansTourPuisEnvoyer() {
+        jouer("P21", "Noter une tâche « cette semaine » tour coupée : en attente, puis envoyée une fois") {
+            defer { Pilote.relancerTour() }
+            lancer()
+            try attendreAccueil()
+            Pilote.couperTour()
+            try toucher(ident("noter"), "+")
+            let champ = ident("capture.champ")
+            try etape("feuille-noter", attendu: [champ])
+            let titre = "Relire le contrat de Léa"
+            try saisir(titre + " cette semaine", dans: champ)
+            // « cette semaine » : jusqu'au dimanche, lu dans l'aperçu ; le titre sans la date.
+            let dimanche = Banc.dimancheDeLaSemaine
+            try etape("echeance-cette-semaine", attendu: [ident("capture.genre.tache"), texte("Tâche « \(titre) »"),
+                                                         texte("avant l'échéance : \(dimanche)")])
+            noter("échéance attendue dans l'aperçu : \(dimanche)")
+            verifier("« \(titre) cette semaine » doit être devinée « Tâche ».", ident("capture.genre.tache").isSelected)
+            try toucher(ident("capture.valider"), "Ajouter à Motion")
+            // Tour coupée : rien n'est perdu, la feuille se ferme avec « Annuler ».
+            try confirmationApresFeuille("partira dès que Rémy sera joignable", champ: champ)
+            let ligne = ident("attente.captures")
+            try etape("en-attente", attendu: [ligne], delai: 10)
+            verifier("La ligne d'Aujourd'hui doit dire « 1 en attente d'envoi » (lu : « \(ligne.label) »).",
+                     ligne.label.contains("1 en attente d'envoi"))
+            try toucher(ligne, "ligne « en attente d'envoi »")
+            let retirer = boutonContenant("Retirer")
+            try etape("liste-en-attente", attendu: [texte(titre), texte("Partira dès que Rémy sera joignable"), retirer])
+            // Non strict : à mi-hauteur, l'accueil reste visible derrière la feuille.
+            auditerCibles("En attente d'envoi")
+            try toucher(nomme(app.navigationBars["En attente d'envoi"].buttons["Fermer"], "Fermer de la liste"), "Fermer")
+            try etape("liste-fermee", absent: [retirer], delai: 8)
+            Pilote.relancerTour()
+            // Au retour au premier plan, ce qui attend part tout seul.
+            XCUIDevice.shared.press(.home)
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+            app.activate()
+            try etape("envoyee", attendu: [texte("Envoyé : « \(titre) »")], absent: [ligne], delai: 45)
+            // Un autre passage (tirer pour rafraîchir) ne la renvoie pas.
+            tirerPourRafraichir()
+            RunLoop.current.run(until: Date().addingTimeInterval(4))
+            let n = Pilote.compterTaches(titre)
+            noter("tâches « \(titre) » dans Motion : \(n.map(String.init) ?? "pilote muet")")
+            verifier("La tâche notée tour coupée n'est créée qu'une fois dans Motion (trouvées : \(n.map(String.init) ?? "?")).", n == 1)
+        }
+    }
+
     @MainActor
     func test18_texteTresLong() {
         jouer("P18", "Coller un très long texte dans le « + »") {
