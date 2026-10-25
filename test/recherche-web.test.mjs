@@ -6,6 +6,10 @@
 //   - refusée, coupée dans les réglages, ou en conversation privée : GLM
 //     répond seul, sans le web, et le dit ;
 //   - une demande à laquelle on n'a pas répondu expire à la question suivante.
+//
+// Depuis le 25/10, le modèle local cherche lui-même (test/recherche-locale.test.mjs) ;
+// ce chemin par Claude reste celui d'une tour sans recherche locale
+// (REMY_RECHERCHE=off), posé ici.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -75,6 +79,7 @@ process.env.REMY_PROVIDER = "api";
 process.env.ANTHROPIC_API_KEY = "cle-de-test";
 process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${anthropic.address().port}`;
 process.env.REMY_BROWSE = "off";
+process.env.REMY_RECHERCHE = "off";
 
 const store = await import("../lib/store.js");
 const { routeApi } = await import("../lib/routes.js");

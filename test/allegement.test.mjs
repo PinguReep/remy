@@ -127,12 +127,17 @@ test("avant/après : moins d'appels au modèle local, même réponse", async () 
   assert.ok(apres.msModele < avant.msModele / 2);
 });
 
-test("un message qui ressemble au web appelle encore le routeur (la recherche reste proposée)", async () => {
+// Une tour sans recherche locale (REMY_RECHERCHE=off) appelle encore le routeur
+// pour un message « web » (palierSansRouteur ci-dessous, et
+// test/recherche-web.test.mjs) ; avec elle (défaut), le modèle local cherche
+// lui-même. Un seul message ici : la limite de 15 par minute est presque pleine.
+test("recherche locale : un message « web » reste local, sans routeur (le modèle cherche lui-même)", async () => {
   appels = [];
   const c = await (await post("/api/conversations", {})).json();
   await (await post(`/api/conversations/${c.id}/messages`, { text: "Quel temps fera-t-il demain ?" })).text();
   await calme();
-  assert.ok(appels.includes("routeur"));
+  assert.equal(appels.includes("routeur"), false);
+  assert.ok(appels.includes("reponse"));
 });
 
 test("palier sans routeur : cerveau unique, web, conseil confié à Claude", () => {
@@ -149,6 +154,9 @@ test("palier sans routeur : cerveau unique, web, conseil confié à Claude", () 
   // Web coupé ou conversation privée : cerveau unique, « web » sans appel (Rémy dit qu'il ne cherche pas).
   assert.equal(palierSansRouteur("La météo de demain ?", { rechercheWeb: false }), "web");
   assert.equal(palierSansRouteur("La météo de demain ?", { rechercheWeb: true, prive: true }), "web");
+  // Recherche locale : le modèle local cherche lui-même, pas de routeur.
+  assert.equal(palierSansRouteur("Les horaires de la piscine ?", { rechercheWeb: true, rechercheLocale: true }), "web");
+  assert.equal(palierSansRouteur("acheter des ampoules", { rechercheWeb: true, rechercheLocale: true }), "reflexe");
   // Conseil confié à Claude : jamais décidé par une expression régulière.
   assert.equal(palierSansRouteur("acheter des ampoules", { rechercheWeb: true, conseilCloud: true }), null);
   assert.equal(palierSansRouteur("acheter des ampoules", { rechercheWeb: true, prive: true, conseilCloud: true }), "reflexe");
@@ -172,6 +180,10 @@ test("apprend-on quelque chose sur Sam ? (test déterministe, sans IA)", () => {
   assert.equal(indiceWeb("Prépare la réunion de jeudi"), false);
   assert.equal(indiceWeb("Qu'est-ce qui est en retard ?"), false, "la suggestion de l'app ne cherche rien");
   assert.equal(indiceWeb("Qui est le maire de Lyon ?"), true);
+  // Règles et montants (25/10) : à vérifier en ligne.
+  assert.equal(indiceWeb("Le seuil de la micro-entreprise en 2026 ?"), true);
+  assert.equal(indiceWeb("Les conditions de l'ACRE"), true);
+  assert.equal(indiceWeb("Un massacre de tomates au jardin"), false);
   assert.equal(apprendSurSam("Ma sœur arrive samedi"), true, "« œ » lu comme « oe »");
 });
 
