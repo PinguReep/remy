@@ -169,6 +169,23 @@ test("palier sans routeur : cerveau unique, web, conseil confié à Claude", () 
   }
 });
 
+test("un message ordinaire qui parle d'impôts ou de plafond reste « reflexe » (privé, web coupé, recherche locale)", () => {
+  const phrases = [
+    "Ajoute « payer les impôts » à ma liste pour jeudi",
+    "Rappelle-moi de payer la cotisation du club samedi",
+    "J'ai fini de repeindre le plafond",
+    "Note : envoyer le montant de la facture à Paul",
+    "Merci pour les allocations, c'est réglé",
+    "Tu peux ajouter payer les impôts à ma liste ?",
+  ];
+  for (const t of phrases) {
+    assert.equal(indiceWeb(t), false, t);
+    for (const mode of [{ prive: true }, { rechercheWeb: false }, { rechercheWeb: true, rechercheLocale: true }]) {
+      assert.equal(palierSansRouteur(t, mode), "reflexe", `${t} — ${JSON.stringify(mode)}`);
+    }
+  }
+});
+
 test("apprend-on quelque chose sur Sam ? (test déterministe, sans IA)", () => {
   for (const t of ["acheter des ampoules", "ok merci", "Organise ma journée", "Ajoute du lait", "Rappelle-moi d'appeler Léa demain", "", "Qu'est-ce qui est en retard ?"]) {
     assert.equal(apprendSurSam(t), false, t);
@@ -180,9 +197,10 @@ test("apprend-on quelque chose sur Sam ? (test déterministe, sans IA)", () => {
   assert.equal(indiceWeb("Prépare la réunion de jeudi"), false);
   assert.equal(indiceWeb("Qu'est-ce qui est en retard ?"), false, "la suggestion de l'app ne cherche rien");
   assert.equal(indiceWeb("Qui est le maire de Lyon ?"), true);
-  // Règles et montants (25/10) : à vérifier en ligne.
+  // Règles et montants (25/10) : seulement une vraie question.
   assert.equal(indiceWeb("Le seuil de la micro-entreprise en 2026 ?"), true);
-  assert.equal(indiceWeb("Les conditions de l'ACRE"), true);
+  assert.equal(indiceWeb("Quelles sont les conditions de l'ACRE"), true);
+  assert.equal(indiceWeb("Les conditions de l'ACRE"), false, "pas une question");
   assert.equal(indiceWeb("Un massacre de tomates au jardin"), false);
   assert.equal(apprendSurSam("Ma sœur arrive samedi"), true, "« œ » lu comme « oe »");
 });

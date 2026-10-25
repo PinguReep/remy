@@ -113,8 +113,13 @@ ou quitte et relance `aw-qt`, puis tire pour relever.
 Depuis le 25/10, le modèle local cherche et lit lui-même sur le web, depuis la
 tour : un moteur de recherche, puis la lecture des pages (sans JavaScript ; le
 navigateur reste pour les autres). Ni Claude ni carte « Tu autorises ? ». Ce qui
-sort : la requête, vers le moteur, puis les pages ouvertes. Jamais pour une
-conversation privée ; le réglage « Recherche web » de l'app coupe tout.
+sort : la requête, vers le moteur, puis les pages ouvertes — seulement des
+adresses trouvées par la recherche, données par toi dans la conversation, ou
+d'un site public (`*.gouv.fr`, urssaf.fr, ameli.fr, caf.fr…) sans « ? » : une
+adresse inventée par le modèle est refusée. Chaque recherche et chaque page
+(ouverte ou refusée) apparaît dans le panneau des coûts, à 0 $. Jamais pour une
+conversation privée ; le réglage « Recherche web » de l'app coupe tout, le
+navigateur compris (et si les réglages sont illisibles, tout reste coupé).
 
 | Réglage (`remy.env`) | Rôle |
 | --- | --- |
@@ -122,6 +127,7 @@ conversation privée ; le réglage « Recherche web » de l'app coupe tout.
 | `REMY_SEARXNG_URL` | l'adresse de SearXNG, pour `REMY_RECHERCHE=searxng` (ex. `http://<spark>:8090`) |
 | `REMY_RECHERCHE_MAX` | recherches par message (défaut 4) |
 | `REMY_LECTURE_MAX` | pages lues par message (défaut 6) |
+| `REMY_BROWSE_MAX` | pages ouvertes par le navigateur par message (défaut 3) ; les trois budgets fixent aussi le nombre de tours d'outils, après quoi Rémy conclut |
 | `REMY_RECHERCHE_DELAI_MS` / `REMY_LECTURE_DELAI_MS` | délai d'une recherche (8 s) / d'une page (15 s) |
 | `REMY_WEB_SEARCH=off` | coupe toute recherche web, locale comme par Claude |
 
@@ -133,21 +139,35 @@ il redémarre Rémy.
 DuckDuckGo peut répondre par une vérification anti-robot quand la tour cherche
 beaucoup. Rémy le dit alors en clair (« DuckDuckGo bloque les recherches… ») et
 n'insiste pas pendant 5 minutes. La parade durable : SearXNG, un métamoteur libre,
-sur un Spark (il interroge plusieurs moteurs à la fois ; rien d'autre ne part).
+sur un Spark. **À qui partent les requêtes** : SearXNG transmet chaque requête,
+telle quelle, aux moteurs qu'il garde — par défaut une dizaine (Google, Bing,
+DuckDuckGo, Brave, Qwant, Wikipédia…). L'étape 2 n'en garde que trois ; choisis
+ceux que tu acceptes.
 
-1. Sur le Spark (Docker installé), sur un port libre — pas celui du modèle :
+1. Sur le Spark (Docker installé), sur un port libre — pas celui du modèle —, et
+   publié sur l'adresse du Spark dans le réseau local SEULEMENT (pas sur
+   Tailscale, pas sur toutes les interfaces). L'image est épinglée (version
+   datée et empreinte) : une mise à jour se décide, elle ne s'installe pas seule.
 
    ```bash
    mkdir -p ~/searxng
-   docker run -d --name searxng --restart unless-stopped -p 8090:8080 \
-     -v ~/searxng:/etc/searxng searxng/searxng:latest
+   docker run -d --name searxng --restart unless-stopped \
+     -p <ip-lan-du-spark>:8090:8080 -v ~/searxng:/etc/searxng \
+     searxng/searxng:2026.10.11-ad46ebd7d@sha256:ddd642cae6eac75412938fd846ddbf440a2df029cfeae8a562b8b205f4e35e25
    ```
 
 2. Au premier démarrage, il écrit `~/searxng/settings.yml` (avec sa clé secrète).
-   Ouvre-le et ajoute `json` aux formats, puis coupe le limiteur (seule la tour
-   l'interroge) :
+   Ouvre-le : remplace la ligne `use_default_settings: true` par la liste des
+   moteurs gardés, ajoute `json` aux formats, et coupe le limiteur (seule la tour
+   l'interroge, et il n'écoute que le réseau local) :
 
    ```yaml
+   use_default_settings:
+     engines:
+       keep_only:
+         - duckduckgo
+         - qwant
+         - wikipedia
    search:
      formats:
        - html
@@ -157,9 +177,9 @@ sur un Spark (il interroge plusieurs moteurs à la fois ; rien d'autre ne part).
    ```
 
    puis `docker restart searxng`.
-3. Depuis la tour : `curl.exe "http://<spark>:8090/search?q=test&format=json"` doit
-   rendre du JSON (un 403 : `json` manque encore dans `formats`).
-4. Dans `remy.env` : `REMY_RECHERCHE=searxng` et `REMY_SEARXNG_URL=http://<spark>:8090`,
+3. Depuis la tour : `curl.exe "http://<ip-lan-du-spark>:8090/search?q=test&format=json"`
+   doit rendre du JSON (un 403 : `json` manque encore dans `formats`).
+4. Dans `remy.env` : `REMY_RECHERCHE=searxng` et `REMY_SEARXNG_URL=http://<ip-lan-du-spark>:8090`,
    puis relance l'installeur. Rémy dit en clair si SearXNG ne répond pas, refuse
    le JSON, ou si ses moteurs sont muets.
 
