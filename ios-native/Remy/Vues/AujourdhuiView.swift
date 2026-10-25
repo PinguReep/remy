@@ -14,8 +14,9 @@ extension ElementJour {
 }
 
 /// L'accueil, direction A (Lot 1) : la date, le conseil du moment, ce qui se
-/// passe maintenant avec son temps restant, puis la suite. Appui long sur la
-/// suite : la journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
+/// passe maintenant avec son temps restant, le rendez-vous quotidien (échéance
+/// menacée, briefing, bilan), puis la suite. Appui long sur la suite : la
+/// journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
 struct AujourdhuiView: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
@@ -129,8 +130,15 @@ private struct Contenu: View {
             .carte()
             .padding(.horizontal, 16)
         } else {
-            // Le rendez-vous quotidien (24/10) : l'échéance menacée d'abord,
-            // la proposition du briefing (une fois), le bilan le soir.
+            // Quoi faire maintenant d'abord : le conseil du moment et la carte
+            // « Maintenant », avec « Terminer », visibles sans défiler (parcours
+            // P02, 25/10 : le build 37 les avait poussés sous le pli).
+            if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
+                ConseilDuMoment(local: local, maintenant: maintenant.millis)
+            }
+            CarteMaintenant(journee: j, maintenant: maintenant, demander: demander)
+            // Juste en dessous, le rendez-vous quotidien (24/10) : l'échéance
+            // menacée, la proposition du briefing (une fois), le bilan le soir.
             if let ms = t.donnees?.menacees, let m = ms.first {
                 CarteMenacee(m: m, autres: ms.count - 1, voirTout: { ui.briefingOuvert = true })
                     .padding(.horizontal, 16)
@@ -141,10 +149,6 @@ private struct Contenu: View {
                 EntreeBilan { ui.bilanOuvert = true }
                     .padding(.horizontal, 16)
             }
-            if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
-                ConseilDuMoment(local: local, maintenant: maintenant.millis)
-            }
-            CarteMaintenant(journee: j, maintenant: maintenant, demander: demander)
             if lisible {
                 LaSuite(journee: j, maintenant: maintenant, demander: demander).id("journee")
                 ATraiter(journee: j, demander: demander).id("a-traiter")

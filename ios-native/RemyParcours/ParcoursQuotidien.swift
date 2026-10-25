@@ -54,10 +54,12 @@ final class ParcoursQuotidien: ParcoursBase {
             lancer()
             try attendreAccueil()
             try etape("maintenant", attendu: [texte("Finaliser la démo de la boutique"), texte("min restantes"), ident("maintenant.terminer")])
-            // Vu sur le build 37 : l'échéance menacée, l'offre du briefing (et le
-            // bilan, le soir) passent au-dessus ; la carte du moment est sous le pli.
-            constat("À l'ouverture, la carte « Maintenant » (et « Terminer ») est sous le pli : l'échéance menacée et l'offre du briefing (le bilan, le soir) passent devant ; il faut défiler pour voir quoi faire.",
-                    siFaux: ident("maintenant.terminer").isHittable)
+            // Corrigé (25/10) : sur le build 37, l'échéance menacée et l'offre
+            // du briefing (et le bilan, le soir) passaient au-dessus, la carte du
+            // moment était sous le pli. Elle est en tête, elles juste en dessous.
+            verifier("À l'ouverture, sans défiler, la carte « Maintenant » et « Terminer » doivent être entièrement visibles au-dessus des onglets.",
+                     visibleSansDefiler(texte("min restantes")) && visibleSansDefiler(ident("maintenant.terminer")))
+            noter("sous la carte : échéance menacée \(texte("Menacée").exists ? "présente" : "absente"), offre du briefing \(texte("Ton briefing chaque matin").exists ? "présente" : "absente")")
             auditerCibles("Aujourd'hui")
             let conseil = boutonContenant("conseil")
             try toucher(conseil, "conseil du moment")

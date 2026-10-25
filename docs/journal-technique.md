@@ -155,9 +155,54 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   chevauche la tâche en cours juste après elle ; P12 part de la ligne « Toute la
   journée », présente à toute heure.
 - **La carte « Maintenant » sous le pli** (build 37) : l'échéance menacée et
-  l'offre du briefing passent au-dessus. Le défilement automatique de XCUITest
+  l'offre du briefing passaient au-dessus. Le défilement automatique de XCUITest
   ratait « Terminer » (toucher pendant l'élan) : `amenerDoucement` défile sans
-  élan avant de toucher. C'est aussi un constat de P02, laissé à trancher.
+  élan avant de toucher.
+
+## 2026-10-25 — Contre-relecture des quatre correctifs, et la carte « Maintenant »
+
+- **Aujourd'hui** (validé par le propriétaire) : le conseil du moment et la
+  carte « Maintenant » d'abord, comme avant le build 37 ; l'échéance menacée,
+  l'offre du briefing et le bilan du soir juste en dessous, aucun retiré. Le
+  conseil reste collé à la carte : il parle de la tâche en cours. P02 vérifie
+  que la carte et « Terminer » tiennent au-dessus des onglets sans défiler.
+- **Confirmation du « + » (Tâche)** : `noterTache` attendait la relecture de la
+  journée (jusqu'à 30 s sur la tour) avant que la feuille se ferme ; les 6 s
+  du message s'usaient dessous. Elle rend la main tout de suite, la journée se
+  relit derrière (`apresGesteSansAttendre`). Prouvé par un test du cœur (tableau
+  de bord retardé de 3 s) : la tour de démo, elle, répond depuis son cache
+  après une écriture, la retarder dans les faux services ne prouverait rien.
+- **Échéance d'un jour sans heure** : calculée sur le jour dit (23 h), plus sur
+  le 9 h posé pour un rappel. « vendredi », dit un vendredi à 10 h, c'est ce
+  soir ; il ne vise la semaine suivante qu'après 23 h. « aujourd'hui » dit à
+  23 h 30 : jusqu'à 23 h 59, jamais une échéance passée. Le rappel sans heure
+  garde son comportement (vendredi suivant à 9 h).
+- **Le titre d'une tâche** (`GenreCapture.texte`) : la date ne s'en retire que
+  si elle était au bout de la phrase, et si ce qui reste ne finit pas sur un
+  mot de liaison (« Relire le compte rendu de »). Sinon la phrase entière part,
+  et l'échéance avec. Une tâche forcée qui avait une heure garde cette heure
+  dans son titre. L'aperçu montre le titre exact avant l'envoi. Choix prudent :
+  une date au milieu reste dans le titre plutôt que de risquer une phrase cassée.
+- **L'analyseur de dates** : l'action se lit aussi sans la date (« Demain,
+  appeler le plombier » est une tâche) ; « à 14 heures », « demain soir »,
+  « lundi après-midi », « à 3h de l'après-midi », « dans 1h30 », « dans une
+  heure », « dans 2 semaines », « dans 3 jours à 14h », « le 30 oct »,
+  « lundi 2 novembre » ; une durée n'est pas une heure (« 2h de studio »,
+  « Hugo a 2h de route ») ; « idée : » et « projet » passent avant la date ;
+  dictée sans apostrophe (« rappelle moi d appeler »).
+- **Hors ligne** : une création de tâche n'a pas de file d'envoi. Une phrase
+  datée qui ne part pas propose « Garder en rappel » dans le message (le
+  libellé du bouton d'un `MessageBas` n'est plus toujours « Annuler ») : le
+  rappel du carnet, gardé sur l'iPhone, comme avant le 25/10.
+- **Nouveautés** : « Plus tard » ou la feuille balayée ne marquent vues que les
+  entrées dont une page a été affichée (`pageVue`). Reprise unique
+  (`nouveautes.reprise37`) : le build 37 coupait sa feuille à 6 pages
+  (« partage », « hors-app ») mais marquait vue toute la série 3 ; le reste
+  de la série redevient nouveau une fois. Revoir un tutoriel coûte moins qu'en
+  perdre un.
+- **Proposition de Rémy** : le clavier ne se range plus si Sam a commencé à
+  écrire (ni sa dictée) ; le fil descend seulement. Le second défilement ne
+  ramène plus en bas un Sam qui a posé le doigt pour remonter.
 
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
