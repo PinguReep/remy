@@ -452,6 +452,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try toucher(ident("noter"), "+")
             let champ = ident("capture.champ")
             try etape("feuille-noter", attendu: [champ])
+            viderChamp(champ)
             let titre = "Relire le contrat de Léa"
             try saisir(titre + " cette semaine", dans: champ)
             // « cette semaine » : jusqu'au dimanche, lu dans l'aperçu ; le titre sans la date.

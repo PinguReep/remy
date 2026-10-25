@@ -356,6 +356,15 @@ class ParcoursBase: XCTestCase {
         e.press(forDuration: duree)
     }
 
+    /// Le « + » rend le brouillon d'une feuille fermée en route (P18 en laisse
+    /// un, exprès) : le banc le vide avant de taper, hors gestes de Sam.
+    @MainActor
+    func viderChamp(_ e: XCUIElement) {
+        guard e.waitForExistence(timeout: 5), let v = e.value as? String, !v.isEmpty, v != e.placeholderValue else { return }
+        noter("brouillon revenu (\(v.count) caractères) : vidé avant de taper")
+        e.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: v.count + 2))
+    }
+
     /// Une saisie compte pour un geste (le toucher du champ en est un autre).
     @MainActor
     func saisir(_ texte: String, dans e: XCUIElement) throws {
