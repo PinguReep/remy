@@ -225,8 +225,10 @@ class ParcoursBase: XCTestCase {
     /// Un seul aller-retour (snapshot) ; seuls les boutons visibles comptent, et
     /// seulement ceux de l'app : les contrôles système (barre de navigation,
     /// segments, interrupteurs, dates, poignée de feuille) gardent leur taille Apple.
+    /// `strict` : un écran déjà corrigé (plus aucune cible sous 44 pt) — une
+    /// régression y devient un échec rouge, plus un constat.
     @MainActor
-    func auditerCibles(_ ecran: String) {
+    func auditerCibles(_ ecran: String, strict: Bool = false) {
         guard let racine = try? app.snapshot() else { return }
         let visible = racine.frame
         var petites: [String] = []
@@ -243,8 +245,9 @@ class ParcoursBase: XCTestCase {
         }
         parcourir(racine)
         print("PARCOURS|\(identifiant)|cibles \(ecran)|\(petites.count) sous 44 pt")
-        constat("Zones tactiles sous 44 pt (\(ecran)) : " + petites.prefix(10).joined(separator: " ; ")
-                + (petites.count > 10 ? " … (\(petites.count) en tout)" : ""), siFaux: petites.isEmpty)
+        let note = "Zones tactiles sous 44 pt (\(ecran)) : " + petites.prefix(10).joined(separator: " ; ")
+            + (petites.count > 10 ? " … (\(petites.count) en tout)" : "")
+        if strict { verifier(note, petites.isEmpty) } else { constat(note, siFaux: petites.isEmpty) }
     }
 
     /// Une remarque mesurée (pas un échec) : elle va dans le résumé.
