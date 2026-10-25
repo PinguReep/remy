@@ -125,6 +125,29 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   `-scheme Remy`. `ios-parcours.yml` échoue s'il disparaît.
 - `workflow_dispatch` seulement : une minute macOS compte pour dix.
 
+## 2026-10-25 — Quatre défauts relevés par les parcours, corrigés
+
+- **Confirmation après une feuille** : chaque copie de `ToastView` (l'écran et
+  ses feuilles) efface le message à son heure. La feuille refermée annulait sa
+  tâche, `try?` avalait l'annulation et effaçait aussitôt. Une tâche annulée
+  n'efface plus rien : la copie de l'écran dessous garde le message et son
+  « Annuler » toute leur durée. Rappel daté : l'autorisation d'iOS est demandée
+  avant la confirmation, qui ne s'use plus derrière la question du système.
+- **Un jour sans heure n'est pas un créneau** : `AnalyseDate` dit si une heure
+  a été dite (`heureDite`). Une action claire avec un jour seul devient une
+  tâche à échéance (ce jour-là à 23 h, comme `Format.echeanceDans` : Motion la
+  place avant) ; un rappel, c'est une heure dite ou « rappelle-moi ». Changer
+  le genre à la main garde la date : le « + » envoie l'échéance avec la tâche.
+- **Proposition sous le clavier** : la carte arrive sans nouveau mot ni
+  nouvelle ligne, donc rien ne faisait descendre le fil. À son arrivée, le
+  clavier se range (le brouillon reste) et le fil descend au bas de la carte,
+  sauf si Sam est remonté lire.
+- **Nouveautés** : une feuille prend des entrées entières tant qu'elles tiennent
+  en 6 pages (au moins une), ne marque vues que celles-là, et ne revient pas
+  dans le même lancement : la suite attend le lancement suivant.
+- Dans `RemyParcours`, un constat corrigé devient `verifier(…)` : un échec
+  rouge, avec sa capture, s'il revient.
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit

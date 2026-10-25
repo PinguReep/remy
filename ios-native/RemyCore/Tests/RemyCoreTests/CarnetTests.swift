@@ -34,7 +34,7 @@ final class CarnetTests: XCTestCase {
     }
 
     func testDatesEnChiffresEtEnLettres() {
-        XCTAssertEqual(analyse("Payer la cantine le 12/11"), .init(quand: date(12, 11, 9), reste: "Payer la cantine"))
+        XCTAssertEqual(analyse("Payer la cantine le 12/11"), .init(quand: date(12, 11, 9), reste: "Payer la cantine", heureDite: false))
         XCTAssertEqual(analyse("Anniversaire de Nina le 3 février")?.quand, date(3, 2, 9, an: 2027), "déjà passé cette année")
         XCTAssertEqual(analyse("Anniversaire de Nina le 3 février")?.reste, "Anniversaire de Nina")
     }
@@ -62,6 +62,25 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(GenreCapture.deviner("rappelle-moi de racheter du café"), .rappel)
     }
 
+    /// Parcours P07 : un jour sans heure n'est pas un créneau. Pour une tâche,
+    /// c'est une échéance, en fin de journée ; l'heure dite reste l'heure.
+    func testUnJourSansHeureEstUneEcheance() {
+        let r = analyse("Envoyer le devis à Hugo vendredi")
+        XCTAssertEqual(r?.heureDite, false)
+        XCTAssertEqual(r?.reste, "Envoyer le devis à Hugo")
+        XCTAssertEqual(r?.echeance, date(16, 10, 23), "vendredi, fin de journée")
+        XCTAssertEqual(analyse("Appeler le garage demain à 9h")?.heureDite, true)
+        XCTAssertEqual(analyse("Appeler le garage demain à 9h")?.echeance, date(16, 10, 9))
+        XCTAssertEqual(analyse("Appeler maman ce soir")?.heureDite, true)
+        XCTAssertEqual(analyse("Rappelle-moi dans 20 min de sortir le linge")?.heureDite, true)
+        XCTAssertEqual(analyse("Relancer Léa dans 3 jours")?.heureDite, false)
+        XCTAssertEqual(analyse("Relancer Léa dans 3 jours")?.echeance, date(18, 10, 23))
+        XCTAssertEqual(analyse("Payer la cantine le 12/11")?.echeance, date(12, 11, 23))
+        // Le lien vers la date part avec elle.
+        XCTAssertEqual(analyse("Préparer la facture avant vendredi")?.reste, "Préparer la facture")
+        XCTAssertEqual(analyse("Rendre le dossier d'ici lundi")?.reste, "Rendre le dossier")
+    }
+
     func testPasDeDate() {
         XCTAssertNil(analyse("Acheter du lait"))
         XCTAssertNil(analyse("Lire 5 heures de musique"))
@@ -77,6 +96,20 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(GenreCapture.articles("tomates, lait et œufs"), ["tomates", "lait", "œufs"])
         XCTAssertEqual(GenreCapture.articles("pommes"), ["pommes"])
         XCTAssertEqual(GenreCapture.articles("Je dois appeler le garage pour la voiture, puis passer à la banque"), [])
+    }
+
+    /// Parcours P07 : « Envoyer le devis vendredi » était deviné « Rappel »
+    /// (vendredi 9 h). Une action avec un jour sans heure est une tâche à
+    /// échéance ; un rappel, c'est une heure dite ou « rappelle-moi ».
+    func testUneActionAvecUnJourEstUneTache() {
+        XCTAssertEqual(GenreCapture.deviner("Envoyer le devis a Hugo vendredi", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Payer la cantine le 12/11", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Il faut que j'appelle le garage demain", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Envoyer le devis vendredi à 14h", maintenant: maintenant), .rappel, "une heure dite")
+        XCTAssertEqual(GenreCapture.deviner("Rappelle-moi d'envoyer le devis vendredi", maintenant: maintenant), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("N'oublie pas de payer la cantine lundi", maintenant: maintenant), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Anniversaire de Nina le 3 février", maintenant: maintenant), .rappel, "pas une action : un rappel")
+        XCTAssertEqual(GenreCapture.deviner("Appeler le garage demain à 9h", maintenant: maintenant), .rappel)
     }
 
     // MARK: Carnet hors ligne

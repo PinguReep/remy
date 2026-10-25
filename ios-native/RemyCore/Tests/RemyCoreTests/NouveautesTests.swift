@@ -93,6 +93,53 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(m2.historique.map(\.id), ["c", "b", "a"], "la plus récente d'abord")
     }
 
+    /// Parcours P01 : la feuille s'arrêtait à 6 pages, au milieu d'une
+    /// entrée, et tout le lot passait pour vu. Des entrées entières dans la
+    /// limite (au moins une) ; seules celles montrées sont vues ; la suite
+    /// vient au lancement suivant.
+    func testUnLongLotNeCoupeJamaisUneEntree() {
+        let p = Self.page
+        let catalogue = [
+            Nouveaute(id: "a", serie: 3, date: "", titre: "A", capacite: nil, pages: [p, p, p]),
+            Nouveaute(id: "b", serie: 3, date: "", titre: "B", capacite: nil, pages: [p, p]),
+            Nouveaute(id: "c", serie: 3, date: "", titre: "C", capacite: nil, pages: [p, p]),
+            Nouveaute(id: "x", serie: 3, date: "", titre: "X", capacite: "inconnue-v1", pages: [p]),
+            Nouveaute(id: "d", serie: 3, date: "", titre: "D", capacite: nil, pages: [p, p, p]),
+            Nouveaute(id: "e", serie: 3, date: "", titre: "E", capacite: nil, pages: [p]),
+        ]
+        let r = suite()
+        let a = app([], reglages: suite())
+        gardes.append(a)
+        func lancement() -> NouveautesModel {
+            let m = NouveautesModel(reglages: r, catalogue: catalogue)
+            m.app = a
+            return m
+        }
+        let m1 = lancement()
+        m1.verifier()
+        XCTAssertEqual(m1.affichees?.entrees.map(\.id), ["a", "b"], "3 + 2 pages ; « c » ferait 7")
+        XCTAssertEqual(m1.affichees?.pages.count, 5, "chaque entrée entière")
+        m1.fermer()
+        XCTAssertFalse(m1.estNouvelle(catalogue[0]))
+        XCTAssertTrue(m1.estNouvelle(catalogue[2]), "pas montrée : pas vue")
+        m1.verifier()
+        XCTAssertNil(m1.affichees, "une feuille par lancement")
+
+        let m2 = lancement()
+        m2.verifier()
+        XCTAssertEqual(m2.affichees?.entrees.map(\.id), ["c", "d", "e"], "« x » attend la tour")
+        m2.fermer()
+
+        let m3 = lancement()
+        m3.verifier()
+        XCTAssertNil(m3.affichees)
+        XCTAssertTrue(m3.estNouvelle(catalogue[3]), "la tour ne la connaît pas : ni montrée, ni vue")
+
+        // Une entrée plus longue que la limite passe quand même, seule et entière.
+        XCTAssertEqual(Nouveautes.lot(catalogue, pagesMax: 2).map(\.id), ["a"])
+        XCTAssertEqual(Nouveautes.lot([], pagesMax: 6), [])
+    }
+
     func testRevoirDepuisLHistorique() {
         let m = essai([], reglages: suite())
         let jauge = Self.essai[2]

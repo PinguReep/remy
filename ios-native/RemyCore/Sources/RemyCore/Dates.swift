@@ -9,6 +9,22 @@ public enum AnalyseDate {
         public let quand: Date
         /// La phrase sans les mots de date (le texte du rappel).
         public let reste: String
+        /// Une heure a été dite (« à 9h », « ce soir », « dans 20 min »).
+        /// Sinon c'est un jour seul, posé à 9:00 faute de mieux : pour une
+        /// tâche, une échéance (`echeance`), jamais un créneau.
+        public let heureDite: Bool
+
+        public init(quand: Date, reste: String, heureDite: Bool = true) {
+            self.quand = quand
+            self.reste = reste
+            self.heureDite = heureDite
+        }
+
+        /// L'échéance d'une tâche : l'heure dite, sinon la fin du jour dit
+        /// (23 h, comme `Format.echeanceDans`) — Motion la place avant.
+        public var echeance: Date {
+            heureDite ? quand : Format.echeanceDans(jours: 0, depuis: quand)
+        }
     }
 
     static let jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
@@ -21,6 +37,8 @@ public enum AnalyseDate {
         var jour: Date?
         var heure: (Int, Int)?
         var relatif: Date?
+        /// « dans 3 jours » : un jour, pas une heure.
+        var relatifEnJours = false
         /// « jeudi » dit un jeudi : aujourd'hui si l'heure n'est pas passée, sinon dans une semaine.
         var memeJourSemaine = false
 
@@ -40,6 +58,7 @@ public enum AnalyseDate {
            let n = groupe(m, 1).flatMap(Int.init), let u = groupe(m, 2)?.lowercased() {
             let secondes = u.hasPrefix("min") ? n * 60 : u.hasPrefix("h") ? n * 3600 : n * 86_400
             relatif = maintenant.addingTimeInterval(TimeInterval(secondes))
+            relatifEnJours = u.hasPrefix("j")
             retirer(m.range)
         }
 
@@ -102,7 +121,7 @@ public enum AnalyseDate {
         } else {
             return nil
         }
-        return Resultat(quand: quand, reste: nettoyer(t))
+        return Resultat(quand: quand, reste: nettoyer(t), heureDite: relatif != nil ? !relatifEnJours : heure != nil)
     }
 
     /// Une date à venir (le 3/02 en décembre : l'an prochain).
@@ -124,7 +143,8 @@ public enum AnalyseDate {
     /// puis la formule de demande (« rappelle-moi de… »).
     static func nettoyer(_ t: String) -> String {
         var s = t.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"(?i)\s(?:à|a|le|pour|vers|,)\s*$"#, with: "", options: .regularExpression)
+        // « … avant vendredi », « … d'ici lundi » : la date partie, le lien aussi.
+        s = s.replacingOccurrences(of: #"(?i)\s(?:à|a|le|pour|vers|avant|d['’]ici|,)\s*$"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"(?i)^\s*(?:à|le|pour|,)\s"#, with: "", options: .regularExpression)
         return sansFormule(s.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",;:-"))))
     }

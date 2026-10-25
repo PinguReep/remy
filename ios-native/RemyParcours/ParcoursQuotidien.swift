@@ -33,6 +33,11 @@ final class ParcoursQuotidien: ParcoursBase {
             let plusTard = bouton("Plus tard")
             if plusTard.waitForExistence(timeout: 6) {
                 try etape("nouveautes-par-dessus", attendu: [plusTard])
+                // Des tutoriels entiers, 6 pages au plus : la suite au lancement suivant.
+                let compteur = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Nouveau · 1/")).firstMatch
+                let pages = compteur.exists ? Int(compteur.label.split(separator: "/").last ?? "") ?? 0 : 1
+                noter("tutoriel des nouveautés : \(pages) page(s)")
+                verifier("Le tutoriel des nouveautés tient en 6 pages au plus.", pages <= 6)
                 constat("Premier lancement : à peine connecté, le tutoriel des « nouveautés » d'une mise à jour (plusieurs pages) passe devant la journée, pour quelqu'un qui n'a jamais connu la version d'avant.",
                         siFaux: false)
                 try toucher(plusTard, "Plus tard")
@@ -167,16 +172,23 @@ final class ParcoursQuotidien: ParcoursBase {
             let champ = ident("capture.champ")
             try etape("feuille-noter", attendu: [champ])
             try saisir("Envoyer le devis a Hugo vendredi", dans: champ)
-            try etape("genre-devine", attendu: [ident("capture.genre.rappel")])
+            // Un jour sans heure, pour une action : une tâche à échéance (date
+            // limite, pas un créneau), plus un rappel à 9 h (corrigé : GenreCapture.deviner).
+            let echeance = texte("avant l'échéance : vendredi")
+            try etape("genre-devine", attendu: [ident("capture.genre.tache"), echeance])
             let devine = ident("capture.genre.rappel").isSelected ? "rappel" : ident("capture.genre.tache").isSelected ? "tâche" : "autre"
             noter("genre deviné pour une tâche datée : \(devine)")
+            verifier("« Envoyer le devis a Hugo vendredi » doit être devinée « Tâche » (un jour sans heure n'est pas un rappel).",
+                     devine == "tâche")
+            // Changer le genre à la main ne perd pas la date comprise.
+            try toucher(ident("capture.genre.rappel"), "puce Rappel")
+            try etape("change-en-rappel", attendu: [texte("Rappel → ")], absent: [texte("Rappel sans date")])
             try toucher(ident("capture.genre.tache"), "puce Tâche")
-            try etape("force-en-tache", attendu: [texte("Motion lui trouvera un créneau")])
-            // Une tâche « pour vendredi » doit garder vendredi comme échéance.
-            constat("Tâche datée : forcée en « Tâche », l'échéance dite (vendredi) n'apparaît nulle part et n'est pas transmise à Motion (noterTache crée la tâche sans échéance, Modeles.swift:305).",
-                    siFaux: texte("échéance").exists || texte("avant vendredi").exists)
+            try etape("revient-en-tache", attendu: [texte("Motion lui trouvera un créneau"), echeance])
             try toucher(ident("capture.valider"), "Ajouter à Motion")
             try confirmationApresFeuille("Ajoutée à Motion", champ: champ)
+            verifier("La confirmation dit l'échéance transmise à Motion (« à faire d'ici vendredi … »).",
+                     texte("à faire d'ici vendredi").exists)
         }
     }
 
@@ -252,8 +264,10 @@ final class ParcoursQuotidien: ParcoursBase {
             let oui = bouton("Oui, fais-le")
             try etape("proposition", attendu: [oui], delai: 45)
             RunLoop.current.run(until: Date().addingTimeInterval(1.5))
-            constat("La proposition arrive sous le clavier : « Oui, fais-le » n'est pas visible sans défiler (le fil ne descend pas jusqu'au bas de la carte, clavier ouvert).",
-                    siFaux: oui.isHittable)
+            // Corrigé : à l'arrivée d'une proposition, le clavier se range et le fil
+            // descend jusqu'au bas de la carte (RemyView, Fil).
+            verifier("La proposition doit être entièrement visible : « Oui, fais-le » touchable sans défiler, clavier rangé.",
+                     oui.isHittable && !clavier.exists)
             try toucher(oui, "Oui, fais-le")
             try etape("faite", attendu: [texte("C'est fait")], delai: 20)
         }
@@ -326,9 +340,10 @@ final class ParcoursQuotidien: ParcoursBase {
             try saisir("Appeler le plombier demain 10h", dans: champ)
             try etape("genre-rappel", attendu: [texte("Créer le rappel")])
             try toucher(ident("capture.valider"), "Créer le rappel")
-            // La première fois, iOS demande l'autorisation des notifications.
+            // La première fois, iOS demande l'autorisation des notifications,
+            // avant la confirmation ; déjà donnée, la feuille se ferme aussitôt.
             capturer("demande-notifications")
-            accepterAlerteSysteme(6)
+            accepterAlerteSysteme(8, tantQue: { champ.exists })
             try confirmationApresFeuille("Rappel : demain", champ: champ)
             try toucher(onglet("projets"), "onglet Projets")
             try toucher(bouton("Tout voir"), "Tout voir (rappels)")

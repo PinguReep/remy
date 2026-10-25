@@ -98,15 +98,27 @@ class ParcoursBase: XCTestCase {
 
     /// Après un geste fait dans une feuille (le « + ») : la confirmation, avec
     /// son « Annuler », doit rester visible une fois la feuille refermée.
+    /// Corrigé (ToastView ne l'efface plus quand la feuille l'annule) : une
+    /// vraie vérification, plus un constat.
     @MainActor
     func confirmationApresFeuille(_ message: String, champ: XCUIElement) throws {
         let toast = texte(message)
         let pendant = toast.waitForExistence(timeout: 3)
         try etape("feuille-fermee", absent: [champ], delai: 10)
         let apres = toast.exists
-        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non")")
-        constat("Après le « + », la confirmation (« \(message)… » et son « Annuler ») disparaît avec la feuille : la tâche d'effacement du message est annulée quand la feuille se ferme, et efface le message aussitôt (ToastView, RemyApp.swift).",
-                siFaux: apres)
+        let annuler = bouton("Annuler").exists
+        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")")
+        verifier("Après le « + », la confirmation (« \(message)… ») et son « Annuler » doivent rester visibles une fois la feuille refermée.",
+                 apres && annuler)
+    }
+
+    /// Un défaut corrigé : ce que le constat attendait devient une vraie
+    /// vérification — un échec rouge, avec sa capture, s'il revient.
+    @MainActor
+    func verifier(_ attendu: String, _ condition: Bool) {
+        guard !condition else { return }
+        capturer("verification-ECHEC")
+        XCTFail("\(identifiant) : \(attendu)")
     }
 
     override func setUp() {
@@ -411,17 +423,24 @@ class ParcoursBase: XCTestCase {
     }
 
     /// Les alertes système (notifications…) : accepter si elles apparaissent.
+    /// `tantQue` : on cesse d'attendre dès que l'écran a continué sans elle
+    /// (autorisation déjà donnée), pour ne pas laisser filer la confirmation.
     @MainActor
-    func accepterAlerteSysteme(_ delai: TimeInterval = 3) {
+    func accepterAlerteSysteme(_ delai: TimeInterval = 3, tantQue encore: (() -> Bool)? = nil) {
         let tremplin = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for libelle in ["Allow", "Autoriser", "OK"] {
-            let b = tremplin.buttons[libelle]
-            if b.waitForExistence(timeout: libelle == "Allow" ? delai : 0.5) {
-                compter()
-                b.tap()
-                return
+        let fin = Date().addingTimeInterval(delai)
+        repeat {
+            for libelle in ["Allow", "Autoriser", "OK"] {
+                let b = tremplin.buttons[libelle]
+                if b.exists {
+                    compter()
+                    b.tap()
+                    return
+                }
             }
-        }
+            if let encore, !encore() { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        } while Date() < fin
     }
 
     /// Le clavier, s'il couvre l'écran.

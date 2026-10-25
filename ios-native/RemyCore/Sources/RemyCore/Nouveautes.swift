@@ -158,14 +158,30 @@ public enum Nouveautes {
 
     /// Au plus, pour ne pas transformer une mise à jour en cours magistral.
     static let pagesMax = 6
+
+    /// Ce qu'une feuille montre : des entrées entières, dans l'ordre, tant
+    /// qu'elles tiennent dans `pagesMax` pages — au moins une. Jamais une
+    /// entrée coupée ; les suivantes attendent les lancements suivants.
+    static func lot(_ entrees: [Nouveaute], pagesMax: Int = pagesMax) -> [Nouveaute] {
+        var pris: [Nouveaute] = []
+        var pages = 0
+        for n in entrees {
+            if !pris.isEmpty && pages + n.pages.count > pagesMax { break }
+            pris.append(n)
+            pages += n.pages.count
+        }
+        return pris
+    }
 }
 
 /// Les nouveautés à montrer d'un coup (une feuille), dans l'ordre.
 public struct LotNouveautes: Identifiable, Equatable, Sendable {
     public let id: String
     public let entrees: [Nouveaute]
+    /// Toutes les pages de ses entrées : la limite se prend à la
+    /// composition du lot (`Nouveautes.lot`), jamais au milieu d'une entrée.
     public var pages: [(nouveaute: Nouveaute, page: Nouveaute.Page)] {
-        Array(entrees.flatMap { n in n.pages.map { (n, $0) } }.prefix(Nouveautes.pagesMax))
+        entrees.flatMap { n in n.pages.map { (n, $0) } }
     }
     public static func == (a: LotNouveautes, b: LotNouveautes) -> Bool { a.id == b.id && a.entrees == b.entrees }
 }
@@ -180,6 +196,8 @@ public final class NouveautesModel {
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let reglages: UserDefaults
     @ObservationIgnored let catalogue: [Nouveaute]
+    /// Une feuille par lancement : la suite d'un long lot attend le suivant.
+    @ObservationIgnored private var lotMontre = false
     static let cleVues = "nouveautes.vues"
 
     public init(reglages: UserDefaults = .standard, catalogue: [Nouveaute] = Nouveautes.catalogue) {
@@ -209,11 +227,13 @@ public final class NouveautesModel {
     public func estNouvelle(_ n: Nouveaute) -> Bool { !vues.contains(n.id) }
 
     /// Au retour au premier plan : les nouveautés pas encore vues, dont la
-    /// tour connaît la fonction. Rien si une feuille est déjà là.
+    /// tour connaît la fonction. Rien si une feuille est déjà là. Une feuille
+    /// ne dépasse pas `pagesMax` pages : le reste vient au lancement suivant.
     public func verifier() {
-        guard affichees == nil else { return }
-        let a = catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie }
+        guard affichees == nil, !lotMontre else { return }
+        let a = Nouveautes.lot(catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie })
         guard !a.isEmpty else { return }
+        lotMontre = true
         affichees = LotNouveautes(id: a.map(\.id).joined(separator: "+"), entrees: a)
     }
 
@@ -222,7 +242,8 @@ public final class NouveautesModel {
         LotNouveautes(id: "revoir-\(n.id)", entrees: [n])
     }
 
-    /// Un tutoriel parcouru, ou fermé : vu, plus de rappel.
+    /// Un tutoriel parcouru, ou fermé : vu, plus de rappel. Seulement les
+    /// entrées du lot, celles que la feuille a montrées.
     public func marquerVues(_ lot: LotNouveautes) {
         vues.formUnion(lot.entrees.map(\.id))
         reglages.set(Array(vues).sorted(), forKey: Self.cleVues)

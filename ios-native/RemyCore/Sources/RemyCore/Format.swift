@@ -50,6 +50,13 @@ public enum Format {
     /// « jeudi »
     public static func jourSemaine(_ d: Date) -> String { formateur("EEEE").string(from: d) }
 
+    /// Une échéance en toutes lettres : « vendredi 30 octobre », l'heure en
+    /// plus si ce n'est pas une fin de journée (comme `detailAction`).
+    public static func echeanceLongue(_ d: Date) -> String {
+        let h = calendrier.component(.hour, from: d)
+        return h >= 20 || h < 5 ? jourLong(d) : jourLong(d) + ", " + heure(d)
+    }
+
     /// « 23 sept. »
     public static func jourCourt(_ d: Date) -> String { formateur("d MMM").string(from: d) }
 
