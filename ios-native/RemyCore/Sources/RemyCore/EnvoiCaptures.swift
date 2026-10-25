@@ -242,7 +242,12 @@ extension TableauModel {
     /// « Renvoyer » : Sam a vérifié (refusée, ou peut-être déjà reçue) ; elle
     /// repart maintenant, avec le même identifiant.
     public func renvoyerCapture(_ id: String) async {
-        guard envoi.contains(where: { $0.id == id }) else { return }
+        guard let attente = envoi.first(where: { $0.id == id }) else { return }
+        // Déjà en route : effacer son doute maintenant la ferait repartir à l'aveugle.
+        guard !envoisEnCours.contains(id) else {
+            app?.dire("« \(CaptureFigee.court(attente.capture?.texte ?? "")) » part en ce moment : attends la réponse de Rémy.")
+            return
+        }
         modifier(id) {
             $0.raison = nil
             $0.tentatives = 0
@@ -340,7 +345,11 @@ extension TableauModel {
             switch NatureEchec(error) {
             case .incertain:
                 guard sur else {
-                    // Le doute est déjà noté (`peutEtreRecue`) : elle attend Sam.
+                    // Le doute (noté avant l'envoi) reste : elle attend Sam.
+                    modifier(commande.id) {
+                        $0.raison = Self.peutEtreRecue
+                        $0.tentatives = max(1, $0.tentatives)
+                    }
                     if !reprise {
                         app?.dire("Pas de réponse de Rémy pendant l'envoi : il l'a peut-être reçue. Elle reste dans « En attente d'envoi » : renvoie-la seulement si elle n'est pas arrivée.",
                                   duree: 8)

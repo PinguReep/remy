@@ -161,6 +161,10 @@ final class EnvoiCapturesTests: XCTestCase {
         let relue = try XCTUnwrap(rangement.copie([Commande].self, Rangement.captures)?.valeur.first)
         XCTAssertEqual(relue.tentatives, 1)
         XCTAssertEqual(relue.raison, TableauModel.peutEtreRecue, "relue après une fermeture : elle attend Sam, avec « Renvoyer »")
+        // « Renvoyer » touché pendant qu'elle part : rien n'est effacé, rien ne repart.
+        await a.tableau.renvoyerCapture(c.id)
+        XCTAssertEqual(a.toast, "« J'aimerais un petit studio à Porto pour… » part en ce moment : attends la réponse de Rémy.")
+        XCTAssertEqual(a.tableau.envoi.first?.tentatives, 1)
         await envoi.value
         XCTAssertTrue(a.tableau.capturesEnAttente.isEmpty)
     }
