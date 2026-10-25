@@ -81,6 +81,107 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(analyse("Rendre le dossier d'ici lundi")?.reste, "Rendre le dossier")
     }
 
+    /// Contre-relecture : « vendredi » dit un vendredi après 9 h glissait
+    /// d'une semaine (le 9 h posé pour un rappel). Une échéance part du jour
+    /// dit et ne recule que si ce jour est fini.
+    func testLeJourMemeLEcheanceEstCeSoir() {
+        let vendredi10h = date(16, 10, 10)
+        let r = AnalyseDate.extraire("Envoyer le devis vendredi", maintenant: vendredi10h)
+        XCTAssertEqual(r?.echeance, date(16, 10, 23), "ce soir, pas dans une semaine")
+        XCTAssertEqual(r?.quand, date(23, 10, 9), "un rappel sans heure garde la semaine suivante")
+        XCTAssertEqual(AnalyseDate.extraire("Commander les bougies vendredi", maintenant: date(16, 10, 17))?.echeance, date(16, 10, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Envoyer le devis vendredi", maintenant: date(16, 10, 23, 30))?.echeance, date(23, 10, 23),
+                       "ce vendredi est fini : le suivant")
+        XCTAssertEqual(AnalyseDate.extraire("Envoyer le devis aujourd'hui", maintenant: date(16, 10, 23, 30))?.echeance, date(16, 10, 23, 59),
+                       "aujourd'hui, tard : jusqu'à minuit, pas une échéance passée")
+    }
+
+    /// Contre-relecture : des heures et des moments mal lus.
+    func testHeuresEtMomentsDuJour() {
+        let quatorze = analyse("Appeler le garage demain à 14 heures")
+        XCTAssertEqual(quatorze?.quand, date(16, 10, 14))
+        XCTAssertEqual(quatorze?.heureDite, true)
+        XCTAssertEqual(quatorze?.reste, "Appeler le garage")
+        XCTAssertEqual(analyse("Appeler le garage demain vers 9 heures 30")?.quand, date(16, 10, 9, 30))
+        // Une durée n'est pas une heure.
+        XCTAssertNil(analyse("Faire 2h de studio"))
+        XCTAssertEqual(analyse("Faire 2h de studio jeudi")?.heureDite, false)
+        XCTAssertEqual(analyse("Faire 2h de studio jeudi")?.reste, "Faire 2h de studio")
+        XCTAssertEqual(analyse("Préparer la réunion de 14h")?.quand, date(15, 10, 14), "« de 14h » : une heure")
+        // Le moment d'un jour dit.
+        let soir = analyse("Rappelle-moi de sortir les poubelles demain soir")
+        XCTAssertEqual(soir?.quand, date(16, 10, 20))
+        XCTAssertEqual(soir?.reste, "Sortir les poubelles")
+        let aprem = analyse("Appeler le garage lundi après-midi")
+        XCTAssertEqual(aprem?.quand, date(19, 10, 14))
+        XCTAssertEqual(aprem?.reste, "Appeler le garage")
+        XCTAssertEqual(analyse("Appeler le garage demain matin")?.quand, date(16, 10, 9))
+        XCTAssertEqual(analyse("Appeler le garage demain à 3h de l'après-midi")?.quand, date(16, 10, 15))
+        XCTAssertEqual(analyse("Appeler le garage demain à 3h de l'après-midi")?.reste, "Appeler le garage")
+        XCTAssertEqual(analyse("Dîner chez Léa demain soir à 8h")?.quand, date(16, 10, 20), "le soir : 20 h")
+        XCTAssertNil(analyse("Lire au calme l'après-midi"), "« après-midi » seul n'est pas midi")
+        XCTAssertNil(analyse("Lire au calme l'après midi"), "ni sans trait d'union")
+        // « a » sans accent, comme on le tape vite : une heure, sauf devant une durée.
+        XCTAssertEqual(analyse("Appeler le garage demain a 14h")?.quand, date(16, 10, 14))
+        XCTAssertEqual(analyse("Appeler le garage demain a 14h")?.reste, "Appeler le garage")
+        XCTAssertNil(analyse("Hugo a 2h de route"), "« a 2h de route » : une durée")
+        XCTAssertNil(analyse("Léa a 3 heures de retard"))
+        XCTAssertEqual(analyse("Appeler le garage demain a 3h de l'après-midi")?.quand, date(16, 10, 15))
+        // « dans 1h30 », « dans une heure », « dans 2 semaines ».
+        let linge = analyse("Rappelle-moi dans 1h30 de sortir le linge")
+        XCTAssertEqual(linge?.quand, maintenant.addingTimeInterval(5400))
+        XCTAssertEqual(linge?.reste, "Sortir le linge")
+        XCTAssertEqual(analyse("Rappelle-moi dans une heure d'appeler Léa")?.quand, maintenant.addingTimeInterval(3600))
+        XCTAssertEqual(analyse("Relancer Hugo dans 2 semaines")?.echeance, date(29, 10, 23))
+        XCTAssertEqual(analyse("Relancer Léa dans une semaine")?.heureDite, false)
+        // « dans 3 jours à 14h » : l'heure dite compte.
+        let lea = analyse("Appeler Léa dans 3 jours à 14h")
+        XCTAssertEqual(lea?.quand, date(18, 10, 14))
+        XCTAssertEqual(lea?.heureDite, true)
+        XCTAssertEqual(GenreCapture.deviner("Appeler Léa dans 3 jours à 14h", maintenant: maintenant), .rappel)
+    }
+
+    func testDatesAbregeesEtJourAvecSaDate() {
+        XCTAssertEqual(analyse("Envoyer le devis le 30 oct")?.quand, date(30, 10, 9))
+        XCTAssertEqual(analyse("Envoyer le devis le 30 oct.")?.reste, "Envoyer le devis")
+        XCTAssertEqual(analyse("Payer le loyer le 1er nov")?.quand, date(1, 11, 9))
+        let lundi = analyse("Rendre le devis lundi 2 novembre")
+        XCTAssertEqual(lundi?.quand, date(2, 11, 9))
+        XCTAssertEqual(lundi?.reste, "Rendre le devis")
+        XCTAssertEqual(analyse("Envoyer le devis vendredi.")?.reste, "Envoyer le devis", "le point final ne reste pas seul")
+        XCTAssertEqual(AnalyseDate.sansFormule("Rappelle moi d appeler maman"), "Appeler maman", "dictée sans apostrophe")
+        XCTAssertEqual(AnalyseDate.sansFormule("N'oublie pas d envoyer le devis"), "Envoyer le devis")
+    }
+
+    /// Contre-relecture : le texte d'une tâche ne perd jamais un morceau de
+    /// sa phrase ; la date ne s'en retire que si elle était au bout.
+    func testLeTexteDUneTacheResteEntier() {
+        func texte(_ t: String, _ g: GenreCapture) -> String {
+            GenreCapture.texte(t, date: AnalyseDate.extraire(t, maintenant: maintenant), genre: g)
+        }
+        XCTAssertEqual(texte("Envoyer le devis vendredi", .tache), "Envoyer le devis")
+        XCTAssertEqual(texte("Demain, appeler le plombier", .tache), "Appeler le plombier")
+        XCTAssertEqual(texte("Vendredi : envoyer le devis", .tache), "Envoyer le devis")
+        XCTAssertEqual(texte("Préparer la réunion de demain avec Hugo", .tache), "Préparer la réunion de demain avec Hugo")
+        XCTAssertEqual(texte("Relire le compte rendu de lundi", .tache), "Relire le compte rendu de lundi")
+        XCTAssertEqual(texte("Payer la facture du 12/11", .tache), "Payer la facture du 12/11")
+        XCTAssertEqual(texte("Préparer la sortie de dimanche avec Léa", .tache), "Préparer la sortie de dimanche avec Léa")
+        XCTAssertEqual(texte("Envoyer le devis jeudi ou vendredi", .tache), "Envoyer le devis jeudi ou vendredi")
+        XCTAssertEqual(texte("Rappelle-moi d'envoyer le devis vendredi", .tache), "Envoyer le devis", "genre changé à la main")
+        XCTAssertEqual(texte("Préparer la réunion de 14h", .tache), "Préparer la réunion de 14h", "l'heure dite reste")
+        XCTAssertEqual(texte("Appeler le garage demain à 9h", .tache), "Appeler le garage demain à 9h")
+        XCTAssertEqual(texte("Appeler le garage demain à 9h", .rappel), "Appeler le garage", "le rappel sonne à 9 h")
+        XCTAssertEqual(texte("Rappelle-moi de préparer la réunion de demain avec Hugo", .rappel), "Préparer la réunion de demain avec Hugo")
+        XCTAssertEqual(texte("Acheter du pain", .tache), "Acheter du pain")
+        XCTAssertEqual(texte("Rappelle-moi d'acheter du pain", .rappel), "Acheter du pain")
+        // Ces phrases restent des tâches, avec leur échéance.
+        for p in ["Préparer la réunion de demain avec Hugo", "Relire le compte rendu de lundi", "Payer la facture du 12/11",
+                  "Préparer la sortie de dimanche avec Léa"] {
+            XCTAssertEqual(GenreCapture.deviner(p, maintenant: maintenant), .tache, p)
+            XCTAssertEqual(AnalyseDate.extraire(p, maintenant: maintenant)?.heureDite, false, p)
+        }
+    }
+
     func testPasDeDate() {
         XCTAssertNil(analyse("Acheter du lait"))
         XCTAssertNil(analyse("Lire 5 heures de musique"))
@@ -110,6 +211,19 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(GenreCapture.deviner("N'oublie pas de payer la cantine lundi", maintenant: maintenant), .rappel)
         XCTAssertEqual(GenreCapture.deviner("Anniversaire de Nina le 3 février", maintenant: maintenant), .rappel, "pas une action : un rappel")
         XCTAssertEqual(GenreCapture.deviner("Appeler le garage demain à 9h", maintenant: maintenant), .rappel)
+        // Le jour en tête : l'action se lit sans lui.
+        XCTAssertEqual(GenreCapture.deviner("lundi je dois rendre le dossier", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Demain, appeler le plombier", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Vendredi : envoyer le devis", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("apres demain envoyer le devis", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Faire 2h de studio jeudi", maintenant: maintenant), .tache, "une durée, pas une heure")
+        XCTAssertEqual(GenreCapture.deviner("Appeler le garage demain à 14 heures", maintenant: maintenant), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Hugo préfère qu'on lui écrive, surtout le lundi.", maintenant: maintenant), .rappel,
+                       "une information sans action reste un rappel")
+        // Ce que Sam annonce passe avant la date.
+        XCTAssertEqual(GenreCapture.deviner("idée : un clip en noir pour vendredi", maintenant: maintenant), .idee)
+        XCTAssertEqual(GenreCapture.deviner("Idée : un clip en noir", maintenant: maintenant, parDefaut: .tache), .idee)
+        XCTAssertEqual(GenreCapture.deviner("Projet bougies pour lundi", maintenant: maintenant), .projet)
     }
 
     // MARK: Carnet hors ligne
