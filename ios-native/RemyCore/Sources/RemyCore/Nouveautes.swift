@@ -183,6 +183,15 @@ public struct LotNouveautes: Identifiable, Equatable, Sendable {
     public var pages: [(nouveaute: Nouveaute, page: Nouveaute.Page)] {
         entrees.flatMap { n in n.pages.map { (n, $0) } }
     }
+    /// Les entrées dont au moins une page a été affichée, la feuille ayant
+    /// atteint la page `index` (0 : la première).
+    public func entrees(jusqua index: Int) -> [Nouveaute] {
+        var debut = 0
+        return entrees.filter { n in
+            defer { debut += n.pages.count }
+            return debut <= index
+        }
+    }
     public static func == (a: LotNouveautes, b: LotNouveautes) -> Bool { a.id == b.id && a.entrees == b.entrees }
 }
 
@@ -198,13 +207,28 @@ public final class NouveautesModel {
     @ObservationIgnored let catalogue: [Nouveaute]
     /// Une feuille par lancement : la suite d'un long lot attend le suivant.
     @ObservationIgnored private var lotMontre = false
+    /// La page la plus loin affichée dans la feuille du lancement.
+    @ObservationIgnored private var pageAtteinte = 0
     static let cleVues = "nouveautes.vues"
+    /// Reprise unique du build 37 (25/10), faite au premier lancement d'après.
+    static let cleReprise37 = "nouveautes.reprise37"
+    /// Le build 37 coupait sa feuille à 6 pages mais marquait vu tout le lot :
+    /// ces deux entrées (sans capacité, en tête de la série 3) sont les seules
+    /// qu'il a pu montrer. Revoir un tutoriel coûte moins qu'en perdre un.
+    static let montreesParLeBuild37: Set<String> = ["partage", "hors-app"]
 
     public init(reglages: UserDefaults = .standard, catalogue: [Nouveaute] = Nouveautes.catalogue) {
         self.reglages = reglages
         self.catalogue = catalogue
-        if let liste = reglages.stringArray(forKey: Self.cleVues) {
-            vues = Set(liste)
+        if var vues = reglages.stringArray(forKey: Self.cleVues).map(Set.init) {
+            if !reglages.bool(forKey: Self.cleReprise37) {
+                // Les entrées de la série 3 marquées vues sans avoir été
+                // montrées redeviennent nouvelles, une fois pour toutes.
+                let serie3 = Set(catalogue.filter { $0.serie == 3 }.map(\.id))
+                vues.subtract(serie3.subtracting(Self.montreesParLeBuild37))
+                reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
+            }
+            self.vues = vues
         } else {
             // Premier lancement avec les nouveautés : seules celles de la
             // dernière mise à jour sont nouvelles ; les autres, à l'historique.
@@ -212,6 +236,7 @@ public final class NouveautesModel {
             vues = Set(catalogue.filter { $0.serie < derniere }.map(\.id))
             reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
         }
+        reglages.set(true, forKey: Self.cleReprise37)
     }
 
     /// La tour connaît la fonction (sinon elle est encore cachée dans l'app).
@@ -234,7 +259,13 @@ public final class NouveautesModel {
         let a = Nouveautes.lot(catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie })
         guard !a.isEmpty else { return }
         lotMontre = true
+        pageAtteinte = 0
         affichees = LotNouveautes(id: a.map(\.id).joined(separator: "+"), entrees: a)
+    }
+
+    /// La feuille du lancement affiche la page `index` (0 : la première).
+    public func pageVue(_ index: Int) {
+        pageAtteinte = max(pageAtteinte, index)
     }
 
     /// Revoir un tutoriel depuis l'historique (Réglages › Nouveautés).
@@ -242,18 +273,23 @@ public final class NouveautesModel {
         LotNouveautes(id: "revoir-\(n.id)", entrees: [n])
     }
 
-    /// Un tutoriel parcouru, ou fermé : vu, plus de rappel. Seulement les
-    /// entrées du lot, celles que la feuille a montrées.
-    public func marquerVues(_ lot: LotNouveautes) {
-        vues.formUnion(lot.entrees.map(\.id))
+    /// Un tutoriel parcouru, ou fermé : vu, plus de rappel.
+    public func marquerVues(_ entrees: [Nouveaute]) {
+        vues.formUnion(entrees.map(\.id))
         reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
     }
 
-    /// La feuille du lancement fermée (finie, « Plus tard » ou balayée).
+    /// Un tutoriel revu en entier (Réglages › Nouveautés).
+    public func marquerVues(_ lot: LotNouveautes) { marquerVues(lot.entrees) }
+
+    /// La feuille du lancement fermée (finie, « Plus tard » ou balayée) :
+    /// vues, les entrées dont une page au moins a été affichée. Les autres
+    /// restent nouvelles et viennent au lancement suivant.
     public func fermer() {
         guard let a = affichees else { return }
-        marquerVues(a)
+        marquerVues(a.entrees(jusqua: pageAtteinte))
         affichees = nil
+        pageAtteinte = 0
     }
 
     /// Captures de la CI seulement.

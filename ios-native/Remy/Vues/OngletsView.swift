@@ -131,7 +131,7 @@ struct OngletsView: View {
         .modifier(RendezVousQuotidien(ui: ui))
         // Les nouveautés d'une mise à jour (21/10), une fois : Réglages › Nouveautés pour revoir.
         .sheet(item: Binding(get: { app.nouveautes.affichees }, set: { if $0 == nil { app.nouveautes.fermer() } })) { lot in
-            NouveautesFeuille(lot: lot) { app.nouveautes.fermer() }
+            NouveautesFeuille(lot: lot, fini: { app.nouveautes.fermer() }, pageVue: { app.nouveautes.pageVue($0) })
         }
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
