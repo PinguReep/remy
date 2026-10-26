@@ -134,8 +134,12 @@ class ParcoursBase: XCTestCase {
         // vit 6 s depuis le geste, et chaque requête XCUITest sur l'accueil
         // (chargé depuis le build 37) prend son temps (vu : 12 s pour l'étape).
         let fermee = attendreDisparition(champ, delai: 10)
-        let apres = fermee && toast.exists
-        let annuler = apres && bouton("Annuler").exists
+        // Le bouton d'abord : la confirmation ne vit que 6 s et, sur un runner
+        // lent, chaque requête en coûte plusieurs (P14 échouait entre les deux
+        // lectures). Son « Annuler » est dans la même vue : vu, la confirmation
+        // l'était aussi à cet instant.
+        let annuler = fermee && bouton("Annuler").exists
+        let apres = fermee && (annuler || toast.exists)
         try etape("feuille-fermee", absent: [champ], delai: 2)
         noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")")
         verifier("Après le « + », la confirmation (« \(message)… ») et son « Annuler » doivent rester visibles une fois la feuille refermée.",
