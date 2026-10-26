@@ -127,21 +127,29 @@ class ParcoursBase: XCTestCase {
     /// Corrigé (ToastView ne l'efface plus quand la feuille l'annule) : une
     /// vraie vérification, plus un constat.
     @MainActor
-    func confirmationApresFeuille(_ message: String, champ: XCUIElement) throws {
-        let toast = texte(message)
-        let pendant = toast.waitForExistence(timeout: 3)
-        // Regardé dès que la feuille est partie, avant la capture : le message
+    func confirmationApresFeuille(_ message: String, champ: XCUIElement, idChamp: String = "capture.champ") throws {
+        // Une seule lecture de l'écran par tour (`snapshot`) : la confirmation
         // vit 6 s depuis le geste, et chaque requête XCUITest sur l'accueil
-        // (chargé depuis le build 37) prend son temps (vu : 12 s pour l'étape).
-        let fermee = attendreDisparition(champ, delai: 10)
-        // Le bouton d'abord : la confirmation ne vit que 6 s et, sur un runner
-        // lent, chaque requête en coûte plusieurs (P14 échouait entre les deux
-        // lectures). Son « Annuler » est dans la même vue : vu, la confirmation
-        // l'était aussi à cet instant.
-        let annuler = fermee && bouton("Annuler").exists
-        let apres = fermee && (annuler || toast.exists)
+        // prend son temps (vu : 12 s pour l'étape ; 30 s sur un runner lent,
+        // 26/10). La feuille partie, la confirmation et son « Annuler » sont
+        // lus dans la MÊME image de l'écran — plus de course entre trois requêtes.
+        var pendant = false, fermee = false, apres = false, annuler = false
+        let fin = Date().addingTimeInterval(12)
+        repeat {
+            guard let ecran = try? app.snapshot() else { break }
+            let toastLa = Self.trouve(ecran) { $0.label.contains(message) }
+            if toastLa { pendant = true }
+            if !Self.trouve(ecran, { $0.identifier == idChamp }) {
+                fermee = true
+                apres = toastLa
+                annuler = Self.trouve(ecran) { $0.elementType == .button && $0.label == "Annuler" }
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < fin
         try etape("feuille-fermee", absent: [champ], delai: 2)
-        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")")
+        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")"
+              + (fermee ? "" : " (feuille encore là au bout de 12 s)"))
         verifier("Après le « + », la confirmation (« \(message)… ») et son « Annuler » doivent rester visibles une fois la feuille refermée.",
                  apres && annuler)
     }
@@ -483,6 +491,12 @@ class ParcoursBase: XCTestCase {
     @MainActor
     func ident(_ id: String) -> XCUIElement {
         nomme(app.descendants(matching: .any).matching(identifier: id).firstMatch, "identifiant \(id)")
+    }
+
+    /// Un élément de cette image de l'écran répond-il au critère ?
+    static func trouve(_ e: XCUIElementSnapshot, _ critere: (XCUIElementSnapshot) -> Bool) -> Bool {
+        if critere(e) { return true }
+        return e.children.contains { trouve($0, critere) }
     }
 
     @MainActor
