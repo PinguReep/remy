@@ -456,8 +456,11 @@ final class ParcoursQuotidien: ParcoursBase {
             try saisir(titre + " cette semaine", dans: champ)
             // « cette semaine » : jusqu'au dimanche, lu dans l'aperçu ; le titre sans la date.
             let dimanche = Banc.dimancheDeLaSemaine
+            // Délai large : le brouillon de P18 (près de 300 caractères) vient
+            // d'être effacé touche par touche, l'aperçu suit avec retard sur
+            // un runner lent (vu le 26/10 : texte juste, mais après 12 s).
             try etape("echeance-cette-semaine", attendu: [ident("capture.genre.tache"), texte("Tâche « \(titre) »"),
-                                                         texte("avant l'échéance : \(dimanche)")])
+                                                         texte("avant l'échéance : \(dimanche)")], delai: 30)
             noter("échéance attendue dans l'aperçu : \(dimanche)")
             verifier("« \(titre) cette semaine » doit être devinée « Tâche ».", ident("capture.genre.tache").isSelected)
             try toucher(ident("capture.valider"), "Ajouter à Motion")
