@@ -76,6 +76,8 @@ private struct EnTeteRemy: View {
     @Environment(AppModel.self) private var app
     @Binding var listeOuverte: Bool
     @State private var jaugeOuverte = false
+    /// Réglages › Diagnostic (24/10) : la jauge est un outil de constructeur.
+    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
 
     var body: some View {
         let chat = app.chat
@@ -93,7 +95,7 @@ private struct EnTeteRemy: View {
             Spacer(minLength: 6)
             // Le compteur du contexte (Sam, 19/10) : seulement dans un fil de
             // Rémy, face à une tour qui sait mesurer.
-            if chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
+            if jaugeVisible || Diagnostic.demo, chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
                 BoutonJauge(jauge: chat.jauge) {
                     Haptique.leger()
                     jaugeOuverte = true
@@ -142,6 +144,21 @@ private struct EnTeteRemy: View {
                                        description: "Avant un événement « sortie », « soirée », « resto », « verre » : « Rasage » (15 min), au plus tard 3 h avant.")
                 app.chat.montrerPourCapture(LigneChat(deToi: false, texte: "Motion ne sait pas le faire, mais moi si : je te propose cette règle. Avant chaque sortie de ton agenda, je te proposerai le rasage.",
                                                       proposition: Proposition(id: "p-demo", source: "regle", resume: nil, actions: [a], statut: "en_attente")))
+                return
+            }
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "carnet" {
+                // Des courses et un rappel proposés par Rémy, avant « Ajouter ».
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                app.chat.montrerPourCapture(LigneChat(deToi: true, texte: "Ajoute du lait et des œufs, et rappelle-moi d'appeler Léa demain à 9 h."))
+                var liste = ActionProposee(type: "liste")
+                liste.liste = "Courses"
+                liste.articles = ["lait", "œufs"]
+                var rappel = ActionProposee(type: "rappel")
+                rappel.texte = "Appeler Léa"
+                let demain = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+                rappel.quand = ISO8601DateFormatter().string(from: demain.addingTimeInterval(9 * 3600))
+                app.chat.montrerPourCapture(LigneChat(deToi: false, texte: "Je te propose ça : le lait et les œufs dans tes courses, et un rappel demain matin.",
+                                                      proposition: Proposition(id: "p-demo-carnet", source: "carnet", resume: nil, actions: [liste, rappel], statut: "en_attente")))
                 return
             }
             guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "jauge" else { return }
@@ -199,9 +216,9 @@ private struct AccueilRemy: View {
 
     var body: some View {
         let chat = app.chat
-        let derniere = chat.conversations
-            .filter { $0.origine == nil }
-            .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
+        // Le fil du jour s'il y en a un, sinon le dernier : à un geste (24/10).
+        let reprise = Fils.aReprendre(chat.conversations, maintenant: Date())
+        let derniere = reprise?.fil
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -237,7 +254,8 @@ private struct AccueilRemy: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "clock.arrow.circlepath").font(.system(size: 13))
-                            Text("Reprendre « \(d.title) »").font(Police.texte(14)).lineLimit(1)
+                            Text(reprise?.duJour == true ? "Reprendre le fil du jour « \(d.title) »" : "Reprendre « \(d.title) »")
+                                .font(Police.texte(14)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
                         .foregroundStyle(Palette.encre2)
@@ -358,6 +376,28 @@ private struct Fil: View {
                 suitLaFin = true
                 proxy.scrollTo("fin", anchor: .bottom)
             }
+            // Une proposition arrive au bout de la réponse : la carte grandit le
+            // fil d'un coup, sans nouveau mot ni nouvelle ligne, et restait sous
+            // le clavier (« Oui, fais-le » caché). Le fil descend jusqu'au bas
+            // de la carte : la zone du fil s'arrête au-dessus du composeur et du
+            // clavier, la carte et ses boutons sont visibles. Le clavier ne se
+            // range que si Sam n'écrit rien : on ne lui vole jamais le champ en
+            // pleine frappe (ni la dictée du clavier). Pas si Sam est remonté
+            // lire, ni sous son doigt.
+            .onChange(of: chat.lignes.last.flatMap { $0.proposition == nil ? nil : $0.id }) { _, id in
+                guard id != nil, !defile, suitLaFin || chat.lignes.dropLast().last?.deToi == true else { return }
+                let ecrit = !chat.brouillon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                if !ecrit { clavier = false }
+                suitLaFin = true
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("fin", anchor: .bottom) }
+                Task { @MainActor in
+                    // Le clavier descendu, la zone du fil a grandi : encore en bas
+                    // — sauf si Sam a posé le doigt entre-temps pour remonter.
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    guard !defile, suitLaFin else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("fin", anchor: .bottom) }
+                }
+            }
             .onAppear { proxy.scrollTo("fin", anchor: .bottom) }
         }
     }
@@ -476,7 +516,8 @@ private struct LigneMessage: View {
                 }
                 if let p = ligne.proposition {
                     // Une règle de Rémy (19/10) n'est pas une tâche : sa propre carte.
-                    if p.source == "regle" { CarteRegle(ligne: ligne, p: p) } else { PropositionView(ligne: ligne, p: p) }
+                    // Les courses et les rappels (24/10) vont dans le carnet, pas dans Motion.
+                    if p.source == "regle" { CarteRegle(ligne: ligne, p: p) } else if p.source == "carnet" { CarteCarnet(ligne: ligne, p: p) } else { PropositionView(ligne: ligne, p: p) }
                 }
                 if let a = ligne.autorisation { AutorisationView(ligne: ligne, a: a) }
             }
@@ -507,6 +548,8 @@ struct BarreEtapes: View {
     let ligne: LigneChat
     // Ouverte d'office pour la capture de la CI seulement.
     @State private var ouverte = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "etapes"
+    /// Les tokens par seconde : avec la jauge, dans Réglages › Diagnostic (24/10).
+    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
 
     var body: some View {
         let etapes = ligne.etapes
@@ -535,7 +578,7 @@ struct BarreEtapes: View {
                         .animation(.easeOut(duration: 0.2), value: etapes.last?.texte)
                     Spacer(minLength: 4)
                     // La vitesse d'écriture en direct (jauge-v1), une fois par seconde.
-                    if ligne.enCours, let d = ligne.debit {
+                    if ligne.enCours, jaugeVisible || Diagnostic.demo, let d = ligne.debit {
                         Text(JaugeContexte.tps(d))
                             .font(Police.mono(13, .medium))
                             .foregroundStyle(Palette.encre2)
@@ -611,7 +654,7 @@ struct BarreEtapes: View {
 
     /// « · 42 tok/s » après la durée, une fois la réponse mesurée.
     private var vitesseFinale: String {
-        guard let t = ligne.mesures?.tps, t > 0 else { return "" }
+        guard jaugeVisible || Diagnostic.demo, let t = ligne.mesures?.tps, t > 0 else { return "" }
         return " · " + JaugeContexte.tps(t)
     }
 
@@ -796,10 +839,23 @@ private struct PropositionView: View {
     let p: Proposition
     @State private var enCours = false
     @State private var ajustement: DemandeAjustement?
+    /// « Oui » sur une proposition périmée : confirmer ou ajuster d'abord (24/10).
+    @State private var confirmerPerimee = false
+    /// Les lignes décochées (leur rang) : elles ne partiront pas (24/10).
+    @State private var decoches: Set<Int> = []
 
     /// Sam peut régler une ligne (date, durée, catégorie, rappel) avant de dire oui.
     private var ajustable: Bool {
         p.ajustable && !p.echouee && !ligne.enCours && p.id != nil && app.chat.ajustementDisponible
+    }
+
+    /// Une case par ligne : garder une partie seulement, sans réécrire à Rémy.
+    /// Après un échec aussi : « Réessayer » renvoie les mêmes lignes, jamais
+    /// celles que Sam a décochées (ni quand une ligne rangée en rappel n'en
+    /// laisse qu'une).
+    private var partielle: Bool {
+        !p.appliquee && !p.convertie && !ligne.enCours && p.id != nil && (p.actions.count > 1 || !decoches.isEmpty)
+            && app.serveur?.sait("propositions-partielles-v1") == true
     }
 
     var body: some View {
@@ -834,22 +890,50 @@ private struct PropositionView: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
             }
+            if !p.appliquee, !p.convertie, !p.refusee, p.perimee == true {
+                // Ancienne, ou une date est passée : « Oui » demandera de confirmer.
+                Label(p.raisonPeremption ?? "Proposition ancienne : vérifie-la avant de dire oui.", systemImage: "clock.arrow.circlepath")
+                    .font(Police.texte(14, .medium))
+                    .foregroundStyle(Palette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+            }
             ForEach(Array(p.actions.enumerated()), id: \.offset) { i, a in
+                let rang = a.rang ?? i
+                let decochee = partielle && decoches.contains(rang)
                 let ligneAction = LigneAction(action: a,
                                               versAgenda: p.versAgenda,
                                               erreur: erreurAffichee(a),
-                                              barree: estDefaite(a),
+                                              barree: estDefaite(a) || estEcartee(a),
                                               premiere: i == 0 && (p.appliquee || (p.resume ?? "").isEmpty),
-                                              ajustable: ajustable && peutAjuster(a))
-                if ajustable && peutAjuster(a) {
-                    Button {
-                        Haptique.leger()
-                        ajustement = DemandeAjustement(ligne: ligne, rang: a.rang ?? i, action: a, versAgenda: p.versAgenda)
-                    } label: { ligneAction.contentShape(Rectangle()) }
-                    .buttonStyle(AppuiLigne())
-                    .accessibilityHint("Régler la date, la durée ou la catégorie avant de dire oui")
-                } else {
-                    ligneAction
+                                              ajustable: ajustable && peutAjuster(a) && !decochee)
+                HStack(spacing: 0) {
+                    if partielle {
+                        CaseACocher(cochee: !decochee) {
+                            Haptique.leger()
+                            withAnimation(.snappy) {
+                                if decochee { decoches.remove(rang) } else { decoches.insert(rang) }
+                            }
+                        }
+                        .accessibilityLabel("Garder « \(a.libelle) »")
+                        .accessibilityValue(decochee ? "décochée : ne partira pas" : "cochée")
+                        .padding(.leading, 4)
+                        .overlay(alignment: .top) { if i > 0 { Filet() } }
+                    }
+                    Group {
+                        if ajustable && peutAjuster(a) && !decochee {
+                            Button {
+                                Haptique.leger()
+                                ajustement = DemandeAjustement(ligne: ligne, rang: rang, action: a, versAgenda: p.versAgenda)
+                            } label: { ligneAction.contentShape(Rectangle()) }
+                            .buttonStyle(AppuiLigne())
+                            .accessibilityHint("Régler la date, la durée ou la catégorie avant de dire oui")
+                        } else {
+                            ligneAction
+                        }
+                    }
+                    .opacity(decochee ? 0.45 : 1)
                 }
             }
             if p.rangeesEnRappels > 0 && !p.convertie {
@@ -864,6 +948,31 @@ private struct PropositionView: View {
             pied
         }
         .sheet(item: $ajustement) { AjusterAction(demande: $0) }
+        .confirmationDialog("Proposition ancienne", isPresented: $confirmerPerimee, titleVisibility: .visible) {
+            Button("Appliquer quand même") {
+                // Les lignes décochées restent écartées après confirmation.
+                let rangs = partielle ? SelectionLignes.rangs(p.actions, decoches: decoches) : nil
+                agir { if await app.chat.appliquer(ligne, confirmer: true, rangs: rangs) { Haptique.succes() } }
+            }
+            Button("Pas maintenant", role: .cancel) {}
+        } message: {
+            Text((p.raisonPeremption ?? "Elle date un peu.") + (ajustable ? " Touche une ligne pour la régler d'abord." : ""))
+        }
+        .task {
+            // Échec relu plus tard (app relancée) : les lignes écartées au
+            // premier essai restent décochées pour « Réessayer ».
+            if p.echouee, decoches.isEmpty, let ecartees = p.bilan?.ecartees, !ecartees.isEmpty {
+                decoches = Set(p.actions.enumerated().compactMap { (i, a) -> Int? in
+                    guard let nom = a.nom ?? a.titre, ecartees.contains(nom) else { return nil }
+                    return a.rang ?? i
+                })
+            }
+            // Captures de la CI : une ligne décochée (la dernière).
+            let env = ProcessInfo.processInfo.environment
+            if env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "proposition-partielle", partielle, let a = p.actions.last {
+                decoches = [a.rang ?? (p.actions.count - 1)]
+            }
+        }
         .task {
             // Captures de la CI : la feuille « Ajuster » sur la première ligne.
             let env = ProcessInfo.processInfo.environment
@@ -895,8 +1004,15 @@ private struct PropositionView: View {
         return Palette.encre2
     }
 
+    /// Décochée par Sam au moment du « Oui » : pas faite, exprès.
+    private func estEcartee(_ a: ActionProposee) -> Bool {
+        guard p.appliquee, let e = p.bilan?.ecartees, let nom = a.nom ?? a.titre else { return false }
+        return e.contains(nom)
+    }
+
     /// « Pas défait : … » après une annulation incomplète, sinon « Pas fait : … ».
     private func erreurAffichee(_ a: ActionProposee) -> String? {
+        if estEcartee(a) { return nil }
         if let rate = p.echecAnnulation(pour: a) { return "Pas défait : " + (rate.erreur ?? "raison inconnue") }
         guard p.appliquee || p.echouee, p.annulee != true, let e = p.erreur(pour: a) else { return nil }
         return "Pas fait : " + e
@@ -919,8 +1035,13 @@ private struct PropositionView: View {
         if !p.appliquee { return p.versAgenda ? "Rémy propose de changer ton agenda" : "Rémy propose de changer ton planning" }
         if !(p.annulationRatee ?? []).isEmpty { return "Annulation incomplète" }
         if p.annulee == true { return "Annulé : tout est revenu comme avant." }
+        if p.toutDejaLa { return p.versAgenda ? "Déjà dans ton agenda : rien à ajouter" : "Déjà dans ton planning : rien à ajouter" }
         let echecs = p.nombreEchecs
-        if echecs == 0 { return p.versAgenda ? "C'est fait dans ton agenda" : "C'est fait dans ton planning" }
+        let ecartees = p.bilan?.ecartees?.count ?? 0
+        if echecs == 0 {
+            let fait = p.versAgenda ? "C'est fait dans ton agenda" : "C'est fait dans ton planning"
+            return ecartees > 0 ? fait + " (\(max(0, p.actions.count - ecartees)) sur \(p.actions.count))" : fait
+        }
         return echecs >= p.actions.count ? "Rien n'a pu être fait" : "En partie fait"
     }
 
@@ -932,19 +1053,33 @@ private struct PropositionView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     BoutonA(titre: "Non merci", principal: false, hauteur: 46) { agir { await app.chat.ecarter(ligne) } }
-                    BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : "Oui, fais-le", hauteur: 46) {
+                    let gardes = p.actions.count - (partielle ? decoches.count : 0)
+                    BoutonA(titre: enCours ? "…" : p.echouee ? "Réessayer" : SelectionLignes.libelle(total: p.actions.count, gardes: gardes), hauteur: 46) {
+                        // Périmée : jamais appliquée en silence.
+                        if p.perimee == true { confirmerPerimee = true; return }
+                        let rangs = partielle ? SelectionLignes.rangs(p.actions, decoches: decoches) : nil
                         agir {
-                            if await app.chat.appliquer(ligne) { Haptique.succes() }
+                            if await app.chat.appliquer(ligne, rangs: rangs) { Haptique.succes() }
                         }
                     }
                     // Tant que Rémy écrit, la proposition n'est pas enregistrée.
-                    .disabled(ligne.enCours)
+                    .disabled(ligne.enCours || gardes == 0)
                 }
-                Text(ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
-                               : "Pour changer un détail, réponds-le simplement à Rémy.")
-                    .font(Police.texte(13))
-                    .foregroundStyle(Palette.encre3)
-                    .fixedSize(horizontal: false, vertical: true)
+                // La tour fait attendre l'écriture dans la file du quota Motion
+                // (24/10) : on dit combien de temps, au lieu de « … » muet.
+                if enCours, let a = app.attenteMotion {
+                    Label(a.phrase, systemImage: "hourglass")
+                        .font(Police.texte(13, .medium))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(partielle ? "Décoche ce que tu ne veux pas" + (ajustable ? " ; touche une ligne pour la régler." : ".")
+                         : ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel."
+                                   : "Pour changer un détail, réponds-le simplement à Rémy.")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .disabled(enCours)
             .padding(14)
@@ -957,6 +1092,8 @@ private struct PropositionView: View {
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .top) { Filet() }
+        } else if p.toutDejaLa {
+            EmptyView()
         } else if p.annulee != true, p.ledgerId != nil, p.nombreEchecs < p.actions.count {
             HStack(spacing: 8) {
                 Text(ou)
@@ -1599,6 +1736,7 @@ struct ConversationsView: View {
     @State private var aSupprimer: ConversationResume?
     @State private var anciennesOuvertes = false
     @State private var importeesOuvertes = false
+    @State private var courtesOuvertes = false
 
     var body: some View {
         let toutes = app.chat.conversations.sorted {
@@ -1612,7 +1750,13 @@ struct ConversationsView: View {
         }
         let importees = toutes.filter { $0.origine != nil }
         let anciennes = toutes.filter { $0.origine == nil && Fils.estAncienFilDuJour($0.title, maintenant: maintenant) }
-        let principales = toutes.filter { $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) }
+        // Un seul échange il y a plus de 14 jours (24/10) : replié, jamais effacé.
+        let courtes = toutes.filter {
+            $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) && Fils.estEchangeCourtAncien($0, maintenant: maintenant)
+        }
+        let principales = toutes.filter {
+            $0.origine == nil && !Fils.estAncienFilDuJour($0.title, maintenant: maintenant) && !Fils.estEchangeCourtAncien($0, maintenant: maintenant)
+        }
 
         NavigationStack {
             List {
@@ -1651,6 +1795,14 @@ struct ConversationsView: View {
                                     .padding(.top, 6)
                             }
                         }
+                    }
+                    if !courtes.isEmpty {
+                        DisclosureGroup(isExpanded: $courtesOuvertes) {
+                            ForEach(courtes) { c in ligne(c) }
+                        } label: {
+                            titreGroupe("Échanges courts, plus de \(Fils.joursAvantRepli) jours (\(courtes.count))")
+                        }
+                        .listRowBackground(Palette.fond)
                     }
                     if !anciennes.isEmpty {
                         DisclosureGroup(isExpanded: $anciennesOuvertes) {

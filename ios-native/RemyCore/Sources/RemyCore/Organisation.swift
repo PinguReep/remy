@@ -93,6 +93,27 @@ public struct EntreeHistorique: Codable, Sendable, Equatable, Identifiable {
 struct ReponseEtiquettes: Codable { var etiquettes: [Etiquette] }
 struct ReponseDossiers: Codable { var dossiers: [Dossier] }
 struct ReponseHistorique: Codable { var entrees: [EntreeHistorique] }
+
+/// Une page de l'historique (historique-v2) : `suite` se renvoie pour lire
+/// plus ancien ; nil, il n'y a plus rien.
+public struct PageHistorique: Codable, Sendable {
+    public var entrees: [EntreeHistorique]
+    public var suite: Millis?
+}
+
+/// Les filtres de l'historique : vrais échecs, annulées, doublons évités.
+public enum FiltreHistorique: String, CaseIterable, Sendable, Identifiable {
+    case tout, echouee, annulee, dejaLa = "deja_la"
+    public var id: String { rawValue }
+    public var titre: String {
+        switch self {
+        case .tout: return "Tout"
+        case .echouee: return "Échouées"
+        case .annulee: return "Annulées"
+        case .dejaLa: return "Déjà là"
+        }
+    }
+}
 struct ReponseAnalyse: Codable { var elements: [ElementCapture] }
 struct ReponsePropositions: Codable { var propositions: [PropositionRappel] }
 struct ReponseDossier: Codable { var projetMotion: String? }
@@ -134,6 +155,14 @@ extension ClientAPI {
     }
     public func historique() async throws -> [EntreeHistorique] {
         try await json(ReponseHistorique.self, "api/historique").entrees
+    }
+
+    /// Une page, du plus récent au plus ancien, éventuellement filtrée.
+    public func pageHistorique(avant: Millis? = nil, filtre: FiltreHistorique = .tout, limite: Int = 80) async throws -> PageHistorique {
+        var q = "limite=\(limite)"
+        if let avant { q += "&avant=\(Int64(avant))" }
+        if filtre != .tout { q += "&filtre=\(filtre.rawValue)" }
+        return try await json(PageHistorique.self, "api/historique?" + q)
     }
     public func analyserCapture(_ texte: String) async throws -> [ElementCapture] {
         try await json(ReponseAnalyse.self, "api/capture/analyser", methode: "POST", corps: ["texte": texte], delai: 100).elements
@@ -370,6 +399,9 @@ public final class OrganisationModel {
         }
     }
 
+    // Une pensée floue gardée dans « Idées » : `AppModel.noterIdee` (la file
+    // d'envoi des captures, 25/10), qui la garde aussi sans réseau.
+
     /// Le dossier des notes sans projet (créé au premier besoin).
     public func dossierNotes() async -> Dossier? {
         if let d = dossiers.first(where: { $0.id == "notes" }) { return d }
@@ -404,23 +436,72 @@ public final class HistoriqueModel {
     public private(set) var chargement = false
     public private(set) var erreur: String?
     public private(set) var annulations: Set<String> = []
+    /// Le filtre affiché (historique-v2) ; changer de filtre relit la première page.
+    public private(set) var filtre: FiltreHistorique = .tout
+    /// De quoi lire plus ancien ; nil : tout est affiché.
+    public private(set) var suite: Millis?
+    public private(set) var chargementSuite = false
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI
+    /// Numéro de la dernière lecture : une réponse d'un filtre quitté est ignorée.
+    @ObservationIgnored private var lecture = 0
 
     public init(api: ClientAPI) { self.api = api }
 
     public var disponible: Bool { app?.serveur?.sait("historique-v1") == true }
+    /// Pages et filtres : tour à jour du 24/10.
+    public var paginable: Bool { app?.serveur?.sait("historique-v2") == true }
 
     public func charger() async {
-        guard disponible, !chargement else { return }
+        guard disponible else { return }
+        // Un filtre touché pendant une lecture relance une lecture : la dernière gagne.
+        lecture += 1
+        let n = lecture
         chargement = true
-        defer { chargement = false }
+        defer { if n == lecture { chargement = false } }
         do {
-            entrees = try await api.historique()
+            if paginable {
+                let p = try await api.pageHistorique(filtre: filtre)
+                guard n == lecture else { return }
+                entrees = p.entrees
+                suite = p.suite
+            } else {
+                let e = try await api.historique()
+                guard n == lecture else { return }
+                entrees = e
+                suite = nil
+            }
             erreur = nil
         } catch {
+            guard n == lecture else { return }
             if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
             erreur = (error as? LocalizedError)?.errorDescription ?? "Historique illisible."
+        }
+    }
+
+    public func filtrer(_ f: FiltreHistorique) async {
+        guard f != filtre else { return }
+        filtre = f
+        entrees = []
+        suite = nil
+        await charger()
+    }
+
+    /// « Plus ancien » : la page suivante, ajoutée sous les autres.
+    public func plusAncien() async {
+        guard paginable, let avant = suite, !chargementSuite else { return }
+        chargementSuite = true
+        defer { chargementSuite = false }
+        let n = lecture
+        do {
+            let p = try await api.pageHistorique(avant: avant, filtre: filtre)
+            guard n == lecture else { return } // filtre changé entre-temps
+            let connus = Set(entrees.map(\.id))
+            entrees += p.entrees.filter { !connus.contains($0.id) }
+            suite = p.suite
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
+            app?.dire("Plus ancien illisible : \((error as? LocalizedError)?.errorDescription ?? "erreur")")
         }
     }
 

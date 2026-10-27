@@ -22,11 +22,13 @@ console.log = () => {};
 
 // --- Faux Claude (API Anthropic) : compte les appels, répond « Secours ». ------------------
 let appelsClaude = 0;
+const corpsClaude = []; // ce que Claude a reçu, pour vérifier ce qui n'y part jamais
 const anthropic = http.createServer((req, res) => {
   let corps = "";
   req.on("data", (c) => (corps += c));
   req.on("end", () => {
     appelsClaude++;
+    corpsClaude.push(corps);
     const b = JSON.parse(corps || "{}");
     if (!b.stream) {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -76,9 +78,13 @@ const remy = http.createServer(async (req, res) => {
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${remy.address().port}`;
 
+const { fermer } = await import("../lib/db.js");
 test.after(() => {
   remy.close();
   anthropic.close();
+  // La base SQLite est ouverte (capture d'image, réflexion) : la fermer avant
+  // d'effacer le dossier, sinon Windows refuse (EBUSY).
+  fermer();
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
@@ -157,6 +163,39 @@ test("capture, GLM éteint et secours coupé : le texte est gardé pour la nuit,
   assert.equal(appelsClaude, 0);
   const gardees = await (await fetch(`${base}/api/capture`)).json();
   assert.ok(JSON.stringify(gardees).includes("Une idée de projet"), "le texte n'est pas perdu");
+});
+
+test("capture différée (Siri) : réponse immédiate, texte gardé ensuite", async () => {
+  appelsClaude = 0;
+  const r = await envoyerJSON("POST", "/api/capture", { texte: "Rappeler le garage", source: "siri", differe: true });
+  assert.equal(r.status, 202);
+  assert.deepEqual(await r.json(), { ok: true, differe: true });
+  // L'absorption continue sur la tour : GLM éteint, le texte est gardé pour la nuit.
+  let gardees = "";
+  for (let i = 0; i < 50 && !gardees.includes("Rappeler le garage"); i++) {
+    await new Promise((ok) => setTimeout(ok, 100));
+    gardees = JSON.stringify(await (await fetch(`${base}/api/capture`)).json());
+  }
+  assert.ok(gardees.includes("Rappeler le garage"), "le texte n'est pas perdu");
+  assert.equal(appelsClaude, 0);
+});
+
+test("texte lu sur une capture d'écran : jamais chez Claude, ni à la capture ni la nuit, secours activé", async () => {
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const { runReflection } = await import("../lib/reflection.js");
+  const store = await import("../lib/store.js");
+  await reglage(true);
+  try {
+    corpsClaude.length = 0;
+    const r = await envoyerJSON("POST", "/api/capture/image", { image: PNG, texte: "Code de la porte : 4821 B", lien: "https://exemple.org/fiche", joint: "Fiche de l'atelier" });
+    assert.equal(r.status, 200);
+    assert.match((await r.json()).message, /modèle local ne répond pas/);
+    await store.putMemory("## Identité & contexte\n- Sam, essai.");
+    await assert.rejects(runReflection(), (err) => err.message === PRIVE_DE_FOND);
+    assert.ok(!corpsClaude.some((c) => c.includes("4821 B") || c.includes("exemple.org/fiche")), "rien de la capture n'est parti chez Claude");
+  } finally {
+    await reglage(false);
+  }
 });
 
 test("réglage : valeur invalide refusée, autre origine refusée", async () => {

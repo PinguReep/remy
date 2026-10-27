@@ -46,6 +46,19 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(v.api, 1)
         XCTAssertTrue(v.sait("reglages"))
         XCTAssertEqual(app.serveur, v, "lue au chargement")
+        // Hors de l'app (24/10) : « Noter dans Rémy » (capture différée, la tour
+        // répond tout de suite), et l'aperçu du widget / de Siri sur la vraie journée.
+        if v.sait("capture-siri-v1") {
+            let c = try await app.api.capturer("Rappeler le garage", source: "siri", differe: true)
+            XCTAssertEqual(c.differe, true)
+        }
+        XCTAssertFalse(ApercuMaintenant.pour(t.journee, maintenant: Date()).phrase().isEmpty)
+        // 24/10 : la file du quota Motion se lit ; au repos, la carte n'en dit rien.
+        if v.sait("motion-file-v1") {
+            let f = try await app.api.fileMotion()
+            XCTAssertEqual(f.enFile, 0)
+            XCTAssertFalse(f.visible)
+        }
         // Réglages : le secours Claude se lit et se règle (sans objet en démo : pas de GLM).
         let r = try await app.api.reglages()
         XCTAssertEqual(r.secoursCloudSansObjet, true)
@@ -69,6 +82,26 @@ final class IntegrationTests: XCTestCase {
             try await app.api.appliquer(.supprimerRappel(id: r.id))
             let apres = try await app.api.listes()
             XCTAssertFalse(apres.contains { $0.id == l.id })
+        }
+        // Activité du PC (24/10) : allumée, la tour relit le faux ActivityWatch de la CI.
+        if v.sait("activite-pc-v1") {
+            let allumee = await app.activitePC.activer(true)
+            XCTAssertTrue(allumee, app.toast ?? "")
+            let a = try XCTUnwrap(app.activitePC.vue, "vue de l'activité décodée")
+            XCTAssertTrue(a.actif)
+            XCTAssertEqual(a.activitywatch.joignable, true, a.activitywatch.message ?? "")
+            XCTAssertNil(a.probleme)
+            XCTAssertEqual(a.semaine.parJour?.count, 7)
+            let exclue = await app.activitePC.exclure("Discord.exe")
+            XCTAssertTrue(exclue, app.toast ?? "")
+            XCTAssertEqual(app.activitePC.vue?.exclusions, ["discord"])
+            XCTAssertFalse(app.activitePC.vue?.semaine.applis.contains { $0.nom == "discord" } ?? true)
+            // Rien ne reste derrière (les captures suivent ce test).
+            _ = await app.activitePC.retirerExclusion("discord")
+            _ = await app.activitePC.toutEffacer()
+            _ = await app.activitePC.activer(false)
+            XCTAssertEqual(app.activitePC.vue?.actif, false)
+            XCTAssertEqual(app.activitePC.vue?.exclusions, [])
         }
         // Lot 1 : état de Motion, mesures et conseil, tels que la tour les rend.
         if v.sait("motion-etat-v1") { XCTAssertNotNil(t.journee?.motion, "journee.motion lu") }
@@ -155,6 +188,26 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(p()?.proposition?.annulee, true, app.toast ?? "")
             try await app.api.appliquer(.supprimerRappel(id: rappel.id))
         }
+        // 24/10 : une partie seulement d'une proposition (une case par ligne) ;
+        // la ligne décochée ne part pas, et « Annuler » défait le reste.
+        if v.sait("propositions-partielles-v1") {
+            let ouvert = await app.chat.ouvrir("c14")
+            XCTAssertTrue(ouvert)
+            let p = { app.chat.lignes.first { $0.proposition?.id == "p-atelier" } }
+            let ligne = try XCTUnwrap(p(), "la proposition de démo")
+            let rangs = try XCTUnwrap(SelectionLignes.rangs(ligne.proposition?.actions ?? [], decoches: [0]))
+            XCTAssertEqual(rangs, [1])
+            // Le fil de démo date d'un mois : la proposition est périmée
+            // (propositions-perimees-v1), Sam confirme en gardant sa sélection.
+            let fait = await app.chat.appliquer(ligne, confirmer: v.sait("propositions-perimees-v1"), rangs: rangs)
+            XCTAssertTrue(fait, app.toast ?? "")
+            XCTAssertEqual(p()?.proposition?.bilan?.ecartees, ["Trier les chutes de cire"])
+            let jour = try await app.api.tableauDeBord(frais: true).journee
+            let toutes = ((jour?.aFaire ?? []) + (jour?.retard?.items ?? [])).map(\.titre)
+            XCTAssertFalse(toutes.contains("Trier les chutes de cire"), "décochée : pas créée")
+            await app.chat.annuler(try XCTUnwrap(p()))
+            XCTAssertEqual(p()?.proposition?.annulee, true, app.toast ?? "")
+        }
         if v.sait("historique-v1") {
             // La coche puis « Annuler » plus haut sont dans l'historique, en mots.
             let h = try await app.api.historique()
@@ -169,6 +222,37 @@ final class IntegrationTests: XCTestCase {
             let m = try XCTUnwrap(h2.first)
             XCTAssertEqual(m.elements.first?.action, "Durée changée", "\(m.elements)")
             XCTAssertEqual(m.annulable, true)
+        }
+        if v.sait("semaine-v1") {
+            // Demain et les 7 jours (24/10) : la vraie réponse se lit en entier,
+            // avec les horaires Motion du faux service.
+            await app.semaine.charger()
+            let s = try XCTUnwrap(app.semaine.donnees, app.semaine.erreur ?? "semaine illisible")
+            XCTAssertEqual(s.jours.count, 7)
+            XCTAssertEqual(s.illisibles, [], "le contrat a dérivé")
+            XCTAssertEqual(s.jours.flatMap(\.illisibles), [])
+            XCTAssertEqual(s.horaires, "Work Hours")
+            XCTAssertEqual(s.sources?.agenda, "ok")
+            let jours = s.jours.filter { $0.items.contains { $0.titre == "Préparer la réunion fournisseurs" } }
+            XCTAssertEqual(jours.count, 1, "la tâche placée demain par Motion est dans la semaine")
+            XCTAssertNotNil(jours.first?.charge?.disponible, "heures libres d'après les horaires Motion")
+            XCTAssertTrue(s.jours.contains { !$0.deborde.isEmpty }, "la tâche placée après son échéance est signalée")
+        }
+        // 24/10 : « À trancher » rassemble ce qui attend ; « Plus tard » l'écarte et s'annule ;
+        // la revue de la semaine se décode telle que la tour la rend.
+        if v.sait("a-trancher-v1") {
+            let tri = try await app.api.aTrancher()
+            let ids = Set((tri.groupes ?? []).map(\.id))
+            XCTAssertTrue(ids.isSuperset(of: ["cartes", "doublons", "idees", "fils"]), "\(ids)")
+            XCTAssertFalse(tri.retards?.isEmpty ?? true, "la démo a des tâches en retard")
+            let cle = try XCTUnwrap(tri.groupes?.first { $0.id == "fils" }?.lignes.first?.cle)
+            try await app.api.reporterTri(cle)
+            let apres = try await app.api.aTrancher()
+            XCTAssertFalse((apres.groupes ?? []).flatMap(\.lignes).contains { $0.cle == cle })
+            try await app.api.annulerReportTri(cle)
+            let revue = try await app.api.revue()
+            XCTAssertEqual(revue.domaines?.first?.nom, "Boutiques", "\(revue.domaines ?? [])")
+            XCTAssertFalse(revue.appris?.isEmpty ?? true)
         }
         // Contrat : chaque réponse que l'app lit se décode, telle que le serveur la rend.
         _ = try await app.api.memoire()

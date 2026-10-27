@@ -33,14 +33,26 @@ public final class CoffreMemoire: CoffreJeton, @unchecked Sendable {
 /// Le Keychain : le jeton survit aux mises à jour de l'app, ne quitte pas
 /// l'appareil (« ThisDeviceOnly » : ni sauvegarde iCloud, ni nouvel iPhone) et
 /// reste lisible après le premier déverrouillage (requêtes en arrière-plan).
+/// Aucun groupe d'accès dans les requêtes : l'écriture va dans le groupe par
+/// défaut (le trousseau partagé avec les extensions, 24/10), la lecture
+/// cherche dans tous ceux de l'app ou de l'extension.
 public final class CoffreTrousseau: CoffreJeton, @unchecked Sendable {
-    private let service = "remy.jeton-appareil"
+    private let service: String
     private let compte: String
     /// Si le Keychain refuse (simulateur sans trousseau, test sans signature),
     /// l'app garde le jeton pour la session : le cookie prend le relais ensuite.
     private let secours = CoffreMemoire()
 
-    public init(base: URL) { compte = base.host ?? base.absoluteString }
+    /// Le jeton d'appareil de la tour `base`.
+    public convenience init(base: URL) {
+        self.init(service: "remy.jeton-appareil", compte: base.host ?? base.absoluteString)
+    }
+
+    /// Une autre valeur du trousseau (l'adresse de la tour pour les extensions).
+    public init(service: String, compte: String) {
+        self.service = service
+        self.compte = compte
+    }
 
     private var requete: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,

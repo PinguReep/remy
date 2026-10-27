@@ -143,6 +143,32 @@ public struct RegleRemy: Decodable, Identifiable, Equatable, Sendable {
 
 public struct ListeRegles: Decodable, Sendable { public var regles: [RegleRemy] }
 
+/// Ce que la tour a fait d'une règle validée (24/10) : une règle redemandée
+/// n'est pas recréée — rendue telle quelle (`deja`) ou réglée comme la carte
+/// (`fusionnee`). Une réponse illisible ou rejouée compte comme « créée ».
+public struct RetourRegle: Equatable, Sendable {
+    public var deja = false
+    public var miseAJour = false
+
+    public init(deja: Bool = false, miseAJour: Bool = false) {
+        self.deja = deja
+        self.miseAJour = miseAJour
+    }
+
+    init(_ d: Data) {
+        let regles = ((try? JSONSerialization.jsonObject(with: d)) as? [String: Any])?["regles"] as? [[String: Any]] ?? []
+        deja = !regles.isEmpty && regles.allSatisfy { $0["deja"] as? Bool == true }
+        miseAJour = regles.contains { $0["fusionnee"] as? Bool == true }
+    }
+
+    /// Le message de l'app après « Créer la règle ».
+    public var phrase: String {
+        if deja { return "Cette règle existait déjà : rien n'a changé." }
+        if miseAJour { return "Règle mise à jour comme sur la carte : Rémy te proposera la tâche avant chaque événement qui correspond." }
+        return "Règle créée : Rémy te proposera la tâche avant chaque événement qui correspond."
+    }
+}
+
 /// Ce que rend une vérification des règles (compteurs).
 public struct BilanRegles: Decodable, Sendable {
     public var regles: Int
@@ -328,6 +354,10 @@ public struct Proposition: Codable, Equatable, Sendable {
     public var ajustee: Bool?
     /// Ce que Rémy avait proposé, avant ajustement (la tour l'envoie).
     public var actionsOrigine: [ActionProposee]?
+    /// Ancienne, ou une date est passée (24/10) : « Oui » demande de confirmer.
+    public var perimee: Bool?
+    /// Pourquoi, en mots (« Proposée il y a 60 jours. L'échéance… »).
+    public var raisonPeremption: String?
 
     public init(id: String? = nil, source: String?, resume: String?, actions: [ActionProposee], statut: String? = nil,
                 ledgerId: String? = nil, index: Int? = nil, bilan: Bilan? = nil, annulee: Bool? = nil) {
@@ -361,6 +391,17 @@ public struct Proposition: Codable, Equatable, Sendable {
     /// Nombre d'actions ratées d'après le bilan (0 si inconnu).
     public var nombreEchecs: Int { bilan?.echoues?.count ?? 0 }
 
+    /// Tout existait déjà (Motion ou l'agenda) : rien d'écrit, rien de raté.
+    public var toutDejaLa: Bool {
+        guard appliquee, let d = bilan?.dejaLa, !d.isEmpty else { return false }
+        return (bilan?.faits ?? []).isEmpty && nombreEchecs == 0
+    }
+
+    /// Cette action existait déjà (anti-doublon de la tour).
+    public func dejaLa(_ a: ActionProposee) -> Bool {
+        (bilan?.dejaLa ?? []).contains { $0 == a.libelle || $0 == a.nom || $0 == a.titre }
+    }
+
     /// L'erreur d'une action précise, retrouvée par son nom dans le bilan.
     public func erreur(pour a: ActionProposee) -> String? {
         bilan?.echoues?.first { $0.nom == a.libelle || $0.nom == a.nom || $0.nom == a.titre }?.erreur
@@ -376,11 +417,17 @@ public struct Bilan: Codable, Equatable, Sendable {
     public var faits: [String]?
     public var echoues: [Echec]?
     public var espace: String?
+    /// Déjà là (anti-doublon) : ni fait, ni raté (24/10).
+    public var dejaLa: [String]?
+    /// Les lignes décochées par Sam (propositions-partielles-v1) : pas faites, exprès.
+    public var ecartees: [String]?
 
-    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil) {
+    public init(faits: [String]? = nil, echoues: [Echec]? = nil, espace: String? = nil, dejaLa: [String]? = nil, ecartees: [String]? = nil) {
         self.faits = faits
         self.echoues = echoues
         self.espace = espace
+        self.dejaLa = dejaLa
+        self.ecartees = ecartees
     }
 }
 
@@ -413,6 +460,12 @@ public struct ActionProposee: Codable, Equatable, Sendable {
     public var rang: Int?
     /// Catégories (identifiants d'étiquettes) que la tâche gardera, créée.
     public var etiquettes: [String]?
+    /// Carnet (24/10) : la liste et ses articles (type « liste »), ou le
+    /// rappel et son heure ISO (type « rappel »).
+    public var liste: String?
+    public var articles: [String]?
+    public var texte: String?
+    public var quand: String?
 
     public init(type: String? = nil, nom: String? = nil, nouveau_nom: String? = nil, titre: String? = nil,
                 nouveau_titre: String? = nil, echeance: String? = nil, debut: String? = nil, fin: String? = nil,
@@ -485,19 +538,34 @@ public struct ResultatApplication: Codable, Sendable {
     public var etat: String?
     /// Vrai quand la même demande avait déjà été faite (réseau coupé, double tap).
     public var rejoue: Bool?
+    /// Les lignes décochées, pas envoyées (propositions-partielles-v1).
+    public var ecartees: [String]?
 
     /// Le statut de la carte après application, dans le vocabulaire de la conversation.
-    public var statut: String { etat == "echouee" ? "echec" : "applique" }
+    public var statut: String { etat == "echouee" && !toutDejaLa ? "echec" : "applique" }
+
+    /// Rien d'écrit parce que tout existait déjà (« deja_la », ou une tour
+    /// d'avant le 24/10 qui le comptait comme un échec).
+    public var toutDejaLa: Bool {
+        let r = results ?? []
+        return etat == "deja_la" || (!r.isEmpty && r.allSatisfy(\.estDejaLa))
+    }
 
     /// Le bilan au même format que celui que le serveur range dans la conversation.
     public var bilan: Bilan {
         let r = results ?? []
+        let deja = r.filter(\.estDejaLa).compactMap { $0.nom ?? $0.titre }
         return Bilan(
-            faits: r.filter { $0.ok == true }.compactMap { $0.nom ?? $0.titre },
-            echoues: r.filter { $0.ok != true }.map { Echec(nom: $0.nom ?? $0.titre, erreur: $0.erreur) },
-            espace: r.first { $0.ok == true && $0.espace != nil }?.espace
+            faits: r.filter { $0.ok == true && !$0.estDejaLa }.compactMap { $0.nom ?? $0.titre },
+            echoues: r.filter { $0.ok != true && !$0.estDejaLa }.map { Echec(nom: $0.nom ?? $0.titre, erreur: $0.erreur) },
+            espace: r.first { $0.ok == true && $0.espace != nil }?.espace,
+            dejaLa: deja.isEmpty ? nil : deja,
+            ecartees: ecartees?.isEmpty == false ? ecartees : nil
         )
     }
+
+    /// Échecs réels, sans les doublons évités.
+    public var vraisEchecs: Int { bilan.echoues?.count ?? 0 }
 }
 
 public struct ResultatAction: Codable, Sendable {
@@ -506,6 +574,28 @@ public struct ResultatAction: Codable, Sendable {
     public var nom: String?
     public var titre: String?
     public var erreur: String?
+    /// Déjà dans Motion ou dans l'agenda : rien n'a été créé (24/10).
+    public var dejaLa: Bool?
+    public var note: String?
+    /// Pourquoi Motion n'a pas pu (capture-idempotente-v1) : quota, serveur,
+    /// delai, reseau… (passager) ou refus, supprimee, auth… (à revoir).
+    public var nature: String?
+
+    /// Un échec qui passera seul : Motion en quota, en panne, lent ou
+    /// injoignable. Une tour plus ancienne ne dit pas la nature : son message
+    /// « réessaie… » en tient lieu.
+    public var passager: Bool {
+        guard ok == false else { return false }
+        if let nature { return ["quota", "serveur", "delai", "reseau", "horaires", "liste"].contains(nature) }
+        return erreur?.localizedCaseInsensitiveContains("réessaie") == true
+    }
+
+    /// Une tour d'avant le 24/10 rend un doublon comme un échec : relu ici.
+    public var estDejaLa: Bool {
+        if dejaLa == true { return true }
+        guard ok == false, let e = erreur else { return false }
+        return e.contains("existe déjà dans Motion") || e.contains("déjà dans ton agenda")
+    }
 }
 
 /// Réponse de /api/motion/undo et /api/google/undo.
@@ -548,12 +638,14 @@ public struct TableauDeBord: Codable, Sendable, Equatable {
     public var systeme: Systeme?
     /// Le conseil « maintenant » réfléchi par GLM sur la tour (conseil-v1).
     public var conseil: ConseilTour?
+    /// Les échéances qui ne tiennent plus (rituel-v1) : le bandeau « menacée ».
+    public var menacees: [MenaceeTour]?
     /// Les parties illisibles laissées de côté (« activite », « journee.items (1) ») :
     /// l'écran s'affiche sans elles et le dit. Jamais envoyé ni gardé.
     public var illisibles: [String] = []
 
     enum CodingKeys: String, CodingKey {
-        case maintenant, briefing, journee, activite, setup, memoire, couts, systeme, conseil
+        case maintenant, briefing, journee, activite, setup, memoire, couts, systeme, conseil, menacees
     }
 
     /// Toutes les parties illisibles, y compris dans la journée et les sujets.
@@ -579,6 +671,7 @@ extension TableauDeBord {
         couts = c.souple(ResumeCouts.self, .couts, &i)
         systeme = c.souple(Systeme.self, .systeme, &i)
         conseil = c.souple(ConseilTour.self, .conseil, &i)
+        menacees = c.listeSouple(MenaceeTour.self, .menacees, &i)
         illisibles = i
     }
 }
@@ -590,6 +683,8 @@ public struct ConseilTour: Codable, Sendable, Equatable {
         public var texte: String
         public var pourquoi: [String]?
         public var tache: String?
+        /// La priorité déclarée que ce conseil sert (vérifiée par la tour), ou nil.
+        public var priorite: String?
         public var genereA: Millis?
         public var source: String?
     }
@@ -1024,6 +1119,8 @@ public struct RetourCapture: Codable, Sendable {
     public var memoire: Bool?
     /// Dit pourquoi la mémoire n'a pas bougé (ex. « Mémoire pleine »).
     public var message: String?
+    /// Reçue, absorbée ensuite par la tour (capture différée, 24/10).
+    public var differe: Bool?
 
     /// Ce que Sam lit après « Retenir ».
     public var phrase: String {
@@ -1035,6 +1132,9 @@ public struct RetourCapture: Codable, Sendable {
         if memoire == false { return message.map { "Gardé : \($0)" } ?? "Gardé : Rémy le relira cette nuit." }
         return "Rien de nouveau : Rémy le savait déjà."
     }
+
+    /// Une image partagée : son chemin sur la tour (Captures/Images/…, 24/10).
+    public var image: String?
 }
 
 // MARK: - Version et réglages (Lot 0)
@@ -1078,6 +1178,39 @@ public struct Reglages: Codable, Sendable, Equatable {
     public var rechercheWebCoupeeParLaTour: Bool?
     /// La conversation et la mémoire partent avec une recherche autorisée.
     public var contexteCloud: Bool?
+    /// La recherche locale (recherche-locale-v1, 25/10) : le moteur que le
+    /// modèle local interroge lui-même, sans carte ni Claude. nil : la
+    /// recherche passe par Claude (tour plus ancienne, cerveau cloud, ou
+    /// `REMY_RECHERCHE=off`).
+    public var rechercheLocale: String?
+
+    /// Le nom du moteur, pour l'écran (« DuckDuckGo », « SearXNG »).
+    public var moteurRecherche: String? {
+        guard let m = rechercheLocale?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return nil }
+        switch m.lowercased() {
+        case "duckduckgo": return "DuckDuckGo"
+        case "searxng": return "SearXNG"
+        default: return m
+        }
+    }
+
+    /// Ce que dit le réglage « Recherche web » : par qui elle passe.
+    public var phraseRechercheWeb: String {
+        if rechercheWebCoupeeParLaTour == true { return "Coupée sur la tour (REMY_WEB_SEARCH=off) : à rallumer là-bas." }
+        if let m = moteurRecherche {
+            return rechercheWeb == true ? "Rémy cherche lui-même sur le web (\(m)), sans passer par Claude."
+                                        : "Coupée : Rémy répond sans le web."
+        }
+        return rechercheWeb == true ? "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche."
+                                    : "Coupée : Rémy répond sans le web, rien ne part chez Anthropic."
+    }
+
+    /// Le message après avoir changé le réglage.
+    public func confirmationRechercheWeb(_ actif: Bool) -> String {
+        guard actif else { return "Recherche web coupée : Rémy répond sans le web." }
+        return moteurRecherche != nil ? "Recherche web permise : Rémy cherche lui-même quand il en a besoin, sans Claude."
+                                      : "Recherche web permise : Rémy te demandera avant chaque recherche."
+    }
 }
 
 /// Un circuit de travail de fond (nuit, synthèses…) : allumé ou coupé par Sam.

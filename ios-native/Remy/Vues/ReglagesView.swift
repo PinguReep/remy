@@ -10,20 +10,26 @@ struct ReglagesView: View {
     @Environment(\.openURL) private var ouvrirURL
     @AppStorage("confirmerLiens") private var confirmerLiens = true
     @AppStorage("theme") private var theme = "auto"
-    @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
+    @AppStorage(ActiviteEnDirect.cleActive) private var activiteActive = true
+    @AppStorage(ActiviteEnDirect.cleAuto) private var activiteAuto = true
+    @AppStorage(ATrancherModel.cleRevue) private var revueDimanche = true
     @State private var memoire = false
+    @State private var triOuvert = false
+    @State private var revueOuverte = false
     @State private var appareilsOuverts = false
     @State private var reglesOuvertes = false
     @State private var lieuxOuverts = false
     @State private var modelesOuverts = false
+    @State private var activitePCOuverte = false
     @State private var nouveautesOuvertes = false
+    @State private var prioritesOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
     @State private var reglages: Reglages?
     @State private var changementSecours = false
-    @State private var prototypes = false
-    @State private var mesures = false
+    @State private var diagnostic = false
+    @State private var usage = false
 
     var body: some View {
         let d = app.tableau.donnees
@@ -31,10 +37,19 @@ struct ReglagesView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ligne("Ce que Rémy sait de toi", symbole: "person.text.rectangle") { memoire = true }
+                    // Le rendez-vous quotidien (24/10) : coupé par défaut.
+                    if app.rituel.disponible {
+                        ReglagesRituelVue()
+                            .padding(.bottom, 8)
+                    }
+                    if app.organisation.dossiersDisponibles {
+                        ReglageCapture()
+                    }
                     ligne("Ouvrir le site", sous: "Le site te redemandera le mot de passe.", symbole: "safari") {
                         ouvrirURL(app.api.base)
                     }
-                    ligne("Temps de réponse", sous: "Ce que prend chaque étape, iPhone et tour", symbole: "speedometer") { mesures = true }
+                    // J1.8 (24/10) : compté sur l'iPhone, sans contenu.
+                    ligne("Ce que tu utilises vraiment", sous: ResumeUsage.de(CompteursUsage.partages).phrase, symbole: "chart.bar") { usage = true }
                     if let c = d?.couts {
                         info("Coût des 30 derniers jours", valeur: Format.usd(c.jours30), symbole: "creditcard")
                     }
@@ -58,24 +73,6 @@ struct ReglagesView: View {
                     .foregroundStyle(Palette.encre)
                     .padding(.vertical, 12)
                     .overlay(alignment: .bottom) { Filet() }
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 14) {
-                            Image(systemName: "hand.tap").font(.system(size: 18)).frame(width: 26)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Appui pour agrandir le planning").font(Police.texte(16, .medium))
-                                Text("Plus long si ça s'ouvre sans le vouloir.")
-                                    .font(Police.texte(13))
-                                    .foregroundStyle(Palette.encre2)
-                            }
-                        }
-                        Picker("Appui pour agrandir le planning", selection: $appuiMs) {
-                            ForEach(Gestes.choix, id: \.self) { Text("\($0) ms").tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    .foregroundStyle(Palette.encre)
-                    .padding(.vertical, 12)
-                    .overlay(alignment: .bottom) { Filet() }
                     Toggle(isOn: $confirmerLiens) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Prévenir avant d'ouvrir un lien").font(Police.texte(16, .medium))
@@ -89,9 +86,12 @@ struct ReglagesView: View {
                     .padding(.vertical, 10)
                     .frame(minHeight: 60)
                     .overlay(alignment: .bottom) { Filet() }
+                    activiteEnDirect
                     if let r = reglages, r.rechercheWeb != nil {
                         rechercheWeb(r)
-                        if r.rechercheWeb == true { contexteCloud(r) }
+                        // Rémy cherche lui-même (recherche locale) : rien ne part
+                        // au cloud pour chercher, ce réglage n'a plus d'objet.
+                        if r.rechercheWeb == true && r.moteurRecherche == nil { contexteCloud(r) }
                     }
                     if let r = reglages, r.secoursCloudSansObjet != true {
                         secours(r)
@@ -121,6 +121,16 @@ struct ReglagesView: View {
                             lieuxOuverts = true
                         }
                     }
+                    if app.activitePC.disponible {
+                        ligne("Activité du PC", sous: activitePCSous, symbole: "desktopcomputer") {
+                            activitePCOuverte = true
+                        }
+                    }
+                    if app.serveur?.sait("priorites-v1") == true {
+                        ligne("Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", symbole: "star") {
+                            prioritesOuvertes = true
+                        }
+                    }
                     if app.chat.reglesDisponibles {
                         ligne("Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.", symbole: "arrow.triangle.branch") {
                             reglesOuvertes = true
@@ -138,9 +148,31 @@ struct ReglagesView: View {
                     ligne("Nouveautés", sous: nouveautesSous, symbole: "sparkles") {
                         nouveautesOuvertes = true
                     }
-                    ligne("Prototypes de design", sous: "Lot 1 : deux directions à essayer, sur des données fictives.",
-                          symbole: "paintpalette") {
-                        prototypes = true
+                    if app.aTrancher.disponible {
+                        ligne("À trancher", sous: "Cartes, rappels, articles, vieux fils, idées : un geste chacun.", symbole: "tray.2") {
+                            triOuvert = true
+                        }
+                        ligne("Revue de la semaine", sous: "Fait, glissé, idées, trois décisions. Sans IA.", symbole: "calendar.badge.checkmark") {
+                            revueOuverte = true
+                        }
+                        Toggle(isOn: $revueDimanche) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Revue du dimanche").font(Police.texte(16, .medium))
+                                Text("Proposée sur Aujourd'hui le dimanche, 10 minutes. Coupée : seulement depuis ici.")
+                                    .font(Police.texte(13))
+                                    .foregroundStyle(Palette.encre2)
+                            }
+                        }
+                        .tint(Palette.signal)
+                        .foregroundStyle(Palette.encre)
+                        .padding(.vertical, 10)
+                        .frame(minHeight: 60)
+                        .overlay(alignment: .bottom) { Filet() }
+                    }
+                    // Les outils du constructeur, à part (24/10) : temps de réponse,
+                    // jauge du chat (masquée par défaut), appui du planning.
+                    ligne("Diagnostic", sous: "Temps de réponse, jauge du chat, réglages fins", symbole: "stethoscope") {
+                        diagnostic = true
                     }
                     ligne("Se déconnecter", symbole: "rectangle.portrait.and.arrow.right", couleur: Palette.danger, fleche: false) {
                         deconnexion = true
@@ -161,7 +193,8 @@ struct ReglagesView: View {
             .background(Palette.fond)
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(isPresented: $mesures) { MesuresView() }
+            .navigationDestination(isPresented: $diagnostic) { DiagnosticVue() }
+            .navigationDestination(isPresented: $usage) { UsageVue() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fermer") { fermer() }.font(Police.texte(16, .semibold))
@@ -175,19 +208,46 @@ struct ReglagesView: View {
         .sheet(isPresented: $reglesOuvertes) { ReglesVue() }
         .sheet(isPresented: $lieuxOuverts) { LieuxVue() }
         .sheet(isPresented: $modelesOuverts) { ModelesVue() }
+        .sheet(isPresented: $activitePCOuverte) { ActivitePCVue() }
         .sheet(isPresented: $nouveautesOuvertes) { NouveautesListe() }
-        .fullScreenCover(isPresented: $prototypes) { ProtoGalerie() }
+        .sheet(isPresented: $triOuvert) { ATrancherFeuille() }
+        .sheet(isPresented: $revueOuverte) { RevueDimanche() }
+        .sheet(isPresented: $prioritesOuvertes) { PrioritesVue() }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
         }
         .task { await app.modeles.charger() }
         .task {
+            if ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] != "activite-pc" { await app.activitePC.charger() }
+        }
+        .task {
+            // Captures de la CI : l'écran Activité du PC, avec une semaine fictive.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "activite-pc" else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            app.activitePC.montrerPourCapture(ActivitePCDemo.vue())
+            activitePCOuverte = true
+        }
+        .task {
             // Captures de la CI : l'écran Modèle, sur le serveur de démo.
             let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"]
-            guard ecran == "modeles" || ecran == "nouveautes-liste" else { return }
+            guard ecran == "modeles" || ecran == "nouveautes-liste" || ecran == "priorites" else { return }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if ecran == "modeles" { modelesOuverts = true } else { nouveautesOuvertes = true }
+            if ecran == "modeles" { modelesOuverts = true } else if ecran == "priorites" { prioritesOuvertes = true } else { nouveautesOuvertes = true }
+        }
+        .task {
+            // Captures de la CI : « Ce que tu utilises vraiment », gestes fictifs.
+            guard ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "usage" else { return }
+            let c = CompteursUsage.partages
+            c.remettreAZero()
+            let jour: Double = 86_400
+            c.noter(.ouverture, le: Date().addingTimeInterval(-19 * jour))
+            let gestes: [(FonctionUsage, Int)] = [(.aujourdhui, 64), (.terminer, 41), (.remy, 30), (.parler, 27), (.capture, 18), (.listes, 9), (.gerer, 6)]
+            for (f, n) in gestes {
+                for i in 0..<n { c.noter(f, le: Date().addingTimeInterval(-Double(i % 20) * jour)) }
+            }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            usage = true
         }
         .task {
             // Captures de la CI : l'écran Localisation, avec des lieux fictifs.
@@ -200,7 +260,7 @@ struct ReglagesView: View {
             Button("Se déconnecter", role: .destructive) { Task { await app.deconnecter() } }
             Button("Annuler", role: .cancel) {}
         } message: {
-            let attente = app.tableau.gestesEnAttente + app.carnet.enAttente.count
+            let attente = app.tableau.gestesEnAttente + app.carnet.enAttente.count + app.tableau.capturesEnAttente.count
             Text("Il faudra retaper le mot de passe pour revenir."
                  + (attente == 0 ? "" : attente == 1 ? " Un changement pas encore envoyé sera perdu."
                                                      : " \(attente) changements pas encore envoyés seront perdus."))
@@ -234,8 +294,10 @@ struct ReglagesView: View {
         .overlay(alignment: .bottom) { Filet() }
     }
 
-    /// Recherche web (V8) : elle passe par Claude (Anthropic). Permise, Rémy
-    /// demande quand même l'accord à chaque recherche ; coupée, il répond sans.
+    /// Recherche web : avec la recherche locale (recherche-locale-v1, 25/10),
+    /// Rémy cherche lui-même (DuckDuckGo), sans Claude ; sinon (V8) elle passe
+    /// par Claude, et Rémy demande l'accord à chaque recherche. Coupée, il
+    /// répond sans le web.
     private func rechercheWeb(_ r: Reglages) -> some View {
         let force = r.rechercheWebCoupeeParLaTour == true
         return Toggle(isOn: Binding(
@@ -244,11 +306,7 @@ struct ReglagesView: View {
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Recherche web").font(Police.texte(16, .medium))
-                Text(force
-                     ? "Coupée sur la tour (REMY_WEB_SEARCH=off) : à rallumer là-bas."
-                     : r.rechercheWeb == true
-                        ? "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche."
-                        : "Coupée : Rémy répond sans le web, rien ne part chez Anthropic.")
+                Text(r.phraseRechercheWeb)
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -295,9 +353,9 @@ struct ReglagesView: View {
             defer { changementSecours = false }
             do {
                 if let web {
-                    reglages = try await app.api.changerRechercheWeb(web)
-                    app.dire(web ? "Recherche web permise : Rémy te demandera avant chaque recherche."
-                                 : "Recherche web coupée : Rémy répond sans le web.")
+                    let r = try await app.api.changerRechercheWeb(web)
+                    reglages = r
+                    app.dire(r.confirmationRechercheWeb(web))
                 } else if let contexte {
                     reglages = try await app.api.changerContexteCloud(contexte)
                     app.dire(contexte ? "Une recherche autorisée emportera la conversation et ta mémoire."
@@ -391,6 +449,14 @@ struct ReglagesView: View {
     private var nouveautesSous: String {
         let n = app.nouveautes.historique.filter { app.nouveautes.estNouvelle($0) && app.nouveautes.existe($0) }.count
         return n > 0 ? "\(n) nouvelle\(n > 1 ? "s" : "") à découvrir" : "Les tutoriels des mises à jour, à revoir"
+    }
+
+    /// « Coupée », « Aujourd'hui : 3 h 10 actives », « ActivityWatch ne répond pas ».
+    private var activitePCSous: String {
+        guard let v = app.activitePC.vue else { return "Le temps passé dans tes applis, d'après ActivityWatch" }
+        if !v.actif { return v.coupeParLaTour ? "Coupée sur la tour" : "Coupée" }
+        if v.probleme != nil { return "Allumée, mais ActivityWatch ne répond pas" }
+        return v.aujourdhui.total >= 60 ? "Aujourd'hui : \(ActivitePC.duree(v.aujourdhui.total)) actives" : "Allumée : rien encore aujourd'hui"
     }
 
     private var version: String {
@@ -650,6 +716,56 @@ struct MemoireView: View {
             } catch {
                 app.signaler(error)
             }
+        }
+    }
+}
+
+// MARK: - Activité en direct (24/10)
+
+extension ReglagesView {
+    /// La tâche en cours sur l'écran verrouillé et dans la Dynamic Island.
+    /// Coupée : plus aucune activité ; « Démarrer seule » coupé : seulement
+    /// avec « Commencer ».
+    @ViewBuilder
+    var activiteEnDirect: some View {
+        let autorisee = ActiviteEnDirect.partagee.autorisee
+        Toggle(isOn: $activiteActive) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Activité en direct").font(Police.texte(16, .medium))
+                Text(autorisee
+                     ? "La tâche en cours sur l'écran verrouillé et dans la Dynamic Island, avec Terminer et +15 min."
+                     : "Coupées dans les réglages de l'iPhone (Rémy › Activités en direct) : rien ne s'affichera.")
+                    .font(Police.texte(13))
+                    .foregroundStyle(Palette.encre2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Palette.signal)
+        .foregroundStyle(Palette.encre)
+        .padding(.vertical, 10)
+        .frame(minHeight: 60)
+        .overlay(alignment: .bottom) { Filet() }
+        .onChange(of: activiteActive) { _, actif in
+            Task {
+                if actif { await ActiviteEnDirect.partagee.suivre() } else { await ActiviteEnDirect.partagee.toutArreter() }
+            }
+        }
+        if activiteActive {
+            Toggle(isOn: $activiteAuto) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Démarrer seule").font(Police.texte(16, .medium))
+                    Text("Quand une tâche commence pendant que l'app est ouverte. Coupé : seulement avec « Commencer ».")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.signal)
+            .foregroundStyle(Palette.encre)
+            .padding(.vertical, 10)
+            .padding(.leading, 40)
+            .frame(minHeight: 60)
+            .overlay(alignment: .bottom) { Filet() }
         }
     }
 }

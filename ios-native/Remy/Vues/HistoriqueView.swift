@@ -13,12 +13,37 @@ struct HistoriqueView: View {
         let h = app.historique
         NavigationStack {
             List {
+                if h.paginable {
+                    // Filtres (24/10) : les vraies pannes, les annulations, les doublons évités.
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(FiltreHistorique.allCases) { f in
+                                Button {
+                                    Haptique.leger()
+                                    Task { await h.filtrer(f) }
+                                } label: {
+                                    Text(f.titre)
+                                        .font(Police.texte(14, .semibold))
+                                        .foregroundStyle(h.filtre == f ? Palette.surface : Palette.encre)
+                                        .padding(.horizontal, 14)
+                                        .frame(minHeight: 44)
+                                        .background(h.filtre == f ? Palette.encre : Palette.fond2, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(h.filtre == f ? .isSelected : [])
+                            }
+                        }
+                    }
+                    .listRowSeparator(.hidden)
+                }
                 if h.entrees.isEmpty {
                     if h.chargement {
                         HStack(spacing: 12) { ProgressView(); Text("Lecture du journal…").foregroundStyle(Palette.encre2) }.frame(minHeight: 44)
                     } else if let e = h.erreur {
                         Text(e).foregroundStyle(Palette.danger)
                         Button("Réessayer") { Task { await h.charger() } }.frame(minHeight: 44)
+                    } else if h.filtre != .tout {
+                        Text("Rien dans « \(h.filtre.titre) ».").foregroundStyle(Palette.encre2)
                     } else {
                         Text("Rien encore : chaque geste qui change Motion ou ton agenda s'inscrira ici.").foregroundStyle(Palette.encre2)
                     }
@@ -27,6 +52,22 @@ struct HistoriqueView: View {
                     Section(g.id) {
                         ForEach(g.entrees) { e in ligne(e) }
                     }
+                }
+                if h.suite != nil {
+                    // Au-delà des 80 dernières : on remonte page par page.
+                    Button {
+                        Task { await h.plusAncien() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if h.chargementSuite { ProgressView().controlSize(.small) }
+                            Text(h.chargementSuite ? "Lecture…" : "Plus ancien")
+                        }
+                        .font(Police.texte(15, .semibold))
+                        .foregroundStyle(Palette.signal)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(h.chargementSuite)
                 }
             }
             .listeAtelier()
@@ -72,7 +113,7 @@ struct HistoriqueView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(x.action) · « \(x.objet) »")
                         .font(Police.texte(15, .medium))
-                        .foregroundStyle(x.erreur != nil ? Palette.danger : Palette.encre)
+                        .foregroundStyle(x.erreur != nil ? Palette.danger : x.action == "Déjà là" ? Palette.encre2 : Palette.encre)
                         .strikethrough(e.annule == true)
                         .fixedSize(horizontal: false, vertical: true)
                     ForEach(x.changements ?? [], id: \.self) { c in

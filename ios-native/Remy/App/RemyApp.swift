@@ -1,9 +1,12 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 import RemyCore
 
 @main
 struct RemyApp: App {
+    /// Notifications du rendez-vous quotidien et rafraîchissement en arrière-plan (24/10).
+    @UIApplicationDelegateAdaptor(DelegueApp.self) private var delegue
     /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
     @State private var app: AppModel?
     /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
@@ -18,6 +21,10 @@ struct RemyApp: App {
         // Sinon, l'adresse de la tour gardée sur l'iPhone (ou posée à la compilation).
         let env = ProcessInfo.processInfo.environment
         let base = env["REMY_BASE_URL"].flatMap(URL.init(string:)) ?? ClientAPI.adresseTour
+        // Les actions des rappels (Fait, Dans 1 h, Demain) : déclarées avant
+        // qu'une notification touchée ne relance l'app.
+        UNUserNotificationCenter.current().delegate = DelegueNotifications.partage
+        Notifications.declarerActions()
         let modele = base.map(Self.modele)
         _app = State(initialValue: modele)
         _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
@@ -28,6 +35,9 @@ struct RemyApp: App {
         // La journée et les gestes pas encore envoyés restent sur l'iPhone (J1.2).
         let modele = AppModel(api: ClientAPI(base: base), rangement: Rangement.parDefaut())
         modele.nomAppareil = UIDevice.current.name
+        // Widgets et feuille de partage (24/10) : l'adresse de la tour est
+        // recopiée dans le trousseau partagé au démarrage et à la connexion.
+        modele.partage = .systeme
         // Un seul micro pour la dictée et l'appel : l'un coupe l'autre.
         let micro = MicroiPhone()
         micro.coupure = { [weak modele] in modele?.dictee.interrompre() }
@@ -37,6 +47,13 @@ struct RemyApp: App {
         // iOS relance l'app en arrière-plan pour une visite : le capteur doit
         // être là dès le lancement (coupé tant que Sam ne l'a pas allumé).
         CapteurLocalisation.partage.brancher(modele.lieux)
+        // Siri, widgets et activité en direct (24/10) : leurs intentions
+        // s'exécutent ici, même app fermée (lancée en arrière-plan).
+        Raccourcis.app = modele
+        ActiviteEnDirect.partagee.brancher(modele)
+        DelegueNotifications.partage.app = modele
+        // Les propositions des règles et de la nuit : notifications Oui / Plus tard.
+        NotificationsPropositions.brancher(modele)
         return modele
     }
 
@@ -49,9 +66,12 @@ struct RemyApp: App {
                     .environment(app)
                     .tint(Palette.encre)
                     .preferredColorScheme(theme == "clair" ? .light : theme == "sombre" ? .dark : nil)
+                    // remy://capture (widget) ou remy://projets… : LienRemy.
+                    .onOpenURL { url in _ = app.ouvrir(url) }
             } else {
                 AdresseTourVue { url in
                     ClientAPI.retenirAdresse(url)
+                    TrousseauPartage.systeme.publier(url)
                     let m = Self.modele(url)
                     reseau.demarrer(m)
                     app = m
@@ -80,8 +100,13 @@ struct RacineView: View {
                 ConnexionView()
                     .transition(.opacity)
             case .pret:
-                OngletsView()
-                    .transition(.opacity)
+                if let e = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"], e.hasPrefix("partage-") {
+                    // CI : la feuille de partage, contre la tour de démo.
+                    DemoPartageVue(ecran: e)
+                } else {
+                    OngletsView()
+                        .transition(.opacity)
+                }
             }
             }
         }
@@ -91,6 +116,16 @@ struct RacineView: View {
         }
         .task { await app.demarrer() }
         .task { await Demo.appliquer(app) }
+        // Déconnecté : l'activité en direct ne montre plus rien, le briefing et
+        // le bilan programmés (titres de tâches) s'effacent. Connecté ou non :
+        // les widgets se relisent (« Pas connecté », ou la journée).
+        .onChange(of: app.phase) { _, p in
+            if p == .connexion {
+                Task { await ActiviteEnDirect.partagee.toutArreter() }
+                Notifications.oublierRituel()
+            }
+            if p == .connexion || p == .pret { WidgetsAJour.tout() }
+        }
         .animation(.easeOut(duration: 0.2), value: app.phase)
     }
 }
@@ -122,7 +157,8 @@ struct ToastView: View {
                             Haptique.leger()
                             annuler()
                         } label: {
-                            Text("Annuler")
+                            // « Annuler », ou ce que le geste propose à la place.
+                            Text(m.libelle)
                                 .font(Police.texte(15, .semibold))
                                 .underline()
                                 .foregroundStyle(Palette.fond)
@@ -141,7 +177,10 @@ struct ToastView: View {
                 .onTapGesture { if m.annuler == nil { app.message = nil } }
                 .task(id: m.id) {
                     let secondes = m.duree ?? (m.annuler == nil ? 4 : 6)
-                    try? await Task.sleep(nanoseconds: UInt64(secondes * 1_000_000_000))
+                    // Annulée (la feuille du « + » se referme avec sa copie) :
+                    // rien n'est effacé. La copie de l'écran dessous garde le
+                    // message, et son « Annuler », jusqu'à son heure.
+                    do { try await Task.sleep(nanoseconds: UInt64(secondes * 1_000_000_000)) } catch { return }
                     if app.message?.id == m.id { app.message = nil }
                 }
                 .accessibilityElement(children: .contain)
@@ -161,6 +200,12 @@ enum Demo {
         guard let mdp = env["REMY_DEMO_MDP"] else { return }
         try? await Task.sleep(nanoseconds: 800_000_000)
         if app.phase != .pret { try? await app.connecter(motDePasse: mdp) }
+        // Lancée sur la journée gardée, l'app est « prête » avant d'avoir relu
+        // les conversations : les écrans de Rémy les attendent (5 s au plus).
+        let fil = ["remy", "appel", "dictee", "vocal-en-attente", "remy-fil", "ajuster", "ajuster-rappel"].contains(env["REMY_DEMO_ECRAN"] ?? "")
+        for _ in 0..<25 where fil && app.chat.conversations.isEmpty {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
         switch env["REMY_DEMO_ECRAN"] {
         case "remy":
             if let c = app.chat.conversations.first(where: { $0.origine == nil && $0.pinned == true })
@@ -170,10 +215,10 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
-        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle":
+        case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle", "carnet":
             app.chat.fermer()
             app.onglet = .remy
-        case "remy-fil", "ajuster", "ajuster-rappel":
+        case "remy-fil", "ajuster", "ajuster-rappel", "proposition-partielle":
             // Un fil précis (REMY_DEMO_ANCRE = son identifiant).
             if let id = env["REMY_DEMO_ANCRE"] { await app.ouvrirConversation(id) }
         case "appel", "dictee", "vocal-en-attente":
@@ -192,10 +237,10 @@ enum Demo {
                     app.dictee.interrompre()
                 }
             }
-        case "reglages", "lieux", "modeles", "nouveautes-liste":
+        case "reglages", "lieux", "modeles", "nouveautes-liste", "activite-pc", "priorites", "usage":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
-        case "projets", "liste", "rappels", "filtre", "noeud":
+        case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand":
             app.onglet = .projets
         case "cocher":
             // J1.2, tour coupée : la coche reste sur l'iPhone et le dit.

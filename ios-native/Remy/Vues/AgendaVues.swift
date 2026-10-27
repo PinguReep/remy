@@ -16,6 +16,10 @@ struct RendezVousPanneau: View {
     @State private var decaler = false
     @State private var heure = Date()
     @State private var envoi = false
+    /// Prolonger : choisir, puis confirmer (le même contrat que les tâches, 24/10).
+    @State private var choix: Int?
+    /// Le choix de « Décaler » en cours d'envoi (son id).
+    @State private var decalage: String?
 
     private var gestes: Bool { app.serveur?.sait("agenda-gestes-v1") == true && app.tableau.donnees?.systeme?.agenda == true }
 
@@ -45,18 +49,15 @@ struct RendezVousPanneau: View {
                     .foregroundStyle(Palette.encre3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // La croix « Fermer » est posée en haut à droite (Surimpression).
+            .padding(.trailing, 34)
             if e.estActivite {
                 if gestes && Jour.etat(e, maintenant: maintenant) != .passe { prolonger }
+                if gestes { decalerRangee }
                 Rectangle().fill(Palette.filet).frame(height: 1)
                 VStack(spacing: 0) {
-                    if gestes {
-                        ligne("Décaler…", detail: "Une autre heure, même durée", symbole: "clock.arrow.circlepath") {
-                            heure = e.debut.date
-                            decaler = true
-                        }
-                    }
                     if app.serveur?.sait("taches-etat-v2") == true {
-                        ligne(e.fait == true ? "Pas encore faite" : "C'est fait",
+                        ligne(e.fait == true ? "Pas encore terminée" : "Terminer",
                               detail: e.fait == true ? "Elle redevient à faire" : "Cochée dans Rémy ; ton agenda ne change pas",
                               symbole: e.fait == true ? "arrow.uturn.backward.circle" : "checkmark.circle") {
                             ui.gerer = nil
@@ -92,36 +93,67 @@ struct RendezVousPanneau: View {
         .sheet(isPresented: $decaler) { feuilleDecaler }
     }
 
+    /// Choisir, puis confirmer : la fin d'avant et d'après est dite avant d'agir.
     @ViewBuilder
     private var prolonger: some View {
         VStack(alignment: .leading, spacing: 10) {
             TitreSection(texte: "Prolonger")
             HStack(spacing: 8) {
                 ForEach([15, 30, 60], id: \.self) { m in
-                    Button {
-                        guard !envoi else { return }
-                        envoi = true
-                        Haptique.leger()
-                        Task {
-                            if await app.tableau.prolongerActivite(e, de: m) { ui.gerer = nil } else { Haptique.erreur() }
-                            envoi = false
-                        }
-                    } label: {
-                        Text(m < 60 ? "+\(m) min" : "+1 h")
-                            .font(Police.texte(15, .semibold))
-                            .foregroundStyle(Palette.encre)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    let actif = choix == m
+                    PuceGeste(titre: m < 60 ? "+\(m) min" : "+1 h", actif: actif) {
+                        withAnimation(.snappy) { choix = actif ? nil : m }
                     }
-                    .buttonStyle(Appui())
-                    .disabled(envoi)
+                    .accessibilityLabel(m < 60 ? "Prolonger de \(m) minutes" : "Prolonger d'une heure")
+                    .accessibilityAddTraits(actif ? .isSelected : [])
                 }
+            }
+            if let m = choix {
+                BoutonA(titre: envoi ? "…" : "Prolonger jusqu'à \(Format.heure(e.finEffective + Double(m) * 60_000))", hauteur: 46) {
+                    guard !envoi else { return }
+                    envoi = true
+                    Haptique.leger()
+                    Task {
+                        if await app.tableau.prolongerActivite(e, de: m) { ui.gerer = nil } else { Haptique.erreur() }
+                        envoi = false
+                    }
+                }
+                .disabled(envoi)
+                .transition(.opacity)
             }
         }
     }
 
+    /// « Décaler » en un toucher, même durée, annulable ; l'heure exacte au 📅.
+    private var decalerRangee: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TitreSection(texte: "Décaler")
+            HStack(spacing: 8) {
+                ForEach(Decaler.activite(e)) { c in
+                    PuceGeste(titre: decalage == c.id ? "…" : c.libelle, actif: decalage == c.id) {
+                        guard decalage == nil else { return }
+                        decalage = c.id
+                        Task {
+                            let ok = await app.tableau.decaler(e, a: c.date)
+                            decalage = nil
+                            if ok { ui.gerer = nil } else { Haptique.erreur() }
+                        }
+                    }
+                    .accessibilityLabel("Décaler à \(Format.heure(c.date))" + (c.id == "demain" ? ", demain" : ""))
+                }
+                PuceGeste(symbole: "calendar", actif: false) {
+                    heure = e.debut.date
+                    decaler = true
+                }
+                .frame(width: 50)
+                .accessibilityLabel("Choisir une autre heure")
+            }
+            .disabled(decalage != nil)
+        }
+    }
+
     private var preparer: some View {
-        ligne("Préparer avec Rémy", detail: "Une question prête, envoyée seulement si tu le décides", symbole: "bubble.left") {
+        ligne("En parler à Rémy", detail: "Une question prête, envoyée seulement si tu le décides", symbole: "bubble.left") {
             demander(Brouillons.rendezVous(e))
         }
     }
@@ -160,6 +192,7 @@ struct RendezVousPanneau: View {
 
     private func horaires(_ maintenant: Millis) -> String {
         var bits = ["\(Format.heure(e.debut)) – \(Format.heure(e.finEffective))"]
+        if let j = Format.autreJour(e.debut) { bits.insert(j, at: 0) }
         if let l = e.lieu, !l.isEmpty { bits.append(l) }
         if e.fait == true { bits.append("faite") } else if Jour.etat(e, maintenant: maintenant) == .encours { bits.append("en cours") }
         return bits.joined(separator: " · ")

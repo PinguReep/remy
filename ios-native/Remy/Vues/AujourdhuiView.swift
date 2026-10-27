@@ -14,8 +14,9 @@ extension ElementJour {
 }
 
 /// L'accueil, direction A (Lot 1) : la date, le conseil du moment, ce qui se
-/// passe maintenant avec son temps restant, puis la suite. Appui long sur la
-/// suite : la journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
+/// passe maintenant avec son temps restant, le rendez-vous quotidien (échéance
+/// menacée, briefing, bilan), puis la suite. Appui long sur la suite : la
+/// journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
 struct AujourdhuiView: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
@@ -82,9 +83,12 @@ private struct EnTete: View {
                     }
                 }
                 BoutonRond(symbole: "gearshape", libelle: "Réglages") { app.reglagesOuverts = true }
-                BoutonRond(symbole: ouverts > 0 ? "tray.full" : "tray", libelle: "À voir avec Rémy", pastille: ouverts) {
+                // Le briefing rassemble les sujets de la nuit (24/10) ; une tour
+                // pas encore à jour garde la boîte seule.
+                BoutonRond(symbole: ouverts > 0 ? "tray.full" : "tray",
+                           libelle: app.rituel.disponible ? "Ton briefing et les sujets de la nuit" : "À voir avec Rémy", pastille: ouverts) {
                     Haptique.leger()
-                    ui.boiteOuverte = true
+                    if app.rituel.disponible { ui.briefingOuvert = true } else { ui.boiteOuverte = true }
                 }
             }
         }
@@ -100,6 +104,7 @@ private struct EnTete: View {
 
 private struct Contenu: View {
     @Environment(AppModel.self) private var app
+    @Environment(EtatInterface.self) private var ui
     let maintenant: Date
     let demander: (String, String) -> Void
 
@@ -125,15 +130,31 @@ private struct Contenu: View {
             .carte()
             .padding(.horizontal, 16)
         } else {
+            // Quoi faire maintenant d'abord : le conseil du moment et la carte
+            // « Maintenant », avec « Terminer », visibles sans défiler (parcours
+            // P02, 25/10 : le build 37 les avait poussés sous le pli).
             if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
                 ConseilDuMoment(local: local, maintenant: maintenant.millis)
             }
             CarteMaintenant(journee: j, maintenant: maintenant, demander: demander)
+            // Juste en dessous, le rendez-vous quotidien (24/10) : l'échéance
+            // menacée, la proposition du briefing (une fois), le bilan le soir.
+            if let ms = t.donnees?.menacees, let m = ms.first {
+                CarteMenacee(m: m, autres: ms.count - 1, voirTout: { ui.briefingOuvert = true })
+                    .padding(.horizontal, 16)
+                    .id("menacee")
+            }
+            PropositionRituel()
+            if app.rituel.disponible, !app.rituel.bilanRange, Format.calendrier.component(.hour, from: maintenant) >= 18 {
+                EntreeBilan { ui.bilanOuvert = true }
+                    .padding(.horizontal, 16)
+            }
             if lisible {
                 LaSuite(journee: j, maintenant: maintenant, demander: demander).id("journee")
                 ATraiter(journee: j, demander: demander).id("a-traiter")
             }
             FaireConnaissance().id("connaissance")
+            CarteATrancher().id("a-trancher")
         }
     }
 }
@@ -145,12 +166,19 @@ private struct Contenu: View {
 /// réseau, une partie illisible. Jamais un succès qui n'a pas eu lieu.
 private struct Bandeau: View {
     @Environment(AppModel.self) private var app
+    @State private var fileOuverte = false
 
     var body: some View {
         let t = app.tableau
         let s = t.donnees?.journee?.sources
         let attente = t.gestesEnAttente + app.carnet.enAttente.count
+        let captures = t.capturesEnAttente
         VStack(spacing: 8) {
+            // Les captures du « + » qui attendent la tour (25/10) : en tête,
+            // toucher = la liste (retirer, renvoyer).
+            if !captures.isEmpty || t.capturesIllisibles > 0 {
+                ligneCaptures(captures)
+            }
             if let e = t.erreur {
                 ligne(texte(e), reessayer: true)
             } else if app.horsLigne {
@@ -180,6 +208,44 @@ private struct Bandeau: View {
                 ligne("Une partie de ta journée n'a pas pu être lue : elle est laissée de côté.", reessayer: true)
             }
         }
+        // Sur le bandeau entier : la liste reste ouverte quand la ligne disparaît (tout est parti).
+        .sheet(isPresented: $fileOuverte) { FileEnvoiVue() }
+    }
+
+    private func ligneCaptures(_ captures: [Commande]) -> some View {
+        let aRevoir = captures.filter { app.tableau.etat($0).aRevoir }.count
+        let n = captures.count
+        let illisibles = app.tableau.capturesIllisibles
+        let texte = n == 0 ? "\(illisibles) capture\(illisibles > 1 ? "s" : "") illisible\(illisibles > 1 ? "s" : "") gardée\(illisibles > 1 ? "s" : "") à part"
+            : aRevoir == n ? "\(n) capture\(n > 1 ? "s" : "") à revoir : pas partie\(n > 1 ? "s" : "")"
+            : "\(n) en attente d'envoi" + (aRevoir > 0 ? ", dont \(aRevoir) à revoir" : "")
+        return Button {
+            Haptique.leger()
+            fileOuverte = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: aRevoir > 0 ? "exclamationmark.triangle.fill" : "tray.and.arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(aRevoir > 0 ? Palette.danger : Palette.signal)
+                Text(texte)
+                    .font(Police.texte(14, .semibold))
+                    .foregroundStyle(Palette.encre)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 12)
+                Spacer(minLength: 0)
+                Text("Voir").font(Police.texte(15, .semibold)).foregroundStyle(Palette.encre2)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.encre3)
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 14)
+            .frame(minHeight: 44)
+            .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
+        .accessibilityIdentifier("attente.captures")
+        .accessibilityLabel(texte)
+        .accessibilityHint("Ouvre la liste de ce qui attend Rémy")
     }
 
     private var sansReseau: String {
@@ -304,19 +370,48 @@ private struct CarteMaintenant: View {
         case .enCours(let e):
             entete(e.titre, projet: nil, etat: "EN CE MOMENT")
             detail(Self.jusqua(e))
-            BoutonA(titre: "Préparer avec Rémy", symbole: "bubble.left", principal: false) {
+            BoutonA(titre: "En parler à Rémy", symbole: "bubble.left", principal: false) {
                 demander(Brouillons.rendezVous(e), Fils.journee(Date()))
+            }
+        case .suivant(let e) where e.type == "tache" && peutCommencer:
+            // « Commencer » : la tâche passe en cours tout de suite, et
+            // l'activité en direct démarre (écran verrouillé, Dynamic Island).
+            entete(e.titre, projet: e.projet, etat: "À VENIR")
+            detail(avenir(e))
+            HStack(spacing: 10) {
+                BoutonA(titre: "Commencer", symbole: "play.fill") {
+                    Haptique.leger()
+                    Task { await app.tableau.commencer(id: e.id, titre: e.titre, duree: e.duree ?? e.dureeTotale) }
+                }
+                BoutonA(titre: "En parler", symbole: "bubble.left", principal: false) {
+                    demander(Brouillons.tache(e.titre), Fils.journee(Date()))
+                }
             }
         case .suivant(let e):
             entete(e.titre, projet: e.projet, etat: "À VENIR")
             detail(avenir(e))
-            BoutonA(titre: e.estRendezVous ? "Préparer avec Rémy" : "En parler à Rémy", symbole: "bubble.left", principal: false) {
+            BoutonA(titre: "En parler à Rémy", symbole: "bubble.left", principal: false) {
                 demander(e.estRendezVous ? Brouillons.rendezVous(e) : Brouillons.tache(e.titre), Fils.journee(Date()))
             }
         case .aFaire(let t, let total):
             entete(t.titre, projet: t.projet, etat: "À FAIRE AUJOURD'HUI")
             if total > 1 { detail("et \(total - 1) autre\(total > 2 ? "s" : "") tâche\(total > 2 ? "s" : "") aujourd'hui") }
-            BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+            HStack(spacing: 10) {
+                BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: t.id, titre: t.titre, ui: ui) }
+                    .accessibilityIdentifier("maintenant.terminer")
+                if peutCommencer {
+                    BoutonA(titre: "Commencer", symbole: "play.fill", principal: false) {
+                        Haptique.leger()
+                        Task { await app.tableau.commencer(id: t.id, titre: t.titre, duree: t.duree) }
+                    }
+                }
+                // Le même « Gérer » que la tâche en cours (24/10) : décaler, modifier…
+                BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
+                    Haptique.leger()
+                    ui.gerer = ElementJour.sansCreneau(t, retard: false)
+                }
+                .accessibilityIdentifier("maintenant.gerer")
+            }
         case .rienDePrevu(let retards):
             TitreSection(texte: "Temps libre")
             Text("Plus rien de prévu").font(Police.titre(26)).foregroundStyle(Palette.encre)
@@ -342,6 +437,9 @@ private struct CarteMaintenant: View {
             detail("Rien à afficher pour le moment.")
         }
     }
+
+    /// « Commencer » vit sur la tour (taches-etat-v2) : caché sans elle.
+    private var peutCommencer: Bool { app.serveur?.sait("taches-etat-v2") == true }
 
     /// La tâche en cours : le gros chiffre du temps restant, rapporté au temps
     /// attribué (Sam, 15/10 : « 50 min sur 1 h 30 »), la barre du temps,
@@ -387,10 +485,12 @@ private struct CarteMaintenant: View {
         }
         HStack(spacing: 10) {
             BoutonA(titre: "Terminer", symbole: "checkmark") { Cocher.tache(app, id: e.id, titre: e.titre, ui: ui) }
+                .accessibilityIdentifier("maintenant.terminer")
             BoutonA(titre: "Gérer", symbole: "slider.horizontal.3", principal: false) {
                 Haptique.leger()
                 ui.gerer = e
             }
+            .accessibilityIdentifier("maintenant.gerer")
         }
     }
 
@@ -448,9 +548,15 @@ private struct LaSuite: View {
         let suite = items.filter { Jour.etat($0, maintenant: now) != .passe }
         let toute = journee?.toute ?? []
         VStack(alignment: .leading, spacing: 6) {
-            TitreSection(texte: "La suite")
-                .frame(minHeight: 28, alignment: .bottomLeading)
-                .padding(.horizontal, 22)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                TitreSection(texte: "La suite")
+                    .frame(minHeight: 28, alignment: .bottomLeading)
+                Spacer(minLength: 8)
+                // Visible, à portée de pouce : la journée, demain, les 7 jours (24/10).
+                BoutonEchelle { ui.journeeEtendue = true }
+            }
+            .padding(.leading, 22)
+            .padding(.trailing, 10)
             VStack(alignment: .leading, spacing: 0) {
                 if !toute.isEmpty {
                     Text("Toute la journée : " + toute.map(\.titre).joined(separator: " · "))
@@ -574,14 +680,13 @@ private struct LigneSuite: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Ouvre ses actions")
             if !e.estRendezVous {
-                CaseACocher { Cocher.tache(app, id: e.id, titre: e.titre, ui: etat == .encours ? ui : nil) }
+                CaseACocher(nom: e.titre) { Cocher.tache(app, id: e.id, titre: e.titre, ui: etat == .encours ? ui : nil) }
             } else if e.estActivite && app.serveur?.sait("taches-etat-v2") == true {
                 // Une activité à soi (« Aspirateur ») se coche aussi : gardé dans Remy, l'agenda ne change pas.
-                CaseACocher(cochee: e.fait == true) {
+                CaseACocher(cochee: e.fait == true, nom: e.titre) {
                     Haptique.leger()
                     Task { await app.tableau.marquerFaite(e, fait: e.fait != true) }
                 }
-                .accessibilityLabel(e.fait == true ? "Faite" : "Marquer faite")
             }
         }
         .frame(minHeight: 56)
@@ -693,19 +798,20 @@ private struct ATraiter: View {
     }
 }
 
-/// Une tâche sans heure fixe (à faire aujourd'hui, ou en retard).
+/// Une tâche sans heure fixe (à faire aujourd'hui, ou en retard). Touchée,
+/// elle s'ouvre dans le même « Gérer » que les tâches du planning (24/10).
 private struct LigneTache: View {
     @Environment(AppModel.self) private var app
+    @Environment(EtatInterface.self) private var ui
     let t: TacheResume
     let enRetard: Bool
     let demander: (String, String) -> Void
-    @State private var actions = false
 
     var body: some View {
         HStack(spacing: 4) {
             Button {
                 Haptique.leger()
-                actions = true
+                ui.gerer = ElementJour.sansCreneau(t, retard: enRetard)
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(t.titre)
@@ -723,13 +829,10 @@ private struct LigneTache: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            CaseACocher { Cocher.tache(app, id: t.id, titre: t.titre) }
+            .accessibilityHint("Ouvre ses actions : décaler, modifier, terminer")
+            CaseACocher(nom: t.titre) { Cocher.tache(app, id: t.id, titre: t.titre) }
         }
         .frame(minHeight: 52)
-        .modifier(ActionsTache(id: t.id, titre: t.titre, ouvert: $actions, echeance: t.echeance,
-                               duree: t.duree, priorite: t.priorite, bloquee: t.bloquee ?? false, etiquettes: t.etiquettes) {
-            demander(enRetard ? Brouillons.retard(t) : Brouillons.tache(t.titre), Fils.journee(Date()))
-        })
     }
 
     private var detail: String {
@@ -827,100 +930,6 @@ enum Cocher {
     }
 }
 
-/// Replanifier une tâche d'un geste, ou en parler à Rémy (Sam, 09/10 : il
-/// touchait une tâche en retard pour la décaler). Seule l'échéance change ;
-/// Motion recalcule le créneau.
-struct ActionsTache: ViewModifier {
-    @Environment(AppModel.self) private var app
-    let id: String
-    let titre: String
-    @Binding var ouvert: Bool
-    var echeance: Millis? = nil
-    var duree: Int? = nil
-    var priorite: String? = nil
-    var bloquee = false
-    var etiquettes: [String]? = nil
-    let demander: () -> Void
-    @State private var choixDate = false
-    @State private var categoriser = false
-    @State private var date = Format.echeanceDans(jours: 1)
-    @State private var modifier = false
-    @State private var bloquer = false
-    @State private var raison = ""
-
-    func body(content: Content) -> some View {
-        content
-            .confirmationDialog(titre, isPresented: $ouvert, titleVisibility: .visible) {
-                Button("Aujourd'hui") { replanifier(Format.echeanceDans(jours: 0)) }
-                Button("Demain") { replanifier(Format.echeanceDans(jours: 1)) }
-                Button("Dans une semaine") { replanifier(Format.echeanceDans(jours: 7)) }
-                Button("Choisir une date…") { choixDate = true }
-                Button("Modifier…") { modifier = true }
-                if app.tableau.categoriesDisponibles {
-                    Button("Catégorie…") { categoriser = true }
-                }
-                if app.serveur?.sait("taches-etat-v2") == true {
-                    Button("Commencer maintenant") { Task { await app.tableau.commencer(id: id, titre: titre, duree: duree) } }
-                }
-                // « Bloquée » vit sur la tour (D12) : absent tant qu'elle ne sait pas le garder.
-                if app.serveur?.sait("taches-etat-v1") == true {
-                    if bloquee {
-                        Button("Reprendre (plus en attente)") { Task { await app.tableau.bloquer(id: id, titre: titre, bloquee: false) } }
-                    } else {
-                        Button("Mettre en attente…") { bloquer = true }
-                    }
-                }
-                Button("En parler à Rémy") { demander() }
-                Button("Annuler", role: .cancel) {}
-            } message: {
-                Text("Nouvelle échéance : Motion trouvera le créneau.")
-            }
-            .sheet(isPresented: $modifier) {
-                ModifierTache(id: id, titre: titre, echeance: echeance, duree: duree, priorite: priorite)
-            }
-            .sheet(isPresented: $categoriser) { CategoriserTache(id: id, titre: titre, actuelles: etiquettes ?? []) }
-            .alert("En attente de quoi ?", isPresented: $bloquer) {
-                TextField("Le devis, une réponse de Hugo… (facultatif)", text: $raison)
-                Button("Mettre en attente") {
-                    let r = raison
-                    raison = ""
-                    Task { await app.tableau.bloquer(id: id, titre: titre, bloquee: true, raison: r) }
-                }
-                Button("Annuler", role: .cancel) { raison = "" }
-            } message: {
-                Text("Elle reste dans ta journée, marquée « en attente », et le conseil du moment ne te la propose plus.")
-            }
-            .sheet(isPresented: $choixDate) {
-                NavigationStack {
-                    DatePicker("Échéance", selection: $date, in: Date()..., displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .environment(\.locale, Format.locale)
-                        .environment(\.timeZone, Format.fuseau)
-                        .padding(.horizontal, 18)
-                        .navigationTitle(titre)
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) { Button("Annuler") { choixDate = false } }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Replanifier") {
-                                    choixDate = false
-                                    replanifier(Format.echeanceDans(jours: 0, depuis: date))
-                                }
-                            }
-                        }
-                }
-                .presentationDetents([.medium, .large])
-            }
-    }
-
-    private func replanifier(_ echeance: Date) {
-        Haptique.leger()
-        Task {
-            if !(await app.tableau.replanifier(id: id, titre: titre, echeance: echeance)) { Haptique.erreur() }
-        }
-    }
-}
-
 // MARK: - Faire connaissance (l'onboarding, tant qu'il reste une étape)
 
 private struct FaireConnaissance: View {
@@ -969,5 +978,40 @@ private struct FaireConnaissance: View {
             .carte()
             .padding(.horizontal, 16)
         }
+    }
+}
+
+/// Le soir, une porte vers le bilan (30 s).
+private struct EntreeBilan: View {
+    let ouvrir: () -> Void
+
+    var body: some View {
+        Button {
+            Haptique.leger()
+            ouvrir()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "moon.stars")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Palette.signal)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Faire le bilan du soir")
+                        .font(Police.texte(16, .semibold))
+                        .foregroundStyle(Palette.encre)
+                    Text("Fait, glissé, ce qui reste → demain. 30 secondes.")
+                        .font(Police.texte(14))
+                        .foregroundStyle(Palette.encre2)
+                }
+                Spacer(minLength: 6)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.encre3)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .carte(rayon: 18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
     }
 }

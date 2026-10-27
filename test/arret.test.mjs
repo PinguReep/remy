@@ -190,7 +190,8 @@ test("coupée avant le premier mot : mention seule, ni titre ni mémoire", async
   appelsTaches = [];
   const c = await nouvelleConversation();
   let arret = null;
-  const evenements = await envoyer(c.id, "Question difficile", async (nom, data) => {
+  // « Explique » : réflexion sans appeler le routeur (lib/allegement.js).
+  const evenements = await envoyer(c.id, "Explique-moi pourquoi, question difficile", async (nom, data) => {
     if (nom === "status" && /réfléchit/.test(data.text) && !arret) {
       arret = post(`/api/conversations/${c.id}/stop`).then((r) => r.json());
     }
@@ -200,7 +201,7 @@ test("coupée avant le premier mot : mention seule, ni titre ni mémoire", async
   const conv = await lire(c.id);
   assert.equal(conv.messages.length, 2, "le message de Sam reste : le modèle le verra au tour suivant");
   assert.equal(conv.messages[1].content, MENTION_INTERROMPU);
-  assert.deepEqual(appelsTaches, ["routeur"], "aucun appel de titre ni de mémoire après l'arrêt");
+  assert.deepEqual(appelsTaches, [], "ni routeur (cerveau local), ni titre ni mémoire après l'arrêt");
 });
 
 test("un message envoyé pendant l'écriture attend qu'elle se termine", async () => {
