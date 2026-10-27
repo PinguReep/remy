@@ -146,6 +146,9 @@ process.env.REMY_PROVIDER = "api";
 process.env.ANTHROPIC_API_KEY = "cle-de-test";
 process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${anthropic.address().port}`;
 process.env.REMY_BROWSE = "off";
+// Ce fichier teste le chemin direct (le modèle principal cherche lui-même,
+// REMY_SALLE_BLANCHE=off) ; la salle blanche : test/salle-blanche.test.mjs.
+process.env.REMY_SALLE_BLANCHE = "off";
 process.env.BROWSE_TEST_PUBLIQUES = "127.0.0.1";
 process.env.REMY_DUCKDUCKGO_URL = `http://127.0.0.1:${serveurDdg.address().port}/html/`;
 process.env.REMY_DUCKDUCKGO_LITE_URL = `http://127.0.0.1:${serveurDdg.address().port}/lite/`;
@@ -605,7 +608,8 @@ test("injection par un extrait de recherche : la mémoire ne sort pas, la tentat
     assert.ok(!vusWeb.slice(avant).some((u) => u.startsWith("/collecte")), "le serveur de collecte n'a rien reçu");
     assert.deepEqual(vusWeb.slice(avant), ["/bareme-officiel"]);
     const couts = await store.listCostEntries();
-    assert.ok(couts.some((c) => c.kind === "lecture" && /collecte\?d=Traitement/.test(c.label) && /refusée/.test(c.label)), "la tentative est au panneau des coûts");
+    assert.ok(couts.some((c) => c.kind === "lecture" && c.model === "127.0.0.1" && /refusée : adresse inconnue/.test(c.label)), "la tentative est au panneau des coûts");
+    assert.ok(!couts.some((c) => /SECRET-MEMOIRE-42/.test(c.label || "")), "sans recopier ce qu'elle emportait");
     assert.doesNotMatch(finDe(ev).text, /À vérifier/);
   } finally {
     await store.putMemory("");
