@@ -3,9 +3,11 @@ import Foundation
 /// Repère une date ou une heure dans une phrase française, sans réseau ni IA
 /// (spec §5, plan §5.8) : « Appeler le garage demain à 9h » → demain 9:00,
 /// reste « Appeler le garage ». Une date seule tombe à 9:00 ; une heure seule
-/// déjà passée tombe le lendemain. Les échéances larges (25/10) : « cette
-/// semaine » va jusqu'au dimanche, « fin octobre » au dernier jour du mois,
-/// « avant le 3 » à la veille ; un flou (« début novembre ») n'est jamais une date.
+/// déjà passée tombe le lendemain. Les échéances larges (25/10, 27/10) :
+/// « cette semaine » va jusqu'au dimanche, « fin octobre » au dernier jour du
+/// mois, « début novembre » au 5 ; « avant X » (« avant le 3 », « avant
+/// mardi », « avant demain ») jusqu'à la fin de la veille, 23 h 59. Un flou
+/// (« mi-novembre », « courant novembre ») n'est jamais une date.
 public enum AnalyseDate {
     public struct Resultat: Equatable, Sendable {
         public let quand: Date
@@ -20,18 +22,31 @@ public enum AnalyseDate {
         /// part du jour dit, pas du 9 h posé pour un rappel : « vendredi », dit
         /// un vendredi à 10 h, c'est ce soir, pas dans une semaine.
         public let echeance: Date
+        /// « fin octobre, déjà passée : ce soir » : une fin ou un début de mois
+        /// passés depuis 31 jours au plus tombent aujourd'hui (27/10), et
+        /// l'aperçu le dit. Nil sinon.
+        public let dejaPassee: String?
 
-        public init(quand: Date, reste: String, heureDite: Bool = true, echeance: Date? = nil) {
+        public init(quand: Date, reste: String, heureDite: Bool = true, echeance: Date? = nil, dejaPassee: String? = nil) {
             self.quand = quand
             self.reste = reste
             self.heureDite = heureDite
             self.echeance = echeance ?? (heureDite ? quand : Format.echeanceDans(jours: 0, depuis: quand))
+            self.dejaPassee = dejaPassee
         }
     }
 
     static let jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
     static let mois = ["janvier", "février", "fevrier", "mars", "avril", "mai", "juin", "juillet", "août", "aout",
                        "septembre", "octobre", "novembre", "décembre", "decembre"]
+    /// Le nom d'un mois, pour l'aperçu (« fin octobre, déjà passée »).
+    static let nomsMois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
+                           "novembre", "décembre"]
+    /// « début novembre » : le 5 (27/10), assez tôt pour être un début.
+    static let jourDuDebut = 5
+    /// Une fin ou un début de mois passés depuis au plus 31 jours : aujourd'hui
+    /// (en retard de fait), pas l'an prochain.
+    static let retardToleres = 31
     /// Un mois en toutes lettres ou abrégé (« oct. », « fév »).
     static let motifMois = #"(janv(?:ier|\.)?|f[ée]v(?:rier|r?\.)?|mars|avr(?:il|\.)?|mai|juin|juil(?:let|\.)?|ao[uû]t|sept(?:embre|\.)?|oct(?:obre|\.)?|nov(?:embre|\.)?|d[ée]c(?:embre|\.)?)(?![\p{L}])"#
     static let motifJourSemaine = #"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)"#
@@ -41,8 +56,8 @@ public enum AnalyseDate {
     /// avec elle. La dictée perd parfois l'apostrophe (« d ici », « jusqu a »).
     static let motifAvant = #"(?:avant|pour|d['’ ]\s*ici|jusqu['’ ]\s*(?:à|a)|au\s+plus\s+tard)"#
     /// Ce qui mène à une échéance large (« d'ici la fin du mois », « pour
-    /// la fin de la semaine ») : retiré avec elle.
-    static let motifLien = #"(?:"# + motifAvant + #"\s+)?(?:(?:à\s+)?la\s+|en\s+)?"#
+    /// la fin de la semaine », « au début du mois ») : retiré avec elle.
+    static let motifLien = #"(?:"# + motifAvant + #"\s+)?(?:(?:à\s+)?la\s+|en\s+|au\s+)?"#
     /// « cette semaine », « d'ici la fin de la semaine », « la semaine
     /// prochaine » : jusqu'au dimanche (25/10). « la semaine » seule n'en est
     /// pas une (« le menu de la semaine »).
@@ -52,8 +67,10 @@ public enum AnalyseDate {
     /// jamais une date (le dimanche tomberait APRÈS la période voulue).
     static let motifSemaineFloue = #"\b(?:d[ée]but|milieu|courant|mi)\s*(?:-|de\s+|du\s+)?(?:la\s+)?semaine"#
     /// « fin octobre », « fin du mois », « avant la fin du mois prochain » :
-    /// le dernier jour du mois. « début novembre » reste un flou, jamais une date.
-    static let motifFinMois = #"\b"# + motifLien + #"fin\s+(?:(du\s+mois(?:\s+prochain)?|de\s+(?:ce\s+)?mois)|(?:d['’]\s*|de\s+)?"#
+    /// le dernier jour du mois ; « début novembre », « début du mois
+    /// prochain » : le 5 (27/10). « mi-novembre », « courant novembre »
+    /// restent des flous, jamais une date.
+    static let motifBordMois = #"\b"# + motifLien + #"(fin|d[ée]but)\s+(?:(du\s+mois(?:\s+prochain)?|de\s+(?:ce\s+)?mois)|(?:d['’]\s*|de\s+)?"#
         + motifMois + #"(?:\s+(20\d{2})\b)?)"#
     /// Devant une date dite (« avant le 12/11 », « d'ici le 3 novembre »).
     static let motifPrefixeDate = #"(avant|pour|d['’ ]\s*ici|jusqu['’ ]\s*au|au\s+plus\s+tard)"#
@@ -138,8 +155,13 @@ public enum AnalyseDate {
         // Le jour. Une date explicite (« lundi 2 novembre », « le 12/11 »)
         // passe avant le jour de la semaine qui l'accompagne.
         var finJour: Int?
-        /// « avant le 3 » : la veille, posée plus bas si aucune heure n'est dite.
+        /// « avant le 3 », « avant mardi » : la veille, posée plus bas si aucune
+        /// heure n'est dite.
         var avantStrict = false
+        /// La veille d'un « avant » : son échéance est 23 h 59 (27/10).
+        var finDeVeille = false
+        /// « fin octobre, déjà passée : ce soir » (27/10).
+        var dejaPassee: String?
         func estAvant(_ prefixe: String?) -> Bool { prefixe?.lowercased() == "avant" }
         let premierDuMois = cal.date(from: cal.dateComponents([.year, .month], from: debut)) ?? debut
         /// « le 3 » seul ne se lit qu'en fin de phrase, devant une heure ou un
@@ -170,12 +192,14 @@ public enum AnalyseDate {
             heure = moment.map { ($0, 0) }
             retirer(m.range)
             if moment == nil { finJour = m.range.location }
-        } else if let m = cherche(#"\b(?:"# + motifAvant + #"\s+)?apr[eè]s[- ]demain\b"#) {
+        } else if let m = cherche(#"\b(?:("# + motifAvant + #")\s+)?apr[eè]s[- ]demain\b"#) {
             jour = cal.date(byAdding: .day, value: 2, to: debut)
+            avantStrict = estAvant(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
-        } else if let m = cherche(#"\b(?:"# + motifAvant + #"\s+)?demain\b"#) {
+        } else if let m = cherche(#"\b(?:("# + motifAvant + #")\s+)?demain\b"#) {
             jour = cal.date(byAdding: .day, value: 1, to: debut)
+            avantStrict = estAvant(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
         } else if let m = cherche(#"\b(?:"# + motifPrefixeDate + #"\s+)?(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b"#),
@@ -195,14 +219,14 @@ public enum AnalyseDate {
             finJour = m.range.location
         // Un jour de la semaine passe avant « cette semaine » : « jeudi, cette
         // semaine » vise jeudi, et une échéance plus tôt ne fait jamais rater.
-        // « avant vendredi » reste vendredi 23 h (et « avant demain », demain) :
-        // la veille stricte ne vaut que pour une date chiffrée (« avant le 3 »,
-        // décision du 25/10). À trancher par Sam s'il la veut partout.
-        } else if let m = cherche(#"\b(?:"# + motifAvant + #"\s+)?(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)(\s+prochain)?\b"#),
-                  let nom = groupe(m, 1)?.lowercased(), let cible = jours.firstIndex(of: nom) {
+        // « avant vendredi » : jeudi 23 h 59, comme « avant demain » (ce soir)
+        // et « avant le 3 » (27/10 : une seule règle pour « avant »).
+        } else if let m = cherche(#"\b(?:("# + motifAvant + #")\s+)?(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)(\s+prochain)?\b"#),
+                  let nom = groupe(m, 2)?.lowercased(), let cible = jours.firstIndex(of: nom) {
             let actuel = cal.component(.weekday, from: maintenant) - 1
             let ecart = (cible - actuel + 7) % 7
-            memeJourSemaine = ecart == 0 && groupe(m, 2) == nil
+            avantStrict = estAvant(groupe(m, 1))
+            memeJourSemaine = ecart == 0 && groupe(m, 3) == nil
             jour = cal.date(byAdding: .day, value: ecart == 0 && !memeJourSemaine ? 7 : ecart, to: debut)
             retirer(m.range)
             finJour = m.range.location
@@ -225,23 +249,39 @@ public enum AnalyseDate {
             let prochaine = (groupe(m, 0) ?? "").lowercased().contains("prochaine")
             jour = cal.date(byAdding: .day, value: ecart + (prochaine ? 7 : 0), to: debut)
             retirer(m.range)
-        } else if let m = cherche(motifFinMois) {
-            // Le mois dit, sinon celui-ci (ou le suivant) ; un mois passé : l'an prochain.
-            var mois: Date?
-            if let dit = groupe(m, 1) {
-                mois = cal.date(byAdding: .month, value: dit.lowercased().contains("prochain") ? 1 : 0, to: premierDuMois)
-            } else if let mo = groupe(m, 2).flatMap(numeroMois) {
-                var c = DateComponents()
-                c.year = groupe(m, 3).flatMap(Int.init) ?? cal.component(.year, from: debut)
-                c.month = mo
-                c.day = 1
-                mois = cal.date(from: c)
-                if groupe(m, 3) == nil, let x = mois, x < premierDuMois { mois = cal.date(byAdding: .year, value: 1, to: x) }
+        } else if let m = cherche(motifBordMois) {
+            // « fin » : le dernier jour du mois ; « début » : le 5. Le mois dit,
+            // sinon celui-ci (ou le suivant). Déjà passé depuis 31 jours au plus
+            // (« fin octobre » dit le 2 novembre) : aujourd'hui, en retard de
+            // fait ; au-delà, l'an prochain. Jamais une date passée.
+            let fin = (groupe(m, 1) ?? "").lowercased() == "fin"
+            func borne(_ premier: Date) -> Date? {
+                fin ? cal.date(byAdding: DateComponents(month: 1, day: -1), to: premier)
+                    : cal.date(byAdding: .day, value: jourDuDebut - 1, to: premier)
             }
-            if let mois, let fin = cal.date(byAdding: DateComponents(month: 1, day: -1), to: mois) {
-                jour = fin
-                retirer(m.range)
+            func premierDe(mois: Int, annee: Int) -> Date? { cal.date(from: DateComponents(year: annee, month: mois, day: 1)) }
+            var candidates: [Date] = []
+            var dit = ""
+            if let duMois = groupe(m, 2) {
+                let prochain = duMois.lowercased().contains("prochain")
+                if let p = cal.date(byAdding: .month, value: prochain ? 1 : 0, to: premierDuMois), let b = borne(p) { candidates = [b] }
+                dit = prochain ? "du mois prochain" : "du mois"
+            } else if let mo = groupe(m, 3).flatMap(numeroMois) {
+                let an = cal.component(.year, from: debut)
+                let annees = groupe(m, 4).flatMap(Int.init).map { [$0] } ?? [an - 1, an, an + 1]
+                candidates = annees.compactMap { premierDe(mois: mo, annee: $0).flatMap(borne) }
+                dit = nomsMois[mo - 1]
             }
+            let passees = candidates.filter { $0 < debut }
+            let aVenir = candidates.filter { $0 >= debut }
+            if let recente = passees.max(),
+               aVenir.isEmpty || (cal.dateComponents([.day], from: recente, to: debut).day ?? .max) <= retardToleres {
+                jour = debut
+                dejaPassee = "\(fin ? "fin" : "début") \(dit), déjà passé\(fin ? "e" : "") : ce soir"
+            } else {
+                jour = aVenir.min()
+            }
+            if jour != nil { retirer(m.range) }
         } else if let m = numeroJour(), let n = groupe(m, 4).flatMap(Int.init),
                   // « le 20 du mois prochain » : le 20 du mois qui suit, pas celui-ci.
                   let depuis = groupe(m, 6) != nil ? cal.date(byAdding: .month, value: 1, to: premierDuMois) : debut,
@@ -290,10 +330,21 @@ public enum AnalyseDate {
         if let (h, mi) = heure, let moment, moment >= 14, h < 12 { heure = (h + 12, mi) }
         // « avant le 3 » sans heure : la veille. « Avant » est strict, et une
         // échéance plus tôt ne fait jamais rater (25/10). Une heure ou un moment
-        // dits (« avant le 3 à 14h », « avant le 3 au soir ») fixent déjà la
-        // borne : le 3, à cette heure. La veille déjà passée (« avant le 3 »,
-        // dit le 3) : aujourd'hui, jamais une date passée.
-        if avantStrict, heure == nil, let j = jour, let v = cal.date(byAdding: .day, value: -1, to: j) { jour = max(v, debut) }
+        // dits (« avant le 3 à 14h », « avant mardi 14h ») fixent déjà la
+        // borne : ce jour-là, à cette heure. La veille déjà passée (« avant le
+        // 3 », dit le 3) : aujourd'hui, jamais une date passée. « avant mardi »
+        // dit un mardi : celui de la semaine prochaine. L'échéance de la
+        // veille est 23 h 59 (27/10 : « avant X » = jusqu'à la fin de la veille).
+        if avantStrict, heure == nil, var j = jour {
+            if memeJourSemaine {
+                j = cal.date(byAdding: .day, value: 7, to: j) ?? j
+                memeJourSemaine = false
+            }
+            if let v = cal.date(byAdding: .day, value: -1, to: j) {
+                jour = max(v, debut)
+                finDeVeille = true
+            }
+        }
 
         let quand: Date
         var echeance: Date?
@@ -322,7 +373,9 @@ public enum AnalyseDate {
                 // vendredi soir après 23 h vise la semaine suivante ; un autre
                 // jour déjà presque fini (« aujourd'hui » à 23 h 30) garde
                 // jusqu'à minuit plutôt qu'une échéance passée.
-                var e = Format.echeanceDans(jours: 0, depuis: jour)
+                var e = finDeVeille
+                    ? cal.date(bySettingHour: 23, minute: 59, second: 0, of: jour) ?? Format.echeanceDans(jours: 0, depuis: jour)
+                    : Format.echeanceDans(jours: 0, depuis: jour)
                 if e <= maintenant {
                     e = memeJourSemaine
                         ? cal.date(byAdding: .day, value: 7, to: e) ?? e
@@ -337,7 +390,8 @@ public enum AnalyseDate {
             return nil
         }
         let heureDite = heure != nil || (relatif != nil && !relatifEnJours)
-        return Resultat(quand: quand, reste: nettoyer(t), heureDite: heureDite, echeance: echeance)
+        return Resultat(quand: quand, reste: nettoyer(t), heureDite: heureDite, echeance: echeance,
+                        dejaPassee: heure == nil ? dejaPassee : nil)
     }
 
     /// Une date à venir (le 3/02 en décembre : l'an prochain).
