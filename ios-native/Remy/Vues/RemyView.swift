@@ -284,15 +284,16 @@ private struct AccueilRemy: View {
         let derniere = reprise?.fil
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 12) {
-                    MarqueRemy(taille: 44)
-                    Text("Qu'est-ce qu'on règle ?")
-                        .font(Police.titre(28))
-                        .foregroundStyle(Palette.encre)
-                        .fixedSize(horizontal: false, vertical: true)
-                    // Privée : la carte dit ce qui change, juste en dessous ;
-                    // le texte d'accueil laisse sa place (clavier ouvert).
-                    if !chat.privee {
+                // Privée : la carte qui dit ce qui change prend la tête de
+                // l'écran (la marque et son cadenas sont déjà dans l'en-tête),
+                // lisible clavier ouvert, même sur un petit iPhone.
+                if !chat.privee {
+                    VStack(alignment: .leading, spacing: 12) {
+                        MarqueRemy(taille: 44)
+                        Text("Qu'est-ce qu'on règle ?")
+                            .font(Police.titre(28))
+                            .foregroundStyle(Palette.encre)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(chat.conversations.isEmpty && chat.erreurListe == nil
                              ? "Je suis Rémy, ton directeur de cabinet. Je vois ton agenda et tes tâches, et je t'aide à t'organiser. Écris-moi comme à quelqu'un."
                              : "Un conseil, un arbitrage, un changement de planning. Je dis toujours ce que je modifie, et tu gardes le dernier mot.")
