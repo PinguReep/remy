@@ -180,7 +180,9 @@ final class NouveautesTests: XCTestCase {
         let r = suite()
         // Les vues telles que le build 37 les a laissées : l'historique (séries
         // 1 et 2) et toute la série 3 sans capacité (tour sans les nouvelles).
-        let serie3SansCapacite = Nouveautes.catalogue.filter { $0.serie == 3 && $0.capacite == nil }.map(\.id)
+        // Les entrées ajoutées depuis (25/10) n'existaient pas dans le build 37.
+        let depuis37: Set<String> = ["capture-hors-ligne"]
+        let serie3SansCapacite = Nouveautes.catalogue.filter { $0.serie == 3 && $0.capacite == nil && !depuis37.contains($0.id) }.map(\.id)
         XCTAssertEqual(Array(serie3SansCapacite.prefix(2)), ["partage", "hors-app"], "les 6 premières pages du build 37")
         let anciennes = Nouveautes.catalogue.filter { $0.serie < 3 }.map(\.id)
         r.set((anciennes + serie3SansCapacite).sorted(), forKey: "nouveautes.vues")
@@ -191,10 +193,16 @@ final class NouveautesTests: XCTestCase {
         XCTAssertFalse(a.nouveautes.estNouvelle(Nouveautes.catalogue.first { $0.id == "modele" }!), "l'historique ne bouge pas")
         a.nouveautes.pageVue(a.nouveautes.affichees!.pages.count - 1)
         a.nouveautes.fermer()
-        // Une seule fois : au lancement suivant, rien ne revient.
+        // Une seule fois : au lancement suivant, la reprise ne revient pas ;
+        // seule l'entrée plus récente, qui n'a pas tenu dans la feuille, vient.
         let b = app([], reglages: r)
         b.nouveautes.verifier()
-        XCTAssertNil(b.nouveautes.affichees)
+        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["capture-hors-ligne"])
+        b.nouveautes.pageVue(b.nouveautes.affichees!.pages.count - 1)
+        b.nouveautes.fermer()
+        let b2 = app([], reglages: r)
+        b2.nouveautes.verifier()
+        XCTAssertNil(b2.nouveautes.affichees)
         // Une installation neuve n'a rien à reprendre.
         let neuve = suite()
         let c = app([], reglages: neuve)

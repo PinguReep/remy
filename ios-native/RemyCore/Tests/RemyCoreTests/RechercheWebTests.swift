@@ -166,4 +166,30 @@ final class RechercheWebTests: XCTestCase {
         let r = try JSONDecoder().decode(Reglages.self, from: Data(#"{"secoursCloud":false}"#.utf8))
         XCTAssertNil(r.rechercheWeb, "pas de ligne « Recherche web » face à une tour d'avant V8")
     }
+
+    /// Recherche locale (recherche-locale-v1, 25/10) : la tour cherche elle-même.
+    /// Le réglage le dit, et ne parle plus de Claude ; sans elle, l'ancien texte.
+    func testRechercheLocaleLeReglageNeParlePlusDeClaude() throws {
+        func lire(_ json: String) throws -> Reglages { try JSONDecoder().decode(Reglages.self, from: Data(json.utf8)) }
+        let locale = try lire(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo"}"#)
+        XCTAssertEqual(locale.phraseRechercheWeb, "Rémy cherche lui-même sur le web (DuckDuckGo), sans passer par Claude.")
+        XCTAssertEqual(locale.confirmationRechercheWeb(true), "Recherche web permise : Rémy cherche lui-même quand il en a besoin, sans Claude.")
+        XCTAssertEqual(try lire(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"searxng"}"#).moteurRecherche, "SearXNG")
+        XCTAssertEqual(try lire(#"{"secoursCloud":false,"rechercheWeb":false,"rechercheLocale":"duckduckgo"}"#).phraseRechercheWeb,
+                       "Coupée : Rémy répond sans le web.")
+        // Une tour sans recherche locale (ou `REMY_RECHERCHE=off`) : null, ou rien.
+        for json in [#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":null}"#, #"{"secoursCloud":false,"rechercheWeb":true}"#] {
+            let claude = try lire(json)
+            XCTAssertNil(claude.moteurRecherche)
+            XCTAssertEqual(claude.phraseRechercheWeb, "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche.")
+            XCTAssertEqual(claude.confirmationRechercheWeb(true), "Recherche web permise : Rémy te demandera avant chaque recherche.")
+        }
+        XCTAssertEqual(try lire(#"{"secoursCloud":false,"rechercheWeb":false,"rechercheWebCoupeeParLaTour":true,"rechercheLocale":"duckduckgo"}"#).phraseRechercheWeb,
+                       "Coupée sur la tour (REMY_WEB_SEARCH=off) : à rallumer là-bas.")
+        // Le tutoriel de la série 3 n'existe que si la tour cherche elle-même.
+        let n = try XCTUnwrap(Nouveautes.catalogue.first { $0.id == "recherche-web" })
+        XCTAssertEqual(n.serie, 3)
+        XCTAssertEqual(n.capacite, "recherche-locale-v1")
+        XCTAssertNil(Nouveautes.catalogue.first { $0.id == "capture-hors-ligne" }?.capacite, "la file d'envoi vit sur l'iPhone")
+    }
 }
