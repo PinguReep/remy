@@ -465,7 +465,8 @@ public final class CarnetModel {
         let auj = Format.debutDuJour(maintenant)
         let jour = Format.debutDuJour(d)
         let ecart = Int((jour.timeIntervalSince(auj) / 86_400).rounded())
-        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier" : Format.jourSemaineCourt(d)
+        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier"
+            : Format.jourSemaineCourt(d) + Format.anneeSiAutre(d, maintenant: maintenant)
         return j + " " + Format.heure(d)
     }
 

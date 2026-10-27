@@ -14,8 +14,9 @@ extension ElementJour {
 }
 
 /// L'accueil, direction A (Lot 1) : la date, le conseil du moment, ce qui se
-/// passe maintenant avec son temps restant, puis la suite. Appui long sur la
-/// suite : la journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
+/// passe maintenant avec son temps restant, le rendez-vous quotidien (échéance
+/// menacée, briefing, bilan), puis la suite. Appui long sur la suite : la
+/// journée à l'échelle. La boîte « À voir avec Rémy » est en haut.
 struct AujourdhuiView: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
@@ -129,8 +130,15 @@ private struct Contenu: View {
             .carte()
             .padding(.horizontal, 16)
         } else {
-            // Le rendez-vous quotidien (24/10) : l'échéance menacée d'abord,
-            // la proposition du briefing (une fois), le bilan le soir.
+            // Quoi faire maintenant d'abord : le conseil du moment et la carte
+            // « Maintenant », avec « Terminer », visibles sans défiler (parcours
+            // P02, 25/10 : le build 37 les avait poussés sous le pli).
+            if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
+                ConseilDuMoment(local: local, maintenant: maintenant.millis)
+            }
+            CarteMaintenant(journee: j, maintenant: maintenant, demander: demander)
+            // Juste en dessous, le rendez-vous quotidien (24/10) : l'échéance
+            // menacée, la proposition du briefing (une fois), le bilan le soir.
             if let ms = t.donnees?.menacees, let m = ms.first {
                 CarteMenacee(m: m, autres: ms.count - 1, voirTout: { ui.briefingOuvert = true })
                     .padding(.horizontal, 16)
@@ -141,10 +149,6 @@ private struct Contenu: View {
                 EntreeBilan { ui.bilanOuvert = true }
                     .padding(.horizontal, 16)
             }
-            if lisible, let local = Conseil.pour(.maintenant, j, maintenant: maintenant.millis) {
-                ConseilDuMoment(local: local, maintenant: maintenant.millis)
-            }
-            CarteMaintenant(journee: j, maintenant: maintenant, demander: demander)
             if lisible {
                 LaSuite(journee: j, maintenant: maintenant, demander: demander).id("journee")
                 ATraiter(journee: j, demander: demander).id("a-traiter")
@@ -162,12 +166,19 @@ private struct Contenu: View {
 /// réseau, une partie illisible. Jamais un succès qui n'a pas eu lieu.
 private struct Bandeau: View {
     @Environment(AppModel.self) private var app
+    @State private var fileOuverte = false
 
     var body: some View {
         let t = app.tableau
         let s = t.donnees?.journee?.sources
         let attente = t.gestesEnAttente + app.carnet.enAttente.count
+        let captures = t.capturesEnAttente
         VStack(spacing: 8) {
+            // Les captures du « + » qui attendent la tour (25/10) : en tête,
+            // toucher = la liste (retirer, renvoyer).
+            if !captures.isEmpty || t.capturesIllisibles > 0 {
+                ligneCaptures(captures)
+            }
             if let e = t.erreur {
                 ligne(texte(e), reessayer: true)
             } else if app.horsLigne {
@@ -197,6 +208,44 @@ private struct Bandeau: View {
                 ligne("Une partie de ta journée n'a pas pu être lue : elle est laissée de côté.", reessayer: true)
             }
         }
+        // Sur le bandeau entier : la liste reste ouverte quand la ligne disparaît (tout est parti).
+        .sheet(isPresented: $fileOuverte) { FileEnvoiVue() }
+    }
+
+    private func ligneCaptures(_ captures: [Commande]) -> some View {
+        let aRevoir = captures.filter { app.tableau.etat($0).aRevoir }.count
+        let n = captures.count
+        let illisibles = app.tableau.capturesIllisibles
+        let texte = n == 0 ? "\(illisibles) capture\(illisibles > 1 ? "s" : "") illisible\(illisibles > 1 ? "s" : "") gardée\(illisibles > 1 ? "s" : "") à part"
+            : aRevoir == n ? "\(n) capture\(n > 1 ? "s" : "") à revoir : pas partie\(n > 1 ? "s" : "")"
+            : "\(n) en attente d'envoi" + (aRevoir > 0 ? ", dont \(aRevoir) à revoir" : "")
+        return Button {
+            Haptique.leger()
+            fileOuverte = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: aRevoir > 0 ? "exclamationmark.triangle.fill" : "tray.and.arrow.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(aRevoir > 0 ? Palette.danger : Palette.signal)
+                Text(texte)
+                    .font(Police.texte(14, .semibold))
+                    .foregroundStyle(Palette.encre)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 12)
+                Spacer(minLength: 0)
+                Text("Voir").font(Police.texte(15, .semibold)).foregroundStyle(Palette.encre2)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.encre3)
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 14)
+            .frame(minHeight: 44)
+            .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
+        .accessibilityIdentifier("attente.captures")
+        .accessibilityLabel(texte)
+        .accessibilityHint("Ouvre la liste de ce qui attend Rémy")
     }
 
     private var sansReseau: String {

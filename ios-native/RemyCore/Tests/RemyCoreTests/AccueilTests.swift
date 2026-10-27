@@ -203,10 +203,88 @@ final class AccueilTests: XCTestCase {
         let a = app()
         let ok = await a.noterTache("  Appeler le garage ")
         XCTAssertTrue(ok)
+        await a.tableau.relectureApresGeste?.value
         let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
         XCTAssertEqual(action["type"] as? String, "creer")
         XCTAssertEqual(action["nom"] as? String, "Appeler le garage")
         XCTAssertEqual(a.toast, "Ajoutée à Motion : « Appeler le garage ». Il lui trouve un créneau.")
+    }
+
+    /// Parcours P07 : « Envoyer le devis à Hugo vendredi », forcée en tâche,
+    /// partait sans échéance. Le jour compris part comme date limite (fin de
+    /// journée, jamais un créneau) et la confirmation le dit.
+    func testUneTacheDateeGardeSonEcheance() async throws {
+        FauxServeur.reponses = [
+            "GET /api/dashboard": [(200, "{}")],
+            "POST /api/motion/apply": [(200, #"{"ledgerId":"L7","echecs":0,"results":[{"ok":true,"type":"creer","nom":"Envoyer le devis à Hugo"}]}"#)],
+        ]
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = Format.fuseau
+        // Un jeudi à venir : une échéance déjà passée à l'envoi serait dite
+        // autrement (« … était déjà passée »), le test ne dépend pas du jour.
+        var jeudi = try XCTUnwrap(cal.date(bySettingHour: 10, minute: 40, second: 0, of: Date().addingTimeInterval(86_400)))
+        while cal.component(.weekday, from: jeudi) != 5 { jeudi = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: jeudi)) }
+        let vendredi23h = try XCTUnwrap(cal.date(bySettingHour: 23, minute: 0, second: 0, of: jeudi.addingTimeInterval(86_400)))
+        let d = try XCTUnwrap(AnalyseDate.extraire("Envoyer le devis à Hugo vendredi", maintenant: jeudi))
+        XCTAssertEqual(d.echeance, vendredi23h)
+        let a = app()
+        let ok = await a.noterTache(d.reste, echeance: d.echeance)
+        XCTAssertTrue(ok)
+        await a.tableau.relectureApresGeste?.value
+        let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
+        XCTAssertEqual(action["nom"] as? String, "Envoyer le devis à Hugo")
+        XCTAssertEqual(action["echeance"] as? String, Format.isoAvecFuseau(vendredi23h))
+        XCTAssertTrue((action["echeance"] as? String)?.contains("T23:00:00") == true)
+        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Envoyer le devis à Hugo », à faire d'ici \(Format.echeanceLongue(vendredi23h)).")
+        XCTAssertTrue(a.toast?.contains("d'ici vendredi") == true)
+    }
+
+    /// Contre-relecture du défaut 1 : la confirmation (« Ajoutée à Motion… »
+    /// et son « Annuler ») vit 6 s depuis qu'elle s'affiche. `noterTache`
+    /// attendait la relecture de la journée (jusqu'à 30 s sur la tour) avant
+    /// que la feuille du « + » se ferme : le message s'usait dessous. Il
+    /// rend la main tout de suite, la journée se relit derrière.
+    func testNoterUneTacheNAttendPasLaJournee() async throws {
+        FauxServeur.reponses = [
+            "GET /api/dashboard": [(200, "{}")],
+            "POST /api/motion/apply": [(200, #"{"ledgerId":"L8","echecs":0,"results":[{"ok":true,"type":"creer","nom":"Appeler le garage"}]}"#)],
+        ]
+        FauxServeur.delais = ["GET /api/dashboard": 3_000_000_000]
+        defer { FauxServeur.delais = [:] }
+        let a = app()
+        let debut = Date()
+        let ok = await a.noterTache("Appeler le garage")
+        XCTAssertTrue(ok)
+        XCTAssertLessThan(Date().timeIntervalSince(debut), 1.5, "la feuille se ferme sans attendre la journée")
+        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Appeler le garage ». Il lui trouve un créneau.")
+        XCTAssertNotNil(a.message?.annuler)
+        XCTAssertEqual(a.message?.libelle, "Annuler")
+        // La journée se relit quand même, derrière.
+        await a.tableau.relectureApresGeste?.value
+        XCTAssertTrue(FauxServeur.recues.contains("GET /api/dashboard"))
+    }
+
+    /// Décision du 25/10 : hors ligne, la tâche n'est plus proposée « en
+    /// rappel ». Elle attend sur l'iPhone, telle que comprise (titre,
+    /// échéance), et la feuille se ferme : rien n'est perdu.
+    func testHorsLigneUneTacheAttendSurLIPhone() async throws {
+        defer { FauxServeur.coupures = [:] }
+        let a = app()
+        a.api.rejeuSur = true
+        FauxServeur.coupures = ["POST /api/motion/apply": 10]
+        let echeance = Date().addingTimeInterval(86_400)
+        let ok = await a.noterTache("Envoyer le devis", echeance: echeance)
+        XCTAssertTrue(ok, "gardée : la feuille se ferme")
+        XCTAssertEqual(a.toast, "Pas de réponse de Rémy : « Envoyer le devis » est gardée sur l'iPhone, elle partira dès qu'il sera joignable.")
+        XCTAssertEqual(a.message?.libelle, "Annuler")
+        let attente = try XCTUnwrap(a.tableau.capturesEnAttente.first?.capture)
+        XCTAssertEqual(attente, CaptureFigee(genre: .tache, texte: "Envoyer le devis", echeance: echeance))
+        XCTAssertEqual(a.tableau.gestesEnAttente, 0, "une capture n'est pas un « changement » de la journée")
+        // « Annuler » : retirée de la file. L'essai coupé l'a peut-être fait
+        // arriver : on ne promet pas « ne partira pas » (contre-relecture).
+        a.message?.annuler?()
+        XCTAssertTrue(a.tableau.capturesEnAttente.isEmpty)
+        XCTAssertEqual(a.toast, "Annulée de la file : « Envoyer le devis ». Un envoi est resté sans réponse, elle est peut-être déjà arrivée : vérifie dans Motion.")
     }
 
     func testRetenirDepuisLePlus() async throws {
