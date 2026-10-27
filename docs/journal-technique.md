@@ -15,7 +15,8 @@ notes privées, sur la tour.
   « Nouvelle conversation privée » ne crée rien sur la tour : l'écran vide est
   marqué privé et le fil naît privé au premier message (`ChatModel.privee`),
   jamais un instant public. « Rendre privée » : confirmation qui dit « sans
-  retour » AVANT d'agir ; un refus de la tour ne pose pas le cadenas. Une
+  retour » AVANT d'agir ; pendant l'appel, l'en-tête dit « Mise en privé… »
+  (jamais un tap muet) ; un refus de la tour ne pose pas le cadenas. Une
   importée est privée d'office (la tour le dit aussi).
 - **Où** : écran vide de Rémy (bouton 52 pt « Nouvelle conversation
   privée »), titre de l'en-tête (un menu, chevron : « Rendre cette

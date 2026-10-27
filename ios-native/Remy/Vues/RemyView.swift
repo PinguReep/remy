@@ -92,7 +92,7 @@ private struct EnTeteRemy: View {
             Menu {
                 if chat.privee {
                     Button { priveeOuverte = true } label: { Label("Ce que change « privée »", systemImage: "lock.shield") }
-                } else if chat.idCourant != nil && chat.origine == nil {
+                } else if chat.idCourant != nil && chat.origine == nil && !chat.miseEnPrive {
                     Button {
                         Task { await chat.lireRecherchePrivee() }
                         confirmerPrivee = true
@@ -110,6 +110,13 @@ private struct EnTeteRemy: View {
                             Text("Privée").font(Police.texte(13, .semibold)).foregroundStyle(Palette.signal)
                                 .fixedSize()
                             Text("·").font(Police.texte(13)).foregroundStyle(Palette.encre3)
+                        } else if chat.miseEnPrive {
+                            // La tour la rend privée : jamais un tap muet, même
+                            // sur un réseau lent (le cadenas vient à sa réponse).
+                            ProgressView().controlSize(.mini).tint(Palette.signal)
+                            Text("Mise en privé…").font(Police.texte(13, .semibold)).foregroundStyle(Palette.signal)
+                                .fixedSize()
+                            Text("·").font(Police.texte(13)).foregroundStyle(Palette.encre3)
                         }
                         Text(titre)
                             .font(Police.texte(13))
@@ -123,7 +130,8 @@ private struct EnTeteRemy: View {
                 .contentShape(Rectangle())
             }
             .accessibilityIdentifier("remy.titre")
-            .accessibilityLabel(chat.privee ? "Conversation privée : \(titre)" : "Conversation : \(titre)")
+            .accessibilityLabel(chat.privee ? "Conversation privée : \(titre)"
+                                : chat.miseEnPrive ? "Mise en privé en cours : \(titre)" : "Conversation : \(titre)")
             .accessibilityHint("Rendre privée, ou ouvrir une nouvelle conversation")
             Spacer(minLength: 6)
             // Le compteur du contexte (Sam, 19/10) : seulement dans un fil de
