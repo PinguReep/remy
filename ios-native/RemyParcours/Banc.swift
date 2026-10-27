@@ -12,6 +12,20 @@ enum Banc {
     static var portPilote: UInt16 { UInt16(env["REMY_PARCOURS_PILOTE"] ?? "") ?? 3099 }
     /// La même tour, sous un autre nom : un trousseau vierge (jeton rangé par hôte).
     static var tourAutreNom: String { tour.replacingOccurrences(of: "127.0.0.1", with: "localhost") }
+
+    /// Le dimanche de cette semaine (lundi → dimanche), écrit comme l'aperçu du
+    /// « + » écrit une échéance (« dimanche 1 novembre », heure de Paris).
+    static var dimancheDeLaSemaine: String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Paris") ?? .current
+        let aujourdhui = cal.startOfDay(for: Date())
+        let ecart = (1 - cal.component(.weekday, from: aujourdhui) + 7) % 7
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "fr_FR")
+        f.timeZone = cal.timeZone
+        f.dateFormat = "EEEE d MMMM"
+        return f.string(from: cal.date(byAdding: .day, value: ecart, to: aujourdhui) ?? aujourdhui)
+    }
 }
 
 /// Le pilote de la tour de démo (ios-native/RemyParcours/tour-pilote.mjs) :
@@ -60,6 +74,18 @@ enum Pilote {
 
     static func couperTour() { demander("/couper") }
     static func relancerTour() { demander("/relancer") }
+    /// Rémy arrêté derrière Tailscale : le port répond 502 à tout.
+    static func mettreEnPanne() { demander("/panne") }
+
+    /// Les tâches de ce nom dans le faux Motion (nil : le pilote n'a pas répondu).
+    static func compterTaches(_ nom: String) -> Int? {
+        // ASCII seulement dans la ligne de requête : le reste est encodé.
+        let sur = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+        let q = nom.addingPercentEncoding(withAllowedCharacters: sur) ?? nom
+        let r = demander("/compter?nom=\(q)")
+        guard let m = r.range(of: #""n":(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(r[m].dropFirst(4))
+    }
 }
 
 private final class Tampon: @unchecked Sendable {
@@ -101,17 +127,29 @@ class ParcoursBase: XCTestCase {
     /// Corrigé (ToastView ne l'efface plus quand la feuille l'annule) : une
     /// vraie vérification, plus un constat.
     @MainActor
-    func confirmationApresFeuille(_ message: String, champ: XCUIElement) throws {
-        let toast = texte(message)
-        let pendant = toast.waitForExistence(timeout: 3)
-        // Regardé dès que la feuille est partie, avant la capture : le message
+    func confirmationApresFeuille(_ message: String, champ: XCUIElement, idChamp: String = "capture.champ") throws {
+        // Une seule lecture de l'écran par tour (`snapshot`) : la confirmation
         // vit 6 s depuis le geste, et chaque requête XCUITest sur l'accueil
-        // (chargé depuis le build 37) prend son temps (vu : 12 s pour l'étape).
-        let fermee = attendreDisparition(champ, delai: 10)
-        let apres = fermee && toast.exists
-        let annuler = apres && bouton("Annuler").exists
+        // prend son temps (vu : 12 s pour l'étape ; 30 s sur un runner lent,
+        // 26/10). La feuille partie, la confirmation et son « Annuler » sont
+        // lus dans la MÊME image de l'écran — plus de course entre trois requêtes.
+        var pendant = false, fermee = false, apres = false, annuler = false
+        let fin = Date().addingTimeInterval(12)
+        repeat {
+            guard let ecran = try? app.snapshot() else { break }
+            let toastLa = Self.trouve(ecran) { $0.label.contains(message) }
+            if toastLa { pendant = true }
+            if !Self.trouve(ecran, { $0.identifier == idChamp }) {
+                fermee = true
+                apres = toastLa
+                annuler = Self.trouve(ecran) { $0.elementType == .button && $0.label == "Annuler" }
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < fin
         try etape("feuille-fermee", absent: [champ], delai: 2)
-        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")")
+        noter("confirmation « \(message) » vue pendant la fermeture : \(pendant ? "oui" : "non"), après : \(apres ? "oui" : "non"), « Annuler » : \(annuler ? "oui" : "non")"
+              + (fermee ? "" : " (feuille encore là au bout de 12 s)"))
         verifier("Après le « + », la confirmation (« \(message)… ») et son « Annuler » doivent rester visibles une fois la feuille refermée.",
                  apres && annuler)
     }
@@ -332,6 +370,15 @@ class ParcoursBase: XCTestCase {
         e.press(forDuration: duree)
     }
 
+    /// Le « + » rend le brouillon d'une feuille fermée en route (P18 en laisse
+    /// un, exprès) : le banc le vide avant de taper, hors gestes de Sam.
+    @MainActor
+    func viderChamp(_ e: XCUIElement) {
+        guard e.waitForExistence(timeout: 5), let v = e.value as? String, !v.isEmpty, v != e.placeholderValue else { return }
+        noter("brouillon revenu (\(v.count) caractères) : vidé avant de taper")
+        e.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: v.count + 2))
+    }
+
     /// Une saisie compte pour un geste (le toucher du champ en est un autre).
     @MainActor
     func saisir(_ texte: String, dans e: XCUIElement) throws {
@@ -446,6 +493,12 @@ class ParcoursBase: XCTestCase {
         nomme(app.descendants(matching: .any).matching(identifier: id).firstMatch, "identifiant \(id)")
     }
 
+    /// Un élément de cette image de l'écran répond-il au critère ?
+    static func trouve(_ e: XCUIElementSnapshot, _ critere: (XCUIElementSnapshot) -> Bool) -> Bool {
+        if critere(e) { return true }
+        return e.children.contains { trouve($0, critere) }
+    }
+
     @MainActor
     func attendreDisparition(_ e: XCUIElement, delai: TimeInterval) -> Bool {
         let fin = Date().addingTimeInterval(delai)
@@ -463,20 +516,25 @@ class ParcoursBase: XCTestCase {
     /// Les alertes système (notifications…) : accepter si elles apparaissent.
     /// `tantQue` : on cesse d'attendre dès que l'écran a continué sans elle
     /// (autorisation déjà donnée), pour ne pas laisser filer la confirmation.
+    /// `capture` : la photo de l'alerte, prise seulement si elle est là.
     @MainActor
-    func accepterAlerteSysteme(_ delai: TimeInterval = 3, tantQue encore: (() -> Bool)? = nil) {
+    func accepterAlerteSysteme(_ delai: TimeInterval = 3, tantQue encore: (() -> Bool)? = nil, capture: String? = nil) {
         let tremplin = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let fin = Date().addingTimeInterval(delai)
         repeat {
+            // Déjà fini (l'autorisation était donnée, la feuille s'est fermée) :
+            // sur un runner lent, chaque requête au tremplin coûte des secondes,
+            // pendant que la confirmation de l'app s'use (P14, 25/10).
+            if let encore, !encore() { return }
             for libelle in ["Allow", "Autoriser", "OK"] {
                 let b = tremplin.buttons[libelle]
                 if b.exists {
+                    if let capture { capturer(capture) }
                     compter()
                     b.tap()
                     return
                 }
             }
-            if let encore, !encore() { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         } while Date() < fin
     }

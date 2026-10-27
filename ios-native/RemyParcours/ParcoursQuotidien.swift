@@ -354,8 +354,7 @@ final class ParcoursQuotidien: ParcoursBase {
             try toucher(ident("capture.valider"), "Créer le rappel")
             // La première fois, iOS demande l'autorisation des notifications,
             // avant la confirmation ; déjà donnée, la feuille se ferme aussitôt.
-            capturer("demande-notifications")
-            accepterAlerteSysteme(8, tantQue: { champ.exists })
+            accepterAlerteSysteme(8, tantQue: { champ.exists }, capture: "demande-notifications")
             try confirmationApresFeuille("Rappel : demain", champ: champ)
             try toucher(onglet("projets"), "onglet Projets")
             try toucher(bouton("Tout voir"), "Tout voir (rappels)")
@@ -436,6 +435,99 @@ final class ParcoursQuotidien: ParcoursBase {
                 essais += 1
             }
             try etape("plus-rien-en-attente", absent: [attente], delai: 30)
+        }
+    }
+
+    /// Décisions du 25/10 : une tâche notée tour coupée attend sur l'iPhone
+    /// (« 1 en attente d'envoi »), puis part toute seule au retour de la tour
+    /// — une seule fois dans Motion. « cette semaine » : une échéance au dimanche.
+    @MainActor
+    func test21_noterSansTourPuisEnvoyer() {
+        jouer("P21", "Noter une tâche « cette semaine » tour coupée : en attente, puis envoyée une fois") {
+            defer { Pilote.relancerTour() }
+            lancer()
+            try attendreAccueil()
+            Pilote.couperTour()
+            try toucher(ident("noter"), "+")
+            let champ = ident("capture.champ")
+            try etape("feuille-noter", attendu: [champ])
+            viderChamp(champ)
+            let titre = "Relire le contrat de Léa"
+            try saisir(titre + " cette semaine", dans: champ)
+            // « cette semaine » : jusqu'au dimanche, lu dans l'aperçu ; le titre sans la date.
+            let dimanche = Banc.dimancheDeLaSemaine
+            // Délai large : le brouillon de P18 (près de 300 caractères) vient
+            // d'être effacé touche par touche, l'aperçu suit avec retard sur
+            // un runner lent (vu le 26/10 : texte juste, mais après 12 s).
+            try etape("echeance-cette-semaine", attendu: [ident("capture.genre.tache"), texte("Tâche « \(titre) »"),
+                                                         texte("avant l'échéance : \(dimanche)")], delai: 30)
+            noter("échéance attendue dans l'aperçu : \(dimanche)")
+            verifier("« \(titre) cette semaine » doit être devinée « Tâche ».", ident("capture.genre.tache").isSelected)
+            try toucher(ident("capture.valider"), "Ajouter à Motion")
+            // Tour coupée : rien n'est perdu, la feuille se ferme avec « Annuler »
+            // (« Pas de réponse de Rémy : … est gardée sur l'iPhone, elle partira… »).
+            try confirmationApresFeuille("gardée sur l'iPhone", champ: champ)
+            let ligne = ident("attente.captures")
+            try etape("en-attente", attendu: [ligne], delai: 10)
+            verifier("La ligne d'Aujourd'hui doit dire « 1 en attente d'envoi » (lu : « \(ligne.label) »).",
+                     ligne.label.contains("1 en attente d'envoi"))
+            try toucher(ligne, "ligne « en attente d'envoi »")
+            let retirer = boutonContenant("Retirer")
+            try etape("liste-en-attente", attendu: [texte(titre), texte("Partira dès que Rémy sera joignable"), retirer])
+            // Non strict : à mi-hauteur, l'accueil reste visible derrière la feuille.
+            auditerCibles("En attente d'envoi")
+            try toucher(nomme(app.navigationBars["En attente d'envoi"].buttons["Fermer"], "Fermer de la liste"), "Fermer")
+            try etape("liste-fermee", absent: [retirer], delai: 8)
+            Pilote.relancerTour()
+            // Au retour au premier plan, ce qui attend part tout seul.
+            XCUIDevice.shared.press(.home)
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+            app.activate()
+            try etape("envoyee", attendu: [texte("Envoyé : « \(titre) »")], absent: [ligne], delai: 45)
+            // Un autre passage (tirer pour rafraîchir) ne la renvoie pas.
+            tirerPourRafraichir()
+            RunLoop.current.run(until: Date().addingTimeInterval(4))
+            let n = Pilote.compterTaches(titre)
+            noter("tâches « \(titre) » dans Motion : \(n.map(String.init) ?? "pilote muet")")
+            verifier("La tâche notée tour coupée n'est créée qu'une fois dans Motion (trouvées : \(n.map(String.init) ?? "?")).", n == 1)
+        }
+    }
+
+    /// Contre-relecture (25/10) : Rémy arrêté derrière Tailscale répond 502.
+    /// Une panne passagère, pas un refus : la tâche attend sur l'iPhone, sans
+    /// « Renvoyer », dit son dernier essai, puis part une fois.
+    @MainActor
+    func test22_remyEnPanneLaTacheAttendPuisPart() {
+        jouer("P22", "Rémy en panne (502) : la tâche attend, repart seule, une fois") {
+            defer { Pilote.relancerTour() }
+            lancer()
+            try attendreAccueil()
+            Pilote.mettreEnPanne()
+            try toucher(ident("noter"), "+")
+            let champ = ident("capture.champ")
+            try etape("feuille-noter", attendu: [champ])
+            viderChamp(champ)
+            let titre = "Commander les joints du lavabo"
+            try saisir(titre, dans: champ)
+            try etape("tache", attendu: [ident("capture.genre.tache"), texte("Tâche")])
+            verifier("« \(titre) » doit être devinée « Tâche ».", ident("capture.genre.tache").isSelected)
+            try toucher(ident("capture.valider"), "Ajouter à Motion")
+            // Une 502 n'est pas un refus : gardée, la feuille se ferme avec « Annuler ».
+            try confirmationApresFeuille("gardée sur l'iPhone", champ: champ)
+            let ligne = ident("attente.captures")
+            try etape("en-attente", attendu: [ligne], delai: 10)
+            verifier("La ligne d'Aujourd'hui doit dire « 1 en attente d'envoi », sans « à revoir » (lu : « \(ligne.label) »).",
+                     ligne.label.contains("1 en attente d'envoi") && !ligne.label.contains("revoir"))
+            try toucher(ligne, "ligne « en attente d'envoi »")
+            let envoyer = ident("attente.envoyer")
+            try etape("liste-en-attente", attendu: [texte(titre), texte("Dernier essai : Erreur 502"), envoyer])
+            verifier("Une panne passagère repart seule : pas de « Renvoyer ».", !boutonContenant("Renvoyer").exists)
+            Pilote.relancerTour()
+            try toucher(envoyer, "Envoyer maintenant")
+            try etape("envoyee", attendu: [texte("Envoyé : « \(titre) »")], delai: 45)
+            let n = Pilote.compterTaches(titre)
+            noter("tâches « \(titre) » dans Motion : \(n.map(String.init) ?? "pilote muet")")
+            verifier("La tâche notée pendant la panne n'est créée qu'une fois dans Motion (trouvées : \(n.map(String.init) ?? "?")).", n == 1)
         }
     }
 

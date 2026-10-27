@@ -51,10 +51,19 @@ public enum Format {
     public static func jourSemaine(_ d: Date) -> String { formateur("EEEE").string(from: d) }
 
     /// Une échéance en toutes lettres : « vendredi 30 octobre », l'heure en
-    /// plus si ce n'est pas une fin de journée (comme `detailAction`).
-    public static func echeanceLongue(_ d: Date) -> String {
+    /// plus si ce n'est pas une fin de journée (comme `detailAction`), l'année
+    /// si ce n'est pas celle-ci (« fin octobre » dit le 1er novembre vise
+    /// 2027 : l'aperçu doit le montrer).
+    public static func echeanceLongue(_ d: Date, maintenant: Date = Date()) -> String {
         let h = calendrier.component(.hour, from: d)
-        return h >= 20 || h < 5 ? jourLong(d) : jourLong(d) + ", " + heure(d)
+        let jour = jourLong(d) + anneeSiAutre(d, maintenant: maintenant)
+        return h >= 20 || h < 5 ? jour : jour + ", " + heure(d)
+    }
+
+    /// « 2027 » (avec l'espace devant) si `d` n'est pas de l'année en cours, sinon rien.
+    public static func anneeSiAutre(_ d: Date, maintenant: Date = Date()) -> String {
+        let a = calendrier.component(.year, from: d)
+        return a == calendrier.component(.year, from: maintenant) ? "" : " \(a)"
     }
 
     /// « 23 sept. »

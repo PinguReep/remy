@@ -577,6 +577,18 @@ public struct ResultatAction: Codable, Sendable {
     /// Déjà dans Motion ou dans l'agenda : rien n'a été créé (24/10).
     public var dejaLa: Bool?
     public var note: String?
+    /// Pourquoi Motion n'a pas pu (capture-idempotente-v1) : quota, serveur,
+    /// delai, reseau… (passager) ou refus, supprimee, auth… (à revoir).
+    public var nature: String?
+
+    /// Un échec qui passera seul : Motion en quota, en panne, lent ou
+    /// injoignable. Une tour plus ancienne ne dit pas la nature : son message
+    /// « réessaie… » en tient lieu.
+    public var passager: Bool {
+        guard ok == false else { return false }
+        if let nature { return ["quota", "serveur", "delai", "reseau", "horaires", "liste"].contains(nature) }
+        return erreur?.localizedCaseInsensitiveContains("réessaie") == true
+    }
 
     /// Une tour d'avant le 24/10 rend un doublon comme un échec : relu ici.
     public var estDejaLa: Bool {
@@ -1166,6 +1178,39 @@ public struct Reglages: Codable, Sendable, Equatable {
     public var rechercheWebCoupeeParLaTour: Bool?
     /// La conversation et la mémoire partent avec une recherche autorisée.
     public var contexteCloud: Bool?
+    /// La recherche locale (recherche-locale-v1, 25/10) : le moteur que le
+    /// modèle local interroge lui-même, sans carte ni Claude. nil : la
+    /// recherche passe par Claude (tour plus ancienne, cerveau cloud, ou
+    /// `REMY_RECHERCHE=off`).
+    public var rechercheLocale: String?
+
+    /// Le nom du moteur, pour l'écran (« DuckDuckGo », « SearXNG »).
+    public var moteurRecherche: String? {
+        guard let m = rechercheLocale?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return nil }
+        switch m.lowercased() {
+        case "duckduckgo": return "DuckDuckGo"
+        case "searxng": return "SearXNG"
+        default: return m
+        }
+    }
+
+    /// Ce que dit le réglage « Recherche web » : par qui elle passe.
+    public var phraseRechercheWeb: String {
+        if rechercheWebCoupeeParLaTour == true { return "Coupée sur la tour (REMY_WEB_SEARCH=off) : à rallumer là-bas." }
+        if let m = moteurRecherche {
+            return rechercheWeb == true ? "Rémy cherche lui-même sur le web (\(m)), sans passer par Claude."
+                                        : "Coupée : Rémy répond sans le web."
+        }
+        return rechercheWeb == true ? "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche."
+                                    : "Coupée : Rémy répond sans le web, rien ne part chez Anthropic."
+    }
+
+    /// Le message après avoir changé le réglage.
+    public func confirmationRechercheWeb(_ actif: Bool) -> String {
+        guard actif else { return "Recherche web coupée : Rémy répond sans le web." }
+        return moteurRecherche != nil ? "Recherche web permise : Rémy cherche lui-même quand il en a besoin, sans Claude."
+                                      : "Recherche web permise : Rémy te demandera avant chaque recherche."
+    }
 }
 
 /// Un circuit de travail de fond (nuit, synthèses…) : allumé ou coupé par Sam.

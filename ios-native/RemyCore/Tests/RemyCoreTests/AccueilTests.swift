@@ -220,16 +220,23 @@ final class AccueilTests: XCTestCase {
         ]
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = Format.fuseau
-        let jeudi = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 10, minute: 40)))
+        // Un jeudi à venir : une échéance déjà passée à l'envoi serait dite
+        // autrement (« … était déjà passée »), le test ne dépend pas du jour.
+        var jeudi = try XCTUnwrap(cal.date(bySettingHour: 10, minute: 40, second: 0, of: Date().addingTimeInterval(86_400)))
+        while cal.component(.weekday, from: jeudi) != 5 { jeudi = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: jeudi)) }
+        let vendredi23h = try XCTUnwrap(cal.date(bySettingHour: 23, minute: 0, second: 0, of: jeudi.addingTimeInterval(86_400)))
         let d = try XCTUnwrap(AnalyseDate.extraire("Envoyer le devis à Hugo vendredi", maintenant: jeudi))
+        XCTAssertEqual(d.echeance, vendredi23h)
         let a = app()
         let ok = await a.noterTache(d.reste, echeance: d.echeance)
         XCTAssertTrue(ok)
         await a.tableau.relectureApresGeste?.value
         let action = try XCTUnwrap((FauxServeur.corps["POST /api/motion/apply"]?["actions"] as? [[String: Any]])?.first)
         XCTAssertEqual(action["nom"] as? String, "Envoyer le devis à Hugo")
-        XCTAssertEqual(action["echeance"] as? String, "2026-10-16T23:00:00+02:00")
-        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Envoyer le devis à Hugo », à faire d'ici vendredi 16 octobre.")
+        XCTAssertEqual(action["echeance"] as? String, Format.isoAvecFuseau(vendredi23h))
+        XCTAssertTrue((action["echeance"] as? String)?.contains("T23:00:00") == true)
+        XCTAssertEqual(a.toast, "Ajoutée à Motion : « Envoyer le devis à Hugo », à faire d'ici \(Format.echeanceLongue(vendredi23h)).")
+        XCTAssertTrue(a.toast?.contains("d'ici vendredi") == true)
     }
 
     /// Contre-relecture du défaut 1 : la confirmation (« Ajoutée à Motion… »
@@ -257,26 +264,27 @@ final class AccueilTests: XCTestCase {
         XCTAssertTrue(FauxServeur.recues.contains("GET /api/dashboard"))
     }
 
-    /// Contre-relecture : hors ligne, « Envoyer le devis vendredi » (devinée
-    /// Tâche depuis le 25/10) ne part pas — aucune file pour une création.
-    /// Avant, elle devenait un rappel gardé sur l'iPhone. Le message le
-    /// propose d'un geste ; sans date comprise, il dit seulement que le
-    /// texte reste.
-    func testHorsLigneUneTacheDateeProposeLeRappel() async throws {
+    /// Décision du 25/10 : hors ligne, la tâche n'est plus proposée « en
+    /// rappel ». Elle attend sur l'iPhone, telle que comprise (titre,
+    /// échéance), et la feuille se ferme : rien n'est perdu.
+    func testHorsLigneUneTacheAttendSurLIPhone() async throws {
         defer { FauxServeur.coupures = [:] }
         let a = app()
+        a.api.rejeuSur = true
         FauxServeur.coupures = ["POST /api/motion/apply": 10]
-        var garde = false
-        let ok = await a.noterTache("Envoyer le devis", echeance: Date(), garderEnRappel: { garde = true })
-        XCTAssertFalse(ok)
-        XCTAssertEqual(a.toast, "Pas ajouté à Motion : Impossible de joindre Rémy. Vérifie ta connexion. Garde-la en rappel sur l'iPhone, ou réessaie plus tard.")
-        XCTAssertEqual(a.message?.libelle, "Garder en rappel")
+        let echeance = Date().addingTimeInterval(86_400)
+        let ok = await a.noterTache("Envoyer le devis", echeance: echeance)
+        XCTAssertTrue(ok, "gardée : la feuille se ferme")
+        XCTAssertEqual(a.toast, "Pas de réponse de Rémy : « Envoyer le devis » est gardée sur l'iPhone, elle partira dès qu'il sera joignable.")
+        XCTAssertEqual(a.message?.libelle, "Annuler")
+        let attente = try XCTUnwrap(a.tableau.capturesEnAttente.first?.capture)
+        XCTAssertEqual(attente, CaptureFigee(genre: .tache, texte: "Envoyer le devis", echeance: echeance))
+        XCTAssertEqual(a.tableau.gestesEnAttente, 0, "une capture n'est pas un « changement » de la journée")
+        // « Annuler » : retirée de la file. L'essai coupé l'a peut-être fait
+        // arriver : on ne promet pas « ne partira pas » (contre-relecture).
         a.message?.annuler?()
-        XCTAssertTrue(garde)
-        let sansDate = await a.noterTache("Envoyer le devis")
-        XCTAssertFalse(sansDate)
-        XCTAssertEqual(a.toast, "Pas ajouté à Motion : Impossible de joindre Rémy. Vérifie ta connexion. Ton texte est toujours là.")
-        XCTAssertNil(a.message?.annuler)
+        XCTAssertTrue(a.tableau.capturesEnAttente.isEmpty)
+        XCTAssertEqual(a.toast, "Annulée de la file : « Envoyer le devis ». Un envoi est resté sans réponse, elle est peut-être déjà arrivée : vérifie dans Motion.")
     }
 
     func testRetenirDepuisLePlus() async throws {

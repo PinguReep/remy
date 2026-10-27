@@ -207,7 +207,7 @@ struct OngletsView: View {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
                 // Tailscale réactivé sans changement de réseau : rien ne le
                 // signale, on retente chaque minute ce qui attend.
-                if app.tableau.gestesEnAttente > 0 { await app.tableau.envoyerEnAttente() }
+                if app.tableau.aEnvoyer { await app.tableau.envoyerEnAttente() }
             }
         }
     }

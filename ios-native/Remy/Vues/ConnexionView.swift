@@ -47,6 +47,18 @@ struct ConnexionView: View {
                 .font(Police.texte(14))
                 .foregroundStyle(Palette.danger)
                 .padding(.top, 10)
+            // Session refusée par la tour : les captures tapées sur l'iPhone
+            // restent, et c'est dit (le nombre seulement, pas leur texte).
+            let n = app.tableau.capturesEnAttente.count
+            if n > 0 {
+                Label("\(n) capture\(n > 1 ? "s" : "") notée\(n > 1 ? "s" : "") sur l'iPhone : elle\(n > 1 ? "s" : "") partir\(n > 1 ? "ont" : "a") après la connexion.",
+                      systemImage: "tray.and.arrow.up")
+                    .font(Police.texte(14))
+                    .foregroundStyle(Palette.encre2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("connexion.captures")
+            }
             Spacer()
             Spacer()
         }
