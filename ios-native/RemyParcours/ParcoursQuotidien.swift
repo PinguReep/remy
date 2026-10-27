@@ -535,7 +535,9 @@ final class ParcoursQuotidien: ParcoursBase {
 
     /// Une conversation privée depuis l'iPhone : démarrée d'un geste, le
     /// cadenas « Privée » dans l'en-tête, et une question « cherche … » qui ne
-    /// déclenche aucune recherche web (interrupteur coupé, par défaut).
+    /// déclenche aucune recherche web (interrupteur coupé, par défaut). Le
+    /// chemin naturel (« Nouvelle conversation », clavier ouvert) : la puce
+    /// « Privée » est touchable sans défiler, au-dessus du clavier.
     @MainActor
     func test23_conversationPriveeSansRecherche() {
         jouer("P23", "Conversation privée : le cadenas, et pas de recherche web (interrupteur coupé)") {
@@ -543,14 +545,21 @@ final class ParcoursQuotidien: ParcoursBase {
             try attendreAccueil()
             try toucher(onglet("remy"), "onglet Rémy")
             try toucher(bouton("Nouvelle conversation"), "Nouvelle conversation")
-            let privee = ident("remy.nouvellePrivee")
-            try etape("ecran-vide", attendu: [privee])
-            try toucher(privee, "Nouvelle conversation privée")
+            let puce = ident("remy.pucePrivee")
+            try etape("ecran-vide", attendu: [puce, app.textViews["Écris à Rémy…"]])
+            // Contre-relecture : visible sur le chemin naturel, clavier ouvert,
+            // sans que XCUITest fasse défiler jusqu'à elle.
+            verifier("La puce « Privée » se touche sans défiler, au-dessus du clavier.", puce.isHittable)
+            try toucher(puce, "Privée")
             let composeur = app.textViews["Message privé à Rémy…"]
-            try etape("privee", attendu: [ident("remy.cartePrivee"), texte("Rien ne part chez Claude ni ailleurs"), composeur])
+            let carte = ident("remy.cartePrivee")
+            try etape("privee", attendu: [carte, texte("Rien ne part chez Claude ni ailleurs"), composeur])
+            constat("La carte « Conversation privée » se lit sans défiler, clavier ouvert.", siFaux: carte.isHittable)
             let titre = ident("remy.titre")
             verifier("L'en-tête porte le cadenas « Privée » (lu : « \(titre.label) »).", titre.label.contains("privée"))
             verifier("La carte dit qu'il n'y a pas de recherche web.", texte("Pas de recherche web").exists)
+            verifier("Pas de « Noter une idée » (la mémoire) sur l'écran d'une conversation privée.", !bouton("Noter une idée").exists)
+            verifier("La puce dit « Privée » activée.", puce.value as? String == "activée")
             auditerCibles("conversation privée")
             try toucher(composeur, "composeur")
             try saisir("Cherche le tarif du timbre vert en 2026", dans: composeur)
@@ -586,11 +595,16 @@ final class ParcoursQuotidien: ParcoursBase {
             let jauge = bouton("Contexte de la conversation")
             try etape("premier-message", attendu: [jauge], delai: 10)
             try etape("reponse", attendu: [texte("Ta journée tient")], delai: 45)
+            // La jauge visible par défaut, pas la vitesse (un chiffre de constructeur).
+            verifier("Les tokens par seconde restent masqués par défaut (Réglages › Diagnostic).", !texte("tok/s").exists)
             try toucher(jauge, "jauge")
             let compacter = bouton("Compacter maintenant")
             try etape("detail-jauge", attendu: [ident("jauge.compactage"), texte("Résumé automatique"), compacter], delai: 15)
             noter("la jauge dit : « \(ident("jauge.compactage").label) »")
             verifier("« Compacter maintenant » est touchable depuis la jauge.", compacter.isEnabled)
+            // Contre-relecture : sans défiler, la feuille à mi-hauteur.
+            verifier("« Compacter maintenant » se voit sans défiler (feuille à mi-hauteur).", compacter.isHittable)
+            constat("Le résumé à 70 % se lit sans défiler.", siFaux: ident("jauge.compactage").isHittable)
         }
     }
 

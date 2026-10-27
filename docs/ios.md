@@ -165,15 +165,23 @@ tag) avant l'échéance.
   passagère (502, 503, quota Motion) la fait repartir seule, de plus en plus
   espacée ; seul un refus attend « Renvoyer ». Une session refusée (401) ne
   l'efface pas ; la déconnexion voulue, si.
-- Conversation privée (27/10) : écran vide de Rémy › « Nouvelle conversation
-  privée », ou titre de l'en-tête › « Rendre cette conversation privée »
-  (confirmation : sans retour). Le cadenas « Privée » reste dans l'en-tête.
-  Routes du site (`POST /api/conversations { prive: true }`, `PATCH { prive:
-  true }`), aucune capacité. Réglages › « Recherche dans les conversations
-  privées » (`recherche-privee-v1`, coupé par défaut, grisé si la tour le
-  verrouille). La jauge du contexte est visible par défaut (Réglages ›
-  Diagnostic pour la masquer) et dit quand le résumé automatique (70 %) se
-  fera ou s'est fait.
+- Conversation privée (27/10) : puce « Privée » au-dessus du champ d'une
+  conversation pas encore commencée (visible clavier ouvert), écran vide ›
+  « Nouvelle conversation privée », ou titre de l'en-tête › « Rendre cette
+  conversation privée » (confirmation : sans retour). Le cadenas est posé sur
+  la marque de Rémy (toujours visible, même à 375 pt ou en grand texte), et
+  « Privée » ouvre le titre. Routes du site (`POST /api/conversations {
+  prive: true }`, `PATCH { prive: true }`), aucune capacité ; une
+  conversation que la tour n'a pas créée privée est rendue privée avant le
+  premier message, sinon rien ne part. Le brouillon et les « Envoyer après »
+  d'une privée ne suivent jamais vers un fil ordinaire (`brouillonPrive`) ;
+  « Noter une idée » n'y est pas proposé ; la dictée y passe par Dictée
+  Locale seulement (`?prive=1`). Réglages › « Recherche dans les
+  conversations privées » (`recherche-privee-v1`, coupé par défaut, grisé si
+  la tour le verrouille). La jauge du contexte est visible par défaut
+  (Réglages › Diagnostic pour la masquer) et dit, juste sous le cadran, quand
+  le résumé automatique (70 %) se fera ou s'est fait ; les tokens par seconde
+  ont leur propre réglage (coupé par défaut).
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

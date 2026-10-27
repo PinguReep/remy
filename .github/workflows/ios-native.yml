@@ -217,6 +217,10 @@ jobs:
           capture 4b-remy-sombre dark remy
           capture 4c-recherche-web-sombre dark remy-fil c6
           capture 5-remy-vide-clair light remy-vide
+          # Conversation privée (27/10) : écran vide (carte, puce « Privée ») et
+          # un fil privé (cadenas sur la marque, « Privée » dans le titre, jauge).
+          capture 5h-remy-prive-vide-sombre dark remy-prive-vide
+          capture 5i-remy-prive-clair light remy-fil c15
           capture 5b-conversations-clair light conversations
           capture 5c-conversations-sombre dark conversations
           capture 5d-retenir-clair light retenir
@@ -256,6 +260,7 @@ jobs:
           capture 11-grand-texte-aujourdhui-clair light aujourdhui
           capture 11b-grand-texte-gerer-clair light gerer
           capture 11c-grand-texte-capture-clair light capture
+          capture 11d-grand-texte-remy-prive-clair light remy-fil c15
           xcrun simctl ui "$UDID" content_size large || true
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
@@ -318,6 +323,8 @@ jobs:
             capture 10o-petit-ajuster-sombre dark ajuster c10
             capture 10p-petit-briefing-clair light briefing
             capture 10q-petit-bilan-sombre dark bilan
+            capture 10r-petit-remy-prive-clair light remy-fil c15
+            capture 10s-petit-remy-prive-vide-sombre dark remy-prive-vide
             UDID=$GRAND
             xcrun simctl shutdown "$PETIT" || true
           else
