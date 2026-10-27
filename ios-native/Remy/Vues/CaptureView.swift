@@ -323,7 +323,9 @@ struct CaptureView: View {
             guard carnetPret else { return "Les rappels arriveront avec la mise à jour de ta tour." }
             guard let d = dateLue else { return "Rappel sans date (ajoute « demain 9h », « lundi », « le 12/11 »…)" }
             return "Rappel → \(LigneRappel.quand(d.quand.millis)) : « \(GenreCapture.texte(propre, date: d, genre: .rappel)) »"
-                + (d.dejaPassee != nil ? " (la date est déjà passée : il sonne dans l'heure)" : "")
+                + (d.dejaPassee != nil
+                   ? (d.quand.timeIntervalSinceNow <= 3600 ? " (la date est déjà passée : il sonne dans l'heure)" : " (la date est déjà passée : il sonne aujourd'hui)")
+                   : "")
         case .retenir:
             let manque = GenreCapture.minimumRetenir - propre.count
             return manque > 0 ? "Retenir → encore \(manque) caractère\(manque > 1 ? "s" : "") pour que Rémy en tire quelque chose"
