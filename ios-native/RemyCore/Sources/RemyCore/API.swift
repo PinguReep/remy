@@ -577,10 +577,12 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Transcrit un enregistrement (AAC/m4a) sur la tour — Dictée Locale :
     /// l'audio n'est pas conservé, seul le texte revient. `duree` sert au
-    /// journal des coûts (0 $ en local).
-    public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double) async throws -> String {
+    /// journal des coûts (0 $ en local). `prive` : dicté dans une conversation
+    /// privée — la tour refuse alors tout service en ligne (Dictée Locale
+    /// seulement, 27/10).
+    public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double, prive: Bool = false) async throws -> String {
         let d = String(format: "%.1f", max(0, duree))
-        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio,
+        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)" + (prive ? "&prive=1" : ""), methode: "POST", corps: audio,
                                      delai: Self.delaiTranscription(duree), typeCorps: "application/octet-stream")
         guard let t = try? JSONDecoder().decode(Texte.self, from: donnees) else { throw ErreurAPI.illisible }
         return t.text ?? ""

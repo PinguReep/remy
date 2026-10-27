@@ -146,7 +146,8 @@ réglages sont illisibles, tout reste coupé).
 
 **Conversations privées** : pas de recherche, sauf si tu allumes « Recherche
 dans les conversations privées » (coupé par défaut ; Réglages de l'app
-iPhone, grisé quand la tour le verrouille). Allumé, la recherche passe par la salle blanche, et le filtre y
+iPhone, grisé quand la tour le verrouille ; sans effet quand la recherche web
+est coupée). Allumé, la recherche passe par la salle blanche, et le filtre y
 ajoute la conversation privée : ses noms propres et numéros ne sortent jamais
 (même si tu viens de les écrire), ses mots rares seulement si tu les réécris
 dans ton message ; les sujets de ta question du moment passent.

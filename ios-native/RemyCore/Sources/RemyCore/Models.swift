@@ -1237,10 +1237,11 @@ public struct Reglages: Codable, Sendable, Equatable {
     /// L'interrupteur tel qu'il s'affiche : le réglage de Sam, sauf verrou (coupé).
     public var recherchePriveeAffichee: Bool { verrouRecherchePrivee == nil && recherchePriveeReglage == true }
 
-    /// Ce que dit le réglage : ce qui sort quand il est allumé.
+    /// Ce que dit le réglage : ce qui sort quand il est allumé (la même
+    /// phrase que dans la conversation privée, ConversationPrivee.ceQuiSort).
     public var phraseRecherchePrivee: String {
         if let v = verrouRecherchePrivee { return v }
-        let sort = "Allumé, seule la question part vers le moteur de recherche : passée par la salle blanche (une recherche qui ne sait rien de toi) et par le filtre, qui bloque noms, numéros et mots de la conversation."
+        let sort = "Allumé, Rémy peut chercher : " + ConversationPrivee.ceQuiSort
         if recherchePriveeReglage == true {
             return rechercheWeb == true ? sort : "Allumé, mais la recherche web est coupée : rien ne sort. " + sort
         }
@@ -1249,7 +1250,7 @@ public struct Reglages: Codable, Sendable, Equatable {
 
     /// Le message après avoir changé le réglage.
     public func confirmationRecherchePrivee(_ actif: Bool) -> String {
-        actif ? "Recherche permise dans les conversations privées : seule la question sort, filtrée."
+        actif ? "Recherche permise dans les conversations privées : des questions générales sortent, filtrées."
               : "Recherche coupée dans les conversations privées : rien n'en sort."
     }
 

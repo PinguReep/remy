@@ -353,8 +353,9 @@ struct ReglagesView: View {
     }
 
     /// Recherche dans les conversations privées : ce qui sort quand elle est
-    /// allumée (la question seule, par la salle blanche et le filtre), et
-    /// pourquoi elle est grisée quand la tour la verrouille.
+    /// allumée (des questions générales, par la salle blanche et le filtre ;
+    /// ConversationPrivee.ceQuiSort), et pourquoi elle est grisée quand la
+    /// tour la verrouille.
     private func recherchePrivee(_ r: Reglages) -> some View {
         let verrou = r.verrouRecherchePrivee != nil
         return Toggle(isOn: Binding(
@@ -387,10 +388,12 @@ struct ReglagesView: View {
                 if let privee {
                     let r = try await app.api.changerRecherchePrivee(privee)
                     reglages = r
+                    app.chat.noter(reglages: r)
                     app.dire(r.confirmationRecherchePrivee(privee))
                 } else if let web {
                     let r = try await app.api.changerRechercheWeb(web)
                     reglages = r
+                    app.chat.noter(reglages: r)
                     app.dire(r.confirmationRechercheWeb(web))
                 } else if let contexte {
                     reglages = try await app.api.changerContexteCloud(contexte)

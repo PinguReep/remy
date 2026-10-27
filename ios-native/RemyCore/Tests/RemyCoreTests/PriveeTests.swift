@@ -14,6 +14,8 @@ final class PriveeTests: XCTestCase {
         FauxServeur.recues = []
         FauxServeur.corps = [:]
         FauxServeur.historique = [:]
+        FauxServeur.delais = [:]
+        FauxServeur.requetes = [:]
     }
 
     private func app(_ capacites: [String] = ["recherche-privee-v1", "jauge-v1", "compactage-v1"]) -> AppModel {
@@ -131,24 +133,306 @@ final class PriveeTests: XCTestCase {
     // MARK: Le dire
 
     func testCeQueCaChangeSeDitEnClair() {
-        let coupe = ConversationPrivee.ceQueCaChange(recherche: false)
-        XCTAssertTrue(coupe.contains("Rien ne part chez Claude ni ailleurs"))
-        XCTAssertTrue(coupe.contains("Pas de recherche web"))
-        XCTAssertEqual(ConversationPrivee.ceQueCaChange(recherche: nil), coupe, "inconnu : elle ne cherche pas")
-        let permise = ConversationPrivee.ceQueCaChange(recherche: true)
-        XCTAssertTrue(permise.contains("seule la question sort, passée par la salle blanche et le filtre"))
+        let coupe = ConversationPrivee.ceQueCaChange(.coupee)
+        XCTAssertTrue(coupe.hasPrefix("Rien ne part chez Claude ni ailleurs"))
+        XCTAssertTrue(coupe.contains("Pas de recherche web (Réglages › Recherche dans les conversations privées pour la permettre)"))
+        // Contre-relecture : ce qui sort, exactement, quand elle est permise ;
+        // « ni ailleurs » seulement quand rien d'autre ne sort.
+        let permise = ConversationPrivee.ceQueCaChange(.permise)
+        XCTAssertTrue(permise.hasPrefix("Rien ne part chez Claude :"))
+        XCTAssertFalse(permise.contains("ni ailleurs"))
+        XCTAssertFalse(permise.contains("seule la question"), "plus d'une question sort : celles de Rémy, puis de la salle blanche")
+        XCTAssertTrue(permise.contains("questions générales, écrites par Rémy puis par la salle blanche"))
+        XCTAssertTrue(permise.contains("les pages trouvées sont lues depuis ta tour"))
+        XCTAssertTrue(permise.contains("le filtre bloque noms, numéros et mots de cette conversation"))
         XCTAssertFalse(permise.contains("Pas de recherche web"))
-        XCTAssertTrue(ConversationPrivee.confirmation(recherche: false).hasPrefix("C'est sans retour"), "l'irréversible se dit avant de confirmer")
+        XCTAssertFalse(ConversationPrivee.ceQueCaChange(.inconnu).contains("ni ailleurs"), "pas encore lu : pas de promesse")
+        // Réglages n'est cité que si l'interrupteur y est actionnable.
+        for etat in [EtatRecherchePrivee.sansReglage, .verrouillee] {
+            let t = ConversationPrivee.ceQueCaChange(etat)
+            XCTAssertFalse(t.contains("Réglages"), "\(etat) : l'interrupteur est caché ou grisé")
+            XCTAssertTrue(t.contains("ni ailleurs"), "\(etat)")
+        }
+        XCTAssertTrue(ConversationPrivee.ceQueCaChange(.webCoupee).contains("Réglages › Recherche web"))
+        XCTAssertFalse(ConversationPrivee.ceQueCaChange(.webCoupee).contains("Recherche dans les conversations privées"))
+        // Le modèle local éteint : une condition, pas un état affirmé.
+        XCTAssertTrue(coupe.hasSuffix("Si le modèle local est éteint, Rémy ne répond pas : rien ne bascule vers Claude."))
+        XCTAssertFalse(coupe.contains("Modèle local éteint :"))
+        XCTAssertTrue(ConversationPrivee.confirmation(.coupee).hasPrefix("C'est sans retour"), "l'irréversible se dit avant de confirmer")
+        // Une seule phrase pour ce qui sort : la conversation, Réglages, les Nouveautés.
+        let r = reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo","recherchePrivee":true,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)
+        XCTAssertTrue(r.phraseRecherchePrivee.contains(ConversationPrivee.ceQuiSort))
+        let web = Nouveautes.catalogue.first { $0.id == "privee-iphone" }?.pages.map(\.texte).joined(separator: " ") ?? ""
+        XCTAssertFalse(web.contains("seule la question"))
+        XCTAssertTrue(web.contains("questions générales"))
     }
 
     func testLaRecherchePriveeSeLitSurLaTour() async {
         FauxServeur.reponses = ["GET /api/reglages": [(200, #"{"secoursCloud":false,"recherchePrivee":true,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true,"rechercheLocale":"duckduckgo","rechercheWeb":true}"#)]]
         let a = app()
+        XCTAssertEqual(a.chat.etatRecherchePrivee, .inconnu)
         await a.chat.lireRecherchePrivee()
-        XCTAssertEqual(a.chat.recherchePrivee, true)
+        XCTAssertEqual(a.chat.etatRecherchePrivee, .permise)
         let ancienne = app([])
         await ancienne.chat.lireRecherchePrivee()
-        XCTAssertNil(ancienne.chat.recherchePrivee, "tour sans le réglage : rien à lire")
+        XCTAssertEqual(ancienne.chat.etatRecherchePrivee, .sansReglage, "tour sans le réglage : elle ne cherche pas")
+    }
+
+    /// Contre-relecture : l'état dit en clair suit la tour — verrou, web
+    /// coupé (rien ne sort, interrupteur allumé ou non), coupé, permis.
+    func testLEtatDeLaRecherchePriveeEtSaRaison() {
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo","recherchePrivee":true,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)), .permise)
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo","recherchePrivee":false,"recherchePriveeReglage":false,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)), .coupee)
+        // Une tour d'avant la contre-relecture disait « permise » web coupé : l'app ne la croit pas.
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":false,"rechercheLocale":"duckduckgo","recherchePrivee":true,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)), .webCoupee)
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheWebCoupeeParLaTour":true,"rechercheLocale":"duckduckgo","recherchePrivee":false,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)), .webCoupee)
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo","recherchePrivee":false,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":true,"salleBlanche":true}"#)), .verrouillee)
+        XCTAssertEqual(EtatRecherchePrivee.de(reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":null,"recherchePrivee":false,"recherchePriveeReglage":false,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)), .verrouillee)
+    }
+
+    // MARK: Contre-relecture : rien de privé ne sort par un détour
+
+    private let filPrive = #"{"id":"p1","title":"Secret","prive":true,"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"}]}"#
+    private let filOrdinaire = #"{"id":"c1","title":"Ordinaire","messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"}]}"#
+    private let liste = #"[{"id":"p1","title":"Secret","updatedAt":1,"prive":true},{"id":"c1","title":"Ordinaire","updatedAt":1,"prive":false}]"#
+
+    /// B1 : le brouillon d'une conversation privée ne suit pas dans une
+    /// ordinaire (ouverte, ou « Nouvelle conversation ») ; il revient dans la
+    /// prochaine privée.
+    func testLeBrouillonPriveNeSuitPasDansUneConversationOrdinaire() async {
+        FauxServeur.reponses = [
+            "GET /api/conversations/p1": [(200, filPrive)],
+            "GET /api/conversations/c1": [(200, filOrdinaire)],
+            "GET /api/conversations": [(200, liste)],
+            "POST /api/conversations": [(201, #"{"id":"n1","title":"Nouvelle conversation","messages":[]}"#)],
+            "POST /api/conversations/n1/messages": [(200, flux)],
+        ]
+        let a = app()
+        _ = await a.chat.ouvrir("p1")
+        a.chat.brouillon = "BROUILLON-PRIVE"
+        _ = await a.chat.ouvrir("c1")
+        XCTAssertFalse(a.chat.privee)
+        XCTAssertEqual(a.chat.brouillon, "", "le composeur ordinaire reste vide")
+        XCTAssertEqual(a.chat.brouillonPrive, "BROUILLON-PRIVE")
+        XCTAssertNotNil(a.toast, "Sam sait où est passé son texte")
+        // Il revient dans la privée.
+        _ = await a.chat.ouvrir("p1")
+        XCTAssertEqual(a.chat.brouillon, "BROUILLON-PRIVE")
+        XCTAssertEqual(a.chat.brouillonPrive, "")
+        // « Nouvelle conversation » (ordinaire) : pareil, et rien ne part.
+        a.chat.nouvelle()
+        XCTAssertEqual(a.chat.brouillon, "")
+        await a.chat.envoyer(a.chat.brouillon)
+        XCTAssertFalse(FauxServeur.recues.contains("POST /api/conversations/n1/messages"))
+        // « Nouvelle conversation privée » : il revient.
+        a.chat.nouvellePrivee()
+        XCTAssertEqual(a.chat.brouillon, "BROUILLON-PRIVE")
+        // Vers une conversation importée (sans composeur) : de côté aussi.
+        FauxServeur.reponses["GET /api/conversations/i1"] = [(200, #"{"id":"i1","title":"Import","origine":{"source":"chatgpt"},"messages":[]}"#)]
+        _ = await a.chat.ouvrir("i1")
+        _ = await a.chat.ouvrir("c1")
+        XCTAssertEqual(a.chat.brouillon, "", "privée → importée → ordinaire : toujours de côté")
+        XCTAssertEqual(a.chat.brouillonPrive, "BROUILLON-PRIVE")
+        // Un brouillon ordinaire, lui, suit comme avant.
+        a.chat.brouillon = "ORDINAIRE"
+        _ = await a.chat.ouvrir("c1")
+        XCTAssertEqual(a.chat.brouillon, "ORDINAIRE")
+        a.chat.vider()
+        XCTAssertEqual(a.chat.brouillonPrive, "")
+    }
+
+    /// B2 : un « Envoyer après » mis en file dans une privée ne revient pas au
+    /// composeur d'une ordinaire.
+    func testLaFilePriveeNeRevientPasDansUneConversationOrdinaire() async throws {
+        FauxServeur.reponses = [
+            "GET /api/conversations/p1": [(200, filPrive)],
+            "GET /api/conversations/c1": [(200, filOrdinaire)],
+            "GET /api/conversations": [(200, liste)],
+            "POST /api/conversations/p1/messages": [(200, flux)],
+        ]
+        FauxServeur.delais = ["POST /api/conversations/p1/messages": 400_000_000]
+        let a = app()
+        _ = await a.chat.ouvrir("p1")
+        let envoi = Task { @MainActor in await a.chat.envoyer("question") }
+        for _ in 0..<100 where !a.chat.envoi { try await Task.sleep(nanoseconds: 2_000_000) }
+        XCTAssertTrue(a.chat.envoi)
+        a.chat.envoyerApres("FILE-PRIVEE")
+        _ = await a.chat.ouvrir("c1")
+        _ = await envoi.value
+        XCTAssertFalse(a.chat.privee)
+        XCTAssertEqual(a.chat.brouillon, "")
+        XCTAssertEqual(a.chat.fileEnvoi, [])
+        XCTAssertEqual(a.chat.brouillonPrive, "FILE-PRIVEE")
+        XCTAssertFalse(FauxServeur.recues.contains("POST /api/conversations/c1/messages"))
+    }
+
+    /// B6 : « Noter une idée » depuis une conversation privée n'écrit rien
+    /// dans la mémoire, et le dit.
+    func testRetenirDepuisUneConversationPriveeNEcritRien() async {
+        FauxServeur.reponses = ["POST /api/capture": [(200, #"{"ajouts":["x"],"memoire":true}"#)],
+                                "POST /api/capture/infos": [(200, #"{"ajouts":["x"]}"#)]]
+        let a = app()
+        a.chat.nouvellePrivee()
+        a.chat.modeRetenir = true
+        a.chat.brouillon = "IDEE-PRIVEE : un texte assez long pour être retenu par Rémy."
+        await a.chat.retenir()
+        XCTAssertTrue(FauxServeur.recues.isEmpty, "rien vers /api/capture")
+        XCTAssertEqual(a.toast, ConversationPrivee.pasDeMemoire)
+        XCTAssertEqual(a.chat.brouillon, "IDEE-PRIVEE : un texte assez long pour être retenu par Rémy.", "le texte reste")
+        let ok = await a.chat.retenirInfos(["une info"], source: "note", texte: a.chat.brouillon)
+        XCTAssertFalse(ok)
+        XCTAssertTrue(FauxServeur.recues.isEmpty)
+        // La puce « Privée » coupe le mode Retenir.
+        a.chat.nouvelle()
+        a.chat.modeRetenir = true
+        a.chat.basculerPriveeAvantEnvoi()
+        XCTAssertTrue(a.chat.privee)
+        XCTAssertFalse(a.chat.modeRetenir)
+    }
+
+    /// Bloquant : « Organiser ma journée » depuis l'écran vide d'une
+    /// conversation privée garde le privé (le fil naît privé).
+    func testOrganiserMaJourneeDepuisUnEcranPriveResteePrivee() async {
+        FauxServeur.reponses = [
+            "POST /api/conversations": [(201, #"{"id":"j1","title":"Nouvelle conversation","messages":[],"prive":true}"#)],
+            "PATCH /api/conversations/j1": [(200, #"{"id":"j1","title":"x","prive":true}"#)],
+            "POST /api/conversations/j1/messages": [(200, flux)],
+            "GET /api/conversations": [(200, #"[{"id":"j1","title":"x","updatedAt":1,"prive":true}]"#)],
+        ]
+        let a = app()
+        a.chat.nouvellePrivee()
+        await a.organiserJournee()
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations"]?["prive"] as? Bool, true)
+        XCTAssertTrue(a.chat.privee, "le cadenas dit vrai")
+        // Depuis une conversation ordinaire : ordinaire, comme avant.
+        FauxServeur.corps = [:]
+        a.chat.nouvelle()
+        await a.organiserJournee()
+        XCTAssertNil(FauxServeur.corps["POST /api/conversations"]?["prive"])
+    }
+
+    /// B3 : la tour ne dit pas « prive » à la création (tour qui l'ignorerait) :
+    /// l'app la rend privée AVANT le premier message ; si la tour refuse, rien
+    /// ne part et le texte revient.
+    func testLeCadenasNeCroitQueLaTour() async {
+        FauxServeur.reponses = [
+            "POST /api/conversations": [(201, #"{"id":"x1","title":"Nouvelle conversation","messages":[]}"#)],
+            "PATCH /api/conversations/x1": [(200, #"{"id":"x1","title":"Nouvelle conversation","prive":true}"#)],
+            "POST /api/conversations/x1/messages": [(200, flux)],
+            "GET /api/conversations": [(200, #"[{"id":"x1","title":"Nouvelle conversation","updatedAt":1,"prive":true}]"#)],
+        ]
+        let a = app()
+        a.chat.nouvellePrivee()
+        await a.chat.envoyer("Un secret")
+        let ordre = FauxServeur.recues.filter { $0.hasPrefix("PATCH") || $0.hasPrefix("POST") }
+        XCTAssertEqual(ordre, ["POST /api/conversations", "PATCH /api/conversations/x1", "POST /api/conversations/x1/messages"],
+                       "rendue privée avant le premier message")
+        XCTAssertEqual(FauxServeur.corps["PATCH /api/conversations/x1"]?["prive"] as? Bool, true)
+        XCTAssertTrue(a.chat.privee)
+        // La tour refuse : rien ne part, le fil vide s'en va, le texte revient.
+        FauxServeur.reponses = [
+            "POST /api/conversations": [(201, #"{"id":"x2","title":"Nouvelle conversation","messages":[]}"#)],
+            "PATCH /api/conversations/x2": [(500, #"{"error":"Erreur serveur"}"#)],
+            "DELETE /api/conversations/x2": [(200, "{}")],
+        ]
+        FauxServeur.recues = []
+        a.chat.nouvellePrivee()
+        let r = await a.chat.envoyer("Un autre secret")
+        XCTAssertNil(r)
+        XCTAssertFalse(FauxServeur.recues.contains("POST /api/conversations/x2/messages"), "aucun message dans un fil ordinaire")
+        XCTAssertTrue(FauxServeur.recues.contains("DELETE /api/conversations/x2"))
+        XCTAssertEqual(a.chat.brouillon, "Un autre secret")
+        XCTAssertNil(a.chat.idCourant, "le prochain envoi recrée un fil privé")
+        XCTAssertFalse(a.chat.envoi)
+        XCTAssertNotNil(a.toast)
+    }
+
+    /// B7 : « Rendre privée » pendant la création d'un fil ordinaire : refusé
+    /// (le fil naîtrait ordinaire sous un cadenas), et dit.
+    func testRendrePriveePendantLaCreationEstRefuse() async throws {
+        FauxServeur.reponses = [
+            "POST /api/conversations": [(201, #"{"id":"o2","title":"Nouvelle conversation","messages":[]}"#)],
+            "POST /api/conversations/o2/messages": [(200, flux)],
+            "GET /api/conversations": [(200, #"[{"id":"o2","title":"Nouvelle conversation","updatedAt":1}]"#)],
+        ]
+        FauxServeur.delais = ["POST /api/conversations": 300_000_000]
+        let a = app()
+        a.chat.nouvelle()
+        let envoi = Task { @MainActor in await a.chat.envoyer("Bonjour") }
+        for _ in 0..<100 where !FauxServeur.recues.contains("POST /api/conversations") { try await Task.sleep(nanoseconds: 2_000_000) }
+        let ok = await a.chat.rendrePrivee()
+        XCTAssertFalse(ok)
+        XCTAssertFalse(a.chat.privee, "pas de cadenas sur un fil qui naît ordinaire")
+        XCTAssertNotNil(a.toast)
+        XCTAssertFalse(a.chat.basculerPriveeAvantEnvoi(), "la puce non plus")
+        _ = await envoi.value
+        XCTAssertFalse(a.chat.privee)
+    }
+
+    /// B4 : « Nouvelle conversation privée » touchée pendant la création d'une
+    /// ordinaire : le message revient au champ (jamais perdu sans un mot), et
+    /// le fil vide ne reste pas sur la tour.
+    func testChangerDeFilPendantLaCreationRendLeMessage() async throws {
+        FauxServeur.reponses = [
+            "POST /api/conversations": [(201, #"{"id":"o1","title":"Nouvelle conversation","messages":[]}"#)],
+            "POST /api/conversations/o1/messages": [(200, flux)],
+            "DELETE /api/conversations/o1": [(200, "{}")],
+            "GET /api/conversations": [(200, #"[{"id":"o1","title":"Nouvelle conversation","updatedAt":1}]"#)],
+        ]
+        FauxServeur.delais = ["POST /api/conversations": 300_000_000]
+        let a = app()
+        a.chat.nouvelle()
+        let envoi = Task { @MainActor in await a.chat.envoyer("PREMIER-MESSAGE") }
+        for _ in 0..<100 where !FauxServeur.recues.contains("POST /api/conversations") { try await Task.sleep(nanoseconds: 2_000_000) }
+        a.chat.nouvellePrivee()
+        let r = await envoi.value
+        XCTAssertNil(r)
+        XCTAssertFalse(FauxServeur.recues.contains("POST /api/conversations/o1/messages"))
+        XCTAssertEqual(a.chat.brouillon, "PREMIER-MESSAGE", "le texte revient au champ")
+        XCTAssertTrue(FauxServeur.recues.contains("DELETE /api/conversations/o1"), "pas de fil vide laissé sur la tour")
+        XCTAssertTrue(a.chat.privee)
+        XCTAssertNil(a.chat.idCourant)
+        XCTAssertNotNil(a.toast)
+        // Dans l'autre sens : un message privé, Sam passe à une ordinaire
+        // pendant la création → mis de côté, jamais dans le champ ordinaire.
+        FauxServeur.reponses["POST /api/conversations"] = [(201, #"{"id":"o3","title":"Nouvelle conversation","messages":[],"prive":true}"#)]
+        FauxServeur.reponses["DELETE /api/conversations/o3"] = [(200, "{}")]
+        a.chat.brouillon = ""
+        let prive = Task { @MainActor in await a.chat.envoyer("SECRET-PRIVE") }
+        for _ in 0..<100 where !a.chat.envoi { try await Task.sleep(nanoseconds: 2_000_000) }
+        a.chat.nouvelle()
+        _ = await prive.value
+        XCTAssertFalse(a.chat.privee)
+        XCTAssertEqual(a.chat.brouillon, "")
+        XCTAssertEqual(a.chat.brouillonPrive, "SECRET-PRIVE")
+        XCTAssertFalse(FauxServeur.recues.contains("POST /api/conversations/o3/messages"))
+    }
+
+    /// La puce « Privée » au-dessus du champ : sur un écran vide seulement.
+    func testLaPucePriveeBasculeUnEcranVide() async {
+        FauxServeur.reponses = [
+            "GET /api/conversations/c1": [(200, filOrdinaire)],
+            "GET /api/conversations": [(200, liste)],
+        ]
+        let a = app()
+        a.chat.nouvelle()
+        XCTAssertTrue(a.chat.basculerPriveeAvantEnvoi())
+        XCTAssertTrue(a.chat.privee)
+        XCTAssertFalse(a.chat.basculerPriveeAvantEnvoi(), "touchée à nouveau : ordinaire")
+        XCTAssertTrue(FauxServeur.recues.isEmpty, "rien n'existe encore sur la tour")
+        _ = await a.chat.ouvrir("c1")
+        XCTAssertFalse(a.chat.basculerPriveeAvantEnvoi(), "un fil existant passe par « Rendre privée » (sans retour)")
+        XCTAssertFalse(a.chat.privee)
+    }
+
+    /// La dictée d'une conversation privée le dit à la tour (Dictée Locale seulement).
+    func testLaDicteePriveeLeDitALaTour() async throws {
+        FauxServeur.reponses = ["POST /api/transcribe": [(200, #"{"text":"bonjour"}"#)]]
+        let a = app()
+        _ = try await a.api.transcrire(audio: Data(count: 2000), duree: 1, prive: true)
+        XCTAssertEqual(FauxServeur.requetes["POST /api/transcribe"]?.contains("prive=1"), true)
+        _ = try await a.api.transcrire(audio: Data(count: 2000), duree: 1)
+        XCTAssertEqual(FauxServeur.requetes["POST /api/transcribe"]?.contains("prive"), false)
     }
 
     // MARK: L'interrupteur (Réglages)
@@ -162,11 +446,11 @@ final class PriveeTests: XCTestCase {
         XCTAssertNil(coupe.verrouRecherchePrivee)
         XCTAssertFalse(coupe.recherchePriveeAffichee, "coupé par défaut")
         XCTAssertTrue(coupe.phraseRecherchePrivee.hasPrefix("Coupé"))
-        XCTAssertTrue(coupe.phraseRecherchePrivee.contains("seule la question part"))
+        XCTAssertTrue(coupe.phraseRecherchePrivee.contains("questions générales"))
         XCTAssertTrue(coupe.phraseRecherchePrivee.contains("salle blanche"))
         let allume = reglages(#"{"secoursCloud":false,"rechercheWeb":true,"rechercheLocale":"duckduckgo","recherchePrivee":true,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)
         XCTAssertTrue(allume.recherchePriveeAffichee)
-        XCTAssertTrue(allume.phraseRecherchePrivee.hasPrefix("Allumé, seule la question part"))
+        XCTAssertTrue(allume.phraseRecherchePrivee.hasPrefix("Allumé, Rémy peut chercher : partent vers le moteur"))
         let sansWeb = reglages(#"{"secoursCloud":false,"rechercheWeb":false,"rechercheLocale":"duckduckgo","recherchePrivee":false,"recherchePriveeReglage":true,"recherchePriveeVerrouillee":false,"salleBlanche":true}"#)
         XCTAssertTrue(sansWeb.phraseRecherchePrivee.contains("la recherche web est coupée"))
         // Verrouillée sur la tour : grisée, et pourquoi.

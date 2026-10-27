@@ -6,7 +6,9 @@
 //   - /api/reglages : l'interrupteur « Recherche dans les conversations
 //     privées » (coupé par défaut), son verrou, la salle blanche, et le
 //     circuit « compactage » que la jauge lit ;
-//   - /api/version : les capacités qui montrent l'interrupteur et la jauge.
+//   - /api/version : les capacités qui montrent l'interrupteur et la jauge ;
+//   - recherche web coupée : la recherche privée ne s'applique pas (ce que l'app dit) ;
+//   - la dictée d'une conversation privée (?prive=1) : Dictée Locale seulement.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +21,8 @@ console.log = () => {};
 
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), "remy-prive-iphone-"));
 for (const v of ["REMY_VAULT", "MOTION_API_KEY", "GOOGLE_CLIENT_ID", "UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "APP_PASSWORD", "APP_PASSWORD_HASH",
-  "VERCEL", "REMY_MODEL", "REMY_CERVEAU", "REMY_RECHERCHE_PRIVEE", "REMY_SALLE_BLANCHE", "REMY_RECHERCHE", "REMY_WEB_SEARCH"]) {
+  "VERCEL", "REMY_MODEL", "REMY_CERVEAU", "REMY_RECHERCHE_PRIVEE", "REMY_SALLE_BLANCHE", "REMY_RECHERCHE", "REMY_WEB_SEARCH",
+  "DICTEE_LOCALE_URL", "TRANSCRIPTION_CLOUD", "TRANSCRIBE_PROVIDER", "TRANSCRIBE_BASE_URL", "GROQ_API_KEY", "MISTRAL_API_KEY"]) {
   delete process.env[v];
 }
 process.env.REMY_DATA_DIR = dossier;
@@ -106,6 +109,80 @@ test("Réglages : l'interrupteur coupé par défaut, son verrou, la salle blanch
     delete process.env.REMY_RECHERCHE_PRIVEE;
     delete process.env.REMY_SALLE_BLANCHE;
     await json("PUT", "/api/reglages", { recherchePrivee: false });
+  }
+});
+
+// Contre-relecture (27/10) : ce que l'app affiche suit ce que fait lib/chat.js.
+// La recherche web coupée (Réglages ou tour), une conversation privée ne
+// cherche pas, interrupteur privé allumé ou non : l'app ne doit pas dire
+// « Recherche web permise ».
+test("Réglages : recherche web coupée, la recherche privée ne s'applique pas", async () => {
+  await json("PUT", "/api/reglages", { recherchePrivee: true });
+  try {
+    const allume = await (await json("GET", "/api/reglages")).json();
+    assert.equal(allume.rechercheWeb, true);
+    assert.equal(allume.recherchePrivee, true, "allumée, web permis : elle s'applique");
+    await json("PUT", "/api/reglages", { rechercheWeb: false });
+    const sansWeb = await (await json("GET", "/api/reglages")).json();
+    assert.equal(sansWeb.rechercheWeb, false);
+    assert.equal(sansWeb.recherchePriveeReglage, true, "le choix de Sam est gardé");
+    assert.equal(sansWeb.recherchePrivee, false, "web coupé : rien ne sort d'une conversation privée");
+    await json("PUT", "/api/reglages", { rechercheWeb: true });
+    process.env.REMY_WEB_SEARCH = "off";
+    const tour = await (await json("GET", "/api/reglages")).json();
+    assert.equal(tour.rechercheWebCoupeeParLaTour, true);
+    assert.equal(tour.recherchePrivee, false, "web coupé sur la tour : pareil");
+  } finally {
+    delete process.env.REMY_WEB_SEARCH;
+    await json("PUT", "/api/reglages", { recherchePrivee: false, rechercheWeb: true });
+  }
+});
+
+// Contre-relecture (27/10) : la dictée d'une conversation privée ne part
+// jamais chez un service en ligne, même avec TRANSCRIPTION_CLOUD=on.
+test("Dictée privée (?prive=1) : Dictée Locale seulement, jamais le cloud", async () => {
+  let appels = 0;
+  const faux = http.createServer((req, res) => {
+    appels++;
+    req.resume();
+    req.on("end", () => {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ text: "bonjour Rémy" }));
+    });
+  });
+  await new Promise((r) => faux.listen(0, "127.0.0.1", r));
+  const adresse = `http://127.0.0.1:${faux.address().port}/v1`;
+  const audio = Buffer.alloc(2000, 1);
+  const dicter = (suite = "") => fetch(`${base}/api/transcribe?type=audio/mp4&dur=1${suite}`, { method: "POST", body: audio });
+  const avant = { cloud: process.env.TRANSCRIPTION_CLOUD, cle: process.env.OPENAI_API_KEY, url: process.env.TRANSCRIBE_BASE_URL };
+  try {
+    // Le cloud ouvert à la main (TRANSCRIPTION_CLOUD=on), un faux OpenAI.
+    process.env.TRANSCRIPTION_CLOUD = "on";
+    process.env.OPENAI_API_KEY = "sk-faux";
+    process.env.TRANSCRIBE_BASE_URL = adresse;
+    const refus = await dicter("&prive=1");
+    assert.equal(refus.status, 503);
+    const corps = await refus.json();
+    assert.equal(corps.error, "prive_cloud");
+    assert.match(corps.message, /Dictée Locale/);
+    assert.equal(appels, 0, "l'audio n'est parti nulle part");
+    // Une conversation ordinaire : la voie choisie par Sam reste ouverte.
+    const ordinaire = await dicter();
+    assert.equal(ordinaire.status, 200);
+    assert.equal(appels, 1);
+    // Dictée Locale branchée : la conversation privée dicte normalement.
+    process.env.DICTEE_LOCALE_URL = adresse;
+    const locale = await dicter("&prive=1");
+    assert.equal(locale.status, 200);
+    assert.equal((await locale.json()).text, "bonjour Rémy");
+    assert.equal(appels, 2);
+  } finally {
+    for (const [v, cle] of [["TRANSCRIPTION_CLOUD", "cloud"], ["OPENAI_API_KEY", "cle"], ["TRANSCRIBE_BASE_URL", "url"]]) {
+      if (avant[cle] === undefined) delete process.env[v];
+      else process.env[v] = avant[cle];
+    }
+    delete process.env.DICTEE_LOCALE_URL;
+    faux.close();
   }
 });
 

@@ -31,11 +31,11 @@ public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
         Nouveaute(id: "privee-iphone", serie: 4, date: "27 oct.", titre: "Conversation privée sur l'iPhone", capacite: nil, pages: [
             .init(symbole: "lock", titre: "Une conversation qui reste chez toi",
-                  texte: "Écran vide de Rémy › « Nouvelle conversation privée », ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas « Privée » reste dans l'en-tête."),
+                  texte: "Nouvelle conversation : touche « Privée » au-dessus du champ. Ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas reste sur la marque de Rémy, en haut."),
             .init(symbole: "lock.shield", titre: "Ce que ça change",
-                  texte: "Rien ne part chez Claude ni ailleurs : le modèle local de ta tour répond, n'en retient rien dans sa mémoire, et la nuit ne la relit pas. Tour éteinte : pas de réponse."),
+                  texte: "Rien ne part chez Claude : le modèle local de ta tour répond, n'en retient rien dans sa mémoire, et la nuit ne la relit pas. Ni ailleurs, tant que la recherche y reste coupée. Tour éteinte : pas de réponse."),
             .init(symbole: "magnifyingglass", titre: "Et le web ?",
-                  texte: "Pas de recherche, sauf si tu allumes Réglages › Recherche dans les conversations privées : seule la question sort alors, passée par la salle blanche et le filtre."),
+                  texte: "Coupé par défaut. Réglages › Recherche dans les conversations privées : partent alors des questions générales (Rémy, puis la salle blanche), filtrées ; les pages sont lues depuis ta tour."),
         ]),
         Nouveaute(id: "jauge-retour", serie: 4, date: "27 oct.", titre: "La jauge du contexte, de retour", capacite: "jauge-v1", pages: [
             .init(symbole: "gauge.with.dots.needle.33percent", titre: "Visible dès le premier message",
