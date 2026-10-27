@@ -50,6 +50,23 @@ const evenements = [
     attendees: [{ email: "sam@exemple.fr", self: true }, { email: "cabinet@exemple.fr" }] },
   { id: "e10", summary: "Tennis", start: { dateTime: t(18, 0, 4) }, end: { dateTime: t(19, 30, 4) } },
 ];
+// La tâche en cours reste « Maintenant » à toute heure de la CI : ce qui la
+// chevauche dans la journée (rendez-vous, tâche placée) passe juste après elle.
+// Vu le 25/10 vers 17 h : « Point hebdo » prenait la carte, sans « Terminer ».
+const finEnCours = enCours + 75 * 60_000;
+function decaler(debut, fin, poser) {
+  const d = Date.parse(debut), f = Date.parse(fin);
+  if (!(d < finEnCours && f > enCours)) return;
+  const nd = finEnCours + 15 * 60_000;
+  poser(new Date(nd).toISOString(), new Date(nd + (f - d)).toISOString());
+}
+for (const x of taches) {
+  if (x.id !== "t1" && x.scheduledStart) decaler(x.scheduledStart, x.scheduledEnd, (d, f) => { x.scheduledStart = d; x.scheduledEnd = f; });
+}
+for (const e of evenements) {
+  if (e.start?.dateTime) decaler(e.start.dateTime, e.end.dateTime, (d, f) => { e.start.dateTime = d; e.end.dateTime = f; });
+}
+
 // Les horaires de travail Motion : de quoi dire « 4 h prévues sur 7 h libres ».
 const semaine = { start: "09:00", end: "18:00" };
 const horaires = [{ name: "Work Hours", timezone: "Europe/Paris",

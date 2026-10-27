@@ -7,6 +7,9 @@ import RemyCore
 struct NouveautesFeuille: View {
     let lot: LotNouveautes
     let fini: () -> Void
+    /// La page affichée (0 : la première) : à la fermeture, seules les
+    /// entrées atteintes sont vues ; « Plus tard » garde les autres.
+    var pageVue: (Int) -> Void = { _ in }
     @State private var index = 0
 
     var body: some View {
@@ -78,6 +81,7 @@ struct NouveautesFeuille: View {
         .background(Palette.fond)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onChange(of: index) { _, i in pageVue(i) }
     }
 }
 
