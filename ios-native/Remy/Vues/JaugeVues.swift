@@ -96,6 +96,8 @@ struct ContexteVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
     @State private var resumeALire: TexteASelectionner?
+    /// Le résumé automatique (circuit « compactage » de la tour) : nil, pas lu.
+    @State private var automatique: Bool?
 
     var body: some View {
         let j = app.chat.jauge
@@ -124,6 +126,15 @@ struct ContexteVue: View {
         }
         .presentationDetents([.medium, .large])
         .sheet(item: $resumeALire) { SelectionTexteVue(texte: $0.texte) }
+        .task {
+            // Le résumé automatique se fait sur la tour, après la réponse :
+            // relu ici pour dire s'il s'est fait, et s'il est allumé.
+            guard app.chat.compactageDisponible else { return }
+            if app.serveur?.sait("reglages") == true, let r = try? await app.api.reglages() {
+                automatique = r.circuits?["compactage"]?.actif
+            }
+            await app.chat.relireCompactage()
+        }
     }
 
     // MARK: Compacter (19/10)
@@ -132,19 +143,19 @@ struct ContexteVue: View {
         let chat = app.chat
         return VStack(alignment: .leading, spacing: 10) {
             Etiquette("Compacter")
-            Text("Rémy résume le début du fil (sur tes machines) et garde les derniers messages en entier : la suite repart plus légère. Rien n'est effacé. Automatique dès 70 %, réglable dans Réglages.")
+            Text("Rémy résume le début du fil (sur tes machines) et garde les derniers messages en entier : la suite repart plus légère. Rien n'est effacé.")
                 .font(Police.texte(14))
                 .foregroundStyle(Palette.encre2)
                 .fixedSize(horizontal: false, vertical: true)
-            if let c = chat.compactage, c.jusqua > 0 {
-                HStack(spacing: 12) {
-                    Text("Déjà résumé : les \(c.jusqua) premiers messages\(c.a.map { ", \(Format.heure($0))" } ?? "")")
-                        .font(Police.texte(13))
-                        .foregroundStyle(Palette.encre2)
-                    if let r = c.resume, !r.isEmpty {
-                        BoutonTexte("Voir le résumé") { resumeALire = TexteASelectionner(texte: r) }
-                    }
-                }
+            // Quand le résumé automatique se fera (70 %), s'il s'est fait (27/10).
+            Text(JaugeContexte.phraseCompactage(j, compactage: chat.compactage, automatique: automatique,
+                                                messages: chat.lignes.count))
+                .font(Police.texte(14, .medium))
+                .foregroundStyle(j.fraction.map { $0 >= JaugeContexte.seuilCompactage } == true ? Palette.signal : Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("jauge.compactage")
+            if let c = chat.compactage, c.jusqua > 0, let r = c.resume, !r.isEmpty {
+                BoutonTexte("Voir le résumé") { resumeALire = TexteASelectionner(texte: r) }
             }
             if chat.compactageEnCours {
                 HStack(spacing: 8) {

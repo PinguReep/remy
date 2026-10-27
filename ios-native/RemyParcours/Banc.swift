@@ -88,6 +88,21 @@ enum Pilote {
     }
 }
 
+extension Pilote {
+    /// Depuis la remise à zéro : les réponses du cerveau de démo à qui la tour
+    /// a offert un outil de recherche web, et celles où elle lui a dit
+    /// « conversation privée : pas de recherche web » (nil : pilote muet).
+    static func recherches() -> (outilsWeb: Int, notePrivee: Int)? {
+        let r = demander("/recherches")
+        func n(_ cle: String) -> Int? {
+            guard let m = r.range(of: "\"\(cle)\":(\\d+)", options: .regularExpression) else { return nil }
+            return Int(r[m].dropFirst(cle.count + 3))
+        }
+        guard let o = n("outilsWeb"), let p = n("notePrivee") else { return nil }
+        return (o, p)
+    }
+}
+
 private final class Tampon: @unchecked Sendable {
     private let verrou = NSLock()
     private var donnees = Data()

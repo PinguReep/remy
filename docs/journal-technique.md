@@ -4,6 +4,62 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-27 — Conversation privée sur l'iPhone, jauge visible, « avant X » à la veille
+
+- **Conversation privée depuis l'app** (demande du propriétaire) : aucune route
+  nouvelle, celles du cadenas du site, là depuis l'import initial du 19/10 —
+  `POST /api/conversations { prive: true }` (née privée) et `PATCH { prive:
+  true }` (sans retour : `prive: false` est refusé, 400). Pas de capacité :
+  toute tour les a. `test/prive-iphone.test.mjs` fige ce contrat (création,
+  liste, relecture, refus du retour, champs de `/api/reglages`, capacités).
+  « Nouvelle conversation privée » ne crée rien sur la tour : l'écran vide est
+  marqué privé et le fil naît privé au premier message (`ChatModel.privee`),
+  jamais un instant public. « Rendre privée » : confirmation qui dit « sans
+  retour » AVANT d'agir ; un refus de la tour ne pose pas le cadenas. Une
+  importée est privée d'office (la tour le dit aussi).
+- **Où** : écran vide de Rémy (bouton 52 pt « Nouvelle conversation
+  privée »), titre de l'en-tête (un menu, chevron : « Rendre cette
+  conversation privée », « Nouvelle conversation privée »), liste des
+  conversations. Le cadenas « Privée » reste dans l'en-tête (signal), la
+  liste le montre, le composeur dit « Message privé à Rémy… ». Le texte de ce
+  que ça change vit dans le cœur (`ConversationPrivee`, testé) : rien chez
+  Claude ni ailleurs, pas de mémoire ni de nuit, pas de web sauf
+  l'interrupteur — relu sur la tour (`recherchePrivee` effectif).
+- **Interrupteur « Recherche dans les conversations privées »** (Réglages,
+  `recherchePrivee` de `/api/reglages`, PR #18) : caché sans
+  `recherche-privee-v1` ; coupé par défaut ; le texte dit ce qui sort (la
+  question seule, salle blanche et filtre). Grisé et expliqué quand la tour le
+  verrouille : `REMY_RECHERCHE_PRIVEE=off` (`recherchePriveeVerrouillee` avec
+  `salleBlanche` vrai), `REMY_SALLE_BLANCHE=off` (`salleBlanche` faux), ou pas
+  de recherche locale (`rechercheLocale` nul). Affiché coupé quand il est
+  verrouillé, même si le réglage de Sam est allumé : c'est ce qui s'applique.
+- **Jauge visible par défaut** (`Diagnostic.jaugeParDefaut`, la clé
+  `diagnostic.jauge` ne change pas : qui l'a coupée la garde coupée). Le
+  détail dit le résumé automatique (`JaugeContexte.phraseCompactage`) :
+  encore N points avant 70 %, « 70 % atteints : Rémy résume juste après sa
+  réponse », fil trop court, déjà résumé à HH:MM, ou coupé (circuit
+  `compactage` lu dans `/api/reglages`). Le résumé automatique se fait sur la
+  tour après la réponse : la jauge ouverte relit la conversation
+  (`relireCompactage`) pour le voir. « Compacter maintenant » y reste.
+- **Échéances** (`AnalyseDate`, décisions du 27/10, remplace celles du 25/10
+  sur ces points) : une seule règle pour « avant » — « avant le 3 », « avant
+  mardi », « avant demain », « avant après-demain » → la veille, 23 h 59
+  (`finDeVeille`) ; dit le jour même (« avant mardi » un mardi), le suivant ;
+  avec une heure ou un moment (« avant mardi 14h »), ce jour-là à cette heure.
+  « pour / d'ici mardi » ne bougent pas (mardi 23 h). « début <mois> » (et
+  « début du mois (prochain) ») → le 5, 23 h. Une fin ou un début de mois
+  passés depuis 31 jours au plus (« fin octobre » dit le 2 novembre, « fin
+  décembre » dit le 3 janvier) → aujourd'hui, en retard de fait, et
+  `dejaPassee` le dit à l'aperçu (« fin octobre, déjà passée : ce soir ») ;
+  au-delà, l'an prochain ; une année dite et passée → aujourd'hui. « mi- » et
+  « courant <mois> » restent des flous.
+- **Parcours** P23 (conversation privée : cadenas, « Cherche … » sans
+  recherche) et P24 (jauge au premier message, résumé à 70 %). Le cerveau de
+  démo compte ce que la tour lui offre (`POST /recherches` du pilote) : en
+  privé interrupteur coupé, aucun outil web, et la note « pas de recherche
+  web » ; vérifié à la main contre le pilote : ordinaire → outils offerts,
+  privée allumée → offerts, privée coupée → aucun.
+
 ## 2026-10-25 — Salle blanche et filtre des requêtes sortantes (recherche-privee-v1)
 
 - **Modèle de menace.** Le modèle principal a sous les yeux la mémoire de Sam,
