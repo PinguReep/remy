@@ -293,11 +293,15 @@ public final class ClientAPI: @unchecked Sendable {
     /// sur Sam. `differe` (capture-siri-v1) : la tour répond dès la capture
     /// reçue et l'absorbe ensuite (Siri n'attend que quelques secondes).
     /// « partage » : la feuille de partage (24/10) ; une tour plus ancienne le
-    /// lit comme « note ».
-    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil) async throws -> RetourCapture {
+    /// lit comme « note ». `idCapture` (capture-idempotente-v1, 25/10) : la
+    /// file d'envoi de l'iPhone ; renvoyée, la tour rend la même réponse sans
+    /// la retenir deux fois.
+    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil,
+                         idCapture: String? = nil) async throws -> RetourCapture {
         let s = ["note", "chatgpt", "claude", "web", "siri", "partage"].contains(source) ? source : "note"
         var corps: [String: Any] = ["texte": texte, "source": s]
         if differe { corps["differe"] = true }
+        if let idCapture { corps["idCapture"] = idCapture }
         return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: delai ?? (differe ? 15 : 90))
     }
 
@@ -408,8 +412,12 @@ public final class ClientAPI: @unchecked Sendable {
     /// la même coche renvoyée après une coupure n'est pas refaite). Une coupure
     /// réseau est réessayée UNE fois avec la même clé : le serveur rend alors
     /// le résultat déjà obtenu au lieu d'écrire deux fois.
+    /// `delai` / `rejouer` : la capture du « + », feuille ouverte (25/10),
+    /// n'attend pas 2 × 150 s une tour muette — elle essaie une fois, court,
+    /// puis attend dans la file d'envoi (la même clé, rejouée plus tard).
     public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false,
-                          confirmer: Bool = false, rangs: [Int]? = nil) async throws -> ResultatApplication {
+                          confirmer: Bool = false, rangs: [Int]? = nil, delai: TimeInterval = DelaisMotion.ecriture,
+                          rejouer: Bool = true) async throws -> ResultatApplication {
         let actions = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p.actions))
         var corps: [String: Any] = ["actions": actions]
         // Proposition périmée (ancienne ou date passée) : Sam a confirmé.
@@ -423,14 +431,14 @@ public final class ClientAPI: @unchecked Sendable {
         if convId != nil, let id = p.id { corps["propositionId"] = id }
         if let idCommande { corps["idCommande"] = idCommande }
         let chemin = p.versAgenda ? "api/google/apply" : "api/motion/apply"
-        let rejouable = rejeuSur && (corps["propositionId"] != nil || idCommande != nil)
+        let rejouable = rejouer && rejeuSur && (corps["propositionId"] != nil || idCommande != nil)
         // La tour peut faire attendre l'écriture dans la file du quota Motion :
         // le délai le couvre (DelaisMotion), et la carte dit l'attente.
         return try await avecSuiviFile(!p.versAgenda) {
             do {
-                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: DelaisMotion.ecriture)
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: delai)
             } catch ErreurAPI.reseau where rejouable {
-                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: DelaisMotion.ecriture)
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: delai)
             }
         }
     }

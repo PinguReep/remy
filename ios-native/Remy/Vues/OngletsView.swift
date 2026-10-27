@@ -131,7 +131,7 @@ struct OngletsView: View {
         .modifier(RendezVousQuotidien(ui: ui))
         // Les nouveautés d'une mise à jour (21/10), une fois : Réglages › Nouveautés pour revoir.
         .sheet(item: Binding(get: { app.nouveautes.affichees }, set: { if $0 == nil { app.nouveautes.fermer() } })) { lot in
-            NouveautesFeuille(lot: lot) { app.nouveautes.fermer() }
+            NouveautesFeuille(lot: lot, fini: { app.nouveautes.fermer() }, pageVue: { app.nouveautes.pageVue($0) })
         }
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
@@ -207,7 +207,7 @@ struct OngletsView: View {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
                 // Tailscale réactivé sans changement de réseau : rien ne le
                 // signale, on retente chaque minute ce qui attend.
-                if app.tableau.gestesEnAttente > 0 { await app.tableau.envoyerEnAttente() }
+                if app.tableau.aEnvoyer { await app.tableau.envoyerEnAttente() }
             }
         }
     }

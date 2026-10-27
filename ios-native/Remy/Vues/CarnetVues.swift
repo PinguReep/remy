@@ -677,8 +677,11 @@ struct NouveauRappel: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Ajouter") {
-                        let reste = AnalyseDate.extraire(texte)?.reste
-                        let t = (reste?.isEmpty == false && !dateTouchee) ? reste! : AnalyseDate.sansFormule(texte)
+                        // Le texte du rappel comme au « + » : la date n'en part que si
+                        // elle était au bout (« Payer la facture de fin octobre à Hugo »
+                        // reste entier, jamais « Payer la facture de à Hugo »).
+                        let lue = dateTouchee ? nil : AnalyseDate.extraire(texte)
+                        let t = lue.map { GenreCapture.texte(texte, date: $0, genre: .rappel) } ?? AnalyseDate.sansFormule(texte)
                         if app.carnet.creerRappel(t, quand: avecDate ? date : nil) != nil {
                             Haptique.succes()
                             if avecDate { Task { await Notifications.demander() } }

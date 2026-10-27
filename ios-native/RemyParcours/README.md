@@ -45,6 +45,8 @@ func test21_monParcours() {
   siFaux: condition)` le garde en échec attendu (`XCTExpectFailure`), avec sa
   capture, et le résumé le reprend. `auditerCibles("écran")` mesure les zones
   tactiles sous 44 pt.
+- **Un défaut corrigé** perd son `constat` : `verifier("ce qui doit être vrai",
+  condition)` en fait une vraie vérification (échec rouge et capture s'il revient).
 - `Pilote.couperTour()` / `relancerTour()` : la tour s'éteint en plein parcours.
 - Identifiants d'accessibilité seulement là où le libellé ne suffit pas
   (`onglet.*`, `noter`, `maintenant.*`, `capture.*`).
