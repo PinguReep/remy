@@ -489,14 +489,21 @@ final class CarnetTests: XCTestCase {
     func testDebutDuMoisEstLe5() {
         for p in ["Préparer Noël début novembre", "Préparer Noël debut novembre", "Préparer Noël au début de novembre",
                   "Préparer Noël en début de novembre", "Préparer Noël d'ici début novembre", "Préparer Noël début nov.",
-                  "Préparer Noël début du mois prochain"] {
+                  "Préparer Noël début du mois prochain",
+                  // « début » est masculin : « le » part avec la date (contre-relecture).
+                  "Préparer Noël pour le début de novembre", "Préparer Noël d'ici le début de novembre",
+                  "Préparer Noël avant le début de novembre", "Préparer Noël d ici le debut de novembre",
+                  "Avant le début de novembre, préparer Noël", "Pour le début de novembre, préparer Noël"] {
             let r = analyse(p)
             XCTAssertEqual(r?.echeance, date(5, 11, 23), p)
             XCTAssertEqual(r?.heureDite, false, p)
             XCTAssertEqual(r?.reste, "Préparer Noël", p)
             XCTAssertNil(r?.dejaPassee, p)
             XCTAssertEqual(GenreCapture.deviner(p, maintenant: maintenant), .tache, p)
+            XCTAssertEqual(tache(p, maintenant).titre, "Préparer Noël", p)
         }
+        XCTAssertEqual(tache("Payer le loyer avant le début du mois prochain", maintenant).titre, "Payer le loyer")
+        XCTAssertEqual(tache("Payer le loyer avant le début du mois prochain", maintenant).echeance, date(5, 11, 23))
         XCTAssertEqual(analyse("Rappelle-moi début novembre de préparer Noël")?.quand, date(5, 11, 9))
         XCTAssertEqual(analyse("Payer la taxe début janvier")?.echeance, date(5, 1, 23, an: 2027), "l'an prochain, mois après mois")
         XCTAssertEqual(analyse("Payer la taxe debut fevrier")?.echeance, date(5, 2, 23, an: 2027), "dictée sans accent")
@@ -530,15 +537,89 @@ final class CarnetTests: XCTestCase {
         XCTAssertNil(apres?.dejaPassee)
         XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin decembre", maintenant: date(3, 1, 10, an: 2027))?.echeance,
                        date(3, 1, 23, an: 2027), "décembre d'il y a trois jours, par-dessus le nouvel an")
-        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier début du mois", maintenant: date(20, 10, 10))?.dejaPassee,
-                       "début du mois, déjà passé : ce soir")
         XCTAssertNil(AnalyseDate.extraire("Rendre le dossier fin du mois", maintenant: date(20, 10, 10))?.dejaPassee)
         // Le rappel sonne dans l'heure, jamais dans le passé.
         let rappel = AnalyseDate.extraire("Rappelle-moi de rendre le dossier fin octobre", maintenant: deuxNovembre)
         XCTAssertEqual(rappel?.quand, date(2, 11, 11))
         XCTAssertEqual(GenreCapture.deviner("Rendre le dossier fin octobre", maintenant: deuxNovembre), .tache)
-        // Une heure dite : pas de « ce soir » inventé.
-        XCTAssertNil(AnalyseDate.extraire("Rendre le dossier fin octobre à 18h", maintenant: deuxNovembre)?.dejaPassee)
+    }
+
+    /// Contre-relecture : une fin ou un début de mois passés, dits avec une
+    /// heure. L'heure encore à venir aujourd'hui : à cette heure ; déjà passée :
+    /// à la prochaine heure pleine. Jamais un rappel dans le passé, et
+    /// l'aperçu le dit.
+    func testUneFinDeMoisPasseeAvecUneHeureNeTombeJamaisDansLePasse() {
+        let deuxNovembre19h = date(2, 11, 19)
+        let rappel = AnalyseDate.extraire("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: deuxNovembre19h)
+        XCTAssertEqual(rappel?.quand, date(2, 11, 20), "18 h est passé : 20 h, l'heure pleine suivante")
+        XCTAssertEqual(rappel.map { $0.quand > deuxNovembre19h }, true)
+        XCTAssertEqual(rappel?.dejaPassee, "fin octobre, déjà passée : dans l'heure")
+        XCTAssertEqual(GenreCapture.deviner("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: deuxNovembre19h), .rappel)
+        let vingt = date(20, 11, 10)
+        let debut = AnalyseDate.extraire("Rappelle-moi début novembre à 9h de payer Hugo", maintenant: vingt)
+        XCTAssertEqual(debut?.quand, date(20, 11, 11))
+        XCTAssertEqual(debut?.dejaPassee, "début novembre, déjà passé : dans l'heure")
+        let dossier = AnalyseDate.extraire("Rendre le dossier fin octobre à 18h", maintenant: deuxNovembre19h)
+        XCTAssertEqual(dossier?.echeance, date(2, 11, 20))
+        XCTAssertEqual(dossier.map { $0.echeance > deuxNovembre19h }, true)
+        XCTAssertNotNil(dossier?.dejaPassee)
+        // L'heure dite vient encore aujourd'hui : à cette heure, et dit tel quel.
+        let matin = AnalyseDate.extraire("Rendre le dossier fin octobre à 18h", maintenant: date(2, 11, 10))
+        XCTAssertEqual(matin?.echeance, date(2, 11, 18))
+        XCTAssertEqual(matin?.dejaPassee, "fin octobre, déjà passée : aujourd'hui à 18 h")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin octobre à 18h30", maintenant: date(2, 11, 10))?.dejaPassee,
+                       "fin octobre, déjà passée : aujourd'hui à 18 h 30")
+        // 23 h passées : dix minutes plus tard, pas minuit d'hier.
+        let tard = date(2, 11, 23, 20)
+        let nuit = AnalyseDate.extraire("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: tard)
+        XCTAssertEqual(nuit.map { $0.quand > tard }, true)
+    }
+
+    /// Contre-relecture : « début du mois » sans mois nommé, dit après le 5,
+    /// vise le 5 du mois qui vient (« payer le loyer début du mois », dit le
+    /// 27) ; jamais « déjà passé ». « de ce mois », dit exprès, reste ce mois.
+    func testDebutDuMoisApresLe5VisLeMoisSuivant() {
+        for (p, quand) in [("Payer le loyer début du mois", date(27, 10, 10)), ("Payer le loyer début du mois", date(6, 10, 10)),
+                           ("Faire les comptes en début de mois", date(27, 10, 10)), ("Payer le loyer au début du mois", date(20, 10, 10)),
+                           ("Rendre le dossier début du mois", date(20, 10, 10)), ("payer le loyer debut du mois", date(27, 10, 10))] {
+            let r = AnalyseDate.extraire(p, maintenant: quand)
+            XCTAssertEqual(r?.echeance, date(5, 11, 23), p)
+            XCTAssertNil(r?.dejaPassee, p)
+        }
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois", maintenant: date(3, 10, 10))?.echeance, date(5, 10, 23),
+                       "avant le 5 : ce mois-ci")
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois", maintenant: date(5, 10, 10))?.echeance, date(5, 10, 23),
+                       "le 5 même : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe début du mois", maintenant: date(20, 12, 10))?.echeance, date(5, 1, 23, an: 2027),
+                       "par-dessus le nouvel an")
+        let ceMois = AnalyseDate.extraire("Rendre le dossier début de ce mois", maintenant: date(20, 10, 10))
+        XCTAssertEqual(ceMois?.echeance, date(20, 10, 23))
+        XCTAssertEqual(ceMois?.dejaPassee, "début de ce mois, déjà passé : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois prochain", maintenant: date(27, 10, 10))?.echeance, date(5, 11, 23))
+    }
+
+    /// Contre-relecture : « avant mardi 14h » est une date limite. Avec une
+    /// action claire, une tâche avec cette échéance, pas un rappel qui sonne
+    /// quand il est trop tard ; « rappelle-moi » reste un rappel.
+    func testUneDateLimiteAvecHeureEstUneTache() {
+        let lundi = date(26, 10, 10)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier avant mardi 14h", maintenant: lundi), .tache)
+        XCTAssertEqual(tache("Rendre le dossier avant mardi 14h", lundi).titre, "Rendre le dossier")
+        XCTAssertEqual(tache("Rendre le dossier avant mardi 14h", lundi).echeance, date(27, 10, 14))
+        let deux = date(2, 11, 10)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier avant le 3 à 14h", maintenant: deux), .tache)
+        XCTAssertEqual(tache("Rendre le dossier avant le 3 à 14h", deux).echeance, date(3, 11, 14))
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier d'ici demain 18h", maintenant: lundi), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier au plus tard vendredi à 12h", maintenant: lundi), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier jusqu'au 3 à 14h", maintenant: deux), .tache)
+        // Un rappel dit comme tel, une heure sans « avant », « pour » : rappel.
+        XCTAssertEqual(GenreCapture.deviner("Rappelle-moi avant mardi 14h de rendre le dossier", maintenant: lundi), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Appeler Hugo mardi 14h", maintenant: lundi), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Réserver le resto pour mardi 20h", maintenant: lundi), .rappel)
+        XCTAssertEqual(AnalyseDate.extraire("Appeler Hugo mardi 14h", maintenant: lundi)?.limite, false)
+        // Une tâche changée à la main, heure dite sans « avant » : l'heure reste dans le titre.
+        XCTAssertEqual(GenreCapture.texte("Appeler Hugo mardi 14h", date: AnalyseDate.extraire("Appeler Hugo mardi 14h", maintenant: lundi),
+                                          genre: .tache), "Appeler Hugo mardi 14h")
     }
 
     /// Contre-relecture : le texte d'une tâche ne perd jamais un morceau de

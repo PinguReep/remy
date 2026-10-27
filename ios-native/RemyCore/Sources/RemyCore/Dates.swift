@@ -24,15 +24,23 @@ public enum AnalyseDate {
         public let echeance: Date
         /// « fin octobre, déjà passée : ce soir » : une fin ou un début de mois
         /// passés depuis 31 jours au plus tombent aujourd'hui (27/10), et
-        /// l'aperçu le dit. Nil sinon.
+        /// l'aperçu le dit. Avec une heure dite : « aujourd'hui à 18 h » si
+        /// elle est encore à venir, sinon « dans l'heure » — jamais une date
+        /// passée. Nil sinon.
         public let dejaPassee: String?
+        /// Une date limite (« avant mardi 14h », « d'ici le 3 », « au plus tard
+        /// vendredi ») : avec une action claire, c'est l'échéance d'une tâche,
+        /// même avec une heure dite — pas un rappel qui sonnerait trop tard.
+        public let limite: Bool
 
-        public init(quand: Date, reste: String, heureDite: Bool = true, echeance: Date? = nil, dejaPassee: String? = nil) {
+        public init(quand: Date, reste: String, heureDite: Bool = true, echeance: Date? = nil, dejaPassee: String? = nil,
+                    limite: Bool = false) {
             self.quand = quand
             self.reste = reste
             self.heureDite = heureDite
             self.echeance = echeance ?? (heureDite ? quand : Format.echeanceDans(jours: 0, depuis: quand))
             self.dejaPassee = dejaPassee
+            self.limite = limite
         }
     }
 
@@ -56,8 +64,9 @@ public enum AnalyseDate {
     /// avec elle. La dictée perd parfois l'apostrophe (« d ici », « jusqu a »).
     static let motifAvant = #"(?:avant|pour|d['’ ]\s*ici|jusqu['’ ]\s*(?:à|a)|au\s+plus\s+tard)"#
     /// Ce qui mène à une échéance large (« d'ici la fin du mois », « pour
-    /// la fin de la semaine », « au début du mois ») : retiré avec elle.
-    static let motifLien = #"(?:"# + motifAvant + #"\s+)?(?:(?:à\s+)?la\s+|en\s+|au\s+)?"#
+    /// la fin de la semaine », « au début du mois », « pour le début de
+    /// novembre ») : retiré avec elle.
+    static let motifLien = #"(?:"# + motifAvant + #"\s+)?(?:(?:à\s+)?la\s+|en\s+|au\s+|le\s+)?"#
     /// « cette semaine », « d'ici la fin de la semaine », « la semaine
     /// prochaine » : jusqu'au dimanche (25/10). « la semaine » seule n'en est
     /// pas une (« le menu de la semaine »).
@@ -160,9 +169,17 @@ public enum AnalyseDate {
         var avantStrict = false
         /// La veille d'un « avant » : son échéance est 23 h 59 (27/10).
         var finDeVeille = false
-        /// « fin octobre, déjà passée : ce soir » (27/10).
+        /// « fin octobre, déjà passée » (27/10) : la suite (« ce soir », « dans
+        /// l'heure ») se décide une fois l'heure lue.
         var dejaPassee: String?
+        /// « avant / d'ici / au plus tard / jusqu'à » : une date limite.
+        var limite = false
         func estAvant(_ prefixe: String?) -> Bool { prefixe?.lowercased() == "avant" }
+        /// « pour mardi » n'en est pas une (« réserver le resto pour mardi 20h »).
+        func estLimite(_ prefixe: String?) -> Bool {
+            guard let p = prefixe?.lowercased() else { return false }
+            return !p.hasPrefix("pour")
+        }
         let premierDuMois = cal.date(from: cal.dateComponents([.year, .month], from: debut)) ?? debut
         /// « le 3 » seul ne se lit qu'en fin de phrase, devant une heure ou un
         /// moment (« Payer le loyer le 5 », « le 3 à 14h », « le 3 dans la
@@ -195,11 +212,13 @@ public enum AnalyseDate {
         } else if let m = cherche(#"\b(?:("# + motifAvant + #")\s+)?apr[eè]s[- ]demain\b"#) {
             jour = cal.date(byAdding: .day, value: 2, to: debut)
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
         } else if let m = cherche(#"\b(?:("# + motifAvant + #")\s+)?demain\b"#) {
             jour = cal.date(byAdding: .day, value: 1, to: debut)
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
         } else if let m = cherche(#"\b(?:"# + motifPrefixeDate + #"\s+)?(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b"#),
@@ -208,6 +227,7 @@ public enum AnalyseDate {
                   let d = date(jour: j, mois: mo, annee: groupe(m, 4).flatMap(Int.init), apres: debut, cal: cal) {
             jour = d
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
         } else if let m = cherche(#"\b(?:"# + motifPrefixeDate + #"\s+)?(?:le\s+)?(?:"# + motifJourSemaine + #"\s+)?(\d{1,2})(?:er)?\s+"# + motifMois + #"(?:\s+(20\d{2})\b)?"#),
@@ -215,6 +235,7 @@ public enum AnalyseDate {
                   let d = date(jour: j, mois: mo, annee: groupe(m, 4).flatMap(Int.init), apres: debut, cal: cal) {
             jour = d
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1))
             retirer(m.range)
             finJour = m.range.location
         // Un jour de la semaine passe avant « cette semaine » : « jeudi, cette
@@ -226,6 +247,7 @@ public enum AnalyseDate {
             let actuel = cal.component(.weekday, from: maintenant) - 1
             let ecart = (cible - actuel + 7) % 7
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1))
             memeJourSemaine = ecart == 0 && groupe(m, 3) == nil
             jour = cal.date(byAdding: .day, value: ecart == 0 && !memeJourSemaine ? 7 : ecart, to: debut)
             retirer(m.range)
@@ -255,6 +277,7 @@ public enum AnalyseDate {
             // (« fin octobre » dit le 2 novembre) : aujourd'hui, en retard de
             // fait ; au-delà, l'an prochain. Jamais une date passée.
             let fin = (groupe(m, 1) ?? "").lowercased() == "fin"
+            limite = (groupe(m, 0) ?? "").range(of: #"(?i)^\s*(?:avant|d['’ ]\s*ici|jusqu|au\s+plus\s+tard)"#, options: .regularExpression) != nil
             func borne(_ premier: Date) -> Date? {
                 fin ? cal.date(byAdding: DateComponents(month: 1, day: -1), to: premier)
                     : cal.date(byAdding: .day, value: jourDuDebut - 1, to: premier)
@@ -262,10 +285,18 @@ public enum AnalyseDate {
             func premierDe(mois: Int, annee: Int) -> Date? { cal.date(from: DateComponents(year: annee, month: mois, day: 1)) }
             var candidates: [Date] = []
             var dit = ""
-            if let duMois = groupe(m, 2) {
-                let prochain = duMois.lowercased().contains("prochain")
-                if let p = cal.date(byAdding: .month, value: prochain ? 1 : 0, to: premierDuMois), let b = borne(p) { candidates = [b] }
-                dit = prochain ? "du mois prochain" : "du mois"
+            if let duMois = groupe(m, 2)?.lowercased() {
+                // « du mois prochain » : le suivant. « de ce mois » : celui-ci,
+                // même passé (dit exprès). « début du mois », « en début de
+                // mois », dit après le 5 : le 5 qui vient, jamais « déjà passé »
+                // (« payer le loyer début du mois », dit le 27, vise le mois
+                // prochain). « fin du mois » n'est jamais passée.
+                let prochain = duMois.contains("prochain")
+                let ceMois = duMois.range(of: #"\bce\s+mois"#, options: .regularExpression) != nil
+                var decalage = prochain ? 1 : 0
+                if !prochain, !ceMois, let b = borne(premierDuMois), b < debut { decalage = 1 }
+                if let p = cal.date(byAdding: .month, value: decalage, to: premierDuMois), let b = borne(p) { candidates = [b] }
+                dit = prochain ? "du mois prochain" : ceMois ? "de ce mois" : "du mois"
             } else if let mo = groupe(m, 3).flatMap(numeroMois) {
                 let an = cal.component(.year, from: debut)
                 let annees = groupe(m, 4).flatMap(Int.init).map { [$0] } ?? [an - 1, an, an + 1]
@@ -277,7 +308,7 @@ public enum AnalyseDate {
             if let recente = passees.max(),
                aVenir.isEmpty || (cal.dateComponents([.day], from: recente, to: debut).day ?? .max) <= retardToleres {
                 jour = debut
-                dejaPassee = "\(fin ? "fin" : "début") \(dit), déjà passé\(fin ? "e" : "") : ce soir"
+                dejaPassee = "\(fin ? "fin" : "début") \(dit), déjà passé\(fin ? "e" : "")"
             } else {
                 jour = aVenir.min()
             }
@@ -288,6 +319,7 @@ public enum AnalyseDate {
                   let d = prochain(jour: n, apres: depuis, cal: cal) {
             jour = d
             avantStrict = estAvant(groupe(m, 1))
+            limite = estLimite(groupe(m, 1)) || groupe(m, 2) != nil
             retirer(m.range)
             finJour = m.range.location
         }
@@ -367,6 +399,19 @@ public enum AnalyseDate {
                 let h = cal.component(.hour, from: maintenant)
                 q = (h < 23 ? cal.date(bySettingHour: h + 1, minute: 0, second: 0, of: maintenant) : nil) ?? maintenant.addingTimeInterval(600)
             }
+            // Une fin de mois déjà passée, dite avec une heure (« fin octobre à
+            // 18h », dit le 2 novembre) : aujourd'hui à cette heure si elle
+            // vient encore, sinon à la prochaine heure pleine — jamais un
+            // rappel programmé dans le passé (27/10).
+            if heure != nil, dejaPassee != nil, q <= maintenant {
+                let h = cal.component(.hour, from: maintenant)
+                q = (h < 23 ? cal.date(bySettingHour: h + 1, minute: 0, second: 0, of: maintenant) : nil) ?? maintenant.addingTimeInterval(600)
+                dejaPassee = (dejaPassee ?? "") + " : dans l'heure"
+            } else if let (h, mi) = heure, dejaPassee != nil {
+                dejaPassee = (dejaPassee ?? "") + " : aujourd'hui à \(h) h" + (mi > 0 ? String(format: " %02d", mi) : "")
+            } else if dejaPassee != nil {
+                dejaPassee = (dejaPassee ?? "") + " : ce soir"
+            }
             quand = q
             if heure == nil {
                 // Un jour sans heure : sa fin (23 h). « vendredi » dit un
@@ -391,7 +436,7 @@ public enum AnalyseDate {
         }
         let heureDite = heure != nil || (relatif != nil && !relatifEnJours)
         return Resultat(quand: quand, reste: nettoyer(t), heureDite: heureDite, echeance: echeance,
-                        dejaPassee: heure == nil ? dejaPassee : nil)
+                        dejaPassee: dejaPassee, limite: limite)
     }
 
     /// Une date à venir (le 3/02 en décembre : l'an prochain).
