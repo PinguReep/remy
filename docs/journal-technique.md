@@ -125,6 +125,196 @@ doit montrer, le capture (« P03-02-et-maintenant ») et note gestes et temps.
   `-scheme Remy`. `ios-parcours.yml` échoue s'il disparaît.
 - `workflow_dispatch` seulement : une minute macOS compte pour dix.
 
+## 2026-10-25 — Quatre défauts relevés par les parcours, corrigés
+
+- **Confirmation après une feuille** : chaque copie de `ToastView` (l'écran et
+  ses feuilles) efface le message à son heure. La feuille refermée annulait sa
+  tâche, `try?` avalait l'annulation et effaçait aussitôt. Une tâche annulée
+  n'efface plus rien : la copie de l'écran dessous garde le message et son
+  « Annuler » toute leur durée. Rappel daté : l'autorisation d'iOS est demandée
+  avant la confirmation, qui ne s'use plus derrière la question du système.
+- **Un jour sans heure n'est pas un créneau** : `AnalyseDate` dit si une heure
+  a été dite (`heureDite`). Une action claire avec un jour seul devient une
+  tâche à échéance (ce jour-là à 23 h, comme `Format.echeanceDans` : Motion la
+  place avant) ; un rappel, c'est une heure dite ou « rappelle-moi ». Changer
+  le genre à la main garde la date : le « + » envoie l'échéance avec la tâche.
+- **Proposition sous le clavier** : la carte arrive sans nouveau mot ni
+  nouvelle ligne, donc rien ne faisait descendre le fil. À son arrivée, le
+  clavier se range (le brouillon reste) et le fil descend au bas de la carte,
+  sauf si Sam est remonté lire.
+- **Nouveautés** : une feuille prend des entrées entières tant qu'elles tiennent
+  en 6 pages (au moins une), ne marque vues que celles-là, et ne revient pas
+  dans le même lancement : la suite attend le lancement suivant.
+- Dans `RemyParcours`, un constat corrigé devient `verifier(…)` : un échec
+  rouge, avec sa capture, s'il revient (`auditerCibles(…, strict: true)` pour
+  un écran déjà à 44 pt).
+- **Parcours indépendants de l'heure** : la journée de démo a des rendez-vous à
+  heure fixe, la tâche en cours suit l'heure du run. Joués vers 17 h, « Point
+  hebdo » prenait la carte « Maintenant » (plus de « Terminer » : six parcours
+  rouges) et le déjeuner était passé (P12). Les faux services décalent ce qui
+  chevauche la tâche en cours juste après elle ; P12 part de la ligne « Toute la
+  journée », présente à toute heure.
+- **La carte « Maintenant » sous le pli** (build 37) : l'échéance menacée et
+  l'offre du briefing passaient au-dessus. Le défilement automatique de XCUITest
+  ratait « Terminer » (toucher pendant l'élan) : `amenerDoucement` défile sans
+  élan avant de toucher.
+
+## 2026-10-25 — Contre-relecture des quatre correctifs, et la carte « Maintenant »
+
+- **Aujourd'hui** (validé par le propriétaire) : le conseil du moment et la
+  carte « Maintenant » d'abord, comme avant le build 37 ; l'échéance menacée,
+  l'offre du briefing et le bilan du soir juste en dessous, aucun retiré. Le
+  conseil reste collé à la carte : il parle de la tâche en cours. P02 vérifie
+  que la carte et « Terminer » tiennent au-dessus des onglets sans défiler.
+- **Confirmation du « + » (Tâche)** : `noterTache` attendait la relecture de la
+  journée (jusqu'à 30 s sur la tour) avant que la feuille se ferme ; les 6 s
+  du message s'usaient dessous. Elle rend la main tout de suite, la journée se
+  relit derrière (`apresGesteSansAttendre`). Prouvé par un test du cœur (tableau
+  de bord retardé de 3 s) : la tour de démo, elle, répond depuis son cache
+  après une écriture, la retarder dans les faux services ne prouverait rien.
+- **Échéance d'un jour sans heure** : calculée sur le jour dit (23 h), plus sur
+  le 9 h posé pour un rappel. « vendredi », dit un vendredi à 10 h, c'est ce
+  soir ; il ne vise la semaine suivante qu'après 23 h. « aujourd'hui » dit à
+  23 h 30 : jusqu'à 23 h 59, jamais une échéance passée. Le rappel sans heure
+  garde son comportement (vendredi suivant à 9 h).
+- **Le titre d'une tâche** (`GenreCapture.texte`) : la date ne s'en retire que
+  si elle était au bout de la phrase, et si ce qui reste ne finit pas sur un
+  mot de liaison (« Relire le compte rendu de »). Sinon la phrase entière part,
+  et l'échéance avec. Une tâche forcée qui avait une heure garde cette heure
+  dans son titre. L'aperçu montre le titre exact avant l'envoi. Choix prudent :
+  une date au milieu reste dans le titre plutôt que de risquer une phrase cassée.
+- **L'analyseur de dates** : l'action se lit aussi sans la date (« Demain,
+  appeler le plombier » est une tâche) ; « à 14 heures », « demain soir »,
+  « lundi après-midi », « à 3h de l'après-midi », « dans 1h30 », « dans une
+  heure », « dans 2 semaines », « dans 3 jours à 14h », « le 30 oct »,
+  « lundi 2 novembre » ; une durée n'est pas une heure (« 2h de studio »,
+  « Hugo a 2h de route ») ; « idée : » et « projet » passent avant la date ;
+  dictée sans apostrophe (« rappelle moi d appeler »).
+- **Hors ligne** : une création de tâche n'a pas de file d'envoi. Une phrase
+  datée qui ne part pas propose « Garder en rappel » dans le message (le
+  libellé du bouton d'un `MessageBas` n'est plus toujours « Annuler ») : le
+  rappel du carnet, gardé sur l'iPhone, comme avant le 25/10.
+- **Nouveautés** : « Plus tard » ou la feuille balayée ne marquent vues que les
+  entrées dont une page a été affichée (`pageVue`). Reprise unique
+  (`nouveautes.reprise37`) : le build 37 coupait sa feuille à 6 pages
+  (« partage », « hors-app ») mais marquait vue toute la série 3 ; le reste
+  de la série redevient nouveau une fois. Revoir un tutoriel coûte moins qu'en
+  perdre un.
+- **Proposition de Rémy** : le clavier ne se range plus si Sam a commencé à
+  écrire (ni sa dictée) ; le fil descend seulement. Le second défilement ne
+  ramène plus en bas un Sam qui a posé le doigt pour remonter.
+
+## 2026-10-25 — Capture hors ligne : une vraie file d'envoi, et des échéances larges
+
+- **File d'envoi des captures** (`RemyCore/EnvoiCaptures.swift`, décision du
+  propriétaire) : remplace « Garder en rappel ». Une tâche, une idée,
+  « Retenir » ou un dossier noté avec le « + » devient une `Commande`
+  (`.capture(CaptureFigee)`) : genre, titre, échéance figés au moment de la
+  capture, écrite sur le disque AVANT de partir. Feuille ouverte : envoi tout
+  de suite ; réseau coupé → « Pas de réseau : … partira dès que Rémy sera
+  joignable » avec « Annuler », la feuille se ferme. iPhone sans aucun réseau
+  (`horsLigne`) : rien n'est tenté. Elle repart au retour du réseau, au premier
+  plan, au lancement, et chaque minute (`TableauModel.envoyerEnAttente`) ;
+  plusieurs envoyées d'un coup : un seul message « Envoyé : N captures… ».
+- **Fichier à part** (`captures.json`, pas `envoi.json`) : un build plus
+  ancien réinstallé (TestFlight › Builds précédents) ne sait pas décoder le
+  nouveau cas ; dans le même fichier, il perdait toute sa file, coches comprises.
+- **Jamais deux fois** : l'identifiant de la capture part avec elle. Tâche :
+  `idCommande` (chaîne d'écriture du Lot 0, `propositions-v1`) — vérifié contre
+  la tour de démo, un renvoi après un redémarrage rend le même résultat et le
+  faux Motion n'a qu'une tâche. Idée et dossier : écrits par leur identifiant
+  (`PUT /api/dossiers/<id>`, note `id`), un renvoi réécrit la même ligne.
+  Retenir : nouveau `idCapture` (capacité `capture-idempotente-v1`) — la tour
+  garde la réponse dans la table `commandes` (source `capture`, aucune
+  migration) et la rend telle quelle (`rejoue: true`), sans rappeler le
+  modèle ; deux envois simultanés attendent la même absorption ; un refus
+  (400, 502) n'est pas retenu, il se retente. Tour sans la capacité : envoi
+  unique — la tentative est notée AVANT de partir ; coupée en route, la
+  capture est « peut-être déjà reçue » et attend Sam (« Renvoyer »), jamais
+  renvoyée à l'aveugle.
+- **Refus** (la tour ou Motion) : feuille ouverte, le texte reste dans le champ
+  et rien n'attend ; partie plus tard, elle reste dans la liste avec sa raison
+  (`raison`), ne repart pas seule, « Renvoyer » ou « Retirer » (avec
+  « Annuler »).
+- **Visible** : en tête d'Aujourd'hui, « N en attente d'envoi » (ou « à
+  revoir »), toucher = la liste (`FileEnvoiVue`) : texte, échéance ou endroit,
+  état, « Envoyer maintenant », « Retirer », « Renvoyer ». Dans le « + »,
+  quand Rémy est déjà su injoignable : « ce sera gardé sur l'iPhone ». Les
+  rappels et les listes, déjà locaux, ne changent pas. Parcours P21 : tâche
+  notée tour coupée, ligne « 1 en attente d'envoi », tour rallumée, retour au
+  premier plan, « Envoyé : … », une seule tâche dans le faux Motion
+  (`POST /compter` du pilote).
+- **Échéances larges** (`AnalyseDate`, décisions du 25/10) : « cette
+  semaine », « avant / d'ici la fin de la semaine », « dans la semaine » →
+  dimanche 23 h (semaine lundi → dimanche ; dimanche soir passé 23 h : 23 h 59) ;
+  « la semaine prochaine » → le dimanche suivant. « fin octobre », « fin du
+  mois », « avant la fin du mois (prochain) » → dernier jour du mois, 23 h ;
+  mois passé → l'an prochain. « avant le 3 (novembre, /11) » → la veille,
+  23 h (« avant » est strict ; la veille déjà passée → ce soir) ; « pour / d'ici
+  le 3 », « jusqu'au 3 », « le 3 » → le 3. Sans mois : le prochain 3, ce mois-ci
+  compris (« le 31 » saute les mois sans 31). « le 3 » seul ne se lit qu'en fin
+  de phrase ou devant une heure : « Visiter le 2 pièces », « Appeler le 06… »
+  ne sont pas des dates. Un jour de la semaine dit en plus l'emporte (plus tôt,
+  jamais raté). « début / mi- / courant novembre », « en novembre » : rien, le
+  flou reste dans le titre. Le titre suit la règle du 25/10 (la date ne part
+  que si elle était au bout) ; « Avant vendredi, … » perd aussi son lien en tête.
+- **Recherche web** : `GET /api/reglages` dit `rechercheLocale` (le moteur, PR
+  #17) ; présent, Réglages dit « Rémy cherche lui-même sur le web
+  (DuckDuckGo), sans passer par Claude. », cache « Envoi de contexte au
+  cloud » (sans objet), et Réglages › Modèle ne dit plus que Claude sert aux
+  recherches (capacité `recherche-locale-v1`). Absent : les anciens textes.
+  Nouveautés série 3 : « Rémy cherche sur le web » (`recherche-locale-v1`) et
+  « Noté sans réseau, envoyé ensuite ».
+
+## 2026-10-25 — Contre-relecture de la capture hors ligne
+
+- **Panne passagère ≠ refus** (`NatureEchec`, `EnvoiCaptures.swift`) : 502
+  (Rémy arrêté derrière Tailscale Serve), 503 (base indisponible), 429, 408,
+  et un résultat Motion `ok:false` de nature quota / serveur / délai / réseau
+  (nouveau champ `nature` du résultat, `lib/motion.js` ; une tour plus ancienne
+  est lue à son « réessaie ») : la capture reste, sans raison, et repart seule
+  à 1, 2, 5 puis 15 min (`reports`, `partApres`) ; la liste dit « Dernier
+  essai : … ». Feuille ouverte : gardée, la feuille se ferme. « Envoyer
+  maintenant » n'attend pas l'heure. Sans réponse nette (coupure, 500, 504,
+  réponse illisible) : comme une coupure. Seul un vrai refus (400, 404, 409…)
+  attend Sam. Côté tour, renvoyer la même clé après un échec la refait une
+  fois (`test/capture-passagere.test.mjs`).
+- **Retirée pendant la vidange** : la boucle relit la file avant chaque
+  envoi, `envoyerCapture` vérifie que la capture y est encore.
+- **401** : la session refusée n'efface plus les captures
+  (`vider(garderCaptures:)`), la vidange s'arrête au premier refus, le
+  message le dit et l'écran de connexion compte les captures (le nombre, pas
+  le texte). Seule la déconnexion voulue les efface.
+- **« ne partira pas »** n'est dit que si aucun envoi n'est resté sans
+  réponse ; sinon « Retirée de la file… peut-être déjà arrivée : vérifie
+  dans Motion ». Une réponse nette de la tour (même clé) lève le doute.
+- **Tour ancienne** (Retenir sans `capture-idempotente-v1`) : le doute
+  (`peutEtreRecue`) est écrit AVANT l'envoi avec la tentative ; l'app tuée en
+  route, la capture propose « Renvoyer ».
+- **Rémy déjà su injoignable** : le « + » garde la capture sans essayer, la
+  feuille se ferme, la file l'essaie derrière. Sinon un seul essai court
+  (30 s, sans rejeu), puis la file avec la même clé — plus 2 × 150 s
+  feuille ouverte.
+- **Échéance déjà passée à l'envoi** : envoyée telle quelle, et dit (« son
+  échéance … était déjà passée : elle y est en retard »), dans la liste aussi.
+- **captures.json relu élément par élément** : un illisible est mis de côté
+  (`captures-illisibles.json`, ajouté, jamais écrasé) et compté.
+- **Dates** : ponctuation après le numéro (« avant le 3. », « Avant le 3,
+  … » : Whisper ponctue) ; « vendredi de la semaine prochaine » ; « début /
+  milieu / mi- (de la) semaine prochaine » restent des flous ; « le 20 du
+  mois prochain » ; « avant le 3 à 14h » vise le 3 à 14 h (la veille seulement
+  sans heure) ; « d ici », « jusqu a », « au plus tard » ; « Avant la réunion,
+  … » garde son « Avant » (le lien part avec la date, pas en tête) ; « Appeler
+  le 15 », « pour le 10 km », « pour le 5 à 7 » ne sont pas des dates ;
+  « Rappelle-moi le 3 d'appeler… », « le 3 dans la matinée » le sont. Un
+  rappel du jour, 9 h passé, sonne à l'heure pleine suivante. L'aperçu montre
+  l'année quand ce n'est pas celle-ci (« fin octobre » dit le 1er novembre).
+  « Nouveau rappel » (Carnet) prend le texte comme le « + ». « avant mardi »
+  reste mardi (veille stricte : dates chiffrées seulement, à trancher).
+- **Parcours P22** : `POST /panne` du pilote (502 à tout sur le port de la
+  tour) ; tâche gardée, « Dernier essai : Erreur 502 », pas de « Renvoyer »,
+  « Envoyer maintenant », une seule tâche dans le faux Motion.
+
 ## 2026-10-18 — Dépôt public, rien de personnel dedans
 
 - **Pourquoi** : CI macOS gratuite sur un dépôt public. Le code ne doit

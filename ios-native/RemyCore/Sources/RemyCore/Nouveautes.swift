@@ -122,6 +122,22 @@ public enum Nouveautes {
             .init(symbole: "chart.bar", titre: "Ce que tu utilises vraiment",
                   texte: "Réglages › Ce que tu utilises vraiment : les gestes que tu fais le plus, et ceux que tu ne touches jamais. Compté sur cet iPhone, sans aucun contenu, et rien ne part."),
         ]),
+        Nouveaute(id: "capture-hors-ligne", serie: 3, date: "25 oct.", titre: "Noté sans réseau, envoyé ensuite", capacite: nil, pages: [
+            .init(symbole: "tray.and.arrow.up", titre: "Rien ne se perd",
+                  texte: "Sans réseau, une tâche, une idée, « Retenir » ou un dossier noté avec le « + » attend sur l'iPhone, tel que tu l'as écrit, et part dès que Rémy répond. Une seule fois : jamais deux tâches dans Motion."),
+            .init(symbole: "list.bullet", titre: "« En attente d'envoi »",
+                  texte: "En haut d'Aujourd'hui, la ligne « 1 en attente d'envoi » : touche-la pour voir ce qui attend, l'envoyer tout de suite ou le retirer. Un refus de Motion y reste, avec sa raison."),
+            .init(symbole: "calendar", titre: "Des échéances comprises",
+                  texte: "« cette semaine » : jusqu'à dimanche soir. « fin octobre » : le 31. « avant le 3 » : le 2 au soir. Un flou comme « début novembre » reste dans le titre, sans date inventée."),
+        ]),
+        Nouveaute(id: "recherche-web", serie: 3, date: "25 oct.", titre: "Rémy cherche sur le web", capacite: "recherche-locale-v1", pages: [
+            .init(symbole: "globe", titre: "Lui-même, sans Claude",
+                  texte: "Une question récente, chiffrée ou réglementaire : Rémy cherche sur le web (DuckDuckGo) et lit les pages, avec le modèle de ta tour. Plus de carte « Tu autorises ? », rien ne part chez Claude."),
+            .init(symbole: "checkmark.shield", titre: "Ses sources, et ce qui reste à vérifier",
+                  texte: "Il cite le site, le lien et la date. Un chiffre qu'aucune page lue ne contient est signalé « à vérifier ». Une conversation privée ne cherche jamais."),
+            .init(symbole: "switch.2", titre: "À ta main",
+                  texte: "Réglages › Recherche web pour la couper : Rémy répond alors sans le web."),
+        ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
                   texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
@@ -158,14 +174,39 @@ public enum Nouveautes {
 
     /// Au plus, pour ne pas transformer une mise à jour en cours magistral.
     static let pagesMax = 6
+
+    /// Ce qu'une feuille montre : des entrées entières, dans l'ordre, tant
+    /// qu'elles tiennent dans `pagesMax` pages — au moins une. Jamais une
+    /// entrée coupée ; les suivantes attendent les lancements suivants.
+    static func lot(_ entrees: [Nouveaute], pagesMax: Int = pagesMax) -> [Nouveaute] {
+        var pris: [Nouveaute] = []
+        var pages = 0
+        for n in entrees {
+            if !pris.isEmpty && pages + n.pages.count > pagesMax { break }
+            pris.append(n)
+            pages += n.pages.count
+        }
+        return pris
+    }
 }
 
 /// Les nouveautés à montrer d'un coup (une feuille), dans l'ordre.
 public struct LotNouveautes: Identifiable, Equatable, Sendable {
     public let id: String
     public let entrees: [Nouveaute]
+    /// Toutes les pages de ses entrées : la limite se prend à la
+    /// composition du lot (`Nouveautes.lot`), jamais au milieu d'une entrée.
     public var pages: [(nouveaute: Nouveaute, page: Nouveaute.Page)] {
-        Array(entrees.flatMap { n in n.pages.map { (n, $0) } }.prefix(Nouveautes.pagesMax))
+        entrees.flatMap { n in n.pages.map { (n, $0) } }
+    }
+    /// Les entrées dont au moins une page a été affichée, la feuille ayant
+    /// atteint la page `index` (0 : la première).
+    public func entrees(jusqua index: Int) -> [Nouveaute] {
+        var debut = 0
+        return entrees.filter { n in
+            defer { debut += n.pages.count }
+            return debut <= index
+        }
     }
     public static func == (a: LotNouveautes, b: LotNouveautes) -> Bool { a.id == b.id && a.entrees == b.entrees }
 }
@@ -180,13 +221,30 @@ public final class NouveautesModel {
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let reglages: UserDefaults
     @ObservationIgnored let catalogue: [Nouveaute]
+    /// Une feuille par lancement : la suite d'un long lot attend le suivant.
+    @ObservationIgnored private var lotMontre = false
+    /// La page la plus loin affichée dans la feuille du lancement.
+    @ObservationIgnored private var pageAtteinte = 0
     static let cleVues = "nouveautes.vues"
+    /// Reprise unique du build 37 (25/10), faite au premier lancement d'après.
+    static let cleReprise37 = "nouveautes.reprise37"
+    /// Le build 37 coupait sa feuille à 6 pages mais marquait vu tout le lot :
+    /// ces deux entrées (sans capacité, en tête de la série 3) sont les seules
+    /// qu'il a pu montrer. Revoir un tutoriel coûte moins qu'en perdre un.
+    static let montreesParLeBuild37: Set<String> = ["partage", "hors-app"]
 
     public init(reglages: UserDefaults = .standard, catalogue: [Nouveaute] = Nouveautes.catalogue) {
         self.reglages = reglages
         self.catalogue = catalogue
-        if let liste = reglages.stringArray(forKey: Self.cleVues) {
-            vues = Set(liste)
+        if var vues = reglages.stringArray(forKey: Self.cleVues).map(Set.init) {
+            if !reglages.bool(forKey: Self.cleReprise37) {
+                // Les entrées de la série 3 marquées vues sans avoir été
+                // montrées redeviennent nouvelles, une fois pour toutes.
+                let serie3 = Set(catalogue.filter { $0.serie == 3 }.map(\.id))
+                vues.subtract(serie3.subtracting(Self.montreesParLeBuild37))
+                reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
+            }
+            self.vues = vues
         } else {
             // Premier lancement avec les nouveautés : seules celles de la
             // dernière mise à jour sont nouvelles ; les autres, à l'historique.
@@ -194,6 +252,7 @@ public final class NouveautesModel {
             vues = Set(catalogue.filter { $0.serie < derniere }.map(\.id))
             reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
         }
+        reglages.set(true, forKey: Self.cleReprise37)
     }
 
     /// La tour connaît la fonction (sinon elle est encore cachée dans l'app).
@@ -209,12 +268,20 @@ public final class NouveautesModel {
     public func estNouvelle(_ n: Nouveaute) -> Bool { !vues.contains(n.id) }
 
     /// Au retour au premier plan : les nouveautés pas encore vues, dont la
-    /// tour connaît la fonction. Rien si une feuille est déjà là.
+    /// tour connaît la fonction. Rien si une feuille est déjà là. Une feuille
+    /// ne dépasse pas `pagesMax` pages : le reste vient au lancement suivant.
     public func verifier() {
-        guard affichees == nil else { return }
-        let a = catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie }
+        guard affichees == nil, !lotMontre else { return }
+        let a = Nouveautes.lot(catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie })
         guard !a.isEmpty else { return }
+        lotMontre = true
+        pageAtteinte = 0
         affichees = LotNouveautes(id: a.map(\.id).joined(separator: "+"), entrees: a)
+    }
+
+    /// La feuille du lancement affiche la page `index` (0 : la première).
+    public func pageVue(_ index: Int) {
+        pageAtteinte = max(pageAtteinte, index)
     }
 
     /// Revoir un tutoriel depuis l'historique (Réglages › Nouveautés).
@@ -223,16 +290,22 @@ public final class NouveautesModel {
     }
 
     /// Un tutoriel parcouru, ou fermé : vu, plus de rappel.
-    public func marquerVues(_ lot: LotNouveautes) {
-        vues.formUnion(lot.entrees.map(\.id))
+    public func marquerVues(_ entrees: [Nouveaute]) {
+        vues.formUnion(entrees.map(\.id))
         reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
     }
 
-    /// La feuille du lancement fermée (finie, « Plus tard » ou balayée).
+    /// Un tutoriel revu en entier (Réglages › Nouveautés).
+    public func marquerVues(_ lot: LotNouveautes) { marquerVues(lot.entrees) }
+
+    /// La feuille du lancement fermée (finie, « Plus tard » ou balayée) :
+    /// vues, les entrées dont une page au moins a été affichée. Les autres
+    /// restent nouvelles et viennent au lancement suivant.
     public func fermer() {
         guard let a = affichees else { return }
-        marquerVues(a)
+        marquerVues(a.entrees(jusqua: pageAtteinte))
         affichees = nil
+        pageAtteinte = 0
     }
 
     /// Captures de la CI seulement.
