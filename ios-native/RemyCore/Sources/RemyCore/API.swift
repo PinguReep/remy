@@ -218,8 +218,18 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(Conversation.self, "api/conversations/\(id)")
     }
 
-    public func nouvelleConversation(session sessionOnboarding: String? = nil) async throws -> Conversation {
-        try await json(Conversation.self, "api/conversations", methode: "POST", corps: sessionOnboarding.map { ["session": $0] } ?? [:])
+    /// `prive` : une conversation privée dès sa création (route d'origine de
+    /// la tour, comme le cadenas du site) — jamais chez Claude.
+    public func nouvelleConversation(session sessionOnboarding: String? = nil, prive: Bool = false) async throws -> Conversation {
+        var corps: [String: Any] = sessionOnboarding.map { ["session": $0] } ?? [:]
+        if prive { corps["prive"] = true }
+        return try await json(Conversation.self, "api/conversations", methode: "POST", corps: corps)
+    }
+
+    /// Rendre privée : à sens unique, la tour refuse de revenir en arrière
+    /// (« Une conversation privée le reste »).
+    public func rendrePrivee(_ id: String) async throws {
+        try await envoyer("api/conversations/\(id)", methode: "PATCH", corps: ["prive": true])
     }
 
     public func renommer(_ id: String, titre: String) async throws {
@@ -403,6 +413,12 @@ public final class ClientAPI: @unchecked Sendable {
     /// partent-elles avec une recherche autorisée ? Coupé par défaut.
     public func changerContexteCloud(_ actif: Bool) async throws -> Reglages {
         try await json(Reglages.self, "api/reglages", methode: "PUT", corps: ["contexteCloud": actif])
+    }
+
+    /// Recherche dans les conversations privées (recherche-privee-v1) : coupée
+    /// par défaut. Rend l'état effectif (la tour peut la verrouiller).
+    public func changerRecherchePrivee(_ actif: Bool) async throws -> Reglages {
+        try await json(Reglages.self, "api/reglages", methode: "PUT", corps: ["recherchePrivee": actif])
     }
 
     // MARK: Propositions Motion / Agenda

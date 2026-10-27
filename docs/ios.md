@@ -165,6 +165,15 @@ tag) avant l'échéance.
   passagère (502, 503, quota Motion) la fait repartir seule, de plus en plus
   espacée ; seul un refus attend « Renvoyer ». Une session refusée (401) ne
   l'efface pas ; la déconnexion voulue, si.
+- Conversation privée (27/10) : écran vide de Rémy › « Nouvelle conversation
+  privée », ou titre de l'en-tête › « Rendre cette conversation privée »
+  (confirmation : sans retour). Le cadenas « Privée » reste dans l'en-tête.
+  Routes du site (`POST /api/conversations { prive: true }`, `PATCH { prive:
+  true }`), aucune capacité. Réglages › « Recherche dans les conversations
+  privées » (`recherche-privee-v1`, coupé par défaut, grisé si la tour le
+  verrouille). La jauge du contexte est visible par défaut (Réglages ›
+  Diagnostic pour la masquer) et dit quand le résumé automatique (70 %) se
+  fera ou s'est fait.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

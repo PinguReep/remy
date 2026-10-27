@@ -1300,6 +1300,13 @@ public final class ChatModel {
     /// Le début du fil ouvert, résumé pour le modèle (compactage-v1).
     public private(set) var compactage: Compactage?
     public private(set) var compactageEnCours = false
+    /// Le fil ouvert (ou celui que le prochain envoi créera) est privé : le
+    /// modèle local seulement, jamais Claude (27/10, comme le cadenas du site).
+    public private(set) var privee = false
+    /// La recherche dans les conversations privées s'applique sur la tour
+    /// (recherche-privee-v1) ; nil : pas encore lue, ou tour sans ce réglage.
+    public private(set) var recherchePrivee: Bool?
+    public private(set) var miseEnPrive = false
 
     /// Captures de la CI seulement : une réponse figée en cours, avec ses étapes.
     public func montrerPourCapture(_ ligne: LigneChat) { lignes.append(ligne) }
@@ -1362,6 +1369,14 @@ public final class ChatModel {
             app?.signaler(error)
             return false
         }
+    }
+
+    /// Relit le résumé du fil (la jauge ouverte) : le résumé automatique se
+    /// fait après la réponse, sur la tour ; l'app ne l'apprend qu'en relisant.
+    public func relireCompactage() async {
+        guard let id = idCourant, !envoi, compactageDisponible,
+              let conv = try? await api.conversation(id), idCourant == id else { return }
+        if (conv.compactage?.jusqua ?? 0) > (compactage?.jusqua ?? 0) { compactage = conv.compactage }
     }
 
     /// Ce que la tour sait d'un code d'erreur, prêt à coller (jamais le
@@ -1438,6 +1453,8 @@ public final class ChatModel {
         modeRetenir = false
         titreEnAttente = nil
         fileEnvoi = []
+        privee = false
+        recherchePrivee = nil
         vus = [:]
         UserDefaults.standard.removeObject(forKey: Self.cleVus)
     }
@@ -1490,6 +1507,8 @@ public final class ChatModel {
         titreEnAttente = nil
         modeRetenir = false
         compactage = conv.compactage
+        // Une conversation importée est privée d'office (la tour le dit aussi).
+        privee = conv.prive == true || conv.origine != nil
         lignes = Self.lignes(de: conv)
         noterVu(conv.id, max(conv.messages.count, conversations.first(where: { $0.id == conv.id })?.messages ?? 0))
         reprendreSiEnCours(conv)
@@ -1569,6 +1588,50 @@ public final class ChatModel {
         focusDemande = true
     }
 
+    /// « Nouvelle conversation privée » : un écran vide, marqué privé ; le fil
+    /// naît privé au premier message (jamais un instant public sur la tour).
+    public func nouvellePrivee() {
+        fermer()
+        privee = true
+        focusDemande = true
+    }
+
+    /// Rendre privée la conversation en cours. Sans retour : la tour refuse
+    /// ensuite de la rendre publique. Pas encore créée : elle le sera privée.
+    /// Vrai si elle l'est.
+    @discardableResult
+    public func rendrePrivee() async -> Bool {
+        if privee { return true }
+        guard origine == nil, !miseEnPrive else { return false }
+        guard let id = idCourant else {
+            privee = true
+            return true
+        }
+        miseEnPrive = true
+        defer { miseEnPrive = false }
+        do {
+            try await api.rendrePrivee(id)
+            if let i = conversations.firstIndex(where: { $0.id == id }) { conversations[i].prive = true }
+            guard idCourant == id else { return true }
+            privee = true
+            app?.dire("Conversation privée : elle reste sur tes machines.")
+            return true
+        } catch {
+            app?.signaler(error)
+            return false
+        }
+    }
+
+    /// Relit sur la tour si la recherche est permise dans les conversations
+    /// privées (pour le dire en clair). Sans le réglage : elle ne cherche pas.
+    public func lireRecherchePrivee() async {
+        guard app?.serveur?.sait("recherche-privee-v1") == true else {
+            recherchePrivee = nil
+            return
+        }
+        if let r = try? await api.reglages() { recherchePrivee = r.recherchePrivee == true }
+    }
+
     /// Dernier geste sur le fil ouvert (ouvert, message envoyé) : un fil laissé
     /// ouvert depuis un autre jour est refermé au retour sur l'onglet.
     @ObservationIgnored public private(set) var activiteLe: Date?
@@ -1596,6 +1659,7 @@ public final class ChatModel {
         compactage = nil
         titreEnAttente = nil
         modeRetenir = false
+        privee = false
     }
 
     // MARK: Envoi
@@ -1698,7 +1762,7 @@ public final class ChatModel {
         let g = generation
         if idCourant == nil {
             do {
-                let conv = try await api.nouvelleConversation()
+                let conv = try await api.nouvelleConversation(prive: privee)
                 guard generation == g else { return nil }
                 idCourant = conv.id
                 titre = conv.title
@@ -1712,7 +1776,8 @@ public final class ChatModel {
                 // Visible tout de suite dans la liste (et pour « Organiser ma
                 // journée »), sans attendre la fin de la réponse.
                 if !conversations.contains(where: { $0.id == conv.id }) {
-                    conversations.insert(ConversationResume(id: conv.id, title: titre, updatedAt: Date().millis), at: 0)
+                    conversations.insert(ConversationResume(id: conv.id, title: titre, updatedAt: Date().millis,
+                                                            prive: conv.prive == true || privee ? true : nil), at: 0)
                 }
             } catch {
                 if generation == g {

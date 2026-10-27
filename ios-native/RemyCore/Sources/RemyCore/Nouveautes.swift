@@ -29,6 +29,20 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "privee-iphone", serie: 4, date: "27 oct.", titre: "Conversation privée sur l'iPhone", capacite: nil, pages: [
+            .init(symbole: "lock", titre: "Une conversation qui reste chez toi",
+                  texte: "Écran vide de Rémy › « Nouvelle conversation privée », ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas « Privée » reste dans l'en-tête."),
+            .init(symbole: "lock.shield", titre: "Ce que ça change",
+                  texte: "Rien ne part chez Claude ni ailleurs : le modèle local de ta tour répond, n'en retient rien dans sa mémoire, et la nuit ne la relit pas. Tour éteinte : pas de réponse."),
+            .init(symbole: "magnifyingglass", titre: "Et le web ?",
+                  texte: "Pas de recherche, sauf si tu allumes Réglages › Recherche dans les conversations privées : seule la question sort alors, passée par la salle blanche et le filtre."),
+        ]),
+        Nouveaute(id: "jauge-retour", serie: 4, date: "27 oct.", titre: "La jauge du contexte, de retour", capacite: "jauge-v1", pages: [
+            .init(symbole: "gauge.with.dots.needle.33percent", titre: "Visible dès le premier message",
+                  texte: "Le cadran en haut du chat montre la place que prend la conversation. Pour le masquer : Réglages › Diagnostic › Jauge du contexte."),
+            .init(symbole: "rectangle.compress.vertical", titre: "Le résumé à 70 %",
+                  texte: "Touche le cadran : il dit quand Rémy résumera le début du fil (dès 70 %), s'il l'a fait, et « Compacter maintenant » le fait tout de suite. Rien n'est effacé."),
+        ]),
         Nouveaute(id: "partage", serie: 3, date: "24 oct.", titre: "Partager vers Rémy", capacite: nil, pages: [
             .init(symbole: "square.and.arrow.up", titre: "Depuis n'importe quelle app",
                   texte: "Un texte, un lien, une capture d'écran : Partager › Rémy. Ajoute un mot si tu veux, puis « Envoyer à Rémy » : il le lit, le classe et te dit ce qu'il en a retenu."),
@@ -128,13 +142,13 @@ public enum Nouveautes {
             .init(symbole: "list.bullet", titre: "« En attente d'envoi »",
                   texte: "En haut d'Aujourd'hui, la ligne « 1 en attente d'envoi » : touche-la pour voir ce qui attend, l'envoyer tout de suite ou le retirer. Un refus de Motion y reste, avec sa raison."),
             .init(symbole: "calendar", titre: "Des échéances comprises",
-                  texte: "« cette semaine » : jusqu'à dimanche soir. « fin octobre » : le 31. « avant le 3 » : le 2 au soir. Un flou comme « début novembre » reste dans le titre, sans date inventée."),
+                  texte: "« cette semaine » : jusqu'à dimanche soir. « fin octobre » : le 31. « début novembre » : le 5. « avant le 3 », « avant mardi » : la veille au soir. Un flou comme « mi-novembre » reste dans le titre."),
         ]),
         Nouveaute(id: "recherche-web", serie: 3, date: "25 oct.", titre: "Rémy cherche sur le web", capacite: "recherche-locale-v1", pages: [
             .init(symbole: "globe", titre: "Lui-même, sans Claude",
                   texte: "Une question récente, chiffrée ou réglementaire : Rémy cherche sur le web (DuckDuckGo) et lit les pages, avec le modèle de ta tour. Plus de carte « Tu autorises ? », rien ne part chez Claude."),
             .init(symbole: "checkmark.shield", titre: "Ses sources, et ce qui reste à vérifier",
-                  texte: "Il cite le site, le lien et la date. Un chiffre qu'aucune page lue ne contient est signalé « à vérifier ». Une conversation privée ne cherche jamais."),
+                  texte: "Il cite le site, le lien et la date. Un chiffre qu'aucune page lue ne contient est signalé « à vérifier ». Une conversation privée ne cherche pas, sauf permission."),
             .init(symbole: "switch.2", titre: "À ta main",
                   texte: "Réglages › Recherche web pour la couper : Rémy répond alors sans le web."),
         ]),

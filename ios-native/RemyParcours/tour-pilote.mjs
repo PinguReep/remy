@@ -10,6 +10,10 @@
 //   GET  /etat           { tour: true|false }
 //   POST /compter?nom=…  { n } : les tâches de ce nom dans le faux Motion (une
 //                        capture rejouée ne doit en créer qu'une)
+//   POST /recherches     { outilsWeb, notePrivee } : depuis la dernière remise à
+//                        zéro, les réponses du cerveau à qui la tour a offert un
+//                        outil de recherche web, et celles où elle a dit
+//                        « conversation privée : pas de recherche web »
 // Aucune vraie clé, aucune vraie donnée. Rien de ce fichier n'entre dans l'app.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -112,6 +116,8 @@ async function demarrerTour() {
 }
 
 async function reinitialiser() {
+  compteurs.outilsWeb = 0;
+  compteurs.notePrivee = 0;
   await arreter(tour);
   await arreter(faux);
   fs.rmSync(DONNEES, { recursive: true, force: true });
@@ -129,7 +135,12 @@ async function reinitialiser() {
 // Une conversation qui répond vraiment (flux SSE comme le modèle local) : une demande
 // de tâche reçoit une proposition Motion (outil motion_proposer), le reste une phrase.
 // Les tâches courtes (routeur, titre, conseil, capture…) vont au faux modèle de la CI.
+// Il compte ce que la tour lui offre pour chercher sur le web (27/10) : une
+// conversation privée, interrupteur coupé, ne doit jamais en recevoir.
 const delta = (d, fin = null) => ({ choices: [{ index: 0, delta: d, finish_reason: fin }] });
+const OUTILS_WEB = ["rechercher", "chercher_web", "lire_page", "browse_page"];
+const NOTE_PRIVEE = "Conversation privée : pas de recherche web";
+const compteurs = { outilsWeb: 0, notePrivee: 0 };
 
 function nomDeTache(texte) {
   const t = texte.replace(/^(rémy|remy)[, ]*/i, "").replace(/^(peux-tu|tu peux|pense à|il faut que je|faut que je|je dois)\s*/i, "").trim();
@@ -147,8 +158,16 @@ function repondreFlux(res, b) {
   const messages = b.messages || [];
   const dernier = messages.at(-1) || {};
   const texteDe = (m) => (typeof m?.content === "string" ? m.content : (m?.content || []).map((x) => x.text || "").join(" "));
+  const offerts = (b.tools || []).map((t) => t.function?.name || t.name).filter((n) => OUTILS_WEB.includes(n));
+  if (offerts.length) compteurs.outilsWeb++;
+  const privee = JSON.stringify(messages).includes(NOTE_PRIVEE);
+  if (privee) compteurs.notePrivee++;
   let tours;
-  if (dernier.role === "tool") {
+  if (privee) {
+    // La tour a dit « pas de recherche » : Rémy répond sans le web, et le dit.
+    tours = [delta({ content: "Conversation privée : je ne cherche pas sur le web d'ici. " }),
+      delta({ content: "Je te réponds de mémoire, sans garantie que ce soit à jour." }, "stop")];
+  } else if (dernier.role === "tool") {
     tours = [delta({ content: "C'est prêt : dis oui d'un tap, ou ajuste l'échéance avant." }, "stop")];
   } else {
     const dit = texteDe([...messages].reverse().find((m) => m.role === "user"));
@@ -212,6 +231,7 @@ http.createServer((req, res) => {
     const u = req.url.split("?")[0];
     note(`${req.method} ${u}`);
     if (u === "/etat") return repondre(200, { tour: vivant(tour) });
+    if (u === "/recherches") return repondre(200, compteurs);
     if (req.method !== "POST") return repondre(405, {});
     if (u === "/reinitialiser") return enFile(reinitialiser).then((ok) => repondre(ok ? 200 : 500, { ok }), (e) => repondre(500, { erreur: String(e) }));
     if (u === "/couper") return enFile(() => finirPanne().then(() => arreter(tour))).then(() => repondre(200, { ok: true }));
