@@ -1,4 +1,4 @@
-// Faux Motion (:9998) et faux Google Calendar (:9995) : une journée réaliste,
+// Faux Motion (:9998), faux Google Calendar (:9995), faux ActivityWatch (:9993) : une journée réaliste,
 // relative à « maintenant », pour les captures de la CI. Aucune donnée réelle.
 // bord avec une journée réaliste. Tout est relatif à « maintenant ».
 import http from "node:http";
@@ -21,7 +21,17 @@ const taches = [
   { id: "t7", name: "Plus tard", dueDate: t(9, 0, 6), workspace: { id: "w1" } },
   // Un titre très long : il doit passer à la ligne, jamais déborder.
   { id: "t9", name: "Préparer le dossier complet de subvention pour la rénovation énergétique de l'atelier de la rue des Lilas", scheduledStart: t(15, 15), scheduledEnd: t(16, 0), dueDate: t(19), duration: 45, project: { id: "p3", name: "Voyage à Porto et autres projets personnels au long cours" }, workspace: { id: "w1" } },
+  // Placée par Motion APRÈS son échéance : le bandeau « menacée » (24/10).
+  { id: "t10", name: "Envoyer les visuels à l'imprimeur", scheduledStart: new Date(now + 20 * H).toISOString(), scheduledEnd: new Date(now + 21 * H).toISOString(), dueDate: new Date(now + 6 * H).toISOString(), priority: "HIGH", duration: 60, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   { id: "t8", name: "Retoucher les photos", dueDate: t(20, 0, 2), duration: 90, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
+  // Les jours suivants (vue « Demain » et « 7 jours », 24/10) : placés par Motion.
+  { id: "t10", name: "Préparer la réunion fournisseurs", scheduledStart: t(9, 30, 1), scheduledEnd: t(11, 0, 1), dueDate: t(18, 0, 1), duration: 90, priority: "HIGH", project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t11", name: "Commander les mèches en coton", scheduledStart: t(14, 0, 1), scheduledEnd: t(14, 30, 1), dueDate: t(19, 0, 3), duration: 30, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  // Placée après son échéance : « Motion la place après ».
+  { id: "t12", name: "Envoyer le dossier à la banque", scheduledStart: t(16, 0, 1), scheduledEnd: t(17, 0, 1), dueDate: t(12, 0, 1), duration: 60, priority: "HIGH", workspace: { id: "w1" } },
+  { id: "t13", name: "Écrire la newsletter d'automne", scheduledStart: t(9, 0, 2), scheduledEnd: t(12, 30, 2), dueDate: t(18, 0, 4), duration: 210, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t14", name: "Tri des photos de l'été", scheduledStart: t(13, 30, 2), scheduledEnd: t(17, 30, 2), dueDate: t(20, 0, 2), duration: 240, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
+  { id: "t15", name: "Faire la déclaration de TVA", scheduledStart: t(10, 0, 4), scheduledEnd: t(11, 30, 4), dueDate: t(23, 0, 5), duration: 90, workspace: { id: "w1" } },
 ];
 const evenements = [
   { id: "e1", summary: "Podologue", start: { dateTime: t(9) }, end: { dateTime: t(9, 45) }, location: "Cabinet Voltaire, Paris 11e" },
@@ -31,7 +41,36 @@ const evenements = [
   // Une activité à soi, à heure fixe (le « cadenas ») : se décale, se coche.
   { id: "e5", summary: "Aspirateur", start: { dateTime: t(19, 30) }, end: { dateTime: t(20, 0) } },
   { id: "e4", summary: "Salon du design", start: { date: t(0).slice(0, 10) }, end: { date: t(0, 0, 2).slice(0, 10) } },
+  // Demain et les jours suivants.
+  { id: "e6", summary: "Kiné", start: { dateTime: t(8, 0, 1) }, end: { dateTime: t(8, 45, 1) }, location: "Cabinet du parc" },
+  { id: "e7", summary: "Visite de l'atelier avec Hugo", start: { dateTime: t(11, 30, 1) }, end: { dateTime: t(13, 0, 1) },
+    attendees: [{ email: "sam@exemple.fr", self: true }, { email: "hugo@exemple.fr" }] },
+  { id: "e8", summary: "Dîner chez Léa", start: { dateTime: t(19, 30, 1) }, end: { dateTime: t(22, 0, 1) } },
+  { id: "e9", summary: "Comptable", start: { dateTime: t(10, 0, 3) }, end: { dateTime: t(11, 0, 3) },
+    attendees: [{ email: "sam@exemple.fr", self: true }, { email: "cabinet@exemple.fr" }] },
+  { id: "e10", summary: "Tennis", start: { dateTime: t(18, 0, 4) }, end: { dateTime: t(19, 30, 4) } },
 ];
+// La tâche en cours reste « Maintenant » à toute heure de la CI : ce qui la
+// chevauche dans la journée (rendez-vous, tâche placée) passe juste après elle.
+// Vu le 25/10 vers 17 h : « Point hebdo » prenait la carte, sans « Terminer ».
+const finEnCours = enCours + 75 * 60_000;
+function decaler(debut, fin, poser) {
+  const d = Date.parse(debut), f = Date.parse(fin);
+  if (!(d < finEnCours && f > enCours)) return;
+  const nd = finEnCours + 15 * 60_000;
+  poser(new Date(nd).toISOString(), new Date(nd + (f - d)).toISOString());
+}
+for (const x of taches) {
+  if (x.id !== "t1" && x.scheduledStart) decaler(x.scheduledStart, x.scheduledEnd, (d, f) => { x.scheduledStart = d; x.scheduledEnd = f; });
+}
+for (const e of evenements) {
+  if (e.start?.dateTime) decaler(e.start.dateTime, e.end.dateTime, (d, f) => { e.start.dateTime = d; e.end.dateTime = f; });
+}
+
+// Les horaires de travail Motion : de quoi dire « 4 h prévues sur 7 h libres ».
+const semaine = { start: "09:00", end: "18:00" };
+const horaires = [{ name: "Work Hours", timezone: "Europe/Paris",
+  schedule: { monday: [semaine], tuesday: [semaine], wednesday: [semaine], thursday: [semaine], friday: [semaine], saturday: [{ start: "10:00", end: "13:00" }], sunday: [] } }];
 
 let creees = 0;
 http.createServer((req, res) => {
@@ -76,7 +115,7 @@ http.createServer((req, res) => {
     return res.end(JSON.stringify({ ...tache, status: tache.status || { name: "Todo" } }));
   }
   if (u.pathname === "/v1/workspaces") return res.end(JSON.stringify({ workspaces: [{ id: "w1", name: "Perso" }] }));
-  if (u.pathname === "/v1/schedules") return res.end(JSON.stringify([]));
+  if (u.pathname === "/v1/schedules") return res.end(JSON.stringify(horaires));
   if (u.pathname === "/v1/projects") return res.end(JSON.stringify({ projects: [
     { id: "p1", name: "Boutiques", status: { name: "En cours" } },
     { id: "p2", name: "Album « Été »", status: { name: "En cours" } },
@@ -200,4 +239,41 @@ http.createServer((req, res) => {
     }));
   });
 }).listen(9994);
+// Faux ActivityWatch (:9993, API REST /api/0) : la fenêtre au premier plan et
+// la présence, sur les 6 dernières heures. Les titres sont là comme sur une
+// vraie tour : la tour ne doit jamais les garder.
+{
+  const debut = Math.floor((now - 6 * H) / 60_000) * 60_000;
+  const ev = (de, a, data) => ({ id: de, timestamp: new Date(debut + de * 60_000).toISOString(), duration: (a - de) * 60, data });
+  const fenetres = [
+    ev(0, 110, { app: "Code.exe", title: "boutique.js — Code" }),
+    ev(110, 170, { app: "chrome.exe", title: "Documentation — Chrome" }),
+    ev(170, 195, { app: "Discord.exe", title: "#général — Discord" }),
+    ev(195, 330, { app: "Code.exe", title: "panier.js — Code" }),
+  ];
+  const absences = [ev(0, 140, { status: "not-afk" }), ev(140, 160, { status: "afk" }), ev(160, 330, { status: "not-afk" })];
+  const web = [ev(110, 170, { url: "https://developer.example.org/docs/fetch", title: "Documentation", incognito: false })];
+  // Des guetteurs qui tournent : leur dernier événement est toujours frais.
+  const seaux = () => ({
+    "aw-watcher-window_tour-demo": { id: "aw-watcher-window_tour-demo", type: "currentwindow", hostname: "tour-demo", last_updated: new Date().toISOString() },
+    "aw-watcher-afk_tour-demo": { id: "aw-watcher-afk_tour-demo", type: "afkstatus", hostname: "tour-demo", last_updated: new Date().toISOString() },
+    "aw-watcher-web-chrome_tour-demo": { id: "aw-watcher-web-chrome_tour-demo", type: "web.tab.current", hostname: "tour-demo" },
+  });
+  http.createServer((req, res) => {
+    const u = new URL(req.url, "http://aw");
+    res.setHeader("Content-Type", "application/json");
+    if (u.pathname === "/api/0/info") return res.end(JSON.stringify({ hostname: "tour-demo", version: "v0.13.2", testing: false }));
+    if (u.pathname === "/api/0/buckets/") return res.end(JSON.stringify(seaux()));
+    const m = u.pathname.match(/^\/api\/0\/buckets\/([^/]+)\/events$/);
+    if (!m) {
+      res.statusCode = 404;
+      return res.end("{}");
+    }
+    const id = decodeURIComponent(m[1]);
+    const liste = id.includes("window") ? fenetres : id.includes("afk") ? absences : web;
+    const a = Date.parse(u.searchParams.get("start") || "1970-01-01");
+    const b = Date.parse(u.searchParams.get("end") || "2999-01-01");
+    res.end(JSON.stringify(liste.filter((e) => Date.parse(e.timestamp) + e.duration * 1000 >= a && Date.parse(e.timestamp) <= b).reverse()));
+  }).listen(9993);
+}
 console.log("mocks prêts");

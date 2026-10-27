@@ -66,7 +66,7 @@ jobs:
           MOTION_API_KEY=faux MOTION_BASE_URL=http://127.0.0.1:9998/v1 \
           GOOGLE_CLIENT_ID=x GOOGLE_CLIENT_SECRET=y \
           GOOGLE_API_URL=http://127.0.0.1:9995/calendar/v3 GOOGLE_TOKEN_URL=http://127.0.0.1:9995/token \
-          DICTEE_LOCALE_URL=http://127.0.0.1:9997 \
+          DICTEE_LOCALE_URL=http://127.0.0.1:9997 REMY_ACTIVITYWATCH_URL=http://127.0.0.1:9993 \
           REMY_GLM_URL=http://127.0.0.1:9994/v1 REMY_CERVEAU=cloud REMY_PLANIF=off \
           CRON_SECRET=ci REMY_ENV=test PORT=3000 nohup node server.js > serveur.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/api/health > /dev/null && break; sleep 1; done
@@ -171,12 +171,18 @@ jobs:
           capture 3c-boite-sombre dark boite
           capture 3d-connaissance-clair light aujourdhui connaissance
           capture 3e-gerer-clair light gerer
+          capture 3e2-gerer-retard-clair light gerer-retard
           capture 3f-journee-etendue-clair light journee-etendue
+          capture 3f2-semaine-clair light semaine
+          capture 3f3-semaine-sombre dark semaine
+          capture 3f4-demain-clair light demain
+          capture 3f5-demain-sombre dark demain
           capture 3g-capture-clair light capture
           capture 3h-projets-clair light projets
           capture 3i-projets-sombre dark projets
           capture 3j-liste-clair light liste
           capture 3k-rappels-sombre dark rappels
+          capture 3k2-rappel-quand-clair light rappel-quand
           capture 3l-capture-liste-clair light capture-liste
           capture 3m-capture-rappel-sombre dark capture-rappel
           capture 3n-modifier-clair light modifier
@@ -195,6 +201,18 @@ jobs:
           capture 3za-historique-clair light historique
           capture 3zb-projet-motion-sombre dark noeud motion:p1
           capture 3zc-sous-projet-clair light noeud d-site
+          # Le rendez-vous quotidien (24/10) : briefing, bilan, bandeau « menacée »,
+          # réglages ; à comparer aux captures d'avant (même liste, sur main).
+          capture 11-briefing-clair light briefing
+          capture 11b-briefing-sombre dark briefing
+          capture 11c-bilan-clair light bilan
+          capture 11d-bilan-sombre dark bilan
+          capture 11e-menacee-clair light aujourdhui menacee
+          capture 3zd-carte-a-trancher-clair light aujourdhui a-trancher
+          capture 3ze-a-trancher-clair light a-trancher
+          capture 3zf-a-trancher-sombre dark a-trancher
+          capture 3zg-revue-clair light revue
+          capture 3zh-retards-sombre dark retards
           capture 4-remy-clair light remy
           capture 4b-remy-sombre dark remy
           capture 4c-recherche-web-sombre dark remy-fil c6
@@ -203,6 +221,7 @@ jobs:
           capture 5c-conversations-sombre dark conversations
           capture 5d-retenir-clair light retenir
           capture 5e-proposition-clair light remy-fil c10
+          capture 5e2-proposition-partielle-clair light proposition-partielle c13
           capture 5f-ajuster-clair light ajuster c10
           capture 5g-ajuster-rappel-sombre dark ajuster-rappel c10
           capture 5h-categorie-tache-clair light categorie
@@ -212,14 +231,32 @@ jobs:
           capture 5l-jauge-clair light jauge
           capture 5m-erreur-sombre dark erreur
           capture 5n-regle-clair light regle
+          capture 5o-carnet-clair light carnet
           capture 6b-lieux-clair light lieux
           capture 6c-modele-sombre dark modeles
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
+          capture 6f-activite-pc-clair light activite-pc
+          capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
+          capture 6f-priorites-clair light priorites
           capture 6-reglages-sombre dark reglages
+          capture 6f-usage-clair light usage
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
           capture 8b-vocal-en-attente-sombre dark vocal-en-attente
+          # Feuille de partage (24/10), montrée dans l'app contre la tour de
+          # démo : un lien (comme Safari), une image lue par Vision, son reçu
+          # après envoi, une tour injoignable (Copier, Réessayer).
+          capture 8e-partage-lien-clair light partage-lien
+          capture 8f-partage-image-sombre dark partage-image
+          capture 8g-partage-recu-clair light partage-recu
+          capture 8h-partage-erreur-sombre dark partage-erreur
+          # Grand texte (Dynamic Type, 24/10) : titres serif et panneaux suivent.
+          xcrun simctl ui "$UDID" content_size accessibility-large || true
+          capture 11-grand-texte-aujourdhui-clair light aujourdhui
+          capture 11b-grand-texte-gerer-clair light gerer
+          capture 11c-grand-texte-capture-clair light capture
+          xcrun simctl ui "$UDID" content_size large || true
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
           xcrun simctl ui "$UDID" appearance light
@@ -266,6 +303,7 @@ jobs:
             capture 10-petit-aujourdhui-clair light aujourdhui
             capture 10b-petit-suite-clair light aujourdhui journee
             capture 10c-petit-gerer-sombre dark gerer
+            capture 10c2-petit-gerer-retard-clair light gerer-retard
             capture 10d-petit-capture-clair light capture
             capture 10e-petit-projets-sombre dark projets
             capture 10f-petit-liste-sombre dark liste
@@ -278,6 +316,8 @@ jobs:
             capture 10m-petit-remy-clair light remy
             capture 10n-petit-retenir-sombre dark retenir
             capture 10o-petit-ajuster-sombre dark ajuster c10
+            capture 10p-petit-briefing-clair light briefing
+            capture 10q-petit-bilan-sombre dark bilan
             UDID=$GRAND
             xcrun simctl shutdown "$PETIT" || true
           else

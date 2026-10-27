@@ -1,0 +1,162 @@
+# Parcours du quotidien de l'app iPhone, joués de bout en bout sur un simulateur
+# (XCUITest, cible RemyParcours) contre une tour de démo pilotée : données
+# fictives, faux Motion / Google / modèle local, aucune vraie clé.
+#
+# Chaque parcours (se connecter, terminer la tâche en cours, capturer, accepter
+# une proposition de Rémy, tour injoignable…) laisse une capture par étape, le
+# nombre de gestes et le temps écoulé. Artefacts : le .xcresult, les captures
+# PNG nommées « Pnn-étape », et un résumé (resume.md, aussi dans la page du run).
+#
+# À la demande seulement (Actions → Run workflow) : une minute macOS compte pour
+# dix dans le quota GitHub. ios-native.yml reste la vérification de chaque PR.
+
+name: iOS natif — parcours joués
+
+on:
+  workflow_dispatch:
+    inputs:
+      filtre:
+        description: "Ne jouer qu'un parcours (ex. ParcoursQuotidien/test03_terminerTacheEnCours) ; vide : tous"
+        required: false
+        default: ""
+
+concurrency:
+  group: ios-parcours-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parcours:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      TZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@v4
+
+      # Xcode et XcodeGen en versions figées (les mêmes que pour TestFlight).
+      - uses: ./.github/actions/outils-ios
+
+      # La tour s'appuie sur node:sqlite (Node ≥ 22.13), comme sur le PC de Sam.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Tour de démo pilotée (données fictives)
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          # Le pilote lance faux services + server.js, et les coupe ou les remet
+          # à zéro à la demande des parcours (port 3099).
+          nohup node ios-native/RemyParcours/tour-pilote.mjs > pilote.log 2>&1 &
+          for i in $(seq 1 60); do grep -q "pilote" pilote.log 2>/dev/null && break; sleep 1; done
+          cat pilote.log
+          curl -sf http://127.0.0.1:3000/api/health > /dev/null
+          curl -sf http://127.0.0.1:3099/etat
+
+      - name: Générer le projet Xcode
+        working-directory: ios-native
+        run: |
+          xcodegen generate
+          xcodebuild -list -project Remy.xcodeproj | tee schemas.txt
+          # Le schéma « Remy » sert au build de chaque PR et à TestFlight : il
+          # doit exister à côté de celui des parcours.
+          grep -Eq "^[[:space:]]+Remy$" schemas.txt || { echo "::error::Schéma « Remy » absent du projet généré"; exit 1; }
+
+      - name: Choisir et démarrer le simulateur
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          ios=sorted([(k,v) for k,v in d.items() if 'iOS' in k], key=lambda kv: kv[0])
+          # Le runtime iOS le plus récent ; un grand iPhone comme celui de Sam.
+          for k,v in reversed(ios):
+              iphones=[x for x in v if x['name'].startswith('iPhone')]
+              grands=[x for x in iphones if x['name'].endswith(' Pro Max')] or [x for x in iphones if x['name'].endswith(' Plus')]
+              pro=[x for x in iphones if x['name'].endswith(' Pro')]
+              choix=(grands or pro or iphones)
+              if choix:
+                  print(choix[-1]['udid']); sys.exit()
+          ")
+          echo "Simulateur : $UDID"
+          xcrun simctl list devices | grep "$UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4
+          xcrun simctl ui "$UDID" appearance light
+          # Sans quoi le premier clavier affiche l'astuce « Speed up your typing… ».
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
+
+      - name: Compiler l'app et les parcours
+        working-directory: ios-native
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing -project Remy.xcodeproj -scheme RemyParcours -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build 2>&1 \
+            | tee build.log | grep -E "error:|warning: .*RemyParcours/|\*\* (TEST BUILD|BUILD) (SUCCEEDED|FAILED)" || true
+          grep -q "TEST BUILD SUCCEEDED" build.log
+
+      - name: Jouer les parcours
+        id: jouer
+        working-directory: ios-native
+        env:
+          # Le préfixe TEST_RUNNER_ passe ces variables au lanceur des tests.
+          TEST_RUNNER_REMY_PARCOURS_TOUR: http://127.0.0.1:3000
+          TEST_RUNNER_REMY_PARCOURS_PILOTE: "3099"
+          TEST_RUNNER_REMY_PARCOURS_MDP: demo-demo-demo
+          FILTRE: ${{ inputs.filtre }}
+        run: |
+          set -o pipefail
+          SEUL=()
+          [ -n "$FILTRE" ] && SEUL=(-only-testing:"RemyParcours/$FILTRE")
+          set +e
+          xcodebuild test-without-building -project Remy.xcodeproj -scheme RemyParcours \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            -resultBundlePath parcours.xcresult "${SEUL[@]}" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 300 -maximum-test-execution-time-allowance 480 \
+            2>&1 | tee test.log | grep -E "PARCOURS\||Test Case .*(passed|failed)|error:|\*\* TEST"
+          CODE=${PIPESTATUS[0]}
+          set -e
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "xcodebuild test : code $CODE"
+
+      - name: Captures et résumé
+        if: always()
+        working-directory: ios-native
+        run: |
+          mkdir -p parcours-resultats
+          if [ -d parcours.xcresult ]; then
+            xcrun xcresulttool export attachments --path parcours.xcresult --output-path pieces || true
+            xcrun xcresulttool get test-results tests --path parcours.xcresult > tests.json || echo "{}" > tests.json
+            python3 RemyParcours/resume.py pieces tests.json parcours-resultats || true
+            cp tests.json parcours-resultats/ || true
+            [ -f parcours-resultats/resume.md ] && cat parcours-resultats/resume.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Pas de .xcresult : les parcours n'ont pas tourné." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          cp test.log build.log parcours-resultats/ 2>/dev/null || true
+          cp ../pilote.log ../serveur-parcours.log parcours-resultats/ 2>/dev/null || true
+          ls -la parcours-resultats parcours-resultats/captures 2>/dev/null | head -80
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parcours-resultats
+          path: ios-native/parcours-resultats/
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parcours-xcresult
+          path: ios-native/parcours.xcresult
+          retention-days: 7
+
+      - name: Verdict
+        if: always()
+        run: |
+          CODE="${{ steps.jouer.outputs.code }}"
+          if [ "$CODE" != "0" ]; then
+            echo "::error::Des parcours ont échoué (xcodebuild test : code ${CODE:-absent}) : voir le résumé et les captures."
+            exit 1
+          fi

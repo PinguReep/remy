@@ -9,7 +9,8 @@ import RemyCore
 final class EtatInterface {
     /// La tâche ouverte dans « Gérer ».
     var gerer: ElementJour?
-    /// La journée à l'échelle (appui long sur la suite).
+    /// La journée à l'échelle (bouton « À l'échelle » ou appui long sur la
+    /// suite), avec demain et les 7 jours.
     var journeeEtendue = false
     var captureOuverte = false
     var boiteOuverte = false
@@ -33,6 +34,9 @@ final class EtatInterface {
     var analyseDemo = false
     var filtreDemo = false
     var onboardingDemo: Int?
+    /// Le rendez-vous quotidien (24/10) : briefing du matin, bilan du soir.
+    var briefingOuvert = false
+    var bilanOuvert = false
 }
 
 enum ModeConseil: Equatable { case detail, pourquoi }
@@ -45,6 +49,9 @@ struct OngletsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scene
     @State private var ui = EtatInterface()
+    /// Clavier ouvert : le « + » s'efface (24/10 : à 13 pt d'« Envoyer », même
+    /// orange). Rabattre le clavier le fait revenir.
+    @State private var clavier = false
 
     var body: some View {
         @Bindable var app = app
@@ -67,8 +74,16 @@ struct OngletsView: View {
                     .accessibilityHidden(app.onglet != .projets)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            BarreOnglets { ui.captureOuverte = true }
+            // Dans une liste, son champ d'ajout est déjà là : pas de second « + ».
+            BarreOnglets(sansPlus: clavier || (app.onglet == .projets && ui.cheminProjets.last.map(Self.estListe) == true)) {
+                ui.captureOuverte = true
+            }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in clavier = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in clavier = false }
+        // Une notification de rappel touchée : Projets › Rappels (24/10).
+        .onReceive(NotificationCenter.default.publisher(for: .remyOuvrirRappels)) { _ in ouvrirRappels() }
+        .onAppear { if DelegueNotifications.partage.rappelsEnAttente { ouvrirRappels() } }
         .background(Palette.fond.ignoresSafeArea())
         .overlay {
             ZStack {
@@ -113,18 +128,46 @@ struct OngletsView: View {
         .sheet(isPresented: $app.reglagesOuverts) { ReglagesView() }
         .sheet(isPresented: $ui.captureOuverte) { CaptureView().environment(ui) }
         .sheet(isPresented: $ui.boiteOuverte) { BoiteView() }
+        .modifier(RendezVousQuotidien(ui: ui))
         // Les nouveautés d'une mise à jour (21/10), une fois : Réglages › Nouveautés pour revoir.
         .sheet(item: Binding(get: { app.nouveautes.affichees }, set: { if $0 == nil { app.nouveautes.fermer() } })) { lot in
-            NouveautesFeuille(lot: lot) { app.nouveautes.fermer() }
+            NouveautesFeuille(lot: lot, fini: { app.nouveautes.fermer() }, pageVue: { app.nouveautes.pageVue($0) })
         }
         .sheet(item: $ui.modifier) { e in
             ModifierTache(id: e.id, titre: e.titre, echeance: e.echeance, duree: e.duree, priorite: e.priorite)
         }
+        // « À trancher », la revue du dimanche, le tri des retards (24/10).
+        .feuillesTri()
         .task { await demo() }
-        // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert.
-        .onChange(of: app.onglet) { _, o in if o == .remy { app.chat.marquerVu() } }
+        // Un lien remy://capture (widget) : la capture s'ouvre, une autre
+        // feuille fermée d'abord (iOS n'en présente qu'une à la fois).
+        .task(id: app.lien) { await ouvrirLien() }
+        // Revenir sur l'onglet Rémy, c'est voir la réponse du fil ouvert — ou
+        // un écran neuf si ce fil date d'un autre jour (fil du jour, 24/10).
+        .onChange(of: app.onglet) { _, o in
+            let vue: FonctionUsage = o == .remy ? FonctionUsage.remy : o == .projets ? FonctionUsage.projets : FonctionUsage.aujourdhui
+            CompteursUsage.partages.noter(vue)
+            if o == .remy {
+                app.chat.ouvrirFilDuJour()
+                app.chat.marquerVu()
+            }
+        }
         // Les rappels sonnent sur l'iPhone : reprogrammés à chaque changement.
         .task(id: app.carnet.rappels) { await Notifications.planifier(app.carnet.rappels) }
+        // L'activité en direct suit la journée (prolongée, cochée, l'heure
+        // passée) et démarre seule si Sam le veut ; rien en arrière-plan. Le
+        // widget « Maintenant » se relit si ce qu'il montre a changé.
+        .onChange(of: app.tableau.journee) { _, j in
+            WidgetsAJour.journee(j)
+            Task { await ActiviteEnDirect.partagee.suivre() }
+        }
+        .task(id: scene) {
+            guard scene == .active else { return }
+            while !Task.isCancelled {
+                await ActiviteEnDirect.partagee.suivre()
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            }
+        }
         // Signe de vie tant que l'app est au premier plan : c'est la mesure
         // d'activité (le temps passé devant Rémy, pas le temps où il existe).
         // Une dictée de plusieurs minutes : l'écran ne se verrouille pas (le
@@ -137,6 +180,10 @@ struct OngletsView: View {
         }
         .task(id: scene) {
             guard scene == .active else { return }
+            // Ce que tu utilises vraiment (24/10) : une ouverture, sans contenu.
+            CompteursUsage.partages.noter(.ouverture)
+            // Laissée ouverte sur Rémy depuis hier : le fil du jour.
+            if app.onglet == .remy { app.chat.ouvrirFilDuJour() }
             // La localisation (20/10) : capteurs rebranchés, positions en attente envoyées.
             if app.lieux.disponible {
                 CapteurLocalisation.partage.brancher(app.lieux)
@@ -160,13 +207,83 @@ struct OngletsView: View {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
                 // Tailscale réactivé sans changement de réseau : rien ne le
                 // signale, on retente chaque minute ce qui attend.
-                if app.tableau.gestesEnAttente > 0 { await app.tableau.envoyerEnAttente() }
+                if app.tableau.aEnvoyer { await app.tableau.envoyerEnAttente() }
             }
         }
     }
 }
 
+/// Le rendez-vous quotidien branché sur les onglets (24/10) : ses feuilles,
+/// ses notifications reprogrammées quand la tour l'a recalculé ou que Sam
+/// change ses heures, et la notification touchée qui ouvre le bon écran.
+private struct RendezVousQuotidien: ViewModifier {
+    @Environment(AppModel.self) private var app
+    let ui: EtatInterface
+    @State private var route = RouteRituel.partagee
+    @AppStorage(ReglagesRituel.cleMatin) private var matin = false
+    @AppStorage(ReglagesRituel.cleHeureMatin) private var heureMatin = ReglagesRituel.heureMatinParDefaut
+    @AppStorage(ReglagesRituel.cleSoir) private var soir = false
+    @AppStorage(ReglagesRituel.cleHeureSoir) private var heureSoir = ReglagesRituel.heureSoirParDefaut
+
+    func body(content: Content) -> some View {
+        @Bindable var ui = ui
+        content
+            .sheet(isPresented: $ui.briefingOuvert) { BriefingVue() }
+            .sheet(isPresented: $ui.bilanOuvert) { BilanVue() }
+            .task(id: cle) {
+                await Notifications.planifierRituel(app.rituel.donnees, prepareA: app.rituel.le, reglages: .lire())
+                FondRituel.programmer()
+            }
+            .onChange(of: route.demande) { _, d in ouvrir(d) }
+            .onAppear { ouvrir(route.demande) }
+    }
+
+    private var cle: String {
+        "\(app.rituel.le?.timeIntervalSince1970 ?? 0)-\(matin)-\(heureMatin)-\(soir)-\(heureSoir)"
+    }
+
+    private func ouvrir(_ demande: String?) {
+        guard let demande else { return }
+        route.demande = nil
+        app.onglet = .aujourdhui
+        if demande == "soir" { ui.bilanOuvert = true } else { ui.briefingOuvert = true }
+    }
+}
+
 extension OngletsView {
+    /// Le lien n'est retiré qu'à la fin : changer `app.lien` annule cette tâche
+    /// (task(id:)), et l'attente avec.
+    fileprivate func ouvrirLien() async {
+        guard app.lien == .capture else { return }
+        let ouverte = app.reglagesOuverts || ui.choixTache || ui.historiqueOuvert || ui.boiteOuverte
+            || ui.filtreDemo || ui.onboardingDemo != nil || ui.modifier != nil || app.nouveautes.affichees != nil
+        app.reglagesOuverts = false
+        ui.choixTache = false
+        ui.historiqueOuvert = false
+        ui.boiteOuverte = false
+        ui.filtreDemo = false
+        ui.onboardingDemo = nil
+        ui.modifier = nil
+        if app.nouveautes.affichees != nil { app.nouveautes.fermer() }
+        ui.gerer = nil
+        // La feuille fermée doit finir de descendre avant d'en présenter une autre.
+        if ouverte { try? await Task.sleep(nanoseconds: 450_000_000) }
+        ui.captureOuverte = true
+        app.lien = nil
+    }
+
+    fileprivate static func estListe(_ r: RouteProjets) -> Bool {
+        if case .liste = r { return true }
+        return false
+    }
+
+    fileprivate func ouvrirRappels() {
+        DelegueNotifications.partage.rappelsEnAttente = false
+        ui.gerer = nil
+        app.onglet = .projets
+        ui.cheminProjets = [.rappels]
+    }
+
     /// Captures de la CI : ouvre le panneau demandé une fois la journée chargée.
     /// Inactif sans les variables d'environnement de démonstration.
     fileprivate func demo() async {
@@ -185,8 +302,17 @@ extension OngletsView {
                 ui.gerer = j?.items?.first { !$0.estRendezVous && $0.duree != nil } ?? j?.items?.first { !$0.estRendezVous }
             }
             ui.choixDemo = 15
-        case "journee-etendue": ui.journeeEtendue = true
-        case "nouveautes": app.nouveautes.montrerPourCapture(["modele", "lieux"])
+        case "gerer-retard":
+            // Le même « Gérer » pour une tâche en retard (24/10).
+            if let t = j?.retard?.items.first ?? j?.aFaire?.first {
+                ui.gerer = ElementJour.sansCreneau(t, retard: j?.retard?.items.first != nil)
+            }
+        case "rappel-quand":
+            ui.cheminProjets = [.rappels]
+        case "journee-etendue", "semaine", "demain": ui.journeeEtendue = true
+        case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])
+        case "nouveautes-activite-pc": app.nouveautes.montrerPourCapture(["activite-pc"])
+        case "nouveautes-fil-du-jour": app.nouveautes.montrerPourCapture(["fil-du-jour"])
         case "capture": ui.captureOuverte = true
         case "capture-liste", "capture-rappel":
             ui.texteDemo = ecran == "capture-liste" ? "tomates, lait d'avoine et œufs" : "Appeler le garage demain à 9h"
@@ -226,6 +352,12 @@ extension OngletsView {
         case "noeud":
             ui.cheminProjets = [.noeud(env["REMY_DEMO_ANCRE"] ?? "motion:p1")]
         case "boite": ui.boiteOuverte = true
+        case "briefing": ui.briefingOuvert = true
+        case "bilan": ui.bilanOuvert = true
+        case "a-trancher", "retards":
+            await app.aTrancher.charger()
+            app.aTrancher.feuille = ecran == "retards" ? .retards : .aTrancher
+        case "revue": app.aTrancher.feuille = .revue
         default: break
         }
     }
@@ -235,6 +367,8 @@ extension OngletsView {
 struct BarreOnglets: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
+    /// Clavier ouvert, ou dans une liste : pas de « + » (il couvrait le champ).
+    var sansPlus = false
     let noter: () -> Void
 
     var body: some View {
@@ -250,6 +384,12 @@ struct BarreOnglets: View {
         .background(Palette.surface.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) { Rectangle().fill(Palette.filet).frame(height: 1) }
         .overlay(alignment: .topTrailing) {
+            if !sansPlus { plus.transition(.scale(scale: 0.6).combined(with: .opacity)) }
+        }
+        .animation(.easeOut(duration: 0.15), value: sansPlus)
+    }
+
+    private var plus: some View {
             Button {
                 Haptique.leger()
                 noter()
@@ -266,7 +406,7 @@ struct BarreOnglets: View {
             .padding(.trailing, 18)
             .offset(y: -24)
             .accessibilityLabel("Noter quelque chose")
-        }
+            .accessibilityIdentifier("noter")
     }
 
     private func onglet(_ o: AppModel.Onglet, _ titre: String, _ symbole: String) -> some View {
@@ -310,5 +450,15 @@ struct BarreOnglets: View {
         .buttonStyle(.plain)
         .accessibilityLabel(o == .remy && app.chat.nombreNonLus > 0 ? "\(titre), \(app.chat.nombreNonLus) réponse\(app.chat.nombreNonLus > 1 ? "s" : "") non vue\(app.chat.nombreNonLus > 1 ? "s" : "")" : titre)
         .accessibilityAddTraits(actif ? .isSelected : [])
+        // Les parcours (ios-native/RemyParcours) retrouvent l'onglet quel que soit son libellé.
+        .accessibilityIdentifier("onglet." + Self.cle(o))
+    }
+
+    private static func cle(_ o: AppModel.Onglet) -> String {
+        switch o {
+        case .aujourdhui: return "aujourdhui"
+        case .remy: return "remy"
+        case .projets: return "projets"
+        }
     }
 }

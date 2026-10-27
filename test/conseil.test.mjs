@@ -86,6 +86,7 @@ test("la réponse de GLM est lue même entourée de texte, et refusée si vide",
     texte: "Souffle cinq minutes.",
     pourquoi: ["Tu enchaînes depuis 8 h"],
     tache: null,
+    priorite: null,
   });
   assert.equal(conseil.lireReponse('{"conseil":""}'), null);
   assert.equal(conseil.lireReponse("pas du JSON"), null);

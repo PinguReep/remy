@@ -71,6 +71,10 @@ public final class ClientAPI: @unchecked Sendable {
     /// coupure réseau peut alors être rejouée sans double effet. Faux face à une
     /// tour pas encore mise à jour — elle referait l'écriture.
     public var rejeuSur = false
+    /// La tour sait dire sa file du quota Motion (motion-file-v1) : pendant
+    /// qu'une écriture attend, l'app la lit et la passe à `surFileMotion`.
+    public var fileMotionSue = false
+    public var surFileMotion: (@MainActor @Sendable (AttenteMotion?) -> Void)?
 
     /// `coffre` : par défaut le Keychain ; avec une session fournie (tests,
     /// aperçus), la mémoire — un test ne touche jamais au vrai trousseau.
@@ -108,6 +112,8 @@ public final class ClientAPI: @unchecked Sendable {
             c.percentEncodedQuery = String(morceaux[1])
             url = c.url ?? url
         }
+        // Ce que tu utilises vraiment (24/10) : un geste compté, sans contenu.
+        CompteursUsage.partages.noter(methode: methode, chemin: String(morceaux[0]), corps: corps)
         var r = URLRequest(url: url)
         r.httpMethod = methode
         r.timeoutInterval = delai
@@ -245,6 +251,16 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(ConseilTour.self, "api/conseil/renouveler", methode: "POST", corps: ["type": type], delai: 20)
     }
 
+    /// Le rendez-vous quotidien (rituel-v1) : briefing, bilan, tâches menacées.
+    public func rituel() async throws -> RituelTour {
+        try await json(RituelTour.self, "api/rituel", delai: 20)
+    }
+
+    /// La ligne du soir, rangée sur la tour pour la réflexion de nuit.
+    public func envoyerBilan(_ ressenti: String) async throws -> RetourBilan {
+        try await json(RetourBilan.self, "api/rituel/bilan", methode: "POST", corps: ["ressenti": ressenti], delai: 20)
+    }
+
     public func mesures() async throws -> MesuresTour {
         try await json(MesuresTour.self, "api/mesures")
     }
@@ -264,7 +280,7 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Les projets Motion ouverts (onglet Projets), si la tour sait les lire.
     public func projets() async throws -> ListeProjets {
-        try await json(ListeProjets.self, "api/projets", delai: 20)
+        try await json(ListeProjets.self, "api/projets", delai: DelaisMotion.lecture)
     }
 
     public func etatSujet(_ id: String, etat: String) async throws {
@@ -272,11 +288,21 @@ public final class ClientAPI: @unchecked Sendable {
     }
 
     /// Retenir un texte sans conversation. `source` dit d'où il vient :
-    /// « note » (Sam lui-même), « chatgpt », « claude » — une réponse d'un
-    /// autre assistant ne doit jamais devenir un fait sur Sam.
-    public func capturer(_ texte: String, source: String = "note") async throws -> RetourCapture {
-        let s = ["note", "chatgpt", "claude", "web"].contains(source) ? source : "note"
-        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: ["texte": texte, "source": s], delai: 90)
+    /// « note » (Sam lui-même), « chatgpt », « claude », « siri » (Noter dans
+    /// Rémy) — une réponse d'un autre assistant ne doit jamais devenir un fait
+    /// sur Sam. `differe` (capture-siri-v1) : la tour répond dès la capture
+    /// reçue et l'absorbe ensuite (Siri n'attend que quelques secondes).
+    /// « partage » : la feuille de partage (24/10) ; une tour plus ancienne le
+    /// lit comme « note ». `idCapture` (capture-idempotente-v1, 25/10) : la
+    /// file d'envoi de l'iPhone ; renvoyée, la tour rend la même réponse sans
+    /// la retenir deux fois.
+    public func capturer(_ texte: String, source: String = "note", differe: Bool = false, delai: TimeInterval? = nil,
+                         idCapture: String? = nil) async throws -> RetourCapture {
+        let s = ["note", "chatgpt", "claude", "web", "siri", "partage"].contains(source) ? source : "note"
+        var corps: [String: Any] = ["texte": texte, "source": s]
+        if differe { corps["differe"] = true }
+        if let idCapture { corps["idCapture"] = idCapture }
+        return try await json(RetourCapture.self, "api/capture", methode: "POST", corps: corps, delai: delai ?? (differe ? 15 : 90))
     }
 
     /// Ajuste une proposition avant de dire oui (18/10) : `actions` — les champs
@@ -386,9 +412,18 @@ public final class ClientAPI: @unchecked Sendable {
     /// la même coche renvoyée après une coupure n'est pas refaite). Une coupure
     /// réseau est réessayée UNE fois avec la même clé : le serveur rend alors
     /// le résultat déjà obtenu au lieu d'écrire deux fois.
-    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false) async throws -> ResultatApplication {
+    /// `delai` / `rejouer` : la capture du « + », feuille ouverte (25/10),
+    /// n'attend pas 2 × 150 s une tour muette — elle essaie une fois, court,
+    /// puis attend dans la file d'envoi (la même clé, rejouée plus tard).
+    public func appliquer(_ p: Proposition, convId: String?, index: Int?, idCommande: String? = nil, depuisCapture: Bool = false,
+                          confirmer: Bool = false, rangs: [Int]? = nil, delai: TimeInterval = DelaisMotion.ecriture,
+                          rejouer: Bool = true) async throws -> ResultatApplication {
         let actions = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p.actions))
         var corps: [String: Any] = ["actions": actions]
+        // Proposition périmée (ancienne ou date passée) : Sam a confirmé.
+        if confirmer { corps["confirmer"] = true }
+        // Une partie seulement (24/10) : les rangs des lignes cochées.
+        if let rangs { corps["rangs"] = rangs }
         if depuisCapture { corps["origine"] = "capture" }
         if let r = p.resume { corps["resume"] = r }
         if let convId { corps["convId"] = convId }
@@ -396,11 +431,15 @@ public final class ClientAPI: @unchecked Sendable {
         if convId != nil, let id = p.id { corps["propositionId"] = id }
         if let idCommande { corps["idCommande"] = idCommande }
         let chemin = p.versAgenda ? "api/google/apply" : "api/motion/apply"
-        let rejouable = rejeuSur && (corps["propositionId"] != nil || idCommande != nil)
-        do {
-            return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: 60)
-        } catch ErreurAPI.reseau where rejouable {
-            return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: 60)
+        let rejouable = rejouer && rejeuSur && (corps["propositionId"] != nil || idCommande != nil)
+        // La tour peut faire attendre l'écriture dans la file du quota Motion :
+        // le délai le couvre (DelaisMotion), et la carte dit l'attente.
+        return try await avecSuiviFile(!p.versAgenda) {
+            do {
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: delai)
+            } catch ErreurAPI.reseau where rejouable {
+                return try await json(ResultatApplication.self, chemin, methode: "POST", corps: corps, delai: delai)
+            }
         }
     }
 
@@ -438,6 +477,28 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(VueLieux.self, "api/lieux/historique", methode: "DELETE")
     }
 
+    // MARK: Activité du PC (activite-pc-v1)
+
+    public func activitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc")
+    }
+
+    /// Allumer / couper, ou la liste des applis jamais comptées.
+    public func reglerActivitePC(actif: Bool? = nil, exclusions: [String]? = nil) async throws -> VueActivitePC {
+        var corps: [String: Any] = [:]
+        if let actif { corps["actif"] = actif }
+        if let exclusions { corps["exclusions"] = exclusions }
+        return try await json(VueActivitePC.self, "api/activite-pc", methode: "PUT", corps: corps, delai: 20)
+    }
+
+    public func releverActivitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc/collecte", methode: "POST", corps: [:], delai: 20)
+    }
+
+    public func effacerActivitePC() async throws -> VueActivitePC {
+        try await json(VueActivitePC.self, "api/activite-pc", methode: "DELETE")
+    }
+
     // MARK: Modèle local (modeles-v1)
 
     public func modelesLocaux() async throws -> ModelesLocaux {
@@ -452,9 +513,13 @@ public final class ClientAPI: @unchecked Sendable {
     // MARK: Règles de Rémy (regles-v1)
 
     /// Sam valide la règle proposée dans le chat : la tour la lit dans la conversation.
-    public func validerRegle(convId: String, propositionId: String) async throws {
+    /// Rend ce qu'elle en a fait : créée, déjà là, ou mise à jour (24/10).
+    @discardableResult
+    public func validerRegle(convId: String, propositionId: String) async throws -> RetourRegle {
         let pid = propositionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? propositionId
-        try await envoyer("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST", corps: [:])
+        let d = try await brut("api/conversations/\(convId)/propositions/\(pid)/regle", methode: "POST",
+                               corps: try JSONSerialization.data(withJSONObject: [String: Any]()))
+        return RetourRegle(d)
     }
 
     public func regles() async throws -> [RegleRemy] {
@@ -480,7 +545,7 @@ public final class ClientAPI: @unchecked Sendable {
         guard let id = p.ledgerId else { return RetourAnnulation(ok: true, dejaAnnule: true) }
         do {
             return try await json(RetourAnnulation.self, p.versAgenda ? "api/google/undo" : "api/motion/undo",
-                                  methode: "POST", corps: ["id": id], delai: 60)
+                                  methode: "POST", corps: ["id": id], delai: DelaisMotion.ecriture)
         } catch ErreurAPI.serveur(409, let m) where m.hasPrefix("Déjà annulé") {
             return RetourAnnulation(ok: true, dejaAnnule: true)
         }

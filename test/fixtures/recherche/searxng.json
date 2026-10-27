@@ -1,0 +1,24 @@
+{
+  "query": "seuil micro-entreprise 2026",
+  "number_of_results": 0,
+  "results": [
+    {
+      "url": "https://www.urssaf.fr/accueil/independant/micro-entrepreneur/seuils.html",
+      "title": "Micro-entrepreneur : les seuils de chiffre d'affaires - Urssaf.fr",
+      "content": "Le chiffre d'affaires annuel ne doit pas dépasser 77 700 € pour les prestations de services.",
+      "engine": "brave",
+      "publishedDate": "2026-01-12T00:00:00"
+    },
+    {
+      "url": "https://www.service-public.fr/professionnels-entreprises/vosdroits/F32353",
+      "title": "Micro-entrepreneur : quels sont les seuils ?",
+      "content": "Vérifié le 1er janvier 2026.",
+      "engine": "duckduckgo",
+      "publishedDate": null
+    },
+    { "url": "javascript:alert(1)", "title": "à écarter", "content": "" },
+    { "url": "https://www.urssaf.fr/accueil/independant/micro-entrepreneur/seuils.html", "title": "doublon", "content": "" }
+  ],
+  "answers": [],
+  "unresponsive_engines": [["google", "CAPTCHA"]]
+}

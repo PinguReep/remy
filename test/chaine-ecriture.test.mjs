@@ -97,7 +97,10 @@ test.after(async () => {
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
+// Les échéances sont écrites en dur (octobre 2026) : la péremption des
+// propositions, testée dans test/usage-intensif.test.mjs, est confirmée ici.
 const post = async (p, b) => {
+  if (/\/apply$/.test(p) && b && !("confirmer" in b)) b = { ...b, confirmer: true };
   const r = await fetch(base + p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json().catch(() => null) };
 };
@@ -137,8 +140,11 @@ test("deux propositions différentes créent la même tâche en même temps : un
     post("/api/motion/apply", { convId: "d2", index: 1 }),
   ]);
   assert.equal(motion.ouvertes().filter((t) => t.name === "Appeler le comptable").length, 1);
-  const doublon = [r1, r2].find((r) => r.body.echecs === 1);
-  assert.match(doublon.body.results[0].erreur, /existe déjà/);
+  // Le second trouve la tâche déjà là : ni échec, ni doublon (24/10).
+  const doublon = [r1, r2].find((r) => r.body.results[0].dejaLa);
+  assert.equal(doublon.body.echecs, 0);
+  assert.equal(doublon.body.etat, "deja_la");
+  assert.match(doublon.body.results[0].note, /déjà dans Motion/);
 });
 
 test("un nom qui en contient un autre n'est pas un doublon (« Sport » ≠ « Sport avec Hugo »)", async () => {
@@ -397,6 +403,45 @@ test("une action rangée en rappel sort de la proposition ; tout rangé : plus r
   await proposition("aj3", [{ type: "terminer", id: "k9", nom: "Payer la facture" }]);
   const t = await post("/api/conversations/aj3/propositions/p-aj3/ajuster", { convertis: [0] });
   assert.deepEqual(t.body.actions.map((x) => x.type), ["terminer"]);
+});
+
+test("une partie seulement d'une proposition : les lignes décochées ne partent pas, l'annulation défait le reste", async () => {
+  motion.taches.clear();
+  await proposition("pp1", [{ type: "creer", nom: "Relire le devis" }, { type: "creer", nom: "Appeler Léa" }, { type: "creer", nom: "Réserver la salle" }]);
+  // Aucune ligne cochée : rien ne part, et c'est dit.
+  const vide = await post("/api/motion/apply", { convId: "pp1", index: 1, propositionId: "p-pp1", rangs: [] });
+  assert.equal(vide.status, 400);
+  assert.equal(motion.taches.size, 0);
+  const a = await post("/api/motion/apply", { convId: "pp1", index: 1, propositionId: "p-pp1", rangs: [0, 2] });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.deepEqual([...motion.taches.values()].map((t) => t.name).sort(), ["Relire le devis", "Réserver la salle"]);
+  assert.deepEqual(a.body.ecartees, ["Appeler Léa"]);
+  const lue = (await lireConv("pp1")).messages[1].proposal;
+  assert.deepEqual(lue.bilan.ecartees, ["Appeler Léa"], "la carte relue dit ce qui a été écarté");
+  // Même clé : un second « Oui » ne refait rien (et n'ajoute pas la ligne écartée).
+  const b = await post("/api/motion/apply", { convId: "pp1", index: 1, propositionId: "p-pp1", rangs: [0, 1, 2] });
+  assert.equal(b.body.rejoue, true);
+  assert.equal(motion.taches.size, 2);
+  // L'annulation défait ce qui a été fait, rien de plus.
+  const u = await post("/api/motion/undo", { id: a.body.ledgerId });
+  assert.equal(u.status, 200, JSON.stringify(u.body));
+  assert.equal(motion.taches.size, 0, "les deux créations sont défaites");
+});
+
+test("une partie seulement, Motion en panne, puis « Réessayer » avec les mêmes rangs : la ligne décochée ne part pas", async () => {
+  motion.taches.clear();
+  await proposition("pp2", [{ type: "creer", nom: "Relire le devis" }, { type: "creer", nom: "Appeler Léa" }, { type: "creer", nom: "Réserver la salle" }]);
+  motion.pannes.push({ methode: "POST", chemin: /^\/tasks$/, code: 500, fois: 20 });
+  const a = await post("/api/motion/apply", { convId: "pp2", index: 1, propositionId: "p-pp2", rangs: [0, 2] });
+  motion.pannes.length = 0;
+  assert.equal(a.body.etat, "echouee", JSON.stringify(a.body));
+  assert.equal(motion.taches.size, 0);
+  // L'iPhone garde les cases après un échec : « Réessayer » renvoie les mêmes rangs.
+  const b = await post("/api/motion/apply", { convId: "pp2", index: 1, propositionId: "p-pp2", rangs: [0, 2] });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.etat, "appliquee");
+  assert.deepEqual([...motion.taches.values()].map((t) => t.name).sort(), ["Relire le devis", "Réserver la salle"]);
+  assert.deepEqual(b.body.ecartees, ["Appeler Léa"]);
 });
 
 test("une tâche se catégorise depuis l'app, et la journée le dit", async () => {

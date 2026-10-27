@@ -57,6 +57,31 @@ w("conversations.json", {
           ] } },
       ],
     },
+    // Une partie seulement d'une proposition (24/10) : une case par ligne — capture « 5e2 ».
+    {
+      id: "c13", title: "Salon des créateurs", createdAt: now - 30 * H, updatedAt: now - 30 * H,
+      messages: [
+        { role: "user", content: "Pour le salon des créateurs samedi, il faut que je m'organise." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose trois tâches pour être prêt samedi.",
+          proposal: { id: "p-salon", source: "motion", statut: "en_attente", resume: "Trois tâches avant samedi.", actions: [
+            { type: "creer", nom: "Imprimer les étiquettes de prix", duree: 30 },
+            { type: "creer", nom: "Appeler Léa pour le stand", duree: 10 },
+            { type: "creer", nom: "Préparer la caisse de bougies", duree: 45 },
+          ] } },
+      ],
+    },
+    // Pour le test d'intégration (une partie seulement, puis « Annuler ») : un vieux fil.
+    {
+      id: "c14", title: "Rangement de l'atelier", createdAt: now - 720 * H, updatedAt: now - 720 * H,
+      messages: [
+        { role: "user", content: "Il faut ranger l'atelier ce week-end." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Deux tâches pour l'atelier.",
+          proposal: { id: "p-atelier", source: "motion", statut: "en_attente", resume: "L'atelier en deux temps.", actions: [
+            { type: "creer", nom: "Trier les chutes de cire", duree: 20 },
+            { type: "creer", nom: "Commander des bocaux", duree: 10 },
+          ] } },
+      ],
+    },
     // Un tableau dans une réponse (19/10 : il s'affichait en lignes de « | ») — capture « 5k ».
     {
       id: "c12", title: "Comparatif des offres", createdAt: now - 900 * H, updatedAt: now - 900 * H,
@@ -78,6 +103,18 @@ w("conversations.json", {
         { role: "assistant", model: "remy", tier: "autorisation", usd: 0,
           content: "Pour te répondre, il faut chercher sur le web, et la recherche passe par Claude (Anthropic) : seule ta question partirait chez eux — ni la conversation, ni ta mémoire, ni ton planning. Tu autorises ?",
           autorisation: { id: "a-demo", type: "web", statut: "en_attente", contexte: false, requete: "La piscine de Valmont est ouverte ce soir ?" } },
+      ],
+    },
+    // 24/10 : des courses et un rappel proposés par Rémy (test d'intégration du carnet).
+    {
+      id: "c-carnet", title: "Courses de la semaine", createdAt: now - 160 * H, updatedAt: now - 159 * H,
+      messages: [
+        { role: "user", content: "Ajoute des bougies chauffe-plat, et rappelle-moi d'appeler Léa." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Je te propose ça : les bougies dans tes courses, et un rappel.",
+          proposal: { id: "p-carnet-demo", source: "carnet", statut: "en_attente", resume: "", actions: [
+            { type: "liste", liste: "Courses", articles: ["Bougies chauffe-plat"] },
+            { type: "rappel", texte: "Appeler Léa pour le marché de Noël" },
+          ] } },
       ],
     },
   ],
@@ -145,4 +182,27 @@ carnet.ecrireNotes("d-site", [
 ]);
 carnet.ecrireNotes("d-cuisine", [{ id: "n4", texte: "Devis plombier" }]);
 carnet.rattacher("t1", "d-demo");
+// 24/10 : de quoi trancher (un rappel redit, un vieux rappel sans date, des
+// idées) et une semaine à revoir (trois coches, deux hypothèses de la nuit).
+// Le rappel redit, laissé par une tour d'avant l'anti-doublon du carnet (qui
+// le fondrait aujourd'hui dans r2) : posé directement en base.
+const { db } = await import("../../lib/db.js");
+db().prepare("INSERT INTO rappels (id, texte, quand, fait, source, supprime, cree_a, maj_a) VALUES ('r7', 'Rappeler Hugo', NULL, 0, 'remy', 0, ?, ?)").run(now, now);
+db().prepare("UPDATE rappels SET cree_a = ? WHERE id IN ('r5', 'r7')").run(now - 10 * 24 * H);
+carnet.ecrireDossier("idees", { nom: "Idées", parent: null, ordre: -2 });
+carnet.ecrireNotes("idees", [
+  { id: "n-idee-1", texte: "Un atelier bougies parfumées pour les fêtes" },
+  { id: "n-idee-2", texte: "Proposer la démo vocale aux salons de coiffure" },
+]);
+const coche = db().prepare("INSERT INTO journal (id, ts, source, origine, resume, etat, actions, results, annulations, annule, maj_a) VALUES (?, ?, 'motion', 'tap', 'Coché depuis l''app', 'appliquee', '[]', ?, '{}', 0, ?)");
+[["j-demo-1", 2, "Écrire la fiche produit", "Boutiques", 45], ["j-demo-2", 3, "Photos des bougies", "Boutiques", 30], ["j-demo-3", 4, "Arroser les plantes", null, 10]]
+  .forEach(([id, jours, nom, projet, duree]) => coche.run(id, now - jours * 24 * H, JSON.stringify([{ ok: true, type: "terminer", nom, projet, avant: { duration: duree } }]), now - jours * 24 * H));
+w("briefings.json", [{ text: "- Tu avances mieux sur la boutique le matin que le soir (70 %)\n- Les tâches du vendredi glissent souvent au lundi (60 %)\n- Question douce : la démo avant le site ?", generatedAt: now - 2 * 24 * H }]);
+// 24/10 : les priorités déclarées de Sam (fictives), la première il y a 3 semaines.
+const priorites = await import("../../lib/priorites.js");
+priorites.enregistrerPriorites([
+  { id: "p-musique", titre: "La musique", pourquoi: "Jouer me rend calme toute la semaine", mots: ["musique", "guitare", "répétition"] },
+  { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"] },
+  { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Je les vois trop peu depuis la rentrée", mots: ["Léa", "Hugo"] },
+], { base: 0, maintenant: now - 21 * 24 * H });
 console.log("seed ok");

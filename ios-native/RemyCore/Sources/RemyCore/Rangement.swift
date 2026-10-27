@@ -13,11 +13,31 @@ import Foundation
 public struct BilanRangement: Equatable, Sendable {
     public var faits: [String] = []
     public var echecs: [String] = []
+    /// Déjà là (Motion, l'agenda, une liste, les rappels) : ni fait, ni raté (24/10).
+    public var dejaLa: [String] = []
+    /// Les éléments réglés (rangés ou déjà là), par leur clé : un nouveau
+    /// « Ranger » ne renvoie que ce qui a raté.
+    public var regles: Set<String> = []
+
+    public init(faits: [String] = [], echecs: [String] = [], dejaLa: [String] = []) {
+        self.faits = faits
+        self.echecs = echecs
+        self.dejaLa = dejaLa
+    }
 
     public var phrase: String {
-        if echecs.isEmpty { return faits.count == 1 ? "Rangé : \(faits[0])." : "\(faits.count) éléments rangés." }
-        if faits.isEmpty { return "Rien n'a été rangé : " + echecs.joined(separator: " ; ") + "." }
-        return "\(faits.count) rangé\(faits.count > 1 ? "s" : "") ; pas fait : " + echecs.joined(separator: " ; ") + "."
+        let deja = dejaLa.joined(separator: " ; ")
+        if echecs.isEmpty {
+            if faits.isEmpty { return dejaLa.isEmpty ? "Rien à ranger." : "Rien de nouveau, déjà là : \(deja)." }
+            let base = faits.count == 1 ? "Rangé : \(faits[0])" : "\(faits.count) éléments rangés"
+            return base + (dejaLa.isEmpty ? "." : " ; déjà là : \(deja).")
+        }
+        if faits.isEmpty && dejaLa.isEmpty { return "Rien n'a été rangé : " + echecs.joined(separator: " ; ") + "." }
+        var morceaux: [String] = []
+        if !faits.isEmpty { morceaux.append("\(faits.count) rangé\(faits.count > 1 ? "s" : "")") }
+        if !dejaLa.isEmpty { morceaux.append((morceaux.isEmpty ? "Déjà là : " : "déjà là : ") + deja) }
+        morceaux.append("pas fait : " + echecs.joined(separator: " ; "))
+        return morceaux.joined(separator: " ; ") + "."
     }
 }
 
@@ -50,25 +70,37 @@ extension AppModel {
     public func ranger(_ elements: [ElementCapture]) async -> BilanRangement {
         var bilan = BilanRangement()
         let agenda = tableau.donnees?.systeme?.agenda == true
+        // Les tâches partent ensemble, après la boucle (une écriture par lot).
+        var taches: [(cle: String, titre: String, action: ActionProposee)] = []
         for e in elements {
             let titre = e.titre.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !titre.isEmpty else { continue }
+            let avant = bilan.echecs.count
+            var differe = false
+            defer { if !differe && bilan.echecs.count == avant { bilan.regles.insert(e.cle) } }
             switch e.nature {
             case "tache":
                 var action = ActionProposee(type: "creer", nom: String(titre.prefix(200)),
                                             echeance: e.quand.map { Format.isoAvecFuseau($0.date) },
                                             duree: e.dureeMin.map { .nombre(Double($0)) })
                 action.etiquettes = e.etiquettes
-                await ecrire(Proposition(source: "motion", resume: "Capture rangée", actions: [action]), titre, "Motion", &bilan)
+                taches.append((e.cle, titre, action))
+                differe = true
             case "rappel", "contrainte":
-                if carnet.creerRappel(titre, quand: e.quand?.date, etiquettes: e.etiquettes) != nil { bilan.faits.append("« \(titre) » (rappel)") }
-                else { bilan.echecs.append("« \(titre) »") }
+                if let n = carnet.noterRappel(titre, quand: e.quand?.date, etiquettes: e.etiquettes) {
+                    if n.dejaLa { bilan.dejaLa.append("« \(titre) » (rappels)") } else { bilan.faits.append("« \(titre) » (rappel)") }
+                } else {
+                    bilan.echecs.append("« \(titre) »")
+                }
             case "liste":
                 let nom = (e.liste?.isEmpty == false ? e.liste! : "Courses")
                 let l = carnet.listes.first { $0.nom.compare(nom, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }
                     ?? carnet.creerListe(nom)
-                if let l, !carnet.ajouter(e.articles?.isEmpty == false ? e.articles! : [titre], a: l).isEmpty {
-                    bilan.faits.append("liste « \(l.nom) »")
+                if let l {
+                    let n = carnet.noter(e.articles?.isEmpty == false ? e.articles! : [titre], dans: l)
+                    if !n.nouveaux.isEmpty { bilan.faits.append("liste « \(l.nom) »") }
+                    if !n.dejaLa.isEmpty { bilan.dejaLa.append(n.dejaLa.map { "« \($0) »" }.joined(separator: ", ") + " (liste « \(l.nom) »)") }
+                    if n.nouveaux.isEmpty && n.dejaLa.isEmpty { bilan.echecs.append("« \(titre) » (liste)") }
                 } else {
                     bilan.echecs.append("« \(titre) » (liste)")
                 }
@@ -87,8 +119,8 @@ extension AppModel {
                     let action = ActionProposee(type: "creer", titre: String(titre.prefix(200)), debut: Format.isoAvecFuseau(q.date),
                                                 duree: .nombre(Double(e.dureeMin ?? 60)))
                     await ecrire(Proposition(source: "agenda", resume: "Capture rangée", actions: [action]), titre, "agenda", &bilan)
-                } else if carnet.creerRappel(titre, quand: q.date) != nil {
-                    bilan.faits.append("« \(titre) » (rappel : agenda non branché)")
+                } else if let n = carnet.noterRappel(titre, quand: q.date) {
+                    if n.dejaLa { bilan.dejaLa.append("« \(titre) » (rappels)") } else { bilan.faits.append("« \(titre) » (rappel : agenda non branché)") }
                 } else {
                     bilan.echecs.append("« \(titre) » (rappel)")
                 }
@@ -100,8 +132,55 @@ extension AppModel {
                 bilan.echecs.append("« \(titre) » : nature inconnue")
             }
         }
+        if !taches.isEmpty {
+            let etats = await ecrireTaches(taches.map { ($0.titre, $0.action) }, resume: "Capture rangée")
+            for (t, etat) in zip(taches, etats) {
+                switch etat {
+                case .fait: bilan.faits.append("« \(t.titre) » (Motion)"); bilan.regles.insert(t.cle)
+                case .dejaLa: bilan.dejaLa.append("« \(t.titre) » (Motion)"); bilan.regles.insert(t.cle)
+                case .echec(let m): bilan.echecs.append("« \(t.titre) » : \(m)")
+                }
+            }
+        }
         if !bilan.faits.isEmpty { await tableau.apresGeste() }
         return bilan
+    }
+
+    /// Ce qu'est devenue une tâche envoyée à Motion.
+    enum EtatTache: Equatable { case fait, dejaLa, echec(String) }
+
+    /// Plusieurs tâches en UNE écriture par lot de 6 (24/10) : la tour relit
+    /// Motion une fois par lot au lieu d'une fois par tâche. Cinq tâches tiennent
+    /// dans le quota de Motion (12 requêtes par minute) au lieu d'attendre une
+    /// minute ; un lot de 6 reste sous le délai de 60 s de l'app.
+    func ecrireTaches(_ lot: [(titre: String, action: ActionProposee)], resume: String) async -> [EtatTache] {
+        var etats: [EtatTache] = []
+        for debut in stride(from: 0, to: lot.count, by: 6) {
+            let morceau = Array(lot[debut..<min(debut + 6, lot.count)])
+            do {
+                let r = try await api.appliquer(Proposition(source: "motion", resume: resume, actions: morceau.map { $0.action }),
+                                                convId: nil, index: nil, idCommande: UUID().uuidString, depuisCapture: true)
+                let res = r.results ?? []
+                for (k, _) in morceau.enumerated() {
+                    if k < res.count {
+                        let x = res[k]
+                        if x.estDejaLa { etats.append(.dejaLa) }
+                        else if x.ok == true { etats.append(.fait) }
+                        else { etats.append(.echec(x.erreur ?? "refusé par Motion")) }
+                    } else if r.toutDejaLa {
+                        etats.append(.dejaLa)
+                    } else {
+                        // Réponse sans détail par ligne : l'état d'ensemble.
+                        etats.append(r.vraisEchecs == 0 && r.etat != "echouee" ? .fait : .echec("refusé par Motion"))
+                    }
+                }
+            } catch {
+                if let e = error as? ErreurAPI, e == .nonConnecte { signaler(e) }
+                let m = (error as? LocalizedError)?.errorDescription ?? "erreur"
+                etats += Array(repeating: EtatTache.echec(m), count: morceau.count)
+            }
+        }
+        return etats
     }
 
     /// Le nom suggéré par GLM → un projet Motion ou un dossier existant.
@@ -117,7 +196,10 @@ extension AppModel {
         do {
             let r = try await api.appliquer(p, convId: nil, index: nil, idCommande: UUID().uuidString, depuisCapture: true)
             let res = r.results?.first
-            if (r.echecs ?? 0) > 0 || res?.ok == false {
+            if r.toutDejaLa {
+                // Déjà là : ni échec, ni haptique d'erreur (24/10).
+                bilan.dejaLa.append("« \(titre) » (\(ou))")
+            } else if r.vraisEchecs > 0 || (res?.ok == false && res?.estDejaLa != true) {
                 bilan.echecs.append("« \(titre) » : \(res?.erreur ?? "refusé par \(ou)")")
             } else {
                 bilan.faits.append("« \(titre) » (\(ou))")
@@ -161,12 +243,19 @@ extension AppModel {
     public func convertirEnTaches(_ rappels: [Rappel]) async -> BilanRangement {
         var bilan = BilanRangement()
         var retires: Set<String> = []
-        for r in rappels {
+        let lot = rappels.map { r -> (titre: String, action: ActionProposee) in
             var action = ActionProposee(type: "creer", nom: String(r.texte.prefix(200)), echeance: r.quand.map { Format.isoAvecFuseau($0.date) })
             action.etiquettes = r.etiquettes
-            let avant = bilan.faits.count
-            await ecrire(Proposition(source: "motion", resume: "Rappel devenu tâche", actions: [action]), r.texte, "Motion", &bilan)
-            if bilan.faits.count > avant { retires.insert(r.id) }
+            return (r.texte, action)
+        }
+        let etats = await ecrireTaches(lot, resume: "Rappel devenu tâche")
+        for (r, etat) in zip(rappels, etats) {
+            // Créée, ou déjà dans Motion : le rappel a fait son travail.
+            switch etat {
+            case .fait: bilan.faits.append("« \(r.texte) » (Motion)"); retires.insert(r.id)
+            case .dejaLa: bilan.dejaLa.append("« \(r.texte) » (Motion)"); retires.insert(r.id)
+            case .echec(let m): bilan.echecs.append("« \(r.texte) » : \(m)")
+            }
         }
         carnet.retirerRappels(retires)
         if !retires.isEmpty { await tableau.apresGeste() }
