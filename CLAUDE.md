@@ -37,8 +37,10 @@ cas de doute, ça ne va pas dans le dépôt.
   motion.js, google.js, store.js et db.js (SQLite, migrations en avant
   seulement), ecriture.js (écritures idempotentes et annulables), coffre.js
   (Obsidian), sauvegarde.js, auth.js.
-- **Cerveau** : un modèle local compatible OpenAI (`REMY_GLM_URL`). Claude
-  seulement sur autorisation explicite (recherche web) ou en secours activé à la main.
+- **Cerveau** : un modèle local compatible OpenAI (`REMY_GLM_URL`). Il cherche
+  et lit lui-même sur le web (`lib/recherche.js`). Claude seulement en secours
+  activé à la main, ou pour la recherche d'une tour sans recherche locale
+  (`REMY_RECHERCHE=off`, sur autorisation explicite).
 - **Production** : pas d'auto-déploiement. Après chaque fusion, la tour se met à
   jour avec `scripts/installer-tour.ps1 -Ref <commit>` (voir `docs/tour.md`).
 
