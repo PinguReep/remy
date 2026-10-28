@@ -93,6 +93,12 @@ struct ReglagesView: View {
                         // au cloud pour chercher, ce réglage n'a plus d'objet.
                         if r.rechercheWeb == true && r.moteurRecherche == nil { contexteCloud(r) }
                     }
+                    // Recherche dans les conversations privées (recherche-privee-v1,
+                    // 27/10) : coupée par défaut ; cachée sur une tour qui ne la
+                    // connaît pas, grisée quand la tour la verrouille.
+                    if let r = reglages, app.serveur?.sait("recherche-privee-v1") == true, r.recherchePriveeReglage != nil {
+                        recherchePrivee(r)
+                    }
                     if let r = reglages, r.secoursCloudSansObjet != true {
                         secours(r)
                     }
@@ -170,7 +176,7 @@ struct ReglagesView: View {
                         .overlay(alignment: .bottom) { Filet() }
                     }
                     // Les outils du constructeur, à part (24/10) : temps de réponse,
-                    // jauge du chat (masquée par défaut), appui du planning.
+                    // jauge du chat (visible par défaut depuis le 27/10), appui du planning.
                     ligne("Diagnostic", sous: "Temps de réponse, jauge du chat, réglages fins", symbole: "stethoscope") {
                         diagnostic = true
                     }
@@ -346,15 +352,48 @@ struct ReglagesView: View {
         .overlay(alignment: .bottom) { Filet() }
     }
 
-    private func changerCloud(web: Bool? = nil, contexte: Bool? = nil) {
+    /// Recherche dans les conversations privées : ce qui sort quand elle est
+    /// allumée (des questions générales, par la salle blanche et le filtre ;
+    /// ConversationPrivee.ceQuiSort), et pourquoi elle est grisée quand la
+    /// tour la verrouille.
+    private func recherchePrivee(_ r: Reglages) -> some View {
+        let verrou = r.verrouRecherchePrivee != nil
+        return Toggle(isOn: Binding(
+            get: { r.recherchePriveeAffichee },
+            set: { nouveau in changerCloud(privee: nouveau) }
+        )) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recherche dans les conversations privées").font(Police.texte(16, .medium))
+                Text(r.phraseRecherchePrivee)
+                    .font(Police.texte(13))
+                    .foregroundStyle(Palette.encre2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Palette.signal)
+        .disabled(verrou || changementSecours)
+        .accessibilityIdentifier("reglages.recherchePrivee")
+        .foregroundStyle(verrou ? Palette.encre2 : Palette.encre)
+        .padding(.vertical, 10)
+        .frame(minHeight: 60)
+        .overlay(alignment: .bottom) { Filet() }
+    }
+
+    private func changerCloud(web: Bool? = nil, contexte: Bool? = nil, privee: Bool? = nil) {
         guard !changementSecours else { return }
         changementSecours = true
         Task {
             defer { changementSecours = false }
             do {
-                if let web {
+                if let privee {
+                    let r = try await app.api.changerRecherchePrivee(privee)
+                    reglages = r
+                    app.chat.noter(reglages: r)
+                    app.dire(r.confirmationRecherchePrivee(privee))
+                } else if let web {
                     let r = try await app.api.changerRechercheWeb(web)
                     reglages = r
+                    app.chat.noter(reglages: r)
                     app.dire(r.confirmationRechercheWeb(web))
                 } else if let contexte {
                     reglages = try await app.api.changerContexteCloud(contexte)

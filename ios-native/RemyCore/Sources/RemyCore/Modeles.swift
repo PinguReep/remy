@@ -342,8 +342,11 @@ public final class AppModel {
     /// Nouveau fil nommé, avec une première demande. Le fil n'est créé sur le
     /// serveur qu'au moment de l'envoi, déjà renommé (pas de titre deviné, pas
     /// de fil vide). Un appel IA : uniquement sur un geste de Sam.
+    /// Depuis l'écran vide d'une conversation privée (« Organiser ma
+    /// journée »), le nouveau fil reste privé : un geste ne fait jamais
+    /// quitter le privé sans le dire (27/10).
     public func nouveauFil(titre: String, message texte: String) async {
-        chat.fermer()
+        chat.fermer(versPrive: chat.privee && chat.idCourant == nil && chat.origine == nil)
         chat.titreEnAttente = String(titre.prefix(80))
         onglet = .remy
         await chat.envoyer(texte)
@@ -1300,6 +1303,18 @@ public final class ChatModel {
     /// Le début du fil ouvert, résumé pour le modèle (compactage-v1).
     public private(set) var compactage: Compactage?
     public private(set) var compactageEnCours = false
+    /// Le fil ouvert (ou celui que le prochain envoi créera) est privé : le
+    /// modèle local seulement, jamais Claude (27/10, comme le cadenas du site).
+    public private(set) var privee = false
+    /// La recherche dans les conversations privées sur la tour
+    /// (recherche-privee-v1) : permise, coupée, et pourquoi.
+    public private(set) var etatRecherchePrivee: EtatRecherchePrivee = .inconnu
+    public private(set) var miseEnPrive = false
+    /// Le brouillon d'une conversation privée quittée pour une ordinaire (le
+    /// texte du champ et les « Envoyer après ») : jamais dans le composeur
+    /// d'une conversation ordinaire, d'où il partirait vers la mémoire, la
+    /// nuit ou Claude. Il revient dans la prochaine conversation privée (27/10).
+    public private(set) var brouillonPrive = ""
 
     /// Captures de la CI seulement : une réponse figée en cours, avec ses étapes.
     public func montrerPourCapture(_ ligne: LigneChat) { lignes.append(ligne) }
@@ -1362,6 +1377,14 @@ public final class ChatModel {
             app?.signaler(error)
             return false
         }
+    }
+
+    /// Relit le résumé du fil (la jauge ouverte) : le résumé automatique se
+    /// fait après la réponse, sur la tour ; l'app ne l'apprend qu'en relisant.
+    public func relireCompactage() async {
+        guard let id = idCourant, !envoi, compactageDisponible,
+              let conv = try? await api.conversation(id), idCourant == id else { return }
+        if (conv.compactage?.jusqua ?? 0) > (compactage?.jusqua ?? 0) { compactage = conv.compactage }
     }
 
     /// Ce que la tour sait d'un code d'erreur, prêt à coller (jamais le
@@ -1438,6 +1461,9 @@ public final class ChatModel {
         modeRetenir = false
         titreEnAttente = nil
         fileEnvoi = []
+        privee = false
+        etatRecherchePrivee = .inconnu
+        brouillonPrive = ""
         vus = [:]
         UserDefaults.standard.removeObject(forKey: Self.cleVus)
     }
@@ -1481,6 +1507,12 @@ public final class ChatModel {
     public func ouvrir(_ conv: Conversation) async -> Bool {
         // Un message « Envoyer après » visait l'autre fil : il revient au composeur.
         if conv.id != idCourant { reprendreFile() }
+        // Une conversation importée est privée d'office (la tour le dit aussi).
+        let versPrive = conv.prive == true || conv.origine != nil
+        // Le brouillon d'une privée ne suit pas vers un fil ordinaire (ni vers
+        // une importée, sans composeur) ; il revient dans la prochaine privée.
+        let composeurPrive = versPrive && conv.origine == nil
+        if !composeurPrive { mettreDeCoteLePrive() }
         interrompreFlux()
         activiteLe = Date()
         idCourant = conv.id
@@ -1490,6 +1522,8 @@ public final class ChatModel {
         titreEnAttente = nil
         modeRetenir = false
         compactage = conv.compactage
+        privee = versPrive
+        if composeurPrive { rendreLeBrouillonPrive() }
         lignes = Self.lignes(de: conv)
         noterVu(conv.id, max(conv.messages.count, conversations.first(where: { $0.id == conv.id })?.messages ?? 0))
         reprendreSiEnCours(conv)
@@ -1569,6 +1603,120 @@ public final class ChatModel {
         focusDemande = true
     }
 
+    /// « Nouvelle conversation privée » : un écran vide, marqué privé ; le fil
+    /// naît privé au premier message (jamais un instant public sur la tour).
+    public func nouvellePrivee() {
+        fermer(versPrive: true)
+        focusDemande = true
+    }
+
+    /// La puce « Privée » au-dessus du champ, sur un écran vide (rien n'existe
+    /// encore sur la tour) : la conversation à venir sera privée, ou ne le
+    /// sera plus. Rend l'état obtenu.
+    @discardableResult
+    public func basculerPriveeAvantEnvoi() -> Bool {
+        guard idCourant == nil, origine == nil else { return privee }
+        guard !envoi else {
+            app?.dire("Rémy crée la conversation : réessaie dans un instant.")
+            return privee
+        }
+        privee.toggle()
+        if privee {
+            // Retenir écrit dans la mémoire : pas depuis une conversation privée.
+            modeRetenir = false
+            rendreLeBrouillonPrive()
+        }
+        return privee
+    }
+
+    /// Rendre privée la conversation en cours. Sans retour : la tour refuse
+    /// ensuite de la rendre publique. Pas encore créée : elle le sera privée.
+    /// Vrai si elle l'est.
+    @discardableResult
+    public func rendrePrivee() async -> Bool {
+        if privee { return true }
+        guard origine == nil, !miseEnPrive else { return false }
+        guard let id = idCourant else {
+            // Le fil est en cours de création : il naîtrait ordinaire, et le
+            // cadenas mentirait. Rien ne change ; Sam réessaie après.
+            guard !envoi else {
+                app?.dire("Rémy crée la conversation : réessaie dans un instant.")
+                return false
+            }
+            privee = true
+            modeRetenir = false
+            rendreLeBrouillonPrive()
+            return true
+        }
+        miseEnPrive = true
+        defer { miseEnPrive = false }
+        do {
+            try await api.rendrePrivee(id)
+            if let i = conversations.firstIndex(where: { $0.id == id }) { conversations[i].prive = true }
+            guard idCourant == id else { return true }
+            privee = true
+            modeRetenir = false
+            app?.dire("Conversation privée : elle reste sur tes machines.")
+            return true
+        } catch {
+            app?.signaler(error)
+            return false
+        }
+    }
+
+    /// Relit sur la tour si la recherche est permise dans les conversations
+    /// privées (pour le dire en clair). Sans le réglage : elle ne cherche pas.
+    public func lireRecherchePrivee() async {
+        guard app?.serveur?.sait("recherche-privee-v1") == true else {
+            etatRecherchePrivee = .sansReglage
+            return
+        }
+        if let r = try? await api.reglages() { noter(reglages: r) }
+    }
+
+    /// Des réglages relus ou changés (Réglages) : ce que la conversation privée
+    /// dit de la recherche suit tout de suite.
+    public func noter(reglages r: Reglages) {
+        guard app?.serveur?.sait("recherche-privee-v1") == true else {
+            etatRecherchePrivee = .sansReglage
+            return
+        }
+        etatRecherchePrivee = .de(r)
+    }
+
+    /// Quitter une conversation privée pour un fil ordinaire : son brouillon
+    /// et sa file d'attente restent de côté, et Sam le sait.
+    private func mettreDeCoteLePrive() {
+        guard privee, origine == nil else { return }
+        reprendreFile()
+        let t = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        brouillonPrive = brouillonPrive.isEmpty ? t : brouillonPrive + "\n\n" + t
+        brouillon = ""
+        app?.dire("Ton brouillon privé est gardé de côté : il reviendra dans ta prochaine conversation privée.")
+    }
+
+    /// Entrer dans une conversation privée : le brouillon privé mis de côté revient.
+    private func rendreLeBrouillonPrive() {
+        guard !brouillonPrive.isEmpty else { return }
+        let deja = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
+        brouillon = deja.isEmpty ? brouillonPrive : deja + "\n\n" + brouillonPrive
+        brouillonPrive = ""
+    }
+
+    /// Un message qui n'est pas parti revient au champ, jamais dans celui
+    /// d'une conversation ordinaire s'il était privé.
+    private func rendreAuComposeur(_ texte: String, prive: Bool, appel: Bool) {
+        guard !appel else { return }
+        if prive && !(privee && origine == nil) {
+            brouillonPrive = brouillonPrive.isEmpty ? texte : brouillonPrive + "\n\n" + texte
+            app?.dire("Ton message privé n'est pas parti : il est gardé pour ta prochaine conversation privée.")
+            return
+        }
+        let deja = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
+        if deja.isEmpty { brouillon = texte } else if deja != texte { brouillon = deja + "\n\n" + texte }
+    }
+
     /// Dernier geste sur le fil ouvert (ouvert, message envoyé) : un fil laissé
     /// ouvert depuis un autre jour est refermé au retour sur l'onglet.
     @ObservationIgnored public private(set) var activiteLe: Date?
@@ -1584,7 +1732,12 @@ public final class ChatModel {
         return true
     }
 
-    public func fermer() {
+    public func fermer() { fermer(versPrive: false) }
+
+    /// `versPrive` : l'écran vide qui suit est privé (« Nouvelle conversation
+    /// privée ») ; sinon, le brouillon d'une privée est mis de côté.
+    func fermer(versPrive: Bool) {
+        if !versPrive { mettreDeCoteLePrive() }
         reprendreFile()
         interrompreFlux()
         activiteLe = nil
@@ -1596,6 +1749,8 @@ public final class ChatModel {
         compactage = nil
         titreEnAttente = nil
         modeRetenir = false
+        privee = versPrive
+        if versPrive { rendreLeBrouillonPrive() }
     }
 
     // MARK: Envoi
@@ -1697,29 +1852,55 @@ public final class ChatModel {
         generation += 1
         let g = generation
         if idCourant == nil {
+            let prive = privee
+            let titreVoulu = titreEnAttente
             do {
-                let conv = try await api.nouvelleConversation()
-                guard generation == g else { return nil }
-                idCourant = conv.id
-                titre = conv.title
-                if let t = titreEnAttente {
-                    titreEnAttente = nil
-                    // Renommé AVANT le premier message : le serveur ne devine
-                    // pas de titre (un appel IA de moins). Un échec n'empêche
-                    // pas d'envoyer.
-                    if (try? await api.renommer(conv.id, titre: t)) != nil { titre = t }
+                let conv = try await api.nouvelleConversation(prive: prive)
+                // Le cadenas ne croit que la tour : une conversation qui n'est
+                // pas née privée (tour qui ignorerait `prive`) l'est rendue
+                // AVANT le premier message, ou rien ne part (27/10).
+                if prive && conv.prive != true {
+                    do {
+                        try await api.rendrePrivee(conv.id)
+                    } catch {
+                        if generation == g { envoi = false }
+                        rendreAuComposeur(texte, prive: prive, appel: appel)
+                        if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return nil }
+                        app?.dire("La tour n'a pas pu rendre la conversation privée : rien n'est parti, ton message est revenu dans le champ.")
+                        // Le fil vide, resté ordinaire, ne traîne pas dans la liste.
+                        try? await api.supprimer(conv.id)
+                        return nil
+                    }
                 }
+                var nom = conv.title
+                // Renommé AVANT le premier message : le serveur ne devine pas
+                // de titre (un appel IA de moins). Un échec n'empêche pas d'envoyer.
+                if let t = titreVoulu, generation == g, (try? await api.renommer(conv.id, titre: t)) != nil { nom = t }
+                guard generation == g else {
+                    // Sam a changé de fil pendant la création (« Nouvelle
+                    // conversation privée » touchée entre-temps) : le fil vide
+                    // s'en va, le message revient, et il le sait.
+                    rendreAuComposeur(texte, prive: prive, appel: appel)
+                    if !(prive && !(privee && origine == nil)) && !appel {
+                        app?.dire("Ton message n'est pas parti : tu as changé de conversation. Il est revenu dans le champ.")
+                    }
+                    try? await api.supprimer(conv.id)
+                    return nil
+                }
+                idCourant = conv.id
+                titre = nom
+                if titreEnAttente == titreVoulu { titreEnAttente = nil }
                 // Visible tout de suite dans la liste (et pour « Organiser ma
                 // journée »), sans attendre la fin de la réponse.
                 if !conversations.contains(where: { $0.id == conv.id }) {
-                    conversations.insert(ConversationResume(id: conv.id, title: titre, updatedAt: Date().millis), at: 0)
+                    conversations.insert(ConversationResume(id: conv.id, title: titre, updatedAt: Date().millis,
+                                                            prive: prive ? true : nil), at: 0)
                 }
             } catch {
-                if generation == g {
-                    envoi = false
-                    // Le composeur a été vidé à l'envoi : le texte revient.
-                    if brouillon.isEmpty && !appel { brouillon = texte }
-                }
+                if generation == g { envoi = false }
+                // Le composeur a été vidé à l'envoi : le texte revient (au
+                // brouillon privé s'il était privé et que Sam a changé de fil).
+                rendreAuComposeur(texte, prive: prive, appel: appel)
                 app?.signaler(error)
                 return nil
             }
@@ -2009,6 +2190,10 @@ public final class ChatModel {
     /// n'entre pas en mémoire, et le texte entier n'est pas gardé.
     @discardableResult
     public func retenirInfos(_ infos: [String], source: String, texte: String) async -> Bool {
+        guard !privee else {
+            app?.dire(ConversationPrivee.pasDeMemoire)
+            return false
+        }
         let choisies = infos.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         guard !choisies.isEmpty, !captureEnCours else { return false }
         captureEnCours = true
@@ -2028,6 +2213,11 @@ public final class ChatModel {
     }
 
     public func retenir(source: String = "note") async {
+        // Une conversation privée n'entre jamais dans la mémoire (27/10).
+        guard !privee else {
+            app?.dire(ConversationPrivee.pasDeMemoire)
+            return
+        }
         let texte = brouillon.trimmingCharacters(in: .whitespacesAndNewlines)
         guard texte.count >= 30 else {
             app?.dire("Encore quelques mots pour que Rémy puisse le retenir.")

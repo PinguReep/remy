@@ -57,6 +57,16 @@ w("conversations.json", {
           ] } },
       ],
     },
+    // Une conversation privée (27/10) : le cadenas de l'en-tête et la jauge,
+    // grand iPhone, petit iPhone et grand texte (captures « 5h », « 10r », « 11d »).
+    {
+      id: "c15", title: "Cadeau d'anniversaire de Léa", createdAt: now - 400 * H, updatedAt: now - 400 * H, prive: true,
+      messages: [
+        { role: "user", content: "Je cherche une idée de cadeau pour Léa, elle aime la céramique et les randonnées." },
+        { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Un atelier de tournage pour deux, ou une gourde émaillée faite main : les deux parlent de ce qu'elle aime.",
+          mesures: { jetons: 96, tps: 41.2, decodeMs: 2330, premierMs: 1500, contexte: 18_400, fenetre: 131_072, fenetreSource: "modele" } },
+      ],
+    },
     // Une partie seulement d'une proposition (24/10) : une case par ligne — capture « 5e2 ».
     {
       id: "c13", title: "Salon des créateurs", createdAt: now - 30 * H, updatedAt: now - 30 * H,

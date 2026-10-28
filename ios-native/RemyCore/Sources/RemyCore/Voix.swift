@@ -211,7 +211,9 @@ public final class DicteeModel {
         defer { etat = .repos }
         do {
             let finDictee = Mesures.partagees.chrono("app.dictee")
-            let texte = try await api.transcrire(audio: e.audio, duree: e.duree)
+            // Dicté dans une conversation privée : Dictée Locale seulement.
+            let prive = destination == nil && app?.chat.privee == true
+            let texte = try await api.transcrire(audio: e.audio, duree: e.duree, prive: prive)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             finDictee()
             if let id { enAttente.removeAll { $0.id == id } }
@@ -451,7 +453,7 @@ public final class AppelModel {
             etat = .transcription
             let texte: String
             do {
-                texte = try await api.transcrire(audio: e.audio, duree: e.duree)
+                texte = try await api.transcrire(audio: e.audio, duree: e.duree, prive: app?.chat.privee == true)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             } catch {
                 guard enCours(s) else { return }

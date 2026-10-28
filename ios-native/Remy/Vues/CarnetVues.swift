@@ -377,7 +377,9 @@ struct LigneRappel: View {
                 Haptique.leger()
                 quand = true
             } label: {
-                details.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                // 44 pt au moins (27/10) : le libellé seul faisait 38 pt dans
+                // une ligne de 52 (constat des parcours P02, P09, P15, P23).
+                details.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint("Reporter, étiqueter ou retirer")

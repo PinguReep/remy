@@ -578,8 +578,14 @@ struct ReglageCapture: View {
 /// Les outils du constructeur, rangés à part (24/10) : utiles pour comprendre
 /// ce que fait Rémy, pas pour la journée.
 enum Diagnostic {
-    /// La jauge du contexte et les tokens par seconde dans le chat : masqués par défaut.
+    /// La jauge du contexte en haut du chat. Visible par défaut depuis le
+    /// 27/10 (demande du propriétaire) ; masquable ici.
     static let cleJauge = "diagnostic.jauge"
+    static let jaugeParDefaut = true
+    /// Les tokens par seconde sous chaque réponse : un chiffre de
+    /// constructeur, à part de la jauge et masqué par défaut (27/10).
+    static let cleVitesse = "diagnostic.vitesse"
+    static let vitesseParDefaut = false
     /// Captures de la CI des écrans de mesure : la jauge reste visible.
     static var demo: Bool {
         ["jauge", "etapes", "perf-remy"].contains(ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] ?? "")
@@ -587,7 +593,8 @@ enum Diagnostic {
 }
 
 struct DiagnosticVue: View {
-    @AppStorage(Diagnostic.cleJauge) private var jauge = false
+    @AppStorage(Diagnostic.cleJauge) private var jauge = Diagnostic.jaugeParDefaut
+    @AppStorage(Diagnostic.cleVitesse) private var vitesse = Diagnostic.vitesseParDefaut
     @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
 
     var body: some View {
@@ -621,7 +628,22 @@ struct DiagnosticVue: View {
                         Image(systemName: "gauge.with.dots.needle.33percent").font(.system(size: 18)).frame(width: 26)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Jauge du contexte").font(Police.texte(16, .medium))
-                            Text("Le cadran et les tokens par seconde, en haut des conversations.")
+                            Text("Le cadran en haut des conversations : la place prise, et le résumé à 70 %. Allumée par défaut.")
+                                .font(Police.texte(13)).foregroundStyle(Palette.encre2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .tint(Palette.signal)
+                .padding(.vertical, 10)
+                .frame(minHeight: 60)
+                .overlay(alignment: .bottom) { Filet() }
+                Toggle(isOn: $vitesse) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "speedometer").font(.system(size: 18)).frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Vitesse de Rémy").font(Police.texte(16, .medium))
+                            Text("Les tokens par seconde sous chaque réponse. Coupée par défaut.")
                                 .font(Police.texte(13)).foregroundStyle(Palette.encre2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

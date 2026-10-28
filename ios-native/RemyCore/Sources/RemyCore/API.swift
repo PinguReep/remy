@@ -218,8 +218,18 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(Conversation.self, "api/conversations/\(id)")
     }
 
-    public func nouvelleConversation(session sessionOnboarding: String? = nil) async throws -> Conversation {
-        try await json(Conversation.self, "api/conversations", methode: "POST", corps: sessionOnboarding.map { ["session": $0] } ?? [:])
+    /// `prive` : une conversation privée dès sa création (route d'origine de
+    /// la tour, comme le cadenas du site) — jamais chez Claude.
+    public func nouvelleConversation(session sessionOnboarding: String? = nil, prive: Bool = false) async throws -> Conversation {
+        var corps: [String: Any] = sessionOnboarding.map { ["session": $0] } ?? [:]
+        if prive { corps["prive"] = true }
+        return try await json(Conversation.self, "api/conversations", methode: "POST", corps: corps)
+    }
+
+    /// Rendre privée : à sens unique, la tour refuse de revenir en arrière
+    /// (« Une conversation privée le reste »).
+    public func rendrePrivee(_ id: String) async throws {
+        try await envoyer("api/conversations/\(id)", methode: "PATCH", corps: ["prive": true])
     }
 
     public func renommer(_ id: String, titre: String) async throws {
@@ -405,6 +415,12 @@ public final class ClientAPI: @unchecked Sendable {
         try await json(Reglages.self, "api/reglages", methode: "PUT", corps: ["contexteCloud": actif])
     }
 
+    /// Recherche dans les conversations privées (recherche-privee-v1) : coupée
+    /// par défaut. Rend l'état effectif (la tour peut la verrouiller).
+    public func changerRecherchePrivee(_ actif: Bool) async throws -> Reglages {
+        try await json(Reglages.self, "api/reglages", methode: "PUT", corps: ["recherchePrivee": actif])
+    }
+
     // MARK: Propositions Motion / Agenda
 
     /// Applique une proposition du chat (`p.id` : une seule écriture, quel que
@@ -561,10 +577,12 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Transcrit un enregistrement (AAC/m4a) sur la tour — Dictée Locale :
     /// l'audio n'est pas conservé, seul le texte revient. `duree` sert au
-    /// journal des coûts (0 $ en local).
-    public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double) async throws -> String {
+    /// journal des coûts (0 $ en local). `prive` : dicté dans une conversation
+    /// privée — la tour refuse alors tout service en ligne (Dictée Locale
+    /// seulement, 27/10).
+    public func transcrire(audio: Data, type: String = "audio/mp4", duree: Double, prive: Bool = false) async throws -> String {
         let d = String(format: "%.1f", max(0, duree))
-        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)", methode: "POST", corps: audio,
+        let donnees = try await brut("api/transcribe?type=\(type)&dur=\(d)" + (prive ? "&prive=1" : ""), methode: "POST", corps: audio,
                                      delai: Self.delaiTranscription(duree), typeCorps: "application/octet-stream")
         guard let t = try? JSONDecoder().decode(Texte.self, from: donnees) else { throw ErreurAPI.illisible }
         return t.text ?? ""

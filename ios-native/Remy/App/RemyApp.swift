@@ -215,6 +215,10 @@ enum Demo {
         case "remy-vide":
             app.chat.fermer()
             app.onglet = .remy
+        case "remy-prive-vide":
+            // L'écran vide d'une conversation privée (27/10) : la carte, la puce.
+            app.chat.nouvellePrivee()
+            app.onglet = .remy
         case "conversations", "retenir", "corriger-dictee", "etapes", "jauge", "erreur", "regle", "carnet":
             app.chat.fermer()
             app.onglet = .remy

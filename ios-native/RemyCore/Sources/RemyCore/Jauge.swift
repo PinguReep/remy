@@ -81,6 +81,41 @@ public struct JaugeContexte: Equatable, Sendable {
                      estime: m.estime == true)
     }
 
+    // MARK: Le résumé automatique (27/10 : ce que la jauge en dit)
+
+    /// Le seuil du résumé automatique (lib/compactage.js, SEUIL).
+    public static let seuilCompactage = 0.7
+    /// Les derniers messages gardés en entier (lib/compactage.js, GARDER) :
+    /// un fil plus court n'a rien à résumer.
+    public static let messagesGardes = 6
+
+    /// Ce que la jauge dit du résumé du début du fil : quand l'automatique se
+    /// fera (70 %), s'il s'est fait, ou qu'il est coupé. `automatique` : le
+    /// circuit « compactage » de la tour (nil : pas lu, allumé par défaut) ;
+    /// `messages` : ceux du fil.
+    public static func phraseCompactage(_ j: JaugeContexte, compactage: Compactage?, automatique: Bool?, messages: Int) -> String {
+        var bouts: [String] = []
+        if let c = compactage, c.jusqua > 0 {
+            bouts.append("Déjà résumé\(c.a.map { " à \(Format.heure($0))" } ?? "") : les \(c.jusqua) premiers messages. Rémy relit ce résumé, puis la suite en entier.")
+        }
+        let court = messages - (compactage?.jusqua ?? 0) <= messagesGardes
+        if automatique == false {
+            bouts.append("Résumé automatique coupé (Réglages) : seulement à la main, ici.")
+        } else if let f = j.fraction {
+            if f >= seuilCompactage {
+                bouts.append(court
+                    ? "70 % atteints, mais le fil est trop court pour être résumé : une nouvelle conversation repartira légère."
+                    : "70 % atteints : Rémy résume le début du fil juste après sa réponse, sur tes machines. La suivante repartira plus légère.")
+            } else {
+                let reste = max(1, Int(((seuilCompactage - f) * 100).rounded(.up)))
+                bouts.append("Résumé automatique à 70 % : encore \(reste) point\(reste > 1 ? "s" : "") avant que Rémy résume le début du fil.")
+            }
+        } else {
+            bouts.append("Résumé automatique à 70 % de la place, dès qu'elle est mesurée.")
+        }
+        return bouts.joined(separator: " ")
+    }
+
     // MARK: Écriture des nombres (à la française)
 
     /// « 850 », « 44,2 k », « 128 k »

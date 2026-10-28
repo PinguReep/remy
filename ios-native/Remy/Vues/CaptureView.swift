@@ -310,7 +310,8 @@ struct CaptureView: View {
             // était au bout, la phrase entière sinon.
             guard let d = dateLue else { return "Tâche → Motion lui trouvera un créneau" }
             let titre = GenreCapture.texte(propre, date: d, genre: .tache)
-            return "Tâche « \(titre) » → Motion lui trouvera un créneau avant l'échéance : \(Format.echeanceLongue(d.echeance))"
+            // « fin octobre » dit le 2 novembre : en retard de fait, ce soir (27/10).
+            return "Tâche « \(titre) » → Motion lui trouvera un créneau avant l'échéance : \(d.dejaPassee ?? Format.echeanceLongue(d.echeance))"
         case .idee:
             guard projetPret else { return "Les Idées arriveront avec la mise à jour de ta tour." }
             return "Idée → gardée dans « Idées » (Projets), rien n'est planifié"
@@ -322,6 +323,9 @@ struct CaptureView: View {
             guard carnetPret else { return "Les rappels arriveront avec la mise à jour de ta tour." }
             guard let d = dateLue else { return "Rappel sans date (ajoute « demain 9h », « lundi », « le 12/11 »…)" }
             return "Rappel → \(LigneRappel.quand(d.quand.millis)) : « \(GenreCapture.texte(propre, date: d, genre: .rappel)) »"
+                + (d.dejaPassee != nil
+                   ? (d.quand.timeIntervalSinceNow <= 3600 ? " (la date est déjà passée : il sonne dans l'heure)" : " (la date est déjà passée : il sonne aujourd'hui)")
+                   : "")
         case .retenir:
             let manque = GenreCapture.minimumRetenir - propre.count
             return manque > 0 ? "Retenir → encore \(manque) caractère\(manque > 1 ? "s" : "") pour que Rémy en tire quelque chose"

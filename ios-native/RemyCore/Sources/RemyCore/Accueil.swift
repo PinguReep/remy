@@ -351,8 +351,11 @@ public enum GenreCapture: String, CaseIterable, Sendable {
             // vendredi ») : une tâche avec cette échéance, pas un rappel à 9 h
             // inventé. Un rappel, c'est une heure dite, ou « rappelle-moi ».
             // Le jour peut venir en tête (« Demain, appeler le plombier ») :
-            // l'action se lit aussi dans la phrase sans sa date.
-            return !d.heureDite && (actionClaire(t) || actionClaire(d.reste)) ? .tache : .rappel
+            // l'action se lit aussi dans la phrase sans sa date. Une date
+            // limite avec son heure (« Rendre le dossier avant mardi 14h ») :
+            // une tâche avec cette échéance, pas un rappel qui sonnerait quand
+            // il est trop tard pour agir (27/10).
+            return (!d.heureDite || d.limite) && (actionClaire(t) || actionClaire(d.reste)) ? .tache : .rappel
         }
         if articles(t).count >= 2 { return .liste }
         return actionClaire(t) ? .tache : parDefaut
@@ -365,12 +368,13 @@ public enum GenreCapture: String, CaseIterable, Sendable {
     /// « Préparer la réunion de demain avec Hugo » ne devient pas « Préparer
     /// la réunion de avec Hugo ». La date part à côté (échéance ou heure du
     /// rappel). Une tâche avec une heure dite (genre changé à la main) garde
-    /// son heure dans le titre.
+    /// son heure dans le titre, sauf une date limite (« avant mardi 14h ») :
+    /// l'heure est déjà son échéance.
     public static func texte(_ texte: String, date d: AnalyseDate.Resultat?, genre: GenreCapture) -> String {
         let propre = texte.trimmingCharacters(in: .whitespacesAndNewlines)
         let entier = AnalyseDate.sansFormule(propre)
         guard let d, !d.reste.isEmpty else { return genre == .tache ? propre : entier }
-        if genre == .tache && d.heureDite { return entier }
+        if genre == .tache && d.heureDite && !d.limite { return entier }
         func plie(_ s: String) -> String {
             s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Format.locale)
                 .replacingOccurrences(of: #"[\s,;:.!…-]+"#, with: " ", options: .regularExpression)

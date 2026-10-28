@@ -211,7 +211,8 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(analyse("Payer les impôts fin novembre")?.echeance, date(30, 11, 23))
         XCTAssertEqual(analyse("Payer les impôts fin du mois prochain")?.echeance, date(30, 11, 23))
         XCTAssertEqual(analyse("Payer les impôts fin février")?.echeance, date(28, 2, 23, an: 2027), "février 2027 : 28 jours")
-        XCTAssertEqual(analyse("Payer les impôts fin septembre")?.echeance, date(30, 9, 23, an: 2027), "septembre est passé")
+        XCTAssertEqual(analyse("Payer les impôts fin septembre")?.echeance, date(15, 10, 23), "passée depuis 15 jours : ce soir")
+        XCTAssertEqual(analyse("Payer les impôts fin août")?.echeance, date(31, 8, 23, an: 2027), "passée depuis plus de 31 jours : l'an prochain")
         XCTAssertEqual(analyse("Payer les impôts fin décembre 2027")?.echeance, date(31, 12, 23, an: 2027))
         XCTAssertEqual(AnalyseDate.extraire("Payer les impôts fin octobre", maintenant: date(31, 10, 23, 30))?.echeance, date(31, 10, 23, 59),
                        "le dernier soir, tard : jusqu'à minuit")
@@ -220,16 +221,17 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(AnalyseDate.extraire("Payer les impôts fin du mois prochain", maintenant: date(10, 12, 9))?.echeance, date(31, 1, 23, an: 2027))
     }
 
-    /// « avant le 3 » : la veille, 23 h (« avant » est strict) ; « pour le
-    /// 3 », « d'ici le 3 », « le 3 » : le 3, 23 h. Sans mois : le prochain 3.
+    /// « avant le 3 » : la veille, 23 h 59 (« avant » est strict, 27/10 : une
+    /// seule règle, jusqu'à la fin de la veille) ; « pour le 3 », « d'ici le
+    /// 3 », « le 3 » : le 3, 23 h. Sans mois : le prochain 3.
     func testAvantLe3EstLaVeille() {
-        XCTAssertEqual(analyse("Envoyer le devis avant le 3")?.echeance, date(2, 11, 23), "le prochain 3 : novembre")
+        XCTAssertEqual(analyse("Envoyer le devis avant le 3")?.echeance, date(2, 11, 23, 59), "le prochain 3 : novembre")
         XCTAssertEqual(analyse("Envoyer le devis avant le 3")?.reste, "Envoyer le devis")
-        XCTAssertEqual(analyse("Envoyer le devis avant le 3 novembre")?.echeance, date(2, 11, 23))
-        XCTAssertEqual(analyse("Envoyer le devis avant le 3/11")?.echeance, date(2, 11, 23))
-        XCTAssertEqual(analyse("Envoyer le devis avant le 1er novembre")?.echeance, date(31, 10, 23), "la veille change de mois")
-        XCTAssertEqual(analyse("Envoyer le devis avant le 1er")?.echeance, date(31, 10, 23))
-        XCTAssertEqual(analyse("Envoyer le devis avant le 1er janvier")?.echeance, date(31, 12, 23), "et d'année")
+        XCTAssertEqual(analyse("Envoyer le devis avant le 3 novembre")?.echeance, date(2, 11, 23, 59))
+        XCTAssertEqual(analyse("Envoyer le devis avant le 3/11")?.echeance, date(2, 11, 23, 59))
+        XCTAssertEqual(analyse("Envoyer le devis avant le 1er novembre")?.echeance, date(31, 10, 23, 59), "la veille change de mois")
+        XCTAssertEqual(analyse("Envoyer le devis avant le 1er")?.echeance, date(31, 10, 23, 59))
+        XCTAssertEqual(analyse("Envoyer le devis avant le 1er janvier")?.echeance, date(31, 12, 23, 59), "et d'année")
         for p in ["Envoyer le devis pour le 3", "Envoyer le devis d'ici le 3", "Envoyer le devis le 3", "Envoyer le devis jusqu'au 3",
                   "Envoyer le devis pour le 3 novembre", "Envoyer le devis d'ici le 3 novembre"] {
             XCTAssertEqual(analyse(p)?.echeance, date(3, 11, 23), p)
@@ -238,16 +240,16 @@ final class CarnetTests: XCTestCase {
         }
         XCTAssertEqual(analyse("Payer le loyer le 20")?.echeance, date(20, 10, 23), "pas encore passé ce mois-ci")
         XCTAssertEqual(analyse("Payer le loyer le 15")?.echeance, date(15, 10, 23), "le jour même : ce soir")
-        XCTAssertEqual(analyse("Payer le loyer avant le 16")?.echeance, date(15, 10, 23), "la veille, c'est ce soir")
-        XCTAssertEqual(analyse("Payer le loyer avant le 15")?.echeance, date(15, 10, 23), "la veille est passée : ce soir, jamais une date passée")
-        XCTAssertEqual(analyse("Payer le loyer avant le 31")?.echeance, date(30, 10, 23))
+        XCTAssertEqual(analyse("Payer le loyer avant le 16")?.echeance, date(15, 10, 23, 59), "la veille, c'est ce soir")
+        XCTAssertEqual(analyse("Payer le loyer avant le 15")?.echeance, date(15, 10, 23, 59), "la veille est passée : ce soir, jamais une date passée")
+        XCTAssertEqual(analyse("Payer le loyer avant le 31")?.echeance, date(30, 10, 23, 59))
         XCTAssertEqual(AnalyseDate.extraire("Payer le loyer le 31", maintenant: date(5, 11, 9))?.echeance, date(31, 12, 23),
                        "novembre n'a pas de 31 : décembre")
         XCTAssertEqual(AnalyseDate.extraire("Payer le loyer le 3", maintenant: date(3, 11, 23, 30))?.echeance, date(3, 11, 23, 59))
         // En tête de phrase : le titre reste propre.
         let enTete = "Avant le 3 novembre, envoyer le devis"
         XCTAssertEqual(GenreCapture.texte(enTete, date: analyse(enTete), genre: .tache), "Envoyer le devis")
-        XCTAssertEqual(analyse(enTete)?.echeance, date(2, 11, 23))
+        XCTAssertEqual(analyse(enTete)?.echeance, date(2, 11, 23, 59))
         // Un rappel « avant le 3 » sonne la veille.
         XCTAssertEqual(analyse("Rappelle-moi avant le 3 d'appeler Hugo")?.quand, date(2, 11, 9))
         XCTAssertEqual(analyse("Rappelle-moi avant le 3 d'appeler Hugo")?.reste, "Appeler Hugo")
@@ -259,15 +261,17 @@ final class CarnetTests: XCTestCase {
     /// Les flous restent dans le titre, sans échéance : jamais une date
     /// arbitraire. Et un nombre après « le » n'est pas toujours un jour.
     func testLesFlousNeDeviennentPasDesDates() {
-        for p in ["Préparer Noël début novembre", "Préparer Noël mi-novembre", "Préparer Noël en novembre",
+        for p in ["Préparer Noël mi-novembre", "Préparer Noël en novembre", "Préparer Noël mi novembre", "Préparer Noël milieu novembre",
                   "Préparer Noël courant novembre", "Préparer le menu de la semaine", "Visiter le 2 pièces rue Haute",
                   "Lire le 3e chapitre", "Appeler le 06 12 34 56 78", "Relire le 2 du dossier Hugo", "Monter le 3 h de vidéo",
                   "Le 12 est mon numéro préféré", "Préparer la fin du film"] {
             XCTAssertNil(analyse(p), p)
         }
-        XCTAssertEqual(GenreCapture.texte("Préparer Noël début novembre", date: analyse("Préparer Noël début novembre"), genre: .tache),
-                       "Préparer Noël début novembre")
-        XCTAssertEqual(GenreCapture.deviner("Préparer Noël début novembre", maintenant: maintenant), .tache)
+        XCTAssertEqual(GenreCapture.texte("Préparer Noël mi-novembre", date: analyse("Préparer Noël mi-novembre"), genre: .tache),
+                       "Préparer Noël mi-novembre")
+        XCTAssertEqual(GenreCapture.texte("Préparer Noël courant novembre", date: analyse("Préparer Noël courant novembre"), genre: .tache),
+                       "Préparer Noël courant novembre")
+        XCTAssertEqual(GenreCapture.deviner("Préparer Noël mi-novembre", maintenant: maintenant), .tache)
         // Une date au milieu reste dans le titre (règle du 25/10), l'échéance part quand même.
         let milieu = "Payer la facture de fin octobre à Hugo"
         XCTAssertEqual(GenreCapture.texte(milieu, date: analyse(milieu), genre: .tache), milieu)
@@ -287,15 +291,16 @@ final class CarnetTests: XCTestCase {
     /// Whisper ponctue : « avant le 3. », « Avant le 3, payer… » restent des
     /// dates (constat bloquant). « le 3.2 du manuel » n'en est pas une.
     func testUnePonctuationApresLeNumeroGardeLaDate() {
-        XCTAssertEqual(analyse("Payer la facture avant le 3.")?.echeance, date(2, 11, 23))
+        XCTAssertEqual(analyse("Payer la facture avant le 3.")?.echeance, date(2, 11, 23, 59))
         XCTAssertEqual(analyse("Payer la facture avant le 3.")?.reste, "Payer la facture")
         XCTAssertEqual(analyse("Payer la facture pour le 3.")?.echeance, date(3, 11, 23))
         XCTAssertEqual(analyse("Payer la facture le 3.")?.echeance, date(3, 11, 23))
-        XCTAssertEqual(analyse("Payer la facture avant le 3, sinon pénalité")?.echeance, date(2, 11, 23))
-        for (p, jour) in [("Avant le 3, payer la facture", 2), ("Le 3, payer la facture", 3), ("Pour le 3. Payer la facture", 3)] {
+        XCTAssertEqual(analyse("Payer la facture avant le 3, sinon pénalité")?.echeance, date(2, 11, 23, 59))
+        for (p, e) in [("Avant le 3, payer la facture", date(2, 11, 23, 59)), ("Le 3, payer la facture", date(3, 11, 23)),
+                       ("Pour le 3. Payer la facture", date(3, 11, 23))] {
             XCTAssertEqual(GenreCapture.deviner(p, maintenant: maintenant), .tache, p)
             XCTAssertEqual(tache(p, maintenant).titre, "Payer la facture", p)
-            XCTAssertEqual(tache(p, maintenant).echeance, date(jour, 11, 23), p)
+            XCTAssertEqual(tache(p, maintenant).echeance, e, p)
         }
         XCTAssertNil(analyse("Lire le 3.2 du manuel"))
         XCTAssertNil(analyse("Lire le 3,5 du manuel"))
@@ -334,7 +339,7 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(analyse("Payer la facture pour le 20 du mois prochain")?.echeance, date(20, 11, 23))
         XCTAssertEqual(analyse("Payer la facture pour le 20 du mois prochain")?.reste, "Payer la facture")
         XCTAssertEqual(analyse("Payer la facture le 20 du mois prochain")?.echeance, date(20, 11, 23))
-        XCTAssertEqual(AnalyseDate.extraire("Payer la facture avant le 3 du mois prochain", maintenant: date(1, 10, 9))?.echeance, date(2, 11, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Payer la facture avant le 3 du mois prochain", maintenant: date(1, 10, 9))?.echeance, date(2, 11, 23, 59))
         XCTAssertEqual(AnalyseDate.extraire("Payer la facture le 31 du mois prochain", maintenant: date(1, 10, 9))?.echeance, date(31, 12, 23),
                        "novembre n'a pas de 31 : le suivant qui en a un")
         XCTAssertNil(analyse("Payer le loyer le 5 du mois"), "chaque mois : pas une date")
@@ -347,20 +352,20 @@ final class CarnetTests: XCTestCase {
         XCTAssertEqual(analyse("Rendre le dossier avant le 3 novembre à midi")?.quand, date(3, 11, 12))
         XCTAssertEqual(analyse("Rendre le dossier avant le 3/11 a 18h")?.quand, date(3, 11, 18))
         XCTAssertEqual(analyse("Payer la facture avant le 3 au soir")?.quand, date(3, 11, 20))
-        XCTAssertEqual(analyse("Payer la facture avant le 3")?.echeance, date(2, 11, 23), "sans heure : toujours la veille")
+        XCTAssertEqual(analyse("Payer la facture avant le 3")?.echeance, date(2, 11, 23, 59), "sans heure : toujours la veille")
     }
 
-    /// L'aperçu montre l'année quand ce n'est pas celle-ci : « fin octobre »
-    /// dit le 1er novembre vise 2027 (règle « mois passé ⇒ année suivante »).
+    /// L'aperçu montre l'année quand ce n'est pas celle-ci : « fin août » dit
+    /// le 1er novembre vise 2027 (passée depuis plus de 31 jours ⇒ année suivante).
     func testLAnneeSeVoitQuandElleChange() {
         let premierNovembre = date(1, 11, 10)
-        let e = AnalyseDate.extraire("Rendre le dossier fin octobre", maintenant: premierNovembre)?.echeance
-        XCTAssertEqual(e, date(31, 10, 23, an: 2027))
-        XCTAssertEqual(e.map { Format.echeanceLongue($0, maintenant: premierNovembre) }, "dimanche 31 octobre 2027")
+        let e = AnalyseDate.extraire("Rendre le dossier fin août", maintenant: premierNovembre)?.echeance
+        XCTAssertEqual(e, date(31, 8, 23, an: 2027))
+        XCTAssertEqual(e.map { Format.echeanceLongue($0, maintenant: premierNovembre) }, "mardi 31 août 2027")
         XCTAssertEqual(Format.echeanceLongue(date(30, 10, 23), maintenant: maintenant), "vendredi 30 octobre", "cette année : pas d'année")
         XCTAssertEqual(Format.echeanceLongue(date(1, 1, 23, an: 2027), maintenant: date(31, 12, 10)), "vendredi 1 janvier 2027")
-        let q = AnalyseDate.extraire("Rappelle-moi de rendre le dossier fin octobre", maintenant: premierNovembre)?.quand
-        XCTAssertEqual(q, date(31, 10, 9, an: 2027))
+        let q = AnalyseDate.extraire("Rappelle-moi de rendre le dossier fin août", maintenant: premierNovembre)?.quand
+        XCTAssertEqual(q, date(31, 8, 9, an: 2027))
         XCTAssertTrue(q.map { CarnetModel.quand($0.millis, maintenant: premierNovembre).contains("2027") } == true, "l'aperçu du rappel aussi")
         XCTAssertFalse(CarnetModel.quand(date(30, 10, 9).millis, maintenant: maintenant).contains("2026"))
     }
@@ -420,7 +425,7 @@ final class CarnetTests: XCTestCase {
             XCTAssertEqual(r?.heureDite, false, p)
             XCTAssertGreaterThan(r?.quand ?? .distantPast, dit, p)
         }
-        XCTAssertEqual(AnalyseDate.extraire("Payer la facture avant le 3", maintenant: date(2, 11, 10))?.echeance, date(2, 11, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Payer la facture avant le 3", maintenant: date(2, 11, 10))?.echeance, date(2, 11, 23, 59))
         let tard = date(15, 10, 23, 30)
         XCTAssertEqual(AnalyseDate.extraire("Rappelle-moi aujourd'hui d'appeler Hugo", maintenant: tard)?.quand, tard.addingTimeInterval(600))
         XCTAssertEqual(analyse("Rappelle-moi demain d'appeler Hugo")?.quand, date(16, 10, 9), "un autre jour : 9 h, comme avant")
@@ -445,12 +450,176 @@ final class CarnetTests: XCTestCase {
         XCTAssertNil(analyse("Relire le 3 de la liste"), "sans « rappelle-moi », « le 3 de » n'est pas une date")
     }
 
-    /// « avant » strict ne vaut que pour une date chiffrée (décision du
-    /// 25/10) : « avant mardi » reste mardi, « avant demain » demain. À
-    /// trancher par Sam ; ce test le documente.
-    func testAvantUnJourNommeResteCeJour() {
-        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi", maintenant: date(26, 10, 8))?.echeance, date(27, 10, 23))
-        XCTAssertEqual(analyse("Rendre le dossier avant demain")?.echeance, date(16, 10, 23))
+    /// « avant <jour nommé> » (27/10) : jusqu'à la fin de la veille, 23 h 59,
+    /// comme « avant le 3 ». Une heure dite fixe la borne : ce jour-là, à
+    /// cette heure. « avant mardi » dit un mardi : celui qui vient.
+    func testAvantUnJourNommeEstLaVeille() {
+        let lundi = date(26, 10, 8)
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi", maintenant: lundi)?.echeance, date(26, 10, 23, 59), "lundi 23 h 59")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi", maintenant: lundi)?.reste, "Rendre le dossier")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant vendredi", maintenant: lundi)?.echeance, date(29, 10, 23, 59))
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant lundi", maintenant: lundi)?.echeance, date(1, 11, 23, 59),
+                       "dit un lundi : le lundi qui vient, la veille change de mois")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant lundi prochain", maintenant: date(25, 10, 9))?.echeance, date(25, 10, 23, 59))
+        XCTAssertEqual(analyse("Rendre le dossier avant demain")?.echeance, date(15, 10, 23, 59), "avant demain : ce soir")
+        XCTAssertEqual(analyse("Rendre le dossier avant après-demain")?.echeance, date(16, 10, 23, 59))
+        XCTAssertEqual(analyse("rendre le dossier avant apres demain")?.echeance, date(16, 10, 23, 59), "dictée sans accent")
+        XCTAssertEqual(analyse("Rendre le dossier avant samedi")?.echeance, date(16, 10, 23, 59))
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant samedi", maintenant: date(31, 10, 9))?.echeance, date(6, 11, 23, 59),
+                       "dit un samedi : le suivant")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi", maintenant: date(29, 12, 9))?.echeance, date(4, 1, 23, 59, an: 2027),
+                       "dit un mardi : la veille du suivant, l'an prochain")
+        // Avec une heure : ce jour-là, à cette heure.
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi 14h", maintenant: lundi)?.echeance, date(27, 10, 14))
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier avant mardi à 14h", maintenant: lundi)?.heureDite, true)
+        XCTAssertEqual(analyse("Rendre le dossier avant demain midi")?.echeance, date(16, 10, 12))
+        XCTAssertEqual(analyse("Rendre le dossier avant vendredi soir")?.quand, date(16, 10, 20))
+        // « pour », « d'ici » : le jour dit, 23 h, comme avant.
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier pour mardi", maintenant: lundi)?.echeance, date(27, 10, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier d'ici mardi", maintenant: lundi)?.echeance, date(27, 10, 23))
+        XCTAssertEqual(analyse("Rendre le dossier demain")?.echeance, date(16, 10, 23))
+        // Un rappel « avant mardi » sonne la veille au matin ; le genre ne change pas.
+        XCTAssertEqual(AnalyseDate.extraire("Rappelle-moi avant mardi d'appeler Hugo", maintenant: lundi)?.quand, date(26, 10, 9))
+        XCTAssertEqual(GenreCapture.deviner("Envoyer le devis avant mardi", maintenant: lundi), .tache)
+        XCTAssertEqual(tache("Avant mardi, envoyer le devis", lundi).titre, "Envoyer le devis")
+    }
+
+    /// « début novembre » : le 5, 23 h (27/10) ; « fin novembre » : le
+    /// dernier jour. Les bords de mois et l'année qui change.
+    func testDebutDuMoisEstLe5() {
+        for p in ["Préparer Noël début novembre", "Préparer Noël debut novembre", "Préparer Noël au début de novembre",
+                  "Préparer Noël en début de novembre", "Préparer Noël d'ici début novembre", "Préparer Noël début nov.",
+                  "Préparer Noël début du mois prochain",
+                  // « début » est masculin : « le » part avec la date (contre-relecture).
+                  "Préparer Noël pour le début de novembre", "Préparer Noël d'ici le début de novembre",
+                  "Préparer Noël avant le début de novembre", "Préparer Noël d ici le debut de novembre",
+                  "Avant le début de novembre, préparer Noël", "Pour le début de novembre, préparer Noël"] {
+            let r = analyse(p)
+            XCTAssertEqual(r?.echeance, date(5, 11, 23), p)
+            XCTAssertEqual(r?.heureDite, false, p)
+            XCTAssertEqual(r?.reste, "Préparer Noël", p)
+            XCTAssertNil(r?.dejaPassee, p)
+            XCTAssertEqual(GenreCapture.deviner(p, maintenant: maintenant), .tache, p)
+            XCTAssertEqual(tache(p, maintenant).titre, "Préparer Noël", p)
+        }
+        XCTAssertEqual(tache("Payer le loyer avant le début du mois prochain", maintenant).titre, "Payer le loyer")
+        XCTAssertEqual(tache("Payer le loyer avant le début du mois prochain", maintenant).echeance, date(5, 11, 23))
+        XCTAssertEqual(analyse("Rappelle-moi début novembre de préparer Noël")?.quand, date(5, 11, 9))
+        XCTAssertEqual(analyse("Payer la taxe début janvier")?.echeance, date(5, 1, 23, an: 2027), "l'an prochain, mois après mois")
+        XCTAssertEqual(analyse("Payer la taxe debut fevrier")?.echeance, date(5, 2, 23, an: 2027), "dictée sans accent")
+        XCTAssertEqual(analyse("Payer la taxe début décembre 2027")?.echeance, date(5, 12, 23, an: 2027))
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe début janvier", maintenant: date(20, 12, 9))?.echeance, date(5, 1, 23, an: 2027))
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe début novembre", maintenant: date(5, 11, 9))?.echeance, date(5, 11, 23), "le 5 même : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe fin decembre", maintenant: date(1, 12, 9))?.echeance, date(31, 12, 23), "sans accent")
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe fin aout", maintenant: date(1, 8, 9))?.echeance, date(31, 8, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe fin février", maintenant: date(1, 2, 9, an: 2028))?.echeance, date(29, 2, 23, an: 2028),
+                       "bissextile")
+    }
+
+    /// Une fin ou un début de mois déjà passés depuis 31 jours au plus :
+    /// aujourd'hui (en retard de fait), jamais l'an prochain ; l'aperçu le dit.
+    /// Au-delà de 31 jours : l'année suivante.
+    func testUneFinDeMoisDejaPasseeTombeAujourdhui() {
+        let deuxNovembre = date(2, 11, 10)
+        let r = AnalyseDate.extraire("Rendre le dossier fin octobre", maintenant: deuxNovembre)
+        XCTAssertEqual(r?.echeance, date(2, 11, 23), "ce soir")
+        XCTAssertEqual(r?.reste, "Rendre le dossier")
+        XCTAssertEqual(r?.dejaPassee, "fin octobre, déjà passée : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier début novembre", maintenant: date(7, 11, 10))?.dejaPassee,
+                       "début novembre, déjà passé : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier début novembre", maintenant: date(7, 11, 10))?.echeance, date(7, 11, 23))
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin octobre", maintenant: date(30, 11, 10))?.echeance, date(30, 11, 23),
+                       "30 jours : encore en retard")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin octobre", maintenant: date(1, 12, 10))?.echeance, date(1, 12, 23),
+                       "31 jours tout juste : en retard")
+        let apres = AnalyseDate.extraire("Rendre le dossier fin octobre", maintenant: date(2, 12, 10))
+        XCTAssertEqual(apres?.echeance, date(31, 10, 23, an: 2027), "32 jours : l'an prochain")
+        XCTAssertNil(apres?.dejaPassee)
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin decembre", maintenant: date(3, 1, 10, an: 2027))?.echeance,
+                       date(3, 1, 23, an: 2027), "décembre d'il y a trois jours, par-dessus le nouvel an")
+        XCTAssertNil(AnalyseDate.extraire("Rendre le dossier fin du mois", maintenant: date(20, 10, 10))?.dejaPassee)
+        // Le rappel sonne dans l'heure, jamais dans le passé.
+        let rappel = AnalyseDate.extraire("Rappelle-moi de rendre le dossier fin octobre", maintenant: deuxNovembre)
+        XCTAssertEqual(rappel?.quand, date(2, 11, 11))
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier fin octobre", maintenant: deuxNovembre), .tache)
+    }
+
+    /// Contre-relecture : une fin ou un début de mois passés, dits avec une
+    /// heure. L'heure encore à venir aujourd'hui : à cette heure ; déjà passée :
+    /// à la prochaine heure pleine. Jamais un rappel dans le passé, et
+    /// l'aperçu le dit.
+    func testUneFinDeMoisPasseeAvecUneHeureNeTombeJamaisDansLePasse() {
+        let deuxNovembre19h = date(2, 11, 19)
+        let rappel = AnalyseDate.extraire("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: deuxNovembre19h)
+        XCTAssertEqual(rappel?.quand, date(2, 11, 20), "18 h est passé : 20 h, l'heure pleine suivante")
+        XCTAssertEqual(rappel.map { $0.quand > deuxNovembre19h }, true)
+        XCTAssertEqual(rappel?.dejaPassee, "fin octobre, déjà passée : dans l'heure")
+        XCTAssertEqual(GenreCapture.deviner("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: deuxNovembre19h), .rappel)
+        let vingt = date(20, 11, 10)
+        let debut = AnalyseDate.extraire("Rappelle-moi début novembre à 9h de payer Hugo", maintenant: vingt)
+        XCTAssertEqual(debut?.quand, date(20, 11, 11))
+        XCTAssertEqual(debut?.dejaPassee, "début novembre, déjà passé : dans l'heure")
+        let dossier = AnalyseDate.extraire("Rendre le dossier fin octobre à 18h", maintenant: deuxNovembre19h)
+        XCTAssertEqual(dossier?.echeance, date(2, 11, 20))
+        XCTAssertEqual(dossier.map { $0.echeance > deuxNovembre19h }, true)
+        XCTAssertNotNil(dossier?.dejaPassee)
+        // L'heure dite vient encore aujourd'hui : à cette heure, et dit tel quel.
+        let matin = AnalyseDate.extraire("Rendre le dossier fin octobre à 18h", maintenant: date(2, 11, 10))
+        XCTAssertEqual(matin?.echeance, date(2, 11, 18))
+        XCTAssertEqual(matin?.dejaPassee, "fin octobre, déjà passée : aujourd'hui à 18 h")
+        XCTAssertEqual(AnalyseDate.extraire("Rendre le dossier fin octobre à 18h30", maintenant: date(2, 11, 10))?.dejaPassee,
+                       "fin octobre, déjà passée : aujourd'hui à 18 h 30")
+        // 23 h passées : dix minutes plus tard, pas minuit d'hier.
+        let tard = date(2, 11, 23, 20)
+        let nuit = AnalyseDate.extraire("Rappelle-moi fin octobre à 18h de payer Hugo", maintenant: tard)
+        XCTAssertEqual(nuit.map { $0.quand > tard }, true)
+    }
+
+    /// Contre-relecture : « début du mois » sans mois nommé, dit après le 5,
+    /// vise le 5 du mois qui vient (« payer le loyer début du mois », dit le
+    /// 27) ; jamais « déjà passé ». « de ce mois », dit exprès, reste ce mois.
+    func testDebutDuMoisApresLe5VisLeMoisSuivant() {
+        for (p, quand) in [("Payer le loyer début du mois", date(27, 10, 10)), ("Payer le loyer début du mois", date(6, 10, 10)),
+                           ("Faire les comptes en début de mois", date(27, 10, 10)), ("Payer le loyer au début du mois", date(20, 10, 10)),
+                           ("Rendre le dossier début du mois", date(20, 10, 10)), ("payer le loyer debut du mois", date(27, 10, 10))] {
+            let r = AnalyseDate.extraire(p, maintenant: quand)
+            XCTAssertEqual(r?.echeance, date(5, 11, 23), p)
+            XCTAssertNil(r?.dejaPassee, p)
+        }
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois", maintenant: date(3, 10, 10))?.echeance, date(5, 10, 23),
+                       "avant le 5 : ce mois-ci")
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois", maintenant: date(5, 10, 10))?.echeance, date(5, 10, 23),
+                       "le 5 même : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Payer la taxe début du mois", maintenant: date(20, 12, 10))?.echeance, date(5, 1, 23, an: 2027),
+                       "par-dessus le nouvel an")
+        let ceMois = AnalyseDate.extraire("Rendre le dossier début de ce mois", maintenant: date(20, 10, 10))
+        XCTAssertEqual(ceMois?.echeance, date(20, 10, 23))
+        XCTAssertEqual(ceMois?.dejaPassee, "début de ce mois, déjà passé : ce soir")
+        XCTAssertEqual(AnalyseDate.extraire("Payer le loyer début du mois prochain", maintenant: date(27, 10, 10))?.echeance, date(5, 11, 23))
+    }
+
+    /// Contre-relecture : « avant mardi 14h » est une date limite. Avec une
+    /// action claire, une tâche avec cette échéance, pas un rappel qui sonne
+    /// quand il est trop tard ; « rappelle-moi » reste un rappel.
+    func testUneDateLimiteAvecHeureEstUneTache() {
+        let lundi = date(26, 10, 10)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier avant mardi 14h", maintenant: lundi), .tache)
+        XCTAssertEqual(tache("Rendre le dossier avant mardi 14h", lundi).titre, "Rendre le dossier")
+        XCTAssertEqual(tache("Rendre le dossier avant mardi 14h", lundi).echeance, date(27, 10, 14))
+        let deux = date(2, 11, 10)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier avant le 3 à 14h", maintenant: deux), .tache)
+        XCTAssertEqual(tache("Rendre le dossier avant le 3 à 14h", deux).echeance, date(3, 11, 14))
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier d'ici demain 18h", maintenant: lundi), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier au plus tard vendredi à 12h", maintenant: lundi), .tache)
+        XCTAssertEqual(GenreCapture.deviner("Rendre le dossier jusqu'au 3 à 14h", maintenant: deux), .tache)
+        // Un rappel dit comme tel, une heure sans « avant », « pour » : rappel.
+        XCTAssertEqual(GenreCapture.deviner("Rappelle-moi avant mardi 14h de rendre le dossier", maintenant: lundi), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Appeler Hugo mardi 14h", maintenant: lundi), .rappel)
+        XCTAssertEqual(GenreCapture.deviner("Réserver le resto pour mardi 20h", maintenant: lundi), .rappel)
+        XCTAssertEqual(AnalyseDate.extraire("Appeler Hugo mardi 14h", maintenant: lundi)?.limite, false)
+        // Une tâche changée à la main, heure dite sans « avant » : l'heure reste dans le titre.
+        XCTAssertEqual(GenreCapture.texte("Appeler Hugo mardi 14h", date: AnalyseDate.extraire("Appeler Hugo mardi 14h", maintenant: lundi),
+                                          genre: .tache), "Appeler Hugo mardi 14h")
     }
 
     /// Contre-relecture : le texte d'une tâche ne perd jamais un morceau de

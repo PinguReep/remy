@@ -194,21 +194,22 @@ final class NouveautesTests: XCTestCase {
         a.nouveautes.pageVue(a.nouveautes.affichees!.pages.count - 1)
         a.nouveautes.fermer()
         // Une seule fois : au lancement suivant, la reprise ne revient pas ;
-        // seule l'entrée plus récente, qui n'a pas tenu dans la feuille, vient.
+        // seules les entrées plus récentes, qui n'ont pas tenu dans la feuille,
+        // viennent (la série 4 sans capacité derrière la fin de la série 3).
         let b = app([], reglages: r)
         b.nouveautes.verifier()
-        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["capture-hors-ligne"])
+        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["capture-hors-ligne", "privee-iphone"])
         b.nouveautes.pageVue(b.nouveautes.affichees!.pages.count - 1)
         b.nouveautes.fermer()
         let b2 = app([], reglages: r)
         b2.nouveautes.verifier()
         XCTAssertNil(b2.nouveautes.affichees)
-        // Une installation neuve n'a rien à reprendre.
+        // Une installation neuve n'a rien à reprendre : seule la dernière série.
         let neuve = suite()
         let c = app([], reglages: neuve)
         XCTAssertTrue(neuve.bool(forKey: "nouveautes.reprise37"))
         c.nouveautes.verifier()
-        XCTAssertEqual(c.nouveautes.affichees?.entrees.first?.id, "partage")
+        XCTAssertEqual(c.nouveautes.affichees?.entrees.first?.id, "privee-iphone")
     }
 
     func testRevoirDepuisLHistorique() {
@@ -234,5 +235,21 @@ final class NouveautesTests: XCTestCase {
                 XCTAssertLessThanOrEqual(p.texte.count, 240, "\(n.id) : « \(p.titre) » trop long")
             }
         }
+    }
+
+    /// Série 4 (27/10) : la conversation privée et la jauge tiennent dans une
+    /// seule feuille (règle des 6 pages), entières, dans cet ordre.
+    func testLaSerie4TientDansUneFeuille() {
+        let serie4 = Nouveautes.catalogue.filter { $0.serie == 4 }
+        XCTAssertEqual(serie4.map(\.id), ["privee-iphone", "jauge-retour"])
+        XCTAssertEqual(Nouveautes.lot(serie4).map(\.id), ["privee-iphone", "jauge-retour"])
+        XCTAssertLessThanOrEqual(serie4.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
+        let a = app(["jauge-v1"], reglages: suite())
+        a.nouveautes.verifier()
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["privee-iphone", "jauge-retour"])
+        // Une tour sans la jauge : la conversation privée seule (elle n'a besoin de rien).
+        let b = app([], reglages: suite())
+        b.nouveautes.verifier()
+        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["privee-iphone"])
     }
 }

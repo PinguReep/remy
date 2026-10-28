@@ -76,25 +76,78 @@ private struct EnTeteRemy: View {
     @Environment(AppModel.self) private var app
     @Binding var listeOuverte: Bool
     @State private var jaugeOuverte = false
-    /// Réglages › Diagnostic (24/10) : la jauge est un outil de constructeur.
-    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
+    @State private var priveeOuverte = false
+    @State private var confirmerPrivee = false
+    /// Visible par défaut depuis le 27/10 ; Réglages › Diagnostic pour la masquer.
+    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = Diagnostic.jaugeParDefaut
 
     var body: some View {
         let chat = app.chat
         let titre = chat.idCourant == nil ? "Nouvelle conversation" : chat.titre
         HStack(spacing: 10) {
+            // Le cadenas d'une conversation privée est posé sur la marque :
+            // toujours visible, sans prendre de largeur (375 pt, grand texte).
+            // La roue pendant « Rendre privée » : jamais un tap muet.
             MarqueRemy(taille: 34)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Rémy").font(Police.titre(22)).foregroundStyle(Palette.encre)
-                Text(titre)
-                    .font(Police.texte(13))
-                    .foregroundStyle(Palette.encre2)
-                    .lineLimit(1)
-                    .accessibilityLabel("Conversation : \(titre)")
+                .overlay(alignment: .bottomTrailing) {
+                    if chat.privee || chat.miseEnPrive {
+                        Group {
+                            if chat.privee {
+                                Image(systemName: "lock.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.signal)
+                            } else {
+                                ProgressView().controlSize(.mini).tint(Palette.signal)
+                            }
+                        }
+                        .frame(width: 18, height: 18)
+                        .background(Palette.fond, in: Circle())
+                        .overlay(Circle().strokeBorder(Palette.signal, lineWidth: 1.5))
+                        .offset(x: 6, y: 6)
+                        .accessibilityHidden(true)
+                    }
+                }
+            // Le titre, touché : ce qu'on peut faire de cette conversation (la
+            // rendre privée, en ouvrir une privée). « Privée » s'y lit aussi,
+            // en premier : le titre se tronque avant lui (27/10).
+            Menu {
+                if chat.privee {
+                    Button { priveeOuverte = true } label: { Label("Ce que change « privée »", systemImage: "lock.shield") }
+                } else if chat.idCourant != nil && chat.origine == nil && !chat.miseEnPrive {
+                    Button {
+                        Task { await chat.lireRecherchePrivee() }
+                        confirmerPrivee = true
+                    } label: { Label("Rendre cette conversation privée", systemImage: "lock") }
+                }
+                Button { chat.nouvellePrivee() } label: { Label("Nouvelle conversation privée", systemImage: "lock.circle") }
+                Button { chat.nouvelle() } label: { Label("Nouvelle conversation", systemImage: "square.and.pencil") }
+            } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Rémy").font(Police.titre(22)).foregroundStyle(Palette.encre).lineLimit(1)
+                    HStack(spacing: 4) {
+                        if chat.privee || chat.miseEnPrive {
+                            Text(chat.privee ? "Privée" : "Mise en privé…")
+                                .font(Police.texte(13, .semibold)).foregroundStyle(Palette.signal)
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                            Text("·").font(Police.texte(13)).foregroundStyle(Palette.encre3)
+                        }
+                        Text(titre)
+                            .font(Police.texte(13))
+                            .foregroundStyle(Palette.encre2)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Palette.encre3)
+                    }
+                }
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .accessibilityIdentifier("remy.titre")
+            .accessibilityLabel(chat.privee ? "Conversation privée : \(titre)"
+                                : chat.miseEnPrive ? "Mise en privé en cours : \(titre)" : "Conversation : \(titre)")
+            .accessibilityHint("Rendre privée, ou ouvrir une nouvelle conversation")
             Spacer(minLength: 6)
             // Le compteur du contexte (Sam, 19/10) : seulement dans un fil de
-            // Rémy, face à une tour qui sait mesurer.
+            // Rémy, face à une tour qui sait mesurer ; dès le premier message.
             if jaugeVisible || Diagnostic.demo, chat.jaugeDisponible, chat.origine == nil, !chat.lignes.isEmpty {
                 BoutonJauge(jauge: chat.jauge) {
                     Haptique.leger()
@@ -122,6 +175,16 @@ private struct EnTeteRemy: View {
         .padding(.bottom, 10)
         .overlay(alignment: .bottom) { Filet() }
         .sheet(isPresented: $jaugeOuverte) { ContexteVue() }
+        .sheet(isPresented: $priveeOuverte) { FeuillePrivee() }
+        // Sans retour, dit avant de confirmer (la tour refuse de revenir en arrière).
+        .confirmationDialog("Rendre cette conversation privée ?", isPresented: $confirmerPrivee, titleVisibility: .visible) {
+            Button("Rendre privée, sans retour") {
+                Task { if await chat.rendrePrivee() { Haptique.succes() } else { Haptique.erreur() } }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text(ConversationPrivee.confirmation(chat.etatRecherchePrivee))
+        }
         .task {
             // Captures de la CI : un fil mesuré, et le détail de la jauge.
             let env = ProcessInfo.processInfo.environment
@@ -221,20 +284,60 @@ private struct AccueilRemy: View {
         let derniere = reprise?.fil
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 12) {
-                    MarqueRemy(taille: 44)
-                    Text("Qu'est-ce qu'on règle ?")
-                        .font(Police.titre(28))
-                        .foregroundStyle(Palette.encre)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(chat.conversations.isEmpty && chat.erreurListe == nil
-                         ? "Je suis Rémy, ton directeur de cabinet. Je vois ton agenda et tes tâches, et je t'aide à t'organiser. Écris-moi comme à quelqu'un."
-                         : "Un conseil, un arbitrage, un changement de planning. Je dis toujours ce que je modifie, et tu gardes le dernier mot.")
-                        .font(Police.texte(15))
-                        .foregroundStyle(Palette.encre2)
-                        .fixedSize(horizontal: false, vertical: true)
+                // Privée : la carte qui dit ce qui change prend la tête de
+                // l'écran (la marque et son cadenas sont déjà dans l'en-tête),
+                // lisible clavier ouvert, même sur un petit iPhone.
+                if !chat.privee {
+                    VStack(alignment: .leading, spacing: 12) {
+                        MarqueRemy(taille: 44)
+                        Text("Qu'est-ce qu'on règle ?")
+                            .font(Police.titre(28))
+                            .foregroundStyle(Palette.encre)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(chat.conversations.isEmpty && chat.erreurListe == nil
+                             ? "Je suis Rémy, ton directeur de cabinet. Je vois ton agenda et tes tâches, et je t'aide à t'organiser. Écris-moi comme à quelqu'un."
+                             : "Un conseil, un arbitrage, un changement de planning. Je dis toujours ce que je modifie, et tu gardes le dernier mot.")
+                            .font(Police.texte(15))
+                            .foregroundStyle(Palette.encre2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                // Conversation privée (27/10) : ce qu'elle change, en tête une
+                // fois choisie ; sinon la démarrer d'un geste, avant les
+                // suggestions (la puce « Privée » du champ la propose aussi,
+                // au-dessus du clavier).
+                if chat.privee {
+                    CartePrivee()
+                } else {
+                    Button {
+                        Haptique.leger()
+                        chat.nouvellePrivee()
+                        clavier = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "lock")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Palette.encre)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Nouvelle conversation privée").font(Police.texte(15, .medium)).foregroundStyle(Palette.encre)
+                                Text(ConversationPrivee.sousTitre(chat.etatRecherchePrivee)).font(Police.texte(13)).foregroundStyle(Palette.encre2)
+                            }
+                            Spacer(minLength: 6)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 52)
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.filet, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(Appui())
+                    // Pendant la création d'un fil, le message en route le resterait.
+                    .disabled(chat.envoi)
+                    .accessibilityIdentifier("remy.nouvellePrivee")
                 }
                 VStack(spacing: 10) {
+                    // Depuis un écran privé, « Organiser ma journée » reste privé.
                     suggestion("Organiser ma journée", symbole: "sun.max") {
                         Task { await app.organiserJournee() }
                     }
@@ -242,9 +345,12 @@ private struct AccueilRemy: View {
                         Task { await chat.envoyer(Brouillons.retards) }
                     }
                     .disabled(chat.envoi)
-                    suggestion("Noter une idée", symbole: "lightbulb") {
-                        chat.modeRetenir = true
-                        clavier = true
+                    // Retenir écrit dans la mémoire : jamais depuis une conversation privée.
+                    if !chat.privee {
+                        suggestion("Noter une idée", symbole: "lightbulb") {
+                            chat.modeRetenir = true
+                            clavier = true
+                        }
                     }
                 }
                 if let d = derniere {
@@ -271,6 +377,10 @@ private struct AccueilRemy: View {
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        .task {
+            // « ni ailleurs » ne se promet que si la recherche privée est coupée.
+            if chat.etatRecherchePrivee == .inconnu { await chat.lireRecherchePrivee() }
+        }
     }
 
     private func suggestion(_ titre: String, symbole: String, _ faire: @escaping () -> Void) -> some View {
@@ -548,8 +658,10 @@ struct BarreEtapes: View {
     let ligne: LigneChat
     // Ouverte d'office pour la capture de la CI seulement.
     @State private var ouverte = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] == "etapes"
-    /// Les tokens par seconde : avec la jauge, dans Réglages › Diagnostic (24/10).
-    @AppStorage(Diagnostic.cleJauge) private var jaugeVisible = false
+    /// Les tokens par seconde : un chiffre de constructeur, masqué par défaut
+    /// (27/10 : la jauge est visible par défaut, pas la vitesse), dans
+    /// Réglages › Diagnostic.
+    @AppStorage(Diagnostic.cleVitesse) private var vitesseVisible = Diagnostic.vitesseParDefaut
 
     var body: some View {
         let etapes = ligne.etapes
@@ -578,7 +690,7 @@ struct BarreEtapes: View {
                         .animation(.easeOut(duration: 0.2), value: etapes.last?.texte)
                     Spacer(minLength: 4)
                     // La vitesse d'écriture en direct (jauge-v1), une fois par seconde.
-                    if ligne.enCours, jaugeVisible || Diagnostic.demo, let d = ligne.debit {
+                    if ligne.enCours, vitesseVisible || Diagnostic.demo, let d = ligne.debit {
                         Text(JaugeContexte.tps(d))
                             .font(Police.mono(13, .medium))
                             .foregroundStyle(Palette.encre2)
@@ -610,7 +722,7 @@ struct BarreEtapes: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(ligne.enCours
-                ? (etapes.last?.texte ?? "Rémy travaille") + (ligne.debit.map { ", \(Int($0.rounded())) tokens par seconde" } ?? "")
+                ? (etapes.last?.texte ?? "Rémy travaille") + ((vitesseVisible || Diagnostic.demo ? ligne.debit : nil).map { ", \(Int($0.rounded())) tokens par seconde" } ?? "")
                 : "Réponse en \(Self.duree(total(etapes)))" + vitesseFinale)
             .accessibilityHint(ouverte ? "Masque les étapes" : "Montre ce que Rémy a fait")
             if ouverte {
@@ -654,7 +766,7 @@ struct BarreEtapes: View {
 
     /// « · 42 tok/s » après la durée, une fois la réponse mesurée.
     private var vitesseFinale: String {
-        guard jaugeVisible || Diagnostic.demo, let t = ligne.mesures?.tps, t > 0 else { return "" }
+        guard vitesseVisible || Diagnostic.demo, let t = ligne.mesures?.tps, t > 0 else { return "" }
         return " · " + JaugeContexte.tps(t)
     }
 
@@ -1334,6 +1446,16 @@ private struct Composeur: View {
                 bande("Noter une idée : Rémy la retient, sans répondre.") {
                     BoutonTexte("Plutôt en parler") { chat.modeRetenir = false }
                 }
+            } else if chat.idCourant == nil && chat.origine == nil && chat.lignes.isEmpty {
+                // Une conversation pas encore commencée : la rendre privée d'un
+                // geste, au-dessus du clavier (27/10 : le bouton de l'écran
+                // vide passait sous le clavier, même sur le plus grand iPhone).
+                HStack {
+                    PucePrivee()
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
             }
             Group {
                 switch dictee.etat {
@@ -1460,7 +1582,7 @@ private struct Composeur: View {
             // écran (fil de 60 messages, dictée de 2 min dans le champ), 96,6 ms
             // par image et 429 images sautées pour 90 lettres avec le champ
             // SwiftUI, 17,6 ms avec celui-ci (CI, « perf-remy »).
-            ChampTexte(texte: $chat.brouillon, actif: $clavier, invite: retenir ? "Ton idée, en quelques phrases…" : "Écris à Rémy…",
+            ChampTexte(texte: $chat.brouillon, actif: $clavier, invite: retenir ? "Ton idée, en quelques phrases…" : chat.privee ? "Message privé à Rémy…" : "Écris à Rémy…",
                        corriger: chat.correctionDicteeDisponible ? { mot, place in
                            bonMot = mot
                            correction = CorrectionDictee(entendu: mot, place: place)
@@ -1783,6 +1905,17 @@ struct ConversationsView: View {
                             .frame(minHeight: 44)
                     }
                     .listRowBackground(Palette.fond)
+                    Button {
+                        app.chat.nouvellePrivee()
+                        app.onglet = .remy
+                        fermer()
+                    } label: {
+                        Label("Nouvelle conversation privée", systemImage: "lock")
+                            .font(Police.texte(16, .semibold))
+                            .foregroundStyle(Palette.encre)
+                            .frame(minHeight: 44)
+                    }
+                    .listRowBackground(Palette.fond)
                     // Sam, 18/10 : aujourd'hui, les sept derniers jours, avant.
                     ForEach(PeriodeFil.allCases, id: \.self) { periode in
                         let fils = principales.filter { PeriodeFil.de($0, maintenant: maintenant) == periode }
@@ -1901,6 +2034,8 @@ struct ConversationsView: View {
                         Text("Nouvelle réponse de Rémy").font(Police.texte(13, .medium)).foregroundStyle(Color.red)
                     } else if let o = c.origine {
                         Text("Importée de \(o.nom)").font(Police.texte(13)).foregroundStyle(Palette.encre3)
+                    } else if c.prive == true {
+                        Label("Privée", systemImage: "lock.fill").font(Police.texte(13, .medium)).foregroundStyle(Palette.signal)
                     }
                 }
                 Spacer(minLength: 8)
@@ -1935,5 +2070,104 @@ struct ConversationsView: View {
             Button { nouveauTitre = c.title; aRenommer = c } label: { Label("Renommer", systemImage: "pencil") }
                 .tint(Palette.encre2)
         }
+    }
+}
+
+// MARK: - Conversation privée (27/10)
+
+/// La puce « Privée » au-dessus du champ, tant que la conversation n'existe
+/// pas sur la tour : la conversation à venir sera privée (ou ne le sera plus).
+struct PucePrivee: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let chat = app.chat
+        let active = chat.privee
+        Button {
+            Haptique.leger()
+            chat.basculerPriveeAvantEnvoi()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: active ? "lock.fill" : "lock.open")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Privée")
+                    .font(Police.texte(14, .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(active ? Palette.surSignal : Palette.encre2)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 32)
+            .background(active ? Palette.signal : Palette.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(active ? Palette.signal : Palette.filet, lineWidth: 1))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(Appui())
+        .disabled(chat.envoi)
+        .accessibilityLabel("Conversation privée")
+        .accessibilityValue(active ? "activée" : "désactivée")
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityHint(active ? "La conversation à venir redevient ordinaire" : "Rien ne part chez Claude : le modèle local de ta tour répond")
+        .accessibilityIdentifier("remy.pucePrivee")
+    }
+}
+
+/// Ce que change une conversation privée, dit en clair (l'écran vide d'une
+/// conversation privée pas encore commencée).
+struct CartePrivee: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Conversation privée", systemImage: "lock.fill")
+                .font(Police.texte(15, .semibold))
+                .foregroundStyle(Palette.signal)
+            Text(ConversationPrivee.ceQueCaChange(app.chat.etatRecherchePrivee))
+                .font(Police.texte(14))
+                .foregroundStyle(Palette.encre2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.fond2, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("remy.cartePrivee")
+        .task { await app.chat.lireRecherchePrivee() }
+    }
+}
+
+/// Le cadenas de l'en-tête, touché : ce que change « privée », et que c'est
+/// sans retour.
+struct FeuillePrivee: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var fermer
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(ConversationPrivee.ceQueCaChange(app.chat.etatRecherchePrivee))
+                        .font(Police.texte(16))
+                        .foregroundStyle(Palette.encre)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Sans retour : elle reste privée. Pour repasser par Claude, ouvre une nouvelle conversation.")
+                        .font(Police.texte(14))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .background(Palette.fond)
+            .navigationTitle("Conversation privée")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK") { fermer() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task { await app.chat.lireRecherchePrivee() }
     }
 }

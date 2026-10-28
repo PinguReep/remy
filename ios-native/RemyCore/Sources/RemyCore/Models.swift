@@ -26,9 +26,11 @@ public struct ConversationResume: Codable, Identifiable, Equatable, Sendable {
     /// Nombre de messages et qui a parlé en dernier (« non lus », tour du 18/10).
     public var messages: Int?
     public var dernier: String?
+    /// Conversation privée : jamais chez Claude (une importée l'est d'office).
+    public var prive: Bool?
 
     public init(id: String, title: String, updatedAt: Millis? = nil, pinned: Bool? = nil, origine: Origine? = nil,
-                messages: Int? = nil, dernier: String? = nil) {
+                messages: Int? = nil, dernier: String? = nil, prive: Bool? = nil) {
         self.id = id
         self.title = title
         self.updatedAt = updatedAt
@@ -36,6 +38,7 @@ public struct ConversationResume: Codable, Identifiable, Equatable, Sendable {
         self.origine = origine
         self.messages = messages
         self.dernier = dernier
+        self.prive = prive
     }
 }
 
@@ -92,6 +95,8 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var updatedAt: Millis?
     /// Le début du fil résumé pour le modèle (compactage-v1) ; rien d'effacé.
     public var compactage: Compactage?
+    /// Privée : le modèle local seulement, jamais Claude ni la mémoire (27/10 sur l'iPhone).
+    public var prive: Bool?
 }
 
 /// Une conversation compactée (19/10) : les messages avant `jusqua` arrivent
@@ -1183,6 +1188,14 @@ public struct Reglages: Codable, Sendable, Equatable {
     /// recherche passe par Claude (tour plus ancienne, cerveau cloud, ou
     /// `REMY_RECHERCHE=off`).
     public var rechercheLocale: String?
+    /// Recherche dans les conversations privées (recherche-privee-v1, 25/10) :
+    /// ce qui s'applique vraiment, le réglage de Sam (coupé par défaut), et le
+    /// verrou de la tour (REMY_RECHERCHE_PRIVEE=off, ou salle blanche coupée).
+    public var recherchePrivee: Bool?
+    public var recherchePriveeReglage: Bool?
+    public var recherchePriveeVerrouillee: Bool?
+    /// La recherche passe par la salle blanche (une recherche qui ne sait rien de Sam).
+    public var salleBlanche: Bool?
 
     /// Le nom du moteur, pour l'écran (« DuckDuckGo », « SearXNG »).
     public var moteurRecherche: String? {
@@ -1203,6 +1216,42 @@ public struct Reglages: Codable, Sendable, Equatable {
         }
         return rechercheWeb == true ? "Passe par Claude (Anthropic). Rémy te demande ton accord à chaque recherche."
                                     : "Coupée : Rémy répond sans le web, rien ne part chez Anthropic."
+    }
+
+    // MARK: Recherche dans les conversations privées (27/10)
+
+    /// Pourquoi l'interrupteur est grisé, s'il l'est : la tour décide.
+    public var verrouRecherchePrivee: String? {
+        if salleBlanche == false {
+            return "Verrouillée sur la tour : sans la salle blanche (REMY_SALLE_BLANCHE=off), une conversation privée ne cherche jamais."
+        }
+        if recherchePriveeVerrouillee == true {
+            return "Verrouillée sur la tour (REMY_RECHERCHE_PRIVEE=off) : une conversation privée ne cherche jamais, quoi que dise ce réglage."
+        }
+        if moteurRecherche == nil {
+            return "Ta tour ne cherche pas elle-même sur le web : une conversation privée ne cherche jamais."
+        }
+        return nil
+    }
+
+    /// L'interrupteur tel qu'il s'affiche : le réglage de Sam, sauf verrou (coupé).
+    public var recherchePriveeAffichee: Bool { verrouRecherchePrivee == nil && recherchePriveeReglage == true }
+
+    /// Ce que dit le réglage : ce qui sort quand il est allumé (la même
+    /// phrase que dans la conversation privée, ConversationPrivee.ceQuiSort).
+    public var phraseRecherchePrivee: String {
+        if let v = verrouRecherchePrivee { return v }
+        let sort = "Allumé, Rémy peut chercher : " + ConversationPrivee.ceQuiSort
+        if recherchePriveeReglage == true {
+            return rechercheWeb == true ? sort : "Allumé, mais la recherche web est coupée : rien ne sort. " + sort
+        }
+        return "Coupé : une conversation privée ne cherche jamais sur le web. " + sort
+    }
+
+    /// Le message après avoir changé le réglage.
+    public func confirmationRecherchePrivee(_ actif: Bool) -> String {
+        actif ? "Recherche permise dans les conversations privées : des questions générales sortent, filtrées."
+              : "Recherche coupée dans les conversations privées : rien n'en sort."
     }
 
     /// Le message après avoir changé le réglage.
