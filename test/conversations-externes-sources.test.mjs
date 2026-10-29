@@ -132,6 +132,7 @@ test("Claude Code : l'app de bureau, l'Agent SDK, Remote Control et le terminal 
   assert.equal(b.fichiers, 8, "le sous-agent n'est pas une session");
   assert.deepEqual(b.recensement.ecartees, { remy: 1, programme: 2, horsFiltre: 0, sansDossier: 0 });
   assert.equal(b.recensement.gardees, 5);
+  assert.deepEqual([b.recensement.sousAgents, b.recensement.ailleurs], [1, 0], "le sous-agent est compté, jamais lu");
   assert.equal(empreinte(racineClaude), avant, "rien d'écrit chez Claude Code");
   const e = source(r.etat, "claude-code");
   assert.equal(e.conversations, 5);
@@ -188,6 +189,13 @@ test("diagnostic : « aucune session », « toutes écartées (raison) », « ri
     let s = source((await lire("claude-code")).etat, "claude-code");
     assert.equal(s.aide.code, "aucune-session");
     assert.match(s.aide.message, /ne contient aucune session/);
+    // Un rangement inconnu (des .jsonl plus profonds, hors sous-agents) : dit, jamais lu.
+    fs.mkdirSync(path.join(autre, "projects", "C--code-y", "rangement"), { recursive: true });
+    fs.writeFileSync(path.join(autre, "projects", "C--code-y", "rangement", "inconnu.jsonl"), "{}\n");
+    s = source((await lire("claude-code")).etat, "claude-code");
+    assert.equal(s.aide.code, "format-inconnu");
+    assert.equal(s.aide.message, "Aucune session à l'endroit habituel (projects\\<dossier>\\<session>.jsonl), mais 1 autre fichier .jsonl rangé plus profond que projects\\<dossier>, pas lu.");
+    fs.rmSync(path.join(autre, "projects", "C--code-y"), { recursive: true });
     // Que des programmes : toutes écartées, et pourquoi.
     fx.ecrireSessionClaude(autre, { session: sid(20), entrypoint: "sdk-cli", messages: [{ role: "user", texte: "titre ?", ts: iso(HIER) }] });
     fx.ecrireSessionClaude(autre, { session: sid(21), dossier: "C--Temp-remy-claude-Q-vide", cwd: "C:\\Temp\\remy-claude-Q\\vide", entrypoint: "sdk-cli", messages: echanges(2, "Rémy") });

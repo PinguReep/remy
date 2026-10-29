@@ -43,6 +43,8 @@ if (process.argv.includes("--lire")) {
     // Le bilan complet : la vraie raison d'un « 0 conversation » se lit ici.
     if (id === sync.SOURCE_CLAUDE) {
       console.log(`  Lecture : ${b.fichiers} fichier(s), ${b.lus} lu(s), ${b.inchanges} inchangé(s), ${b.relus} relu(s) du début, ${b.exclus} écarté(s), ${b.horsFiltre} hors filtre, ${b.illisibles} ligne(s) illisible(s)${b.aRelire ? `, ${b.aRelire} à relire (règle changée)` : ""}`);
+      const rc = b.recensement;
+      if (rc) console.log(`  Plus profond : ${rc.sousAgents} fichier(s) de sous-agents (jamais lus), ${rc.ailleurs} autre(s) .jsonl hors de projects\\<dossier>\\<session>.jsonl`);
     } else if (id === sync.SOURCE_T3) {
       if (!b.detail?.length) console.log("  Aucune base trouvée (où Rémy a cherché : plus bas)");
       for (const d of b.detail || []) {
