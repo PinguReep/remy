@@ -590,7 +590,9 @@ body.mode-noter .app { display: block; }
 .noter-quand label { display: inline-flex; align-items: center; gap: 6px; }
 .noter-quand .champ { width: auto; min-width: 0; }
 /* « Ranger » reste sous la main au bas de la feuille, même quand la liste défile. */
-.noter-recap-pied { display: flex; justify-content: flex-end; }
+.noter-recap-pied { display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap; }
+.noter-recap-pied .noter-attente { flex: 1 1 220px; }
+.noter-recap-pied .noter-fait { flex: 1 1 100%; margin: 0; }
 .feuille-corps .noter-recap-pied { position: sticky; bottom: -18px; margin: 0 -22px -18px; padding: 10px 22px 18px; background: var(--surface); border-top: 1px solid var(--filet); z-index: 1; }
 .noter-attente { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: var(--encre-2); }
 .noter-attente[hidden], .prop-attente[hidden] { display: none; }

@@ -532,19 +532,21 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
       }
       // Seul ce qui a raté reste coché : « Ranger » ne refait pas le reste.
       for (const k of bilan.regles) coches.delete(k);
-      dire(phrase, { genre: "erreur" });
+      // La feuille reste ouverte : le bilan s'y lit (rôle alert), pas dans un
+      // bandeau qui, sur grand écran, cacherait le pied et l'attente de Motion.
       vider(bilanLigne, icone("alerte"), h("span", { class: "msg" }, phrase));
       bilanLigne.hidden = false;
       dessinerLignes();
-      bilanLigne.scrollIntoView?.({ block: "nearest" });
     });
 
     vider(recap,
       h("div", { class: "noter-recap-tete" }, retour, h("span", { class: "espace" }), fermerBtn),
       titre,
       h("p", { class: "aide" }, "Rien ne part avant que tu valides. Décoche ce qui ne va pas, complète ce qui manque."),
-      liste, bilanLigne, attente,
-      h("div", { class: "noter-recap-pied" }, ranger));
+      liste,
+      // Le bilan d'un échec et l'attente de Motion se lisent dans le pied, à
+      // côté du bouton, qui reste sous la main.
+      h("div", { class: "noter-recap-pied" }, bilanLigne, attente, ranger));
     dessinerLignes();
     form.hidden = true;
     recap.hidden = false;
