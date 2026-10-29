@@ -653,10 +653,21 @@ public final class ConversationsExternesModel {
             let e = try await self.api.lireConversationsMaintenant(source: source)
             if let e { self.etat = e }
             await self.chargerListe(depuisDebut: true)
+            // Une seule source lue : son bilan à elle, pas le total.
+            if let source, let s = e?.sources.first(where: { $0.id == source }) {
+                if let p = e?.cle?.erreur ?? s.erreur { return "Lu, mais : \(p.message)" }
+                let nom = ConversationsExternes.nomSource(source)
+                if s.conversations == 0 { return "Lu : \(s.aide?.message ?? "rien de \(nom) pour l'instant.")" }
+                return "Lu : \(nom), \(Self.conversations(s.conversations))."
+            }
             let n = e?.total.conversations ?? self.total
             if let p = e?.probleme { return "Lu, mais : \(p.message)" }
-            return n == 0 ? "Lu : rien à montrer pour l'instant." : "Lu : \(n == 1 ? "1 conversation" : "\(Format.entier(n)) conversations")."
+            return n == 0 ? "Lu : rien à montrer pour l'instant." : "Lu : \(Self.conversations(n))."
         }
+    }
+
+    static func conversations(_ n: Int) -> String {
+        n == 1 ? "1 conversation" : "\(Format.entier(n)) conversations"
     }
 
     @discardableResult

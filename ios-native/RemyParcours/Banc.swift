@@ -447,6 +447,18 @@ class ParcoursBase: XCTestCase {
         }
     }
 
+    /// Remonte le contenu d'un petit tiers d'écran, du côté gauche (loin des
+    /// interrupteurs et du « + ») : une ligne amenée tout en bas, contre la
+    /// barre d'onglets, passe au milieu avant d'être touchée.
+    @MainActor
+    func amenerPlusHaut() {
+        compter()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.72))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.42)),
+                   withVelocity: .slow, thenHoldForDuration: 0.3)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    }
+
     /// L'élément est à l'écran tel qu'il s'ouvre : touchable, et tout entier
     /// entre le haut de la fenêtre et la barre d'onglets (qui le cacherait
     /// sans qu'XCUITest le dise toujours).

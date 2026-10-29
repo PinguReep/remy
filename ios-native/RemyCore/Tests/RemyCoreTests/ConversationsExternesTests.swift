@@ -188,6 +188,16 @@ final class ConversationsExternesTests: XCTestCase {
         let ok1 = await m.lireMaintenant()
         XCTAssertTrue(ok1)
         XCTAssertEqual(a.toast, "Lu, mais : Archive illisible : pas de fin d'archive.")
+        // Une seule source : son bilan à elle, pas l'erreur d'une autre ni le
+        // total (T3 n'a rien : la tour dit pourquoi).
+        FauxServeur.reponses["POST /api/conversations-externes/synchroniser"] = [(200, #"{"bilan":{"ok":true,"sources":{}},"etat":\#(Self.etat)}"#)]
+        let ok1b = await m.lireMaintenant("t3")
+        XCTAssertTrue(ok1b)
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations-externes/synchroniser"]?["source"] as? String, "t3")
+        XCTAssertEqual(a.toast, "Lu : Aucune base de T3 Code trouvée sur la tour.")
+        FauxServeur.reponses["POST /api/conversations-externes/synchroniser"] = [(200, #"{"bilan":{"ok":true,"sources":{}},"etat":\#(Self.etat)}"#)]
+        _ = await m.lireMaintenant("claude-code")
+        XCTAssertEqual(a.toast, "Lu : Claude Code, 42 conversations.")
         let ok2 = await m.regler("t3", actif: false)
         XCTAssertTrue(ok2)
         XCTAssertEqual(FauxServeur.corps["PUT /api/conversations-externes/sources/t3"]?["actif"] as? Bool, false)
