@@ -254,6 +254,21 @@ final class IntegrationTests: XCTestCase {
             XCTAssertEqual(revue.domaines?.first?.nom, "Boutiques", "\(revue.domaines ?? [])")
             XCTAssertFalse(revue.appris?.isEmpty ?? true)
         }
+        // 29/10 : les conversations d'ailleurs — état, liste, jours, recherche et
+        // résumé de la nuit se décodent tels que la tour les rend (serveur de
+        // démo : aucune source sur la machine, et rien n'est lu ici).
+        if v.sait("conversations-externes-v1") {
+            let e = try await app.api.etatConversations()
+            XCTAssertEqual(Set(e.sources.map(\.id)), ["claude-code", "t3", "chatgpt"])
+            XCTAssertTrue(e.chiffre)
+            _ = try await app.api.conversationsExternes()
+            _ = try await app.api.joursConversations()
+            _ = try await app.api.chercherConversations("bougie")
+            _ = try await app.api.digestConversations()
+            await app.conversationsExternes.charger()
+            XCTAssertNil(app.conversationsExternes.erreurEtat)
+            XCTAssertNil(app.conversationsExternes.erreurListe)
+        }
         // Contrat : chaque réponse que l'app lit se décode, telle que le serveur la rend.
         _ = try await app.api.memoire()
         _ = try await app.api.journal()
