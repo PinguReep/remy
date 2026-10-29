@@ -129,7 +129,8 @@ test("T3 : un message daté dans le futur ne bloque plus la lecture ; une répon
 
 test("T3 : une table de messages sans rowid (WITHOUT ROWID) se lit aussi, nouvelles lignes et modifications comprises", async () => {
   const t3 = await import("../lib/connaissances/t3.js");
-  const fichier = path.join(dossier, "t3-sans-rowid", "statev2.sqlite");
+  // Un chemin avec accents et espaces (profil Windows « Élodie Martin ») : la base fermée s'ouvre en « immutable » par une URL.
+  const fichier = path.join(dossier, "Données Élodie", "t3 sans rowid", "statev2.sqlite");
   fx.creerBaseT3(fichier, {
     projets: [{ id: "p9", titre: "Atelier", racine: "C:\\Users\\sam\\code\\atelier" }],
     fils: [{ id: "fil-z", projet: "p9", titre: "Sans rowid", cree: iso(MAINTENANT - H) }],
