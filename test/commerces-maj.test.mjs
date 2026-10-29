@@ -144,3 +144,32 @@ test("une base d'un format dépassé (après une mise à jour du code) est refai
   assert.deepEqual(maj.commercesADemander({ heure: heureParis }), { departements: ["99"] });
   assert.match(maj.resumeCommerces(), /^⚠️ .* ; format dépassé : refaite la nuit prochaine$/);
 });
+
+test("jamais au-delà de la fenêtre de la nuit : la file des jobs n'est pas tenue après 3 h (sauvegarde, réflexion)", async () => {
+  vider();
+  c.baseCommerces().prepare("UPDATE meta SET valeur = ? WHERE cle = 'format'").run(String(c.FORMAT));
+  vieillir(31);
+  overpass.mode = "ok";
+  // Le planificateur dit jusqu'à quand : la fin de la fenêtre, à Paris.
+  await planif.passage();
+  const fait = jobs.dernierJob("commerces-maj");
+  const fin = planif.instantLocal(fait.entree.jour, heureParis + 2);
+  assert.equal(fait.entree.avant, fin, "l'entrée porte la fin de la fenêtre");
+  assert.equal(fait.etat, "fait");
+  // Un essai repris APRÈS la fenêtre (Overpass a traîné aux essais d'avant) : pas d'import,
+  // la cause d'avant gardée, abandonné pour cette nuit — la suivante redemandera.
+  vider();
+  vieillir(31);
+  overpass.requetes.length = 0;
+  const { id } = jobs.planifier("commerces-maj", { cle: "commerces-maj:passee", entree: { jour: "2026-10-29", departements: ["99"], avant: Date.now() - 60_000 } });
+  db().prepare("UPDATE jobs SET erreur = 'Overpass 99 : réponse 504', tentatives = 2 WHERE id = ?").run(id);
+  const debut = Date.now();
+  await jobs.passer();
+  const j = jobs.lireJob(id);
+  assert.ok(Date.now() - debut < 2000, "rien ne tourne : la file est libre aussitôt");
+  assert.equal(overpass.requetes.length, 0, "aucune requête à Overpass après la fenêtre");
+  assert.equal(j.etat, "abandonne");
+  assert.equal(j.erreur, `Overpass 99 : réponse 504 ; fenêtre de la nuit passée (${heureParis} h – ${(heureParis + 2) % 24} h)`);
+  assert.match(maj.resumeCommerces(), /échouée \(Overpass 99 : réponse 504 ; fenêtre de la nuit passée .*\) — nouvel essai la nuit prochaine$/);
+  vider();
+});

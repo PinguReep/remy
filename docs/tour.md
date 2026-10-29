@@ -81,9 +81,9 @@ GLM, DeepSeek ou autre, sans rien régler. Les messages nomment ce modèle
 
 | Réglage (`remy.env`) | Rôle |
 | --- | --- |
-| `REMY_SPARKS` | les serveurs de modèle de chaque Spark, séparés par des virgules, nommés ou non : `spark-1=http://<ip-spark-1>:8888/v1,spark-2=http://<ip-spark-2>:8000/v1`. `/api/health` dit alors « Sparks 2/2 répondent » et ce que sert chacune ; le diagnostic d'un code d'erreur aussi. Sans lui, une seule adresse est connue (`REMY_GLM_URL`) et la ligne ne compte pas les Sparks |
+| `REMY_SPARKS` | les serveurs de modèle de chaque Spark, séparés par des virgules, nommés ou non : `spark-1=http://<ip-spark-1>:8888/v1,spark-2=http://<ip-spark-2>:8000/v1`. `/api/health` dit alors « Sparks 2/2 répondent » et ce que sert chacune ; le diagnostic d'un code d'erreur aussi. En tensor parallèle (un modèle servi par les deux), seule la Spark de tête a un serveur de modèle : déclare l'autre par un port qu'elle ouvre, `spark-2=tcp://<ip-spark-2>:22` (« allumée », sans modèle à lire). Sans `REMY_SPARKS`, une seule adresse est connue (`REMY_GLM_URL`) et la ligne ne compte pas les Sparks |
 | `REMY_REFLEXION_LIMITE` | jusqu'à quelle heure la réflexion de la nuit attend un modèle local éteint ou saturé (défaut 8 : nouvel essai toutes les 20 min, sans compter d'échec) |
-| `REMY_FOND_DELAI_MS` | temps laissé au modèle pour une tâche de fond (défaut 900 000, 15 min) |
+| `REMY_FOND_DELAI_MS` | temps laissé au modèle pour une tâche de fond sans flux (défaut et plafond 290 000, 4 min 50 : au-delà de 300 s, le fetch de Node abandonne de lui-même une réponse sans en-têtes) |
 
 Dans `/api/health` (et à la fin de l'installeur) :
 

@@ -264,7 +264,7 @@ test("réflexion longue (sans flux) : délai dépassé n'est pas « injoignable 
     return true;
   });
   assert.equal((await glm.verifierGlm()).ok, true, "toujours joignable pour la suite");
-  // Dans un job, sans délai donné : REMY_FOND_DELAI_MS (15 min sur la tour).
+  // Dans un job, sans délai donné : REMY_FOND_DELAI_MS (4 min 50 au plus sur la tour).
   process.env.REMY_FOND_DELAI_MS = "1000";
   vider();
   let erreur = null;
@@ -287,10 +287,67 @@ test("réflexion longue (sans flux) : délai dépassé n'est pas « injoignable 
     delete process.env.REMY_FOND_DELAI_MS;
   }
   assert.equal(erreur?.nature, "delai");
-  assert.equal(erreur.indisponible, false, "un délai compte comme un échec : on ne refait pas 15 min de calcul toutes les 20 min");
+  assert.equal(erreur.indisponible, false, "un délai compte comme un échec : on ne refait pas 5 min de calcul toutes les 20 min");
   assert.match(erreur.message, /^Le modèle local \(DeepSeek-V4\.1-Flash-1017\) répond, mais n'a pas fini en 1 s, et le secours Claude est coupé/);
   assert.doesNotMatch(erreur.message, /ne répond pas/);
   vider();
+});
+
+test("réflexion de plus de 5 min sans flux : le fetch de Node (undici) coupe à 300 s — un délai, compté, jamais « ne répond pas » repris toutes les 20 min", async () => {
+  await remettre();
+  vider();
+  // 1. Le délai d'une tâche sans flux reste sous les 300 s d'undici, même réglé à 15 min.
+  const vus = [];
+  const timeout = AbortSignal.timeout;
+  AbortSignal.timeout = (ms) => (vus.push(ms), timeout.call(AbortSignal, ms));
+  process.env.REMY_FOND_DELAI_MS = String(15 * 60_000);
+  try {
+    jobs.enregistrer("delai-test", { circuit: "socle", maxTentatives: 1, executer: () => fournisseurDeFond().complete({ system: "s", prompt: "p" }) });
+    jobs.planifier("delai-test");
+    await jobs.passer();
+  } finally {
+    AbortSignal.timeout = timeout;
+    delete process.env.REMY_FOND_DELAI_MS;
+  }
+  assert.ok(vus.length && vus.every((ms) => ms < 300_000), `délais demandés : ${vus.join(", ")} ms`);
+  // 2. Ce qu'undici rend à 300 s (TypeError « fetch failed », cause UND_ERR_HEADERS_TIMEOUT) :
+  // un délai (le serveur répond à /models), compté comme un échec — pas une panne reprise sans fin.
+  vider();
+  const vraiFetch = globalThis.fetch;
+  globalThis.fetch = (url, init) => {
+    if (String(url).endsWith("/chat/completions")) {
+      const cause = Object.assign(new Error("Headers Timeout Error"), { name: "HeadersTimeoutError", code: "UND_ERR_HEADERS_TIMEOUT" });
+      return Promise.reject(new TypeError("fetch failed", { cause }));
+    }
+    return vraiFetch(url, init);
+  };
+  let erreur = null;
+  try {
+    jobs.enregistrer("reflexion-undici", {
+      circuit: "nuit",
+      maxTentatives: 4,
+      repriseJusqua: () => Date.now() + 4 * H,
+      async executer() {
+        try {
+          return await fournisseurDeFond().complete({ system: "s", prompt: "p" });
+        } catch (err) {
+          erreur = err;
+          throw err;
+        }
+      },
+    });
+    const { id } = jobs.planifier("reflexion-undici");
+    await jobs.passer();
+    const j = jobs.lireJob(id);
+    assert.equal(erreur?.nature, "delai");
+    assert.equal(erreur.indisponible, false);
+    assert.equal(j.tentatives, 1, "l'essai compte : pas 5 min de calcul jetées toutes les 20 min jusqu'à 8 h");
+    assert.doesNotMatch(j.erreur, /ne répond pas|fetch failed/);
+    assert.equal((await glm.verifierGlm()).ok, true, "le modèle n'est pas déclaré en panne pour le chat");
+  } finally {
+    globalThis.fetch = vraiFetch;
+    vider();
+  }
 });
 
 test("Sparks saturées (429) la nuit : la réflexion attend sans compter d'échec, puis passe, et l'alerte s'efface", async () => {
@@ -428,6 +485,33 @@ test("« Sparks n/2 » dit vrai, et le diagnostic dit le modèle servi par chaqu
   } finally {
     delete process.env.REMY_SPARKS;
     delete process.env.REMY_GLM_TOKEN;
+    sparks._oublierSparks();
+  }
+});
+
+test("tensor parallèle : la Spark sans serveur de modèle se déclare par un port (tcp://), « allumée », pas « injoignable »", async () => {
+  const net = await import("node:net");
+  const ssh = net.createServer((c) => {
+    c.on("error", () => {});
+    c.end("SSH-2.0-OpenSSH_9.6\r\n");
+  });
+  await new Promise((r) => ssh.listen(0, "127.0.0.1", r));
+  const port = ssh.address().port;
+  const env = { REMY_GLM_URL: url1, REMY_SPARKS: `spark-1=${url1},spark-2=tcp://127.0.0.1:${port}` };
+  try {
+    assert.deepEqual(
+      sparks.sparksDeclarees(env).liste.map((s) => [s.nom, Boolean(s.noeud)]),
+      [["spark-1", false], ["spark-2", true]],
+    );
+    let e = await sparks.sonderSparks({ env, maxAgeMs: 0 });
+    assert.equal(sparks.resumeSparks(e), "✅ Sparks 2/2 répondent — spark-1 (Rémy) : DeepSeek-V4.1-Flash-1017 · spark-2 : allumée (tensor parallèle, sans serveur de modèle)");
+    await new Promise((r) => ssh.close(r));
+    e = await sparks.sonderSparks({ env, maxAgeMs: 0 });
+    assert.match(sparks.resumeSparks(e), /^⚠️ Sparks 1\/2 répond — .* · spark-2 : ❌ éteinte ou injoignable$/);
+    assert.doesNotMatch(JSON.stringify(e), /127\.0\.0\.1/, "aucune adresse dans l'état");
+  } finally {
+    // Un échec ne doit pas laisser le faux SSH tenir le processus de test ouvert.
+    if (ssh.listening) await new Promise((r) => ssh.close(r));
     sparks._oublierSparks();
   }
 });
