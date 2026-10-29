@@ -3,25 +3,25 @@
 // Commencer · Décaler · +15 · Gérer), les rappels du jour, la menacée, le
 // briefing le matin ou le bilan le soir, la journée à l'échelle (de maintenant
 // − 1 h à + 6 h, « Toute la journée » sur un geste), Demain et 7 jours, et
-// « À trancher » en carte compacte (les lignes dans une feuille).
+// « À trancher » en carte compacte.
 // Sur un grand écran, deux colonnes : à gauche faire (Maintenant, rappels,
 // journée), à droite décider (conseil, menacées, rituel, semaine, à trancher).
+// La boîte, le briefing, le bilan, « À trancher » et les rappels du jour sont
+// des modules à part (boite.js, trancher.js, rappels.js), montés une fois :
+// chacun lit ses propres routes et reçoit le tableau à chaque lecture.
 // Lectures : /api/dashboard à l'affichage, au retour au premier plan et
 // toutes les 5 min quand la fenêtre est visible (jamais en boucle serrée : il
 // peut relancer le conseil réfléchi du modèle local).
-import { api, ecrire, nouvelId, seg, sait } from "../api.js";
-import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, isoLocal, markdown, occupe, confirmer, local, feuille } from "../ui.js";
+import { api, ecrire, sait, evenements } from "../api.js";
+import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, occupe, local } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import { gerer, terminer, decaler, prolonger, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite } from "./gerer.js";
 import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
-import { rappelsDuJour, ligneRappel } from "./rappels.js";
+import { BROUILLONS, titreFilJournee } from "../analyse/journee.js";
 
 let racine;
 let donnees = null; // dashboard
 let semaine = null;
-let trancher = null;
-let rituel = null;
-let rappels = null; // GET /api/rappels (la carte « Rappels du jour »)
 let journeeEntiere = false; // « Toute la journée » déplié
 let menaceesTout = false;
 let erreur = null;
@@ -34,7 +34,7 @@ let enLecture = null;
 const zones = {};
 
 export default {
-  async monter(el, _args, contexte) {
+  async monter(el, args, contexte) {
     racine = el;
     ctx = contexte;
     masquees = new Set();
@@ -44,18 +44,22 @@ export default {
       h("h1", { class: "titre-ecran" }, salutation(maintenant)));
     const rafraichir = bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", titre: "Relire Motion et l'agenda", onclick: (e) => occupe(e.currentTarget, () => charger({ frais: true })) });
     const noter = bouton("Noter", { classe: "plein", icone: "plus", kbd: "N", onclick: () => ctx.noter() });
+    actionsEntete = h("div", { class: "actions-entete" }, rafraichir, noter);
     // Chaque zone a sa place (classe zone-…) : deux colonnes sur grand écran,
     // une seule dans l'ordre de l'iPhone en dessous de 1024 px (atelier.css).
     for (const k of ["motion", "conseil", "maintenant", "rappels", "menacees", "rituel", "journee", "retards", "semaine", "trancher"]) zones[k] = h("div", { class: `auj-zone zone-${k}` });
     vider(el,
-      h("header", { class: "entete-ecran" }, titre, h("div", { class: "actions-entete" }, rafraichir, noter)),
+      h("header", { class: "entete-ecran" }, titre, actionsEntete),
       zones.motion,
       h("div", { class: "auj-grille" },
         h("div", { class: "auj-colonne principale" }, zones.maintenant, zones.rappels, zones.journee, zones.retards),
         h("div", { class: "auj-colonne laterale" }, zones.conseil, zones.menacees, zones.rituel, zones.semaine, zones.trancher)));
     ajouterA(zones.maintenant, h("section", { class: "carte maintenant" }, squelette([0.3, 0.8, 0.5], true)));
     ajouterA(zones.journee, h("section", { class: "carte" }, squelette([0.5, 0.9, 0.9, 0.7])));
+    evenements.addEventListener("remy:sujets", surSujets);
+    modulesPrets = monterModules();
     await charger();
+    ouvrirRoute(args);
     clearInterval(minuteurHorloge);
     minuteurHorloge = setInterval(() => {
       if (document.visibilityState === "visible" && donnees) {
@@ -71,11 +75,82 @@ export default {
   demonter() {
     clearInterval(minuteurHorloge);
     clearInterval(minuteurLecture);
+    evenements.removeEventListener("remy:sujets", surSujets);
   },
   actualiser() {
     charger({ discret: true });
   },
+  // #/aujourdhui/<quoi>[/<arg>] alors qu'Aujourd'hui est déjà affiché.
+  suivre(args) {
+    ouvrirRoute(args);
+  },
 };
+
+// Rémy a traité des sujets (événement SSE « traites ») : la boîte se relit avec le tableau.
+const surSujets = () => charger({ discret: true });
+
+// --- Les modules d'accueil des autres lots (contrat A) ---
+// Chargés une fois au montage, par import() : un module absent (tour pas à
+// jour, fichier manquant) laisse sa zone vide, sans casser la vue.
+const MODULES_ACCUEIL = { boite: "./boite.js", trancher: "./trancher.js", rappels: "./rappels.js" };
+let accueil = {}; // { boite, trancher, rappels } : ce que chaque module a rendu
+let modulesPrets = null;
+let actionsEntete = null;
+
+async function chargerModule(nom, fabrique) {
+  try {
+    const m = await import(MODULES_ACCUEIL[nom]);
+    if (typeof m[fabrique] !== "function") throw new Error(`${fabrique} absent de ${MODULES_ACCUEIL[nom]}`);
+    return m[fabrique](ctx, { relire: () => charger({ discret: true }) });
+  } catch (err) {
+    console.warn(`Aujourd'hui : le module ${nom} n'est pas chargé.`, err);
+    return null;
+  }
+}
+
+async function monterModules() {
+  const [boite, trancher, rappels] = await Promise.all([
+    chargerModule("boite", "creerBoite"),
+    chargerModule("trancher", "creerTrancher"),
+    chargerModule("rappels", "creerRappelsDuJour"),
+  ]);
+  accueil = { boite, trancher, rappels };
+  if (!racine?.isConnected) return;
+  if (boite?.bouton) actionsEntete?.prepend(boite.bouton);
+  if (boite?.carte) vider(zones.rituel, boite.carte);
+  if (trancher?.carte) vider(zones.trancher, trancher.carte);
+  if (rappels?.carte) vider(zones.rappels, rappels.carte);
+  if (donnees) majModules();
+}
+
+/** Chaque module reçoit le tableau (il ne lit jamais /api/dashboard lui-même). */
+function majModules({ frais = false } = {}) {
+  const conseil = conseilAffiche();
+  for (const [nom, m] of Object.entries(accueil)) {
+    if (!m?.maj) continue;
+    try {
+      m.maj(nom === "boite" ? { dashboard: donnees, conseil, frais } : { dashboard: donnees, frais });
+    } catch (err) {
+      console.warn(`Aujourd'hui : le module ${nom} n'a pas pu se mettre à jour.`, err);
+    }
+  }
+}
+
+/** #/aujourdhui/<quoi>[/<arg>] (contrat B) : ouvre ce qui est demandé, puis l'adresse redevient #/aujourdhui. */
+async function ouvrirRoute(args = []) {
+  const [quoi, arg] = args || [];
+  if (!quoi) return;
+  history.replaceState(null, "", "#/aujourdhui");
+  await modulesPrets;
+  const absent = () => dire("Cette fenêtre n'a pas pu se charger : recharge la page (Ctrl+R).", { genre: "erreur" });
+  if (["boite", "briefing", "bilan", "nuit"].includes(quoi)) {
+    if (accueil.boite?.ouvrir) accueil.boite.ouvrir(quoi, arg);
+    else absent();
+  } else if (["trancher", "revue", "retards"].includes(quoi)) {
+    if (accueil.trancher?.ouvrir) accueil.trancher.ouvrir(quoi);
+    else absent();
+  }
+}
 
 function salutation(d) {
   const hh = d.getHours();
@@ -85,12 +160,9 @@ function salutation(d) {
 async function charger({ frais = false, discret = false } = {}) {
   if (enLecture) return enLecture;
   enLecture = (async () => {
-    const [d, s, t, r, rp] = await Promise.allSettled([
+    const [d, s] = await Promise.allSettled([
       api(`/api/dashboard${frais ? "?frais=1" : ""}`, { delai: 45000 }),
       api("/api/semaine?jours=7", { delai: 45000 }),
-      api("/api/a-trancher", { delai: 30000 }),
-      api("/api/rituel", { delai: 45000 }),
-      api("/api/rappels", { delai: 20000 }),
     ]);
     if (d.status === "fulfilled") {
       donnees = d.value;
@@ -100,11 +172,9 @@ async function charger({ frais = false, discret = false } = {}) {
       if (!discret || !donnees) donnees = donnees || null;
     }
     if (s.status === "fulfilled") semaine = s.value;
-    if (t.status === "fulfilled") trancher = t.value;
-    if (r.status === "fulfilled") rituel = r.value;
-    if (rp.status === "fulfilled") rappels = rp.value?.rappels || [];
-    masquees = new Set([...masquees].filter((c) => c.startsWith("tri:")));
-    toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null, trancher: t.status === "rejected" ? t.reason : null, rituel: r.status === "rejected" ? r.reason : null, rappels: rp.status === "rejected" ? rp.reason : null } });
+    masquees = new Set();
+    toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null } });
+    if (d.status === "fulfilled") majModules({ frais });
     if (frais && d.status === "fulfilled") {
       // « À jour. » seulement si Motion a vraiment été relu ; sinon, pourquoi.
       const m = donnees?.journee?.motion;
@@ -133,10 +203,7 @@ function toutDessiner({ erreursSecondaires = {} } = {}) {
     dessinerRetards();
   }
   dessinerMotion();
-  dessinerRappels(erreursSecondaires.rappels);
-  dessinerTrancher(erreursSecondaires.trancher);
   dessinerMenacees();
-  dessinerRituel(erreursSecondaires.rituel);
   dessinerSemaine(erreursSecondaires.semaine);
   dessinerConseil();
 }
@@ -228,7 +295,7 @@ function dessinerMaintenant() {
         estActivite(e) ? bouton("Terminer", { classe: "plein", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }) : null,
         estActivite(e) ? bouton("+15", { classe: "papier", onclick: (ev) => occupe(ev.currentTarget, () => prolonger(e, 15, { apres })) }) : null,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(e, gestesDe(e)) }),
-        bouton("En parler à Rémy", { classe: "papier", icone: "remy", onclick: () => demanderARemy(`À propos de « ${e.titre} » (${heure(e.debut)}) : `) })));
+        bouton("En parler à Rémy", { classe: "papier", icone: "remy", onclick: () => demanderARemy(e.type === "rdv" ? BROUILLONS.rendezVous(e) : BROUILLONS.tache(e.titre)) })));
   } else if (p.cas === "suivant") {
     const e = p.e;
     const decalerBtn = e.type === "tache" || estActivite(e) ? bouton("Décaler", { classe: "papier", icone: "horloge", onclick: () => menuDecaler(e, decalerBtn) }) : null;
@@ -241,7 +308,7 @@ function dessinerMaintenant() {
         e.type === "tache" ? bouton("Terminer", { classe: peutCommencer ? "papier" : "plein", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }) : null,
         decalerBtn,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(e, gestesDe(e)) }),
-        bouton("En parler", { classe: "papier", icone: "remy", onclick: () => demanderARemy(e.type === "rdv" ? `Pour « ${e.titre} » à ${heure(e.debut)} : ` : `Pour « ${e.titre} » : `) })));
+        bouton("En parler", { classe: "papier", icone: "remy", onclick: () => demanderARemy(e.type === "rdv" ? BROUILLONS.rendezVous(e) : BROUILLONS.tache(e.titre)) })));
   } else if (p.cas === "aFaire") {
     const t = sansCreneau(p.t, false);
     const decalerBtn = bouton("Décaler", { classe: "papier", icone: "horloge", onclick: () => menuDecaler(t, decalerBtn) });
@@ -255,7 +322,7 @@ function dessinerMaintenant() {
   } else if (p.cas === "rien") {
     ajouterA(carte, h("h2", { class: "titre-section" }, "Temps libre"), h("h2", null, "Plus rien de prévu"),
       p.retards ? h("p", { class: "risque", style: { marginTop: "8px" } }, icone("alerte"), p.retards > 1 ? `${p.retards} tâches en retard` : "Une tâche en retard") : null,
-      p.retards ? h("div", { class: "rangee gestes-maintenant" }, bouton("Par quoi je commence ?", { classe: "papier", icone: "remy", onclick: () => demanderARemy("J'ai du temps libre et des tâches en retard : par quoi je commence ?") })) : null);
+      p.retards ? h("div", { class: "rangee gestes-maintenant" }, bouton("Par quoi je commence ?", { classe: "papier", icone: "remy", onclick: () => demanderARemy(BROUILLONS.retards) })) : null);
   } else if (p.cas === "aucuneSource") {
     ajouterA(carte, h("h2", { class: "titre-section" }, "Ta journée"), h("h2", null, "Rémy ne voit pas encore ta journée"),
       h("p", { class: "detail-maintenant" }, "Branche Motion ou ton agenda Google : tes rendez-vous et tes tâches s'afficheront ici."),
@@ -306,7 +373,7 @@ function dessinerJournee() {
   if (j.toute?.length) ajouterA(carte, h("p", { class: "toute-journee" }, "Toute la journée : " + j.toute.map((t) => t.titre).join(" · ")));
   if (!items.length) {
     ajouterA(carte, vide(null, "Rien à heure fixe aujourd'hui."));
-    return vider(zones.journee, carte);
+    return vider(zones.journee, carte, lienOrganiser());
   }
   const debutJ = new Date(); debutJ.setHours(0, 0, 0, 0);
   const minDe = (ms) => (ms - debutJ.getTime()) / 60e3;
@@ -329,7 +396,7 @@ function dessinerJournee() {
     : null;
   if (!visibles.length) {
     ajouterA(carte, vide(null, mn0 >= h1Jour ? "Plus rien à heure fixe aujourd'hui." : "Rien à heure fixe dans les prochaines heures."), basculeJournee ? h("div", { class: "rangee" }, basculeJournee) : null);
-    return vider(zones.journee, carte);
+    return vider(zones.journee, carte, lienOrganiser());
   }
   const PX = 1.5; // pixels par minute (30 min = 45 px : une cible au doigt, 44 px au moins)
   const echelle = h("div", { class: "echelle", style: { height: `${(h1 - h0) * PX}px` } });
@@ -384,34 +451,15 @@ function dessinerJournee() {
   const mn = minDe(m);
   if (mn >= h0 && mn <= h1) ajouterA(echelle, h("div", { class: "maintenant-trait", style: { top: `${(mn - h0) * PX}px` }, title: `Maintenant · ${heure(m)}` }));
   ajouterA(carte, echelle, basculeJournee ? h("div", { class: "rangee bascule-journee" }, basculeJournee) : null);
-  vider(zones.journee, carte);
+  vider(zones.journee, carte, lienOrganiser());
 }
 
-// --- Rappels du jour (ATraiter de l'iPhone) : cocher, reporter, supprimer ---
-function dessinerRappels(err) {
-  if (!rappels) {
-    if (err && err.nature !== "auth") vider(zones.rappels, h("section", { class: "carte", "aria-label": "Rappels du jour" }, h("h2", { class: "titre-section" }, "Rappels du jour"), blocErreur(err, () => charger())));
-    else vider(zones.rappels);
-    return;
-  }
-  const liste = rappelsDuJour(rappels).filter((r) => !masquees.has(`rap:${r.id}`));
-  if (!liste.length) return vider(zones.rappels);
-  const relire = () => setTimeout(() => relireRappels(), 400);
-  vider(zones.rappels, h("section", { class: "carte", "aria-label": "Rappels du jour" },
-    h("h2", { class: "titre-section" }, "Rappels du jour", h("span", { class: "compte" }, String(liste.length)),
-      h("a", { class: "btn texte petit lien-titre", href: "#/projets/rappels" }, "Tous les rappels")),
-    h("ul", { class: "liste" }, liste.map((r) => ligneRappel(r, {
-      apres: relire,
-      retirer: () => { masquees.add(`rap:${r.id}`); dessinerRappels(); },
-      remettre: () => { masquees.delete(`rap:${r.id}`); dessinerRappels(); },
-    })))));
-}
-async function relireRappels() {
-  try {
-    rappels = (await api("/api/rappels", { delai: 20000 }))?.rappels || [];
-    masquees = new Set([...masquees].filter((c) => !c.startsWith("rap:")));
-  } catch {}
-  dessinerRappels();
+/** « Organiser ma journée avec Rémy » : le clic est le geste, la demande part dans un fil neuf (contrat C). */
+function lienOrganiser() {
+  return h("div", { class: "rangee organiser" }, bouton("Organiser ma journée avec Rémy", { classe: "texte petit", icone: "remy", onclick: () => {
+    local.ecrire("remy-envoi", { texte: BROUILLONS.journee, a: Date.now(), titre: titreFilJournee() });
+    ctx.aller("remy/nouvelle");
+  } }));
 }
 
 // --- À faire aujourd'hui (sans créneau) et en retard ---
@@ -440,162 +488,6 @@ function dessinerRetards() {
   vider(zones.retards, blocs);
 }
 
-// --- À trancher ---
-const GESTES = {
-  carte: [["oui", "Oui"], ["non", "Non"], ["plusTard", "Plus tard"]],
-  doublon: [["fusionner", "Fusionner"], ["plusTard", "Plus tard"]],
-  rappel: [["supprimer", "Supprimer"], ["plusTard", "Plus tard"]],
-  articles: [["retirer", "Retirer"], ["plusTard", "Plus tard"]],
-  idee: [["garder", "Gardée"], ["supprimer", "Supprimer"], ["plusTard", "Plus tard"]],
-  fil: [["supprimer", "Supprimer"], ["plusTard", "Plus tard"]],
-  retard: [["fait", "Fait"], ["demain", "Demain"], ["abandonner", "Abandonner"]],
-};
-const PRINCIPAUX = new Set(["oui", "fusionner", "retirer", "fait"]);
-
-function lignesTrancher() {
-  if (!trancher) return [];
-  const lignes = [];
-  for (const g of trancher.groupes || []) for (const l of g.lignes || []) lignes.push({ ...l, groupe: g.titre });
-  for (const l of trancher.retards || []) lignes.push({ ...l, groupe: "Retards" });
-  return lignes.filter((l) => !masquees.has(`tri:${l.cle}`));
-}
-
-function dessinerTrancher(err) {
-  const lignes = lignesTrancher();
-  // Une carte compacte en bas (CarteATrancher de l'iPhone) : le compte et
-  // « Trancher » ; les lignes et leurs gestes vivent dans une feuille.
-  if (!trancher && err) {
-    if (err.nature === "auth") return vider(zones.trancher);
-    return vider(zones.trancher, h("section", { class: "carte", "aria-label": "À trancher" }, h("h2", { class: "titre-section" }, "À trancher"), blocErreur(err, () => charger())));
-  }
-  if (!trancher || !lignes.length) {
-    vider(zones.trancher);
-    if (feuilleTri) dessinerFeuilleTri();
-    return;
-  }
-  const n = lignes.length;
-  vider(zones.trancher, h("section", { class: "carte a-trancher", "aria-label": "À trancher" },
-    h("h2", { class: "titre-section" }, "À trancher", h("span", { class: "compte" }, String(n)),
-      trancher?.reportes ? h("span", { class: "fin aide" }, `${trancher.reportes} reporté${trancher.reportes > 1 ? "s" : ""}`) : null),
-    h("p", { class: "aide-carte" }, `${n} chose${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} un geste : cartes, rappels, articles, vieux fils, idées.`),
-    h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton("Trancher", { classe: "papier", icone: "liste", onclick: ouvrirTrancher }))));
-  if (feuilleTri) dessinerFeuilleTri();
-}
-
-let feuilleTri = null;
-function ouvrirTrancher() {
-  if (feuilleTri) return;
-  feuilleTri = feuille({
-    titre: "À trancher", sousTitre: "Un geste par ligne. Plus tard : elle revient dans une semaine.", large: true,
-    contenu: h("div", { class: "lignes-tri" }),
-    surFermeture: () => { feuilleTri = null; },
-  });
-  dessinerFeuilleTri();
-}
-function dessinerFeuilleTri() {
-  const zone = feuilleTri?.corps.querySelector(".lignes-tri");
-  if (!zone) return;
-  const lignes = lignesTrancher();
-  if (!lignes.length) {
-    vider(zone, vide("Tout est tranché", "Les cartes en attente, doublons et vieux rappels s'afficheront ici."));
-    return;
-  }
-  vider(zone, h("ul", { class: "liste" }, lignes.map((l) => h("li", { class: "sujet" },
-    h("div", { class: "corps" },
-      h("div", { class: "titre-ligne" }, l.texte),
-      h("div", { class: "meta aide" }, [l.groupe, l.detail].filter(Boolean).join(" · ")),
-      h("div", { class: "rangee serree", style: { marginTop: "6px" } },
-        (GESTES[l.type] || [["plusTard", "Plus tard"]]).map(([g, lib]) => h("button", { type: "button", class: `btn petit ${PRINCIPAUX.has(g) ? "plein" : "papier"}`, onclick: (ev) => occupe(ev.currentTarget, () => agirTri(g, l)) }, lib)),
-        l.convId ? h("a", { class: "btn texte petit", href: `#/remy/${seg(l.convId)}`, onclick: () => feuilleTri?.fermer() }, "Voir") : null))))));
-}
-
-function masquerTri(l) {
-  masquees.add(`tri:${l.cle}`);
-  dessinerTrancher();
-}
-function montrerTri(l) {
-  masquees.delete(`tri:${l.cle}`);
-  dessinerTrancher();
-}
-
-async function agirTri(g, l) {
-  try {
-    if (g === "plusTard") {
-      await ecrire("/api/a-trancher/reports", { cle: l.cle, jours: 7 });
-      masquerTri(l);
-      dire("Revient dans une semaine.", { action: { libelle: "Annuler", faire: async () => { await api(`/api/a-trancher/reports/${seg(l.cle)}`, { methode: "DELETE" }).catch(direErreur); montrerTri(l); } } });
-    } else if (g === "oui" && l.type === "carte") {
-      if (l.source === "regle") {
-        await ecrire(`/api/conversations/${seg(l.convId)}/propositions/${seg(l.propositionId)}/regle`, {});
-        masquerTri(l);
-        dire("Règle créée.", { genre: "succes" });
-      } else if (l.source === "carnet") {
-        await ecrire(`/api/conversations/${seg(l.convId)}/propositions/${seg(l.propositionId)}/carnet`, {});
-        masquerTri(l);
-        dire("C'est fait.", { genre: "succes" });
-      } else {
-        const chemin = l.source === "agenda" ? "/api/google/apply" : "/api/motion/apply";
-        const r = await ecrire(chemin, { actions: [], convId: l.convId, propositionId: l.propositionId }, { delai: 150000 });
-        if (r?.etat === "echouee") throw new Error(r.results?.find((x) => !x.ok)?.erreur || "raison inconnue");
-        masquerTri(l);
-        dire("C'est fait.", { genre: "succes", action: r?.ledgerId ? { libelle: "Annuler", faire: () => ecrire(l.source === "agenda" ? "/api/google/undo" : "/api/motion/undo", { id: r.ledgerId }).then(() => { dire("Annulé."); montrerTri(l); apres(); }).catch(direErreur) } : null });
-        apres();
-      }
-    } else if (g === "non") {
-      await ecrire(`/api/conversations/${seg(l.convId)}/propositions/${seg(l.propositionId)}/refus`, {});
-      masquerTri(l);
-      dire("Écartée : rien n'a été changé.", { action: { libelle: "Annuler", faire: async () => { await ecrire("/api/a-trancher/rouvrir", { propositionId: l.propositionId }).catch(direErreur); montrerTri(l); } } });
-    } else if (g === "fusionner") {
-      for (const id of l.doublons || []) await api(`/api/rappels/${seg(id)}`, { methode: "DELETE" });
-      masquerTri(l);
-      dire(`Fusionnés : « ${l.texte} » ne reste qu'une fois.`, { genre: "succes" });
-    } else if (g === "supprimer" && l.type === "rappel") {
-      if (!(await confirmer(`Supprimer le rappel « ${l.texte} » ?`, { libelle: "Supprimer", danger: true }))) return;
-      await api(`/api/rappels/${seg(l.rappelId)}`, { methode: "DELETE" });
-      masquerTri(l);
-      dire("Rappel supprimé.", { genre: "succes" });
-    } else if (g === "retirer") {
-      const listes = (await api("/api/listes")).listes || [];
-      const liste = listes.find((x) => x.id === l.listeId);
-      const ids = (liste?.elements || []).filter((e) => e.fait).map((e) => e.id);
-      if (ids.length) await ecrire(`/api/listes/${seg(l.listeId)}/retirer`, { ids });
-      masquerTri(l);
-      dire(ids.length ? `${ids.length} article${ids.length > 1 ? "s" : ""} retiré${ids.length > 1 ? "s" : ""}.` : "Déjà retirés.", { genre: "succes" });
-    } else if (g === "garder" || (g === "supprimer" && l.type === "idee")) {
-      if (g === "garder") await ecrire(`/api/dossiers/${seg(l.dossierId)}/notes`, { notes: [{ id: l.noteId, texte: l.texte, fait: true }] });
-      else await api(`/api/dossiers/${seg(l.dossierId)}/notes/${seg(l.noteId)}`, { methode: "DELETE" });
-      masquerTri(l);
-      dire(g === "garder" ? "Gardée dans « Idées », marquée relue." : "Idée supprimée.", {
-        genre: "succes",
-        action: { libelle: "Annuler", faire: async () => { await ecrire(`/api/dossiers/${seg(l.dossierId)}/notes`, { notes: [{ id: l.noteId, texte: l.texte, fait: false }] }).catch(direErreur); montrerTri(l); } },
-      });
-    } else if (g === "supprimer" && l.type === "fil") {
-      if (!(await confirmer(`Supprimer la conversation « ${l.texte} » ?`, { libelle: "Supprimer", danger: true }))) return;
-      await api(`/api/conversations/${seg(l.convId)}`, { methode: "DELETE" });
-      masquerTri(l);
-      dire("Fil supprimé.", { genre: "succes" });
-    } else if (g === "fait" && l.tacheId) {
-      masquerTri(l);
-      terminer({ type: "tache", id: l.tacheId, titre: l.texte }, { retirer: () => {}, remettre: () => montrerTri(l), apres });
-    } else if (g === "demain" && l.tacheId) {
-      if (await decaler({ type: "tache", id: l.tacheId, titre: l.texte }, echeanceDemain(), { apres })) masquerTri(l);
-    } else if (g === "abandonner" && l.tacheId) {
-      if (!(await confirmer(`Abandonner « ${l.texte} » ?`, { detail: "Elle est retirée de ton planning (marquée faite dans Motion). Annulable.", libelle: "Abandonner", danger: true }))) return;
-      const r = await ecrire("/api/motion/apply", { actions: [{ type: "terminer", nom: l.texte, id: l.tacheId }], resume: "Abandonnée (tri des retards)", idCommande: nouvelId() }, { delai: 150000 });
-      if ((r?.echecs ?? 0) > 0) throw new Error(r.results?.[0]?.erreur || "raison inconnue");
-      masquerTri(l);
-      dire(`« ${l.texte} » abandonnée : retirée de ton planning.`, { genre: "succes", action: r?.ledgerId ? { libelle: "Annuler", faire: () => ecrire("/api/motion/undo", { id: r.ledgerId }).then(() => { montrerTri(l); apres(); }).catch(direErreur) } : null });
-      apres();
-    }
-  } catch (err) {
-    direErreur(err, () => agirTri(g, l), "Pas fait");
-  }
-}
-const echeanceDemain = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 23, 0);
-};
-
 // --- Menacées : la première, puis « Voir tout » (CarteMenacee de l'iPhone) ---
 function ligneMenacee(t) {
   return h("li", { class: "sujet menacee" },
@@ -606,7 +498,7 @@ function ligneMenacee(t) {
       t.action ? h("div", { class: "rangee serree", style: { marginTop: "6px" } },
         t.action.type === "repousser" && t.action.echeance
           ? bouton(t.action.libelle, { classe: "papier petit", onclick: (ev) => occupe(ev.currentTarget, () => decaler({ type: "tache", id: t.id, titre: t.titre }, new Date(t.action.echeance), { apres })) })
-          : bouton(t.action.libelle || "En parler à Rémy", { classe: "papier petit", icone: "remy", onclick: () => demanderARemy(`Peux-tu caser « ${t.titre} » aujourd'hui ? ${t.phrase}`) })) : null));
+          : bouton(t.action.libelle || "En parler à Rémy", { classe: "papier petit", icone: "remy", onclick: () => demanderARemy(BROUILLONS.menacee(t)) })) : null));
 }
 function dessinerMenacees() {
   const liste = (donnees?.menacees || []).filter((t) => !masquees.has(t.id));
@@ -616,88 +508,6 @@ function dessinerMenacees() {
     h("h2", { class: "titre-section", style: { color: "var(--danger)" } }, liste.length > 1 ? "Échéances menacées" : "Échéance menacée", h("span", { class: "compte" }, String(liste.length))),
     h("ul", { class: "liste" }, montrees.map(ligneMenacee)),
     liste.length > 1 ? bouton(menaceesTout ? "Seulement la première" : `Voir tout (${liste.length})`, { classe: "texte petit", onclick: () => { menaceesTout = !menaceesTout; dessinerMenacees(); } }) : null));
-}
-
-// --- Briefing du matin et bilan du soir ---
-function dessinerRituel(err) {
-  const hh = new Date().getHours();
-  const blocs = [];
-  const soir = rituel?.soir;
-  // Le soir (dès 18 h, comme l'iPhone), le bilan passe devant.
-  if (soir && hh >= 18) blocs.push(carteBilan(soir));
-  else if (!rituel && err && hh >= 18 && err.nature !== "auth") blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section" }, "Bilan du soir"), blocErreur(err, () => charger())));
-  const b = donnees?.briefing;
-  const items = (b?.items || []).filter((x) => x.etat === "ouvert");
-  if (b?.text) {
-    const corps = items.length
-      ? h("ul", { class: "liste" }, items.map((s) => h("li", { class: "sujet" },
-        h("div", { class: "corps md" , html: markdown(s.texte) }),
-        h("div", { class: "rangee serree" },
-          bouton("", { classe: "texte petit", icone: "coche", etiquette: "Traité", titre: "Traité", onclick: (ev) => occupe(ev.currentTarget, () => etatSujet(s, "traite")) }),
-          bouton("", { classe: "texte petit", icone: "fermer", etiquette: "Ignorer", titre: "Ignorer", onclick: (ev) => occupe(ev.currentTarget, () => etatSujet(s, "ignore")) })))))
-      : h("p", { class: "aide" }, "Tous les sujets de la nuit sont traités.");
-    const titre = h("h2", { class: "titre-section" }, "Briefing du matin", items.length ? h("span", { class: "compte" }, String(items.length)) : null,
-      b.generatedAt ? h("span", { class: "fin aide" }, `cette nuit, ${heure(b.generatedAt)}`) : null);
-    // Le matin, ouvert ; l'après-midi et le soir, replié (un clic l'ouvre).
-    if (hh < 12) blocs.push(h("section", { class: "carte", "aria-label": "Briefing du matin" }, titre, corps));
-    else blocs.push(h("details", { class: "carte briefing-replie", "aria-label": "Briefing du matin" }, h("summary", null, titre, icone("bas", "chevron-replie")), corps));
-  }
-  vider(zones.rituel, blocs);
-}
-
-async function etatSujet(s, etat) {
-  try {
-    await api("/api/briefing/etat", { methode: "PUT", corps: { id: s.id, etat } });
-    s.etat = etat;
-    dessinerRituel();
-    dire(etat === "traite" ? "Sujet traité." : "Sujet ignoré.", { action: { libelle: "Annuler", faire: async () => { await api("/api/briefing/etat", { methode: "PUT", corps: { id: s.id, etat: "ouvert" } }).catch(direErreur); s.etat = "ouvert"; dessinerRituel(); } } });
-  } catch (err) {
-    direErreur(err, null, "Pas enregistré");
-  }
-}
-
-function carteBilan(soir) {
-  const reste = soir.reste || [];
-  const champ = h("textarea", { class: "champ", rows: 2, placeholder: "Une ligne pour Rémy (facultatif)", "aria-label": "Comment ça s'est passé ?" });
-  const ranger = bouton("Ranger pour la nuit", { classe: "papier", icone: "lune" });
-  ranger.addEventListener("click", () => occupe(ranger, async () => {
-    try {
-      const r = await ecrire("/api/rituel/bilan", { ressenti: champ.value.trim() });
-      dire(r?.phrase || "Bilan rangé.", { genre: "succes" });
-      ranger.disabled = true;
-      ranger.querySelector(".lib").textContent = "Rangé pour la nuit";
-    } catch (err) {
-      direErreur(err, null, "Bilan pas rangé");
-    }
-  }));
-  const pousser = reste.length ? bouton("Tout ce qui reste → demain", { classe: "plein", icone: "fleche" }) : null;
-  pousser?.addEventListener("click", () => occupe(pousser, async () => {
-    try {
-      const actions = reste.map((t) => ({ type: "modifier", nom: t.titre, echeance: isoLocal(new Date(t.versDemain)), id: t.id }));
-      const r = await ecrire("/api/motion/apply", { actions, resume: "Bilan du soir : tout ce qui reste → demain", idCommande: nouvelId() }, { delai: 180000 });
-      const rates = (r?.results || []).filter((x) => !x.ok);
-      dire(rates.length ? `${actions.length - rates.length} poussées à demain ; ${rates.length} refusée${rates.length > 1 ? "s" : ""}.` : "Poussé à demain. Motion recalcule.", {
-        genre: rates.length ? "erreur" : "succes",
-        action: r?.ledgerId ? { libelle: "Annuler", faire: () => ecrire("/api/motion/undo", { id: r.ledgerId }).then(apres).catch(direErreur) } : null,
-      });
-      apres();
-    } catch (err) {
-      direErreur(err, null, "Pas poussé à demain");
-    }
-  }));
-  const bloc = (titre, lignes, videTexte) => h("div", { style: { marginTop: "10px" } }, h("div", { class: "etat-mono" }, `${titre}${lignes.length ? ` (${lignes.length})` : ""}`),
-    lignes.length ? h("ul", { style: { margin: "6px 0 0 18px" } }, lignes.map((t) => h("li", null, t))) : h("p", { class: "aide" }, videTexte));
-  return h("section", { class: "carte", "aria-label": "Bilan du soir" },
-    h("h2", { class: "titre-section" }, "Bilan du soir"),
-    h("p", { class: "carte-titre" }, soir.phrase || ""),
-    soir.avertissement ? h("p", { class: "risque", style: { marginTop: "6px" } }, icone("alerte"), soir.avertissement) : null,
-    bloc("Fait", (soir.fait || []).map((x) => (typeof x === "string" ? x : x.titre)), "Rien coché dans Rémy aujourd'hui."),
-    bloc("A glissé", (soir.glisse || []).map((x) => x.titre), "Rien n'a glissé de son créneau."),
-    bloc("Reste pour aujourd'hui", reste.map((x) => x.titre), "Rien ne reste : bravo."),
-    pousser ? h("div", { class: "rangee", style: { marginTop: "12px" } }, pousser) : null,
-    h("hr", { class: "separateur" }),
-    h("label", { class: "etiquette-champ" }, "Comment ça s'est passé ?"), champ,
-    h("div", { class: "rangee", style: { marginTop: "10px" } }, ranger));
 }
 
 // --- Demain et 7 jours ---
@@ -733,6 +543,13 @@ function dessinerSemaine(err) {
 }
 
 // --- Le conseil du moment ---
+/** Le conseil affiché, pour la boîte (contrat A) : { texte, source }. */
+function conseilAffiche() {
+  const c = donnees?.conseil;
+  const texte = c?.conseil?.texte || c?.texte;
+  return texte ? { texte, source: c?.conseil?.source || "glm" } : null;
+}
+
 function dessinerConseil() {
   const c = donnees?.conseil;
   if (!c?.conseil?.texte && !c?.texte) return vider(zones.conseil);

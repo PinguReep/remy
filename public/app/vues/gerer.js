@@ -6,6 +6,7 @@
 import { api, ecrire, nouvelId, seg, sait } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, heure, quand, duree, isoLocal, versChampDate, depuisChampDate, occupe, demanderTexte } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
+import { BROUILLONS } from "../analyse/journee.js";
 
 const DELAI_ANNULATION = 2000;
 
@@ -250,9 +251,11 @@ export function gerer(e, { apres, contexte, retirer, remettre } = {}) {
   if (tache && !enCours && sait("taches-etat-v2")) {
     principaux.push(bouton("Commencer maintenant", { classe: "papier", icone: "lecture", onclick: fermerPuis(() => commencer(e, { apres })) }));
   }
+  // La question prête (contrat C) : préparée dans le composeur, jamais envoyée seule.
+  const question = e.type === "rdv" ? BROUILLONS.rendezVous(e) : e.type === "sans-creneau" && e.retard ? BROUILLONS.retard(e) : BROUILLONS.tache(e.titre);
   principaux.push(bouton("En parler à Rémy", { classe: "papier", icone: "remy", onclick: () => {
     f.fermer();
-    try { localStorage.setItem("remy-question", JSON.stringify({ texte: `On parle de « ${e.titre} » ?`, a: Date.now() })); } catch {}
+    try { localStorage.setItem("remy-question", JSON.stringify({ texte: question, a: Date.now() })); } catch {}
     contexte?.aller("remy/nouvelle");
   } }));
   ajouterA(contenu, groupe("Maintenant", h("div", { class: "rangee" }, principaux)));
