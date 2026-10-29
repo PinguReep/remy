@@ -144,22 +144,24 @@ export function conversationChatGPT({ id, titre, debut, echanges, regeneree = nu
   return { id, conversation_id: id, title: titre, create_time: debut, update_time: t + 10, mapping, current_node: parent };
 }
 
-// Un .zip minimal (méthode « deflate »), comme celui de l'export.
+// Un .zip minimal (méthode « deflate », ou « stocké » avec `stocke`), comme
+// celui de l'export.
 export function zipper(entrees) {
   const locaux = [];
   const central = [];
   let position = 0;
   const crc = zlib.crc32 || crc32;
-  for (const { nom, contenu } of entrees) {
+  for (const { nom, contenu, stocke = false } of entrees) {
     const donnees = Buffer.isBuffer(contenu) ? contenu : Buffer.from(contenu);
-    const compresse = zlib.deflateRawSync(donnees);
+    const compresse = stocke ? donnees : zlib.deflateRawSync(donnees);
+    const methode = stocke ? 0 : 8;
     const nomB = Buffer.from(nom, "utf8");
     const c = crc(donnees) >>> 0;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x800, 6);
-    local.writeUInt16LE(8, 8);
+    local.writeUInt16LE(methode, 8);
     local.writeUInt32LE(c, 14);
     local.writeUInt32LE(compresse.length, 18);
     local.writeUInt32LE(donnees.length, 22);
@@ -170,7 +172,7 @@ export function zipper(entrees) {
     cen.writeUInt16LE(20, 4);
     cen.writeUInt16LE(20, 6);
     cen.writeUInt16LE(0x800, 8);
-    cen.writeUInt16LE(8, 10);
+    cen.writeUInt16LE(methode, 10);
     cen.writeUInt32LE(c, 16);
     cen.writeUInt32LE(compresse.length, 20);
     cen.writeUInt32LE(donnees.length, 24);
