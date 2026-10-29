@@ -16,7 +16,8 @@
 
 import fs from "node:fs";
 import { analyserDuckDuckGo, ENTETES_NAVIGATEUR, lirePage } from "../lib/recherche.js";
-import { requeteDepuisMessage, classerResultats, passagesPertinents, rechercheDirecte, matiereDirecte, viderCachesRecherche } from "../lib/recherche-rapide.js";
+import { requeteDepuisMessage, classerResultats, ordreDeLecture, rechercheDirecte, matiereDirecte, blocRecherche, viderCachesRecherche } from "../lib/recherche-rapide.js";
+import { promptSalleBlanche } from "../lib/salle-blanche.js";
 import { QUESTIONS, hoteDe } from "./recherche-questions.mjs";
 
 const args = process.argv.slice(2);
@@ -113,12 +114,13 @@ for (const [k, q] of questions.entries()) {
     continue;
   }
   const classes = classerResultats(r.resultats, rq.mots);
-  const vus = new Set();
-  const trois = classes.filter((x) => !vus.has(hoteDe(x.url)) && vus.add(hoteDe(x.url))).slice(0, 3);
+  const liste = ordreDeLecture(classes);
+  // En série, la même règle qu'en parallèle : jusqu'à 3 pages lues, 5 essais au plus.
   const serie = async () => {
     const t = performance.now();
     const pages = [];
-    for (const x of trois) {
+    for (const x of liste.slice(0, 5)) {
+      if (pages.filter((p) => p.ok).length >= 3) break;
       const t1 = performance.now();
       try {
         const p = await lirePage({ url: x.url });
@@ -157,8 +159,16 @@ for (const [k, q] of questions.entries()) {
   const matiere = matiereDirecte(d);
   const pagesAvecAttendu = d.pages.filter((x) => (x.passages || []).some((y) => q.attendu.test(y.texte))).length;
   const pleinAttendu = d.pages.filter((x) => q.attendu.test(x.texte)).length;
+  // Ce que la salle blanche relirait : la liste de résultats de chercher_web (encadrée).
+  const listeResultats = r.resultats.slice(0, 6).map((x, i) => `${i + 1}. ${x.titre}\n   ${x.url}${x.extrait ? `\n   ${x.extrait}` : ""}`).join("\n");
   const ligne = {
     id: q.id,
+    questionCars: q.question.length,
+    resultatsCars: listeResultats.length + 300,
+    page1Cars: Math.min(10_000, d.pages[0]?.texte.length || 0) + 400,
+    page2Cars: Math.min(10_000, d.pages[1]?.texte.length || 0) + 400,
+    blocCars: blocRecherche(d, { relance: true }).length,
+    rechercheMs: r.ms,
     serieMs: s.ms,
     paralleleMs: d.mesures.lecturesMs,
     pages: s.pages.map((x) => ({ hote: hoteDe(x.url), ms: x.ms, ok: x.ok, cars: x.cars ?? 0, squelettique: Boolean(x.squelettique), date: x.date || null, erreur: x.erreur || null })),
@@ -209,6 +219,73 @@ console.log(
   `Matière jointe (recherche directe) : médiane ${q50(lec.map((l) => l.matiereCars))} car. (~${jetons(q50(lec.map((l) => l.matiereCars)))} jetons) ; pages entières lues par la salle blanche : médiane ${q50(lec.map((l) => l.pagesCompletesCars))} car. (~${jetons(q50(lec.map((l) => l.pagesCompletesCars)))} jetons). ` +
     `Réponse attendue présente dans les passages pour ${lec.filter((l) => l.pagesAvecAttendu > 0).length}/${lec.length} questions (dans les pages entières : ${lec.filter((l) => l.pleinAttendu > 0).length}/${lec.length}).`,
 );
+// --- 4. Appels au modèle et jetons, par stratégie (des mesures ci-dessus) -------------------
+// Ce qui est MESURÉ : la taille de ce que chaque appel envoie (consigne de la
+// salle blanche, résultats, pages, matière jointe), le temps du web. Ce qui est
+// SUPPOSÉ (à confirmer par scripts/banc-recherche.mjs sur la tour) : la taille
+// de la consigne du modèle principal (--systeme, 31 000 jetons par défaut :
+// l'ordre de grandeur de la jauge), les jetons écrits (réflexion selon
+// l'effort, réponse, synthèse), et les débits (--decode 40 jetons/s : la jauge ;
+// --prefill 2 000 jetons/s : non mesuré ici).
+const S = Number(val("--systeme")) || 31_000;
+const DECODE = Number(val("--decode")) || 40;
+const PREFILL = Number(val("--prefill")) || 2_000;
+const REFLEXION = { high: 400, medium: 250, low: 120, off: 0 };
+const REPONSE = 350;
+const SYNTHESE = 350;
+const OUTIL = 40;
+const PSB = jetons(promptSalleBlanche().length);
+const est = (l) => {
+  const Q = jetons(l.questionCars);
+  const R = jetons(l.resultatsCars);
+  const P1 = jetons(l.page1Cars);
+  const P2 = jetons(l.page2Cars);
+  const M = jetons(l.blocCars);
+  const SB = jetons(SYNTHESE * CARS_PAR_JETON + 1200); // synthèse + passages + pages lues, rendus au modèle principal
+  // [envoyé, nouveau (avec cache de préfixe), écrit] par appel
+  const salle = [
+    [S + Q, S + Q, REFLEXION.high + OUTIL],
+    [PSB + Q + R, PSB + Q + R, REFLEXION.low + OUTIL],
+    [PSB + Q + R + P1, P1, REFLEXION.medium + OUTIL],
+    [PSB + Q + R + P1 + P2, P2, REFLEXION.medium + SYNTHESE],
+    [S + Q + OUTIL + SB, OUTIL + SB, REFLEXION.medium + REPONSE],
+  ];
+  const direct = [[S + Q + M, S + Q + M, REFLEXION.low + REPONSE]];
+  const vif = [[S + Q + M, S + Q + M, REPONSE]];
+  const hybrideRelance = [direct[0], [S + Q + M + OUTIL + M, OUTIL + M, REFLEXION.low + REPONSE]];
+  const web = { salle: l.rechercheMs + l.serieMs, direct: l.rechercheMs + l.paralleleMs };
+  const bilan = (appels, webMs) => {
+    const envoyes = appels.reduce((n, a) => n + a[0], 0);
+    const nouveaux = appels.reduce((n, a) => n + a[1], 0);
+    const ecrits = appels.reduce((n, a) => n + a[2], 0);
+    // Premier mot : le web, puis tout sauf la réponse du dernier appel.
+    return {
+      appels: appels.length,
+      envoyes,
+      nouveaux,
+      ecrits,
+      sansCacheS: Math.round((webMs + (envoyes / PREFILL) * 1000 + (ecrits / DECODE) * 1000) / 100) / 10,
+      avecCacheS: Math.round((webMs + (nouveaux / PREFILL) * 1000 + (ecrits / DECODE) * 1000) / 100) / 10,
+    };
+  };
+  return {
+    salle: bilan(salle, web.salle),
+    "salle (1 page)": bilan([salle[0], salle[1], [salle[3][0] - P2, P1, REFLEXION.medium + SYNTHESE], salle[4]], l.rechercheMs + (l.pages.find((p) => p.ok)?.ms || 0)),
+    direct: bilan(direct, web.direct),
+    "direct sans réflexion": bilan(vif, web.direct),
+    "hybride (avec relance)": bilan(hybrideRelance, web.direct * 2),
+  };
+};
+const estimes = lec.map((l) => ({ id: l.id, ...est(l) }));
+rapport.estimations = { hypotheses: { systemeJetons: S, decodeJetonsS: DECODE, prefillJetonsS: PREFILL, reflexion: REFLEXION, reponse: REPONSE, synthese: SYNTHESE, promptSalleBlancheJetons: PSB }, parQuestion: estimes };
+console.log(`\n## Appels au modèle et jetons par stratégie (médianes ; consigne principale ${S} jetons, décodage ${DECODE} j/s, lecture ${PREFILL} j/s)\n`);
+console.log("| Stratégie | Appels | Jetons envoyés | dont nouveaux (cache de préfixe) | Jetons écrits | Temps estimé sans cache | avec cache |");
+console.log("| --- | --- | --- | --- | --- | --- | --- |");
+for (const nom of Object.keys(estimes[0] || {}).filter((k) => k !== "id")) {
+  const m = (k) => q50(estimes.map((e) => e[nom][k]));
+  console.log(`| ${nom} | ${m("appels")} | ${m("envoyes")} | ${m("nouveaux")} | ${m("ecrits")} | ${m("sansCacheS")} s | ${m("avecCacheS")} s |`);
+}
+
 if (sortieJson) {
   fs.writeFileSync(sortieJson, JSON.stringify(rapport, null, 2));
   console.log(`\nDétail : ${sortieJson}`);
