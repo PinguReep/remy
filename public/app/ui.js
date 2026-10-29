@@ -291,6 +291,23 @@ export function demanderTexte(titre, { valeur = "", libelle = "Enregistrer", eti
   return f.fini.then((v) => (typeof v === "string" ? v : null));
 }
 
+// --- lot noter : icônes (Noter, propositions, voix) ---
+Object.assign(CHEMINS, {
+  etincelles: "M11 3l1.7 4.6L17.3 9.3l-4.6 1.7L11 15.6l-1.7-4.6L4.7 9.3l4.6-1.7zM18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z",
+  etiquette: "M3 4h8l10 10-7 7L4 11zM7.5 8h.01",
+  plateau: "M4 13h4l1.5 3h5L16 13h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 8.5l3 3 3-3",
+  panier: "M3 4h2.2l2.3 11h10.8L20.5 7H6.4M9 20h.01M17 20h.01",
+  sablier: "M7 3h10M7 21h10M8 3c0 5 8 5.5 8 9s-8 4-8 9M16 3c0 5-8 5.5-8 9s8 4 8 9",
+  note: "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5",
+  calendrier: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
+  reglage: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+  embranchement: "M6 3v18M6 9c0 4 3 6 7 6h1M18 13a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+  onde: "M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2",
+  telephone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z",
+  raccrocher: "M3 14.5c5-4.7 13-4.7 18 0l-2.2 3.2-3.8-1.4v-2.8a12 12 0 0 0-6 0v2.8l-3.8 1.4z",
+});
+// --- fin lot noter
+
 // --- Formats (heure locale, français) ---
 const fmt = (opts) => new Intl.DateTimeFormat("fr-FR", opts);
 const F_HEURE = fmt({ hour: "2-digit", minute: "2-digit" });

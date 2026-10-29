@@ -547,6 +547,182 @@ body.mode-noter .app { display: block; }
 .fenetre-noter .tete-noter h1 { font: 600 20px/1.2 var(--serif); flex: 1; }
 .fenetre-noter textarea.champ { min-height: 84px; }
 
+/* --- lot noter : Noter, récapitulatif, propositions, Ajuster, Retenir, dictée, appel */
+/* Noter : l'aperçu en une ligne, le bouton « plusieurs », les puces */
+.noter-zone { display: block; }
+.noter[hidden] { display: none; }
+.noter-phrase { display: flex; align-items: flex-start; gap: 7px; font: 500 13px/1.4 var(--texte); color: var(--encre-2); }
+.noter-phrase.vide { color: var(--encre-3); }
+.noter-phrase svg.ic { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.noter-attendra { display: flex; align-items: flex-start; gap: 7px; font: 500 13px/1.4 var(--texte); color: var(--encre-2); }
+.noter-attendra svg.ic { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.noter-plusieurs {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 12px; border: 0; border-radius: 12px; text-align: left;
+  background: color-mix(in srgb, var(--signal) 12%, transparent); color: var(--signal-texte); font: 600 14px/1.3 var(--texte); cursor: pointer;
+}
+.noter-plusieurs:hover { background: color-mix(in srgb, var(--signal) 18%, transparent); }
+.noter-plusieurs:disabled { cursor: default; opacity: .8; }
+.noter-plusieurs:focus-visible, .prop-ligne:focus-visible, .retenir-info:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.apercu .genres .puce svg.ic { width: 14px; height: 14px; }
+.noter-puces { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
+.noter-puces .puce, .noter-etiquette .puce { flex: none; }
+.noter-puces .puce svg.ic, .noter-etiquette .puce svg.ic { width: 14px; height: 14px; }
+.noter-etiquette { display: flex; align-items: center; gap: 10px; }
+.noter-micro { width: 50px; height: 50px; min-height: 50px; padding: 0; border-radius: 50%; background: var(--fond-2); flex: none; }
+.noter-micro:hover { background: var(--fond-3); }
+/* Le récapitulatif « Rémy a trouvé N choses » */
+.noter-recap { display: flex; flex-direction: column; gap: 12px; }
+.noter-recap[hidden] { display: none; }
+.noter-recap-tete { display: flex; align-items: center; gap: 6px; margin: -6px -8px 0; }
+.noter-recap-tete .espace { flex: 1; }
+.noter-recap-titre { font: 600 22px/1.25 var(--serif); }
+.noter-recap-liste { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.noter-recap-ligne { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px 10px 8px; border-radius: 14px; background: var(--fond-2); transition: opacity 120ms ease-out; }
+.noter-recap-ligne.eteinte { background: color-mix(in srgb, var(--fond-2) 50%, transparent); }
+.noter-recap-ligne .case { margin-left: 0; }
+.noter-recap-ligne .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.noter-recap-champ { font: 500 16px/1.3 var(--texte); }
+.noter-recap-ou { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; color: var(--encre-2); }
+.noter-recap-ou svg.ic { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.noter-precision { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 2px; }
+.noter-question { color: var(--danger); font: 600 13px/1.35 var(--texte); }
+.noter-quand { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.noter-quand label { display: inline-flex; align-items: center; gap: 6px; }
+.noter-quand .champ { width: auto; min-width: 0; }
+/* « Ranger » reste sous la main au bas de la feuille, même quand la liste défile. */
+.noter-recap-pied { display: flex; justify-content: flex-end; }
+.feuille-corps .noter-recap-pied { position: sticky; bottom: -18px; margin: 0 -22px -18px; padding: 10px 22px 18px; background: var(--surface); border-top: 1px solid var(--filet); z-index: 1; }
+.noter-attente { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: var(--encre-2); }
+.noter-attente[hidden], .prop-attente[hidden] { display: none; }
+.noter-attente svg.ic, .prop-attente svg.ic { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+/* La dictée : la barre qui remplace le champ, les vocaux pas partis */
+.dictee-barre {
+  display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 3px 4px; border-radius: 16px;
+  border: 1.5px solid var(--signal); background: var(--surface); width: 100%;
+}
+.dictee-barre[aria-busy="true"] { border-color: var(--filet); padding: 3px 14px; }
+.dictee-point { width: 10px; height: 10px; border-radius: 50%; background: var(--signal); flex: none; animation: respire 1s steps(2, jump-none) infinite; }
+.dictee-temps { font: 500 15px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--encre); flex: none; }
+.dictee-libelle { color: var(--encre-2); font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dictee-libelle.fin { color: var(--signal-texte); font-weight: 600; }
+.dictee-espace { flex: 1; }
+.dictee-annuler { color: var(--danger); }
+.dictee-valider { border-radius: 50%; }
+.dictee-roue { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: tourne 700ms linear infinite; color: var(--encre-2); display: inline-block; }
+.dictee-attente { display: flex; flex-direction: column; gap: 6px; }
+.dictee-attente[hidden] { display: none; }
+.dictee-vocal { display: flex; align-items: center; gap: 6px; padding: 2px 2px 2px 10px; border-radius: 14px; background: var(--fond-2); }
+.dictee-vocal > svg.ic { color: var(--signal-texte); flex: none; }
+.dictee-vocal .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dictee-vocal strong { font-size: 14px; }
+.dictee-vocal .raison { font-size: 12px; color: var(--encre-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dictee-renvoyer { color: var(--signal-texte); }
+/* Les cartes de proposition (vues/propositions.js) */
+.proposition.prop-carte { padding: 0; border-color: color-mix(in srgb, var(--signal) 50%, var(--filet)); overflow: hidden; }
+.proposition.prop-carte.reglee { border-color: var(--filet); }
+.prop-tete { display: flex; align-items: center; gap: 8px; padding: 14px 14px 4px; }
+.prop-symbole { display: inline-grid; place-items: center; color: var(--encre-2); flex: none; }
+.prop-symbole svg.ic { width: 16px; height: 16px; }
+.prop-symbole.signal { color: var(--signal-texte); }
+.prop-symbole.danger { color: var(--danger); }
+.prop-entete { font: 600 15px/1.3 var(--texte); flex: 1; min-width: 0; }
+.prop-capsule { font: 500 12px/1 var(--texte); padding: 4px 8px; border-radius: 999px; background: var(--fond-2); color: var(--encre-2); white-space: nowrap; flex: none; }
+.prop-resume { padding: 4px 14px 2px; color: var(--encre-2); font-size: 15px; }
+.prop-perimee { display: flex; align-items: flex-start; gap: 6px; padding: 6px 14px 2px; color: var(--danger); font: 500 14px/1.35 var(--texte); }
+.prop-perimee svg.ic { width: 15px; height: 15px; flex: none; margin-top: 1px; }
+.prop-rangee { display: flex; align-items: stretch; border-top: 1px solid var(--filet); }
+.prop-tete + .prop-rangee { border-top: 0; }
+.prop-rangee > .case { align-self: center; margin-left: 4px; }
+.prop-rangee.decochee .prop-ligne { opacity: .45; }
+.prop-ligne { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; min-height: 44px; text-align: left; border: 0; background: none; color: inherit; font: inherit; }
+button.prop-ligne { cursor: pointer; transition: background-color 120ms ease-out; }
+button.prop-ligne:hover { background: var(--fond-2); }
+.prop-verbe { font: 600 12px/1 var(--texte); padding: 4px 8px; border-radius: 999px; background: color-mix(in srgb, var(--encre) 10%, transparent); color: var(--encre); white-space: nowrap; flex: none; margin-top: 2px; }
+.prop-verbe.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.prop-corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.prop-nom { font: 600 16px/1.35 var(--texte); overflow-wrap: anywhere; }
+.prop-nom.barree { text-decoration: line-through; color: var(--encre-3); }
+.prop-detail { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--encre-2); }
+.prop-detail svg.ic { width: 14px; height: 14px; flex: none; }
+.prop-detail.discret { color: var(--encre-3); }
+.prop-categories { font: 600 12px/1.3 var(--texte); color: var(--encre-2); }
+.prop-erreur { font: 500 14px/1.35 var(--texte); color: var(--danger); }
+.prop-regler { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; align-self: center; color: var(--signal-texte); background: color-mix(in srgb, var(--signal) 12%, transparent); }
+.prop-regler svg.ic { width: 15px; height: 15px; }
+.prop-ranges { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--filet); color: var(--encre-2); font-size: 14px; }
+.prop-pied { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-top: 1px solid var(--filet); }
+.proposition .prop-pied .rangee, .proposition .prop-boutons { margin-top: 0; }
+.prop-aide { font-size: 13px; color: var(--encre-3); }
+.prop-attente { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: var(--encre-2); }
+.prop-pied.prop-fait { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; color: var(--encre-2); font-size: 14px; }
+.prop-titre { font: 600 18px/1.3 var(--serif); padding: 2px 14px 0; overflow-wrap: anywhere; }
+.prop-carnet + .prop-carnet { margin-top: 6px; }
+.prop-carnet .prop-detail { padding: 2px 14px 0; }
+.prop-carte > .prop-resume:last-child, .prop-carte > .prop-carnet:last-child { padding-bottom: 14px; }
+.prop-carte > .prop-aide { padding: 8px 14px 0; }
+.prop-boutons { padding: 12px 14px 14px; }
+.prop-lien { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px 4px; color: var(--encre-2); font: 500 14px/1.3 var(--texte); text-decoration: underline; text-underline-offset: 3px; }
+.prop-lien:hover { color: var(--encre); }
+/* Ajuster une ligne, Retenir */
+.ajuster-sections { display: flex; flex-direction: column; gap: 18px; }
+.ajuster-section .titre-section { margin-bottom: 8px; }
+.ajuster-section > .aide { margin-top: 6px; }
+.ajuster-section .etiquette-champ { margin-top: 8px; }
+.ajuster-raccourcis { margin-top: 10px; }
+.ajuster-forme { display: flex; gap: 6px; flex-wrap: wrap; }
+.ajuster-note { flex: 1 1 200px; align-self: center; }
+.ajuster .prop-lien { padding-left: 0; }
+.retenir-haut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 44px; color: var(--encre-2); }
+.retenir-haut[hidden] { display: none; }
+.retenir-intertitre { margin: 4px 0 6px; }
+.retenir-infos { display: flex; flex-direction: column; gap: 2px; }
+.retenir-info { display: flex; align-items: flex-start; gap: 6px; width: 100%; min-height: 44px; padding: 0 8px 4px 0; border: 0; border-radius: 12px; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.retenir-info:hover { background: var(--fond-2); }
+.retenir-info .case { margin-left: -6px; }
+.retenir-info .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 11px; }
+.retenir-info .t { font-size: 15px; overflow-wrap: anywhere; }
+.retenir-info .section { font: 500 12px/1.3 var(--texte); color: var(--encre-3); }
+.retenir-pied { margin-top: 12px; }
+.retenir-espace { flex: 1; }
+.retenir-tout { color: var(--encre-2); }
+.retenir-tout.fort { color: var(--encre); }
+/* L'appel avec Rémy (plein écran) */
+dialog.appel { width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; margin: 0; padding: 0; border: 0; background: var(--fond); color: var(--encre); }
+dialog.appel[open] { display: flex; flex-direction: column; }
+dialog.appel::backdrop { background: var(--fond); }
+.appel-tete { display: flex; align-items: center; justify-content: space-between; height: calc(56px + var(--sa-haut)); padding: var(--sa-haut) 22px 0; border-bottom: 1px solid var(--encre); flex: none; }
+.appel-etiquette { display: block; font: 600 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--encre-2); }
+.appel-tete .appel-etiquette { color: var(--encre); }
+.appel-signal { width: 10px; height: 10px; background: var(--signal); }
+.appel-centre { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 12px 22px; }
+.appel-carre { width: 150px; height: 150px; margin: 20px; border: 0; padding: 0; display: grid; place-items: center; background: var(--fond-3); cursor: pointer;
+  transform: scale(calc(1 + var(--niveau, 0) * .16)); transition: transform 120ms ease-out, background-color 150ms ease-out; }
+.appel-carre.ecoute { background: var(--signal); }
+.appel-carre.parole { background: var(--encre); }
+.appel-carre:disabled { cursor: default; }
+.appel-carre:focus-visible { outline: 3px solid var(--encre); outline-offset: 6px; }
+.appel-r { font: 800 64px/1 var(--texte); color: var(--encre-2); }
+.appel-carre.ecoute .appel-r { color: var(--sur-signal); }
+.appel-carre.parole .appel-r { color: var(--fond); }
+.appel-textes { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 560px; }
+.appel-titre { font: 800 24px/1.2 var(--texte); letter-spacing: -.6px; }
+.appel-sous { color: var(--encre-2); font-size: 15px; }
+.appel-sous.erreur { color: var(--danger); }
+.appel-roue[hidden] { display: none; }
+.appel-echange { width: min(720px, 100%); margin: 0 auto; max-height: 200px; overflow: auto; padding: 0 22px; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.appel-dit { color: var(--encre-2); font-size: 16px; }
+.appel-reponse { font-size: 17px; margin-bottom: 4px; }
+.appel-pied { width: min(560px, 100%); margin: 0 auto; padding: 12px 22px calc(16px + var(--sa-bas)); display: flex; flex-direction: column; gap: 10px; flex: none; }
+.appel-actions { display: flex; flex-direction: column; gap: 10px; }
+@media (prefers-reduced-motion: reduce) { .appel-carre { transform: none; } }
+@media (max-width: 720px) {
+  .noter-recap-tete { margin: -4px -6px 0; }
+  .feuille-retenir .feuille-pied, .feuille-ajuster .feuille-pied { justify-content: stretch; }
+  .feuille-retenir .feuille-pied .btn.plein, .feuille-ajuster .feuille-pied .btn.plein { flex: 1 1 auto; }
+  .appel-carre { width: 130px; height: 130px; margin: 12px; }
+}
+/* --- fin lot noter */
+
 /* ---------- Projets ---------- */
 .maitre-detail { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; }
 .maitre { position: sticky; top: 16px; }
