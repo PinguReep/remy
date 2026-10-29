@@ -117,7 +117,8 @@ sous-agents, sans message). L'état le dit de deux façons :
   trouvées, aucune gardée : 1 d'un seul échange lancée par un programme
   (claude -p), 1 de Rémy lui-même. »), `hors-filtre` (et quoi faire :
   retirer `REMY_CONNAISSANCES_PROJETS`), `format-inconnu` (des sessions,
-  rien de lisible), `sous-t3` (toutes menées depuis T3), `base-vide` (une
+  rien de lisible — ou aucune session à l'endroit habituel mais des `.jsonl`
+  rangés plus profond, hors sous-agents : comptés, jamais lus), `sous-t3` (toutes menées depuis T3), `base-vide` (une
   base de T3 trouvée, sans fil), `a-relire` (pas encore relu depuis la mise
   à jour de Rémy) ;
 - `recensement` (nouveau), avec sa `phrase` : « 312 sessions : 280 lues, 30
