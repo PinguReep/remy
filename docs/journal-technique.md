@@ -104,6 +104,236 @@ que le chat répondait. Rejoué contre de faux serveurs compatibles OpenAI
   garde de charge laisse passer le chat d'abord (comme sur main, de 4 h à
   5 h 10).
 
+## 2026-10-29 — Recherche rapide : la tour cherche, le modèle répond en un appel
+
+- **Le problème.** Une question sur l'ACRE prenait plus d'une minute. Ce n'est
+  pas le web : moteur et pages, c'est 1 à 3 s (mesuré ci-dessous). C'est le
+  nombre d'appels au modèle local, chacun avec sa réflexion : le modèle
+  principal écrit la question (réflexion « high »), la salle blanche choisit
+  une page, la lit, en choisit une autre, rédige sa synthèse, puis le modèle
+  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits (estimés),
+  plus la lecture de ~7 000 jetons de pages. Le débit du modèle n'est mesuré
+  nulle part dans le dépôt (la jauge et ses tests n'ont que des exemples
+  d'affichage) : l'estimation ci-dessous le suppose, et le banc de la tour
+  (vrai modèle) le mesure.
+- **Les stratégies** (`lib/recherche-rapide.js`, `REMY_RECHERCHE_MODE`) :
+  `salle` (le 25/10, inchangé) ; `direct` — pour une question classée « web »
+  (`indiceWeb`, sans routeur), la TOUR cherche avec la question de Sam, classe
+  les résultats (sites officiels, puis le site de la ville de la question, puis
+  l'ordre du moteur ; une page par site d'abord), lit 3 pages EN PARALLÈLE,
+  en extrait les passages utiles sans IA (mots de la question pondérés par
+  leur rareté sur la page, chiffres — montants, pourcentages, heures, dates,
+  durées —, lignes de tableau chiffrées, chapeau, avec le titre qui précède,
+  et la liste qu'annonce une ligne finie par « : » — « vous devez : » suivi
+  des conditions de l'ACRE, vérifié sur la page de l'Urssaf ; une année seule
+  ne rend pas une ligne pertinente ; ~1 500 caractères par page), et le modèle principal répond en UN appel, sans
+  aucun outil web, la matière jointe au message de Sam dans
+  `<matiere_externe>` avec liens et dates ; `hybride` (le défaut) — direct, plus
+  UNE relance possible : l'outil `rechercher` avec un budget de 1, que le
+  modèle appelle avant d'écrire si les passages ne répondent pas (le
+  « marqueur structuré » est un appel d'outil natif). La vérification des
+  chiffres (`chiffresAVerifier`) relit les pages ENTIÈRES lues par la tour
+  (`webDeja` passé à `lib/glm.js`). `REMY_RECHERCHE_REFLEXION` (défaut `low`)
+  borne la réflexion quand la matière est là (`off` : « direct-vif »).
+- **Hors des questions « web »** (ou quand la question ne s'y prête pas),
+  `rechercher` reste offert ; hors mode salle, la TOUR l'exécute de la même
+  façon (chercher la question écrite par le modèle, lire, extraire) au lieu de
+  la boucle de la salle blanche : 2 appels au lieu de 4 ou 5. Ce qui sort est
+  un sous-ensemble de ce que sortait la salle blanche : la question du modèle,
+  puis les pages rendues par le moteur — aucune adresse écrite par un modèle,
+  ni les requêtes de la salle blanche. Une question écrite par le modèle
+  APRÈS une lecture (relance de l'hybride, deuxième recherche) est, elle,
+  bien écrite par un modèle qui a lu une page : voir « Contre-relecture »
+  plus bas (filtre sans exemption, aucun nom propre).
+- **Ce qui sort, en direct.** La question de Sam, nettoyée (salutations,
+  « dis-moi », « stp » ; les phrases interrogatives seulement ; 200
+  caractères), et SEULEMENT si : elle porte au moins deux mots utiles (« et
+  pour les commerçants ? » n'a pas de sujet : le modèle reformule) ; elle ne
+  contient aucun nom propre, sigle inconnu ni identifiant (`nomsDuTexte`, le
+  lexique structurel du filtre appliqué au message — sans la règle des lignes
+  de santé : « effets du lithium » est le sujet même) ; elle passe le filtre
+  SANS l'exemption « Sam l'a écrit » (`verifier(…, { exempter: false })`) :
+  un nom de sa mémoire écrit dans sa question ne part pas tel quel. Sinon,
+  pas de recherche directe : le modèle écrit une question générale
+  (`rechercher`), filtrée comme avant. C'est plus strict que la salle
+  blanche pour les noms (la question écrite par le modèle pouvait reprendre
+  un nom que Sam venait d'écrire) ; pour le CONTEXTE, la question partant
+  telle quelle, il a fallu deux règles de plus (contre-relecture) : une
+  question à la première personne qui porte un contexte de santé, de
+  famille, de justice ou un montant (« J'ai un cancer du sein, l'ACRE est-elle
+  cumulable avec l'AAH ? ») et une suite (« Et pour la vente ? ») reviennent
+  au modèle. Les liens donnés par Sam (hors privé) sont lus tels quels, sans
+  moteur ; en privé, jamais.
+- **Garde-fous inchangés.** Conversation privée : réglage `recherchePrivee`
+  (coupé par défaut), filtre privé (la conversation au lexique) ; recherche
+  web coupée ou réglages illisibles : rien ; moteur en panne : la note de la
+  tour le dit au modèle, et la ligne « À vérifier (recherche impossible,
+  chiffres de mémoire) » reste ; étapes « Rémy cherche « … » » et « Rémy lit
+  3 pages en même temps (…) », lignes `recherche` et `lecture` au panneau des
+  coûts (0 $) ; plus de ligne `salle blanche`.
+- **Plus rapide aussi** : lectures parallèles avec remplaçants (une page
+  refusée laisse sa place au résultat suivant, 5 essais au plus), temps total
+  `REMY_RECHERCHE_LECTURES_MS` (5 s) et délai de grâce
+  (`REMY_RECHERCHE_GRACE_MS`, 1,5 s : dès qu'un site officiel ou deux pages
+  sont lus, les autres n'ont plus que ce temps) ; relais DuckDuckGo (si
+  html.duckduckgo.com n'a pas répondu en 2 s, lite.duckduckgo.com part aussi,
+  la première réponse gagne — une seule requête dans le cas courant) ; cache
+  en mémoire vive des résultats et des pages (15 min, jamais sur le disque).
+- **Mesures** (`scripts/mesurer-recherche.mjs`, 29/10, depuis une machine de
+  développement : adresse de centre de données, d'où des blocages DuckDuckGo
+  intermittents — 8 sur 36 à la première série, 0 sur 40 puis 0 sur 48 aux
+  deux suivantes — et des pages refusées qu'une adresse résidentielle ne
+  verrait pas) — trois passes, 12 questions (règles, montants, taux, date limite, horaires
+  de mairie, prix du gazole, produit, météo, actualité, abonnement) :
+  - DuckDuckGo html, la question telle quelle : 24 réponses sur 36 (8
+    vérifications anti-robot, 4 délais de 10 s), médiane 724 ms, mais 4
+    réponses sur 24 vers 5,7 s (P90 5,7 s) — d'où le relais à 2 s. Site de
+    référence dans les 3 premiers : 23/24 (24/24 une fois les sites officiels
+    remontés), premier : 20/24 (21/24). Mots-clés au lieu de la question :
+    7/8 dans les 3 premiers, P90 6,0 s. Lite : médiane 700 ms, 7/7, mais
+    autant bloqué.
+  - Lire 3 pages (une par site, officiels d'abord, jusqu'à 3 lues) : en série
+    médiane 1,6 s (P90 3,8 s), en parallèle 1,0 s (P90 1,6 s), sur 33 trios ;
+    une fois 11,1 s en parallèle à cause d'une seule page lente — 2,4 s avec
+    le délai de grâce. Pages : 90/118 lues (27 refusées : Cloudflare, 403 —
+    l'adresse de centre de données), médiane 489 ms, P90 1,1 s ; 68 datées.
+  - Extraction : la matière jointe pèse 4 800 caractères (médiane, ~1 500
+    jetons) contre 22 200 pour les trois pages entières (~6 900 jetons ; la
+    salle blanche en lit une ou deux). La réponse attendue est dans les
+    passages pour 11 questions sur 12 — dont 3 seulement sur une page
+    officielle — avec des critères resserrés par la contre-relecture (le
+    premier critère comptait « conditions », mot de la question, et
+    n'importe quelle année) ; 12 sur 12, dont 6 sur une page officielle,
+    après les corrections de l'extraction (ci-dessous), mêmes pages.
+  - Côté web, chaque stratégie coûte 1,5 à 2,5 s (banc avec un faux modèle :
+    salle 1,9 s, direct 1,7 s pour l'ACRE) : la lenteur est dans le modèle.
+- **Choix du défaut : `hybride`, réflexion `low`.** Estimation (même script,
+  repassé après la contre-relecture : tailles MESURÉES de ce qu'envoie chaque
+  appel ; SUPPOSÉS : le débit d'écriture — aucune mesure dans le dépôt, la
+  jauge et ses tests n'ont que des exemples d'affichage, d'où trois
+  hypothèses —, 2 000 jetons/s en lecture, réflexion high 400 / medium 250 /
+  low 120 jetons, réponse et synthèse 350), par message, médianes des 12
+  questions :
+
+  | Stratégie | Appels | Jetons écrits | Consigne en cache, à 20 / 40 / 80 jetons/s | Consigne froide de 31 000 jetons, à 40 jetons/s |
+  | --- | --- | --- | --- | --- |
+  | salle (2 pages) | 5 | ~2 090 | 110 / 58 / 32 s | 74 s |
+  | salle (1 page) | 4 | ~1 800 | 94 / 49 / 26 s | 64 s |
+  | direct (réflexion low) | 1 | ~470 | 26 / 14,5 / 8,6 s | 30 s |
+  | direct sans réflexion | 1 | ~350 | 20 / 11,5 / 7,1 s | 27 s |
+  | hybride avec relance | 2 | ~940 | 52 / 29 / 17 s | 44,5 s |
+
+  (Hybride sans relance : comme direct.) Les temps absolus dépendent du
+  débit, pas le classement : à tout débit, la salle coûte environ quatre
+  fois le direct. Direct et hybride font le même appel quand les passages
+  suffisent (12 questions sur 12, critère strict) ; la relance de l'hybride
+  ne coûte que quand ils ne suffisent pas, et rattrape une page mal choisie
+  ou une extraction ratée — et une suite, que le direct ne rattrape pas.
+  Côté confidentialité, l'hybride n'est défendable qu'avec les corrections
+  de la contre-relecture (contexte personnel, relance sans nom propre,
+  relance coupée quand le moteur bloque) : elles sont faites. Le banc de la
+  tour tranche, débit mesuré à l'appui : si la relance part souvent pour
+  rien, `direct` ; si la réponse sans réflexion vaut l'autre,
+  `REMY_RECHERCHE_REFLEXION=off`.
+- **Le banc** (`scripts/banc-recherche.mjs`, une commande sur la tour,
+  `docs/tour.md`) : 9 questions (dont une suite de conversation) × 4
+  stratégies contre le vrai modèle ; temps total et au premier mot, appels
+  au modèle, jetons, pages lues, chiffres vérifiés / à vérifier, débit
+  d'écriture mesuré, réponses complètes dans `<coffre>/.remy/bancs/`.
+  Sans Motion (clé retirée du processus), sans écrire la mémoire ni les
+  conversations (il appelle le modèle directement), sans IA cloud ; un
+  blocage de DuckDuckGo est attendu (5 min) puis l'essai rejoué ; un essai
+  sans page lue est compté à part. Essayé ici contre un faux modèle (moteur et
+  pages réels, puis tout simulé) : il tourne de bout en bout.
+- **Autres points d'entrée sans clé, écartés** : Mojeek, Brave Search,
+  Ecosia, Qwant, Bing et Startpage interdisent leurs pages de résultats aux
+  robots (`robots.txt` : `Disallow: /search`, `/sp/`…) ; la recherche de
+  service-public.gouv.fr est permise mais ne couvre que « Démarches et
+  outils » (« Aucun résultat » pour « acre conditions »), le reste demandant
+  JavaScript ; Wikipédia (API) ne dit ni règles ni prix à jour. SearXNG reste
+  la parade documentée (`docs/tour.md`). Mesuré : la question telle quelle
+  vaut les mots-clés — site de référence dans les 3 premiers aussi souvent
+  (14/16 pour les deux en ordre alterné), même latence quand l'ordre alterne
+  (médiane 630 contre 547 ms, P90 743 contre 709 ms). Dans une série où la
+  question partait toujours la première, les réponses vers 5,7 s sont toutes
+  tombées sur elle (P90 5,7 s contre 0,6 s) : c'est sans doute la première
+  requête d'un sujet qui tarde, quelle que soit sa forme — le relais à 2 s
+  la couvre. La tour envoie la question.
+- **Limites.** Les passages sont choisis sans IA : une page où la réponse est
+  dans une image, un PDF ou un tableau rendu en JavaScript (le site des prix
+  des carburants) n'en donne pas — le mode hybride relance, et les extraits
+  du moteur sont joints (marqués « pages NON lues »). Une question qui ne
+  ressemble pas au web (`indiceWeb`) n'a pas de recherche directe : le modèle
+  peut toujours appeler `rechercher` (2 appels). Un nom propre public absent
+  des listes (une marque, un lieu) renvoie la question au modèle : plus lent,
+  pas plus risqué. Ajoutés aux listes du filtre : LEP, PEL, PEA, CEL,
+  livret A, PAC, PPA, prime d'activité ; « pro », « max », « ultra ».
+  Non fait : préchauffer le modèle pendant les lectures (le gain est borné
+  par le temps du web, 1 à 2 s, et nul si le serveur garde déjà la consigne
+  en cache) ; écrire la réponse avant la fin des lectures (le délai de grâce
+  borne déjà l'attente).
+- **Contre-relecture (même nuit) : ce qui a été corrigé.** Chaque point a
+  son test, qui échouait avant (`test/recherche-rapide.test.mjs`).
+  - *Contexte personnel* (bloquant). La requête directe part TELLE QUELLE ;
+    le filtre ne connaît que la mémoire et le planning, `nomsDuTexte` que les
+    noms propres : « J'ai un cancer du sein, est-ce que l'ACRE est cumulable
+    avec l'AAH ? » sortait mot pour mot, en privé aussi (recherche permise),
+    comme « … avec 80 000 € de chiffre d'affaires ? ». Désormais, une question
+    à la première personne (je, j', m', mon, ma, mes, nous…) qui porte un mot
+    de santé, de famille, de justice ou un montant en euros revient au modèle
+    (raison « personnel »), qui écrit une question générale. Les 12
+    questions des mesures et « J'ai droit à l'ACRE si je suis au RSA ? »
+    restent directes ; « mari » ne prend pas « mariage » (mots entiers).
+  - *Relance après lecture* (bloquant). L'affirmation « aucune requête écrite
+    par un modèle qui a lu une page » était fausse pour la relance de
+    l'hybride et toute deuxième recherche : une page piégée faisait sortir
+    un nom écrit trois messages plus haut (hors privé, la conversation n'est
+    pas au lexique). Désormais, dès que de la matière web a été lue dans le
+    message (passages joints, premier `rechercher`, synthèse de la salle
+    blanche, extraits du moteur), la question passe le filtre SANS
+    exemption et ne peut contenir aucun nom propre, sigle inconnu ni
+    identifiant (refus « nom propre après lecture », tracé sans le nom). La
+    règle vaut aussi en mode salle, où le même trou existait depuis le 25/10
+    (la synthèse de la salle blanche peut porter la consigne d'une page).
+    PASS et Île-de-France Mobilités rejoignent les organismes publics (une
+    relance ordinaire les cite).
+  - *Extraction* (important). Sur la page Smic de l'Urssaf, les passages
+    retenus étaient trois boutons « Partagez le contenu… » et le montant de
+    Mayotte ; sur l'annuaire officiel, « Horaires » sans rien dessous.
+    Désormais : bruit de partage écarté (« Partagez », « Nouvelle fenêtre »,
+    « Lien copié », « Consulter l'historique »…) ; un titre court qui porte
+    des mots de la question emporte les lignes chiffrées qui le suivent (une
+    cellule par ligne, une liste d'horaires) ; un passage en double est
+    écarté. Mêmes pages réelles, critère strict : 11/12 (3 sur une page
+    officielle) → 12/12 (6), pour +4,5 % de caractères.
+  - *Pages vides* (moyen). Trois pages vides prenaient les trois places (« la
+    tour a lu 3 pages », citations vides) et deux déclenchaient le délai de
+    grâce, coupant la page utile mais lente. Une page de moins de 150
+    caractères compte désormais comme un échec : le résultat suivant prend
+    sa place.
+  - *Moteur bloqué* (coût). En hybride, la relance restait offerte alors
+    qu'elle échouerait : un second appel au modèle pour rien. Plus offerte ni
+    annoncée quand aucune page n'est lue et que DuckDuckGo est en pause.
+  - *Suite* (qualité). « Et le seuil pour la vente de marchandises, c'est
+    combien en 2026 ? » partait sans « micro-entreprise », sans recours en
+    direct. Une question qui commence par Et, Mais, Sinon, Aussi, Pareil,
+    Celui-ci… revient au modèle (raison « suite »). Le banc ne jouait que
+    des questions autonomes (ce qui avantageait le direct) : il joue
+    maintenant une suite, avec les messages qui la précèdent.
+  - *Docs.* Le débit de 40 jetons/s n'était pas une mesure (corrigé : trois
+    hypothèses, et le banc mesure le débit réel) ; les blocages DuckDuckGo
+    sont intermittents, pas systématiques (voir « Mesures ») ; le banc dit
+    qu'installer la branche met l'hybride en service tout de suite, et
+    comment garder la salle jusqu'au verdict.
+- **Contre-relecture : ce qui ne change pas, et pourquoi.** Un montant
+  présent sur une page lue mais hors des passages montrés au modèle passe
+  pour « vérifié » : la vérification dit qu'un chiffre figure dans une
+  source lue, ce qui reste vrai — c'est le modèle qui l'a trouvé ailleurs,
+  et il est juste. Limite connue, acceptée. Les fausses balises de fin et
+  fausses « Note de la tour » d'une page restent dans le cadre (testé) ; une
+  question de plus de 200 caractères n'est pas cherchée telle quelle
+  (testé).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil

@@ -162,7 +162,28 @@ Depuis le 25/10, le modèle local cherche et lit lui-même sur le web, depuis la
 tour : un moteur de recherche, puis la lecture des pages (sans JavaScript ; le
 navigateur reste pour les autres). Ni Claude ni carte « Tu autorises ? ».
 
-**La salle blanche.** Rémy, qui connaît ta mémoire et ton planning, ne cherche
+**La recherche rapide (depuis le 29/10, par défaut).** Une question qui demande
+le web (un montant, un horaire, une actualité…) est cherchée par la TOUR, avec
+tes mots, avant même que le modèle réfléchisse : elle lit les meilleures pages
+en même temps (sites officiels d'abord), en garde les passages utiles, et le
+modèle répond en un seul appel, avec les liens et les dates. Avant, la salle
+blanche enchaînait quatre ou cinq appels au modèle (plus d'une minute pour
+l'ACRE). Ta question ne part ainsi que si elle ne contient aucun nom propre,
+sigle inconnu ni numéro, rien de ta mémoire — même écrit par toi —, et aucun
+contexte personnel à la première personne (santé, famille, justice, un
+montant : « J'ai un cancer, l'ACRE est-elle cumulable avec l'AAH ? ») ; sinon,
+et pour une suite (« Et pour la vente ? »), Rémy écrit lui-même une question
+générale, et la tour la cherche de la même façon. Aucune adresse n'est écrite
+par un modèle : seules s'ouvrent les pages que le moteur rend (ou tes liens).
+En mode « hybride » (le défaut), Rémy peut relancer UNE recherche si les
+passages ne répondent pas ; comme il a lu des pages avant de l'écrire, cette
+relance passe le filtre SANS l'exemption de ce que tu viens d'écrire, et ne
+peut contenir aucun nom propre (une page piégée pourrait le lui souffler) — la
+même règle vaut, dans tous les modes, pour toute question écrite après une
+première lecture. Moteur bloqué : pas de relance (elle échouerait).
+
+**La salle blanche** (`REMY_RECHERCHE_MODE=salle`, le comportement du 25/10).
+Rémy, qui connaît ta mémoire et ton planning, ne cherche
 pas lui-même : il écrit une question, et une recherche séparée, sur la tour,
 qui ne sait RIEN de toi (ni mémoire, ni planning, ni conversation, ni prénom),
 cherche, lit les pages, et lui rend une synthèse avec les passages cités, leurs
@@ -182,7 +203,8 @@ généraux, ou te propose d'écrire le mot toi-même (il partira alors) ; après
 deux refus dans un message, il répond sans le web. Le même filtre garde le
 navigateur de Claude quand il prend le relais (secours).
 
-Ce qui sort : la question de Rémy (la première recherche) et les requêtes de
+Ce qui sort : ta question (recherche rapide, sans nom propre ni terme de ta
+mémoire) ou la question générale de Rémy, et — en mode salle — les requêtes de
 la salle blanche, vers le moteur, puis les pages
 ouvertes — seulement des adresses trouvées par la recherche, données par toi
 dans la conversation, ou d'un site public (`*.gouv.fr`, urssaf.fr, ameli.fr,
@@ -195,7 +217,8 @@ réglages sont illisibles, tout reste coupé).
 **Conversations privées** : pas de recherche, sauf si tu allumes « Recherche
 dans les conversations privées » (coupé par défaut ; Réglages de l'app
 iPhone, grisé quand la tour le verrouille ; sans effet quand la recherche web
-est coupée). Allumé, la recherche passe par la salle blanche, et le filtre y
+est coupée). Allumé, la recherche passe par la tour (ou la salle blanche, en
+mode salle) — jamais par un lien de la conversation —, et le filtre y
 ajoute la conversation privée : ses noms propres et numéros ne sortent jamais
 (même si tu viens de les écrire), ses mots rares seulement si tu les réécris
 dans ton message ; les sujets de ta question du moment passent.
@@ -215,9 +238,51 @@ dans ton message ; les sujets de ta question du moment passent.
 | `REMY_SALLE_BLANCHE_DELAI_MS` | durée totale de ces recherches par message (défaut 120 000, soit 2 min) |
 | `REMY_FILTRE_PERMIS` | mots toujours permis par le filtre, séparés par des virgules (ta commune si elle n'est ni grande ni dans ta Base Adresse, un club, une marque) |
 | `REMY_SALLE_BLANCHE=off` | Rémy cherche lui-même, comme avant le 25/10 (plus rapide, moins protégé : le filtre reste, mais jamais de recherche en conversation privée) |
+| `REMY_RECHERCHE_MODE` | `hybride` (défaut : la tour cherche et lit, une relance possible), `direct` (un seul appel au modèle, aucune relance), `salle` (la salle blanche du 25/10) |
+| `REMY_RECHERCHE_REFLEXION` | la réflexion du modèle quand les passages sont déjà là : `low` (défaut), `off` (plus rapide), `medium`, `high` |
+| `REMY_RECHERCHE_PAGES` | pages lues en même temps (défaut 3) |
+| `REMY_RECHERCHE_LECTURES_MS` / `REMY_RECHERCHE_GRACE_MS` | temps maximal des lectures (5 000) ; une fois un site officiel ou deux pages lus, le temps laissé aux autres (1 500) |
+| `REMY_RECHERCHE_RELAIS_MS` | si DuckDuckGo (html) tarde, son autre point d'entrée (lite) part en relais après ce délai (2 000 ; 0 : l'un après l'autre) |
+| `REMY_RECHERCHE_CACHE_MS` | résultats et pages gardés en mémoire vive, jamais sur le disque (15 min ; 0 : pas de cache) |
 
 Après un changement de `remy.env`, relance l'installeur avec le même `-Ref` :
 il redémarre Rémy.
+
+### Comparer les stratégies : le banc (une commande)
+
+Le banc tourne depuis la copie de production : il faut donc d'abord y
+installer le commit qui le contient (« Mettre à jour » ci-dessus, `-Ref
+<commit>`). Cette installation met la recherche rapide (`hybride`) en service
+tout de suite ; pour garder la salle blanche jusqu'au verdict, ajoute AVANT
+l'installation la ligne `REMY_RECHERCHE_MODE=salle` à `remy.env` — le banc
+impose sa stratégie à chaque essai, il compare quand même les quatre.
+
+Ensuite, dans un PowerShell (pas besoin d'administrateur), Rémy de préférence
+inutilisé pendant ce temps (les Sparks seraient partagées) :
+
+```powershell
+cd $env:USERPROFILE\.remy\app
+node --env-file=..\remy.env scripts\banc-recherche.mjs
+```
+
+Neuf questions (règles, montants, horaires, prix, météo, actualité, produit,
+et une suite de conversation : « Et pour la vente de marchandises, c'est
+combien ? »), chacune avec les quatre stratégies (`salle`, `direct`,
+`hybride`, `direct-vif` = direct sans réflexion), contre le vrai modèle local :
+un tableau (temps total, temps au premier mot, appels au modèle, pages lues,
+chiffres vérifiés / à vérifier, débit d'écriture MESURÉ du modèle) et un JSON
+avec les réponses complètes dans `<coffre>\.remy\bancs\` (elles peuvent
+reprendre des bribes de ta mémoire, qui reste dans le coffre ;
+`--sans-memoire` l'évite).
+Compte 20 à 40 minutes. Rien n'est écrit dans Motion, l'agenda, la mémoire ni
+les conversations ; aucune IA cloud (la clé Anthropic est retirée du processus).
+Options : `--modes direct,hybride`, `--questions acre,smic`, `--sans-memoire`,
+`--planning` (ajoute l'instantané Motion à la consigne, en lecture seule, pour
+une consigne de la taille réelle). Pour garder une stratégie :
+`REMY_RECHERCHE_MODE=…` dans `remy.env`, puis l'installeur.
+
+La partie sans modèle (moteur, pertinence, lectures en série et en parallèle,
+extraction) se mesure aussi seule : `node scripts\mesurer-recherche.mjs`.
 
 ### Si DuckDuckGo se met à bloquer : SearXNG sur un Spark
 
