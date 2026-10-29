@@ -4,6 +4,106 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 — Sparks et nuit : « reflexion-nuit abandonné · Sparks 0/2 », la vraie cause
+
+Constat sur la tour après la mise à jour : `/api/health` disait « reflexion-nuit
+abandonné : Le modèle local (GLM, sur la tour) ne répond pas… · Sparks 0/2 »,
+alors que l'installeur venait d'écrire « GLM : ✅ joignable (DeepSeek-…) » et
+que le chat répondait. Rejoué contre de faux serveurs compatibles OpenAI
+(`test/sparks-nuit.test.mjs`), avant et après.
+
+- **L'alerte venait d'une version d'avant.** Son texte (« GLM, sur la tour »)
+  n'existe plus depuis le 23/10. L'ancienne version envoyait toujours
+  `REMY_GLM_MODEL` (GLM-5.3) : les Sparks passées à DeepSeek répondaient 404
+  `model_not_found`, et `fournisseurDeFond` traduisait TOUTE erreur du modèle
+  par « ne répond pas ». Puis `etatJobs` montrait chaque abandon pour
+  toujours. Désormais : une alerte est datée (« abandonné le 29/10 à 05:10 »),
+  disparaît quand une tâche du même type réussit ensuite, et au bout de 48 h
+  (`REMY_ALERTE_JOBS_H`).
+- **« Sparks 0/2 » ne comptait pas les Sparks** mais les inférences en cours de
+  la garde de charge (`taps + fond` sur `REMY_SPARKS_MAX`) : 0 la nuit, lu
+  « aucune Spark ne répond ». Renommé « inférences en cours : 0 (fond : 2 à la
+  fois au plus) ». La nouvelle ligne `sparks` (`lib/sparks.js`) sonde chaque
+  serveur déclaré dans `REMY_SPARKS` (`/models`, 3 s, au plus toutes les 30 s,
+  seulement quand on demande l'état) : « Sparks 1/2 répond — spark-1 (Rémy) :
+  DeepSeek-… · spark-2 : ❌ injoignable ». En tensor parallèle, seule la
+  Spark de tête a un serveur HTTP : l'autre se déclare par un port qu'elle
+  ouvre (`spark-2=tcp://<ip>:22`), « allumée (tensor parallèle, sans serveur
+  de modèle) » — sinon fausse alerte « Sparks 1/2 ». Sans `REMY_SPARKS`, une seule
+  adresse est connue : la ligne ne prétend pas compter (deux Sparks en tensor
+  parallèle derrière une adresse, ou une seule ? la tour ne peut pas le
+  savoir). Les adresses n'en sortent jamais (des noms) ; le jeton du relais ne
+  part que vers `REMY_GLM_URL`. Même chose dans `/api/modeles` (`sparks`) et
+  dans `GET /api/incidents/:code` (« Copier le diagnostic » : ce que chaque
+  Spark sert au moment de la copie).
+- **Mêmes symptômes, d'autres causes, corrigées aussi :**
+  - modèle changé ou renommé entre deux lectures de `/models` (cache d'une
+    minute) : un 404 (ou 400 qui le dit) relit la liste et repart une fois
+    avec le modèle servi ; s'il n'y en a pas d'autre, « Les Sparks ne servent
+    pas le modèle demandé (« X », réponse 404) » ; une adresse fausse (404 sur
+    `/models` aussi) reste une erreur de réponse ;
+  - premier jeton lent : les en-têtes au-delà de 8 s, le silence au-delà de
+    60 s ne coupent plus si `/models` répond (le serveur lit un long contexte
+    ou fait la queue) ; en-têtes : jusqu'à 2 min (`REMY_GLM_ENTETES_MAX_MS`),
+    puis « occupé » ; silence après le premier mot : trois fois, puis « délai »
+    (« n'écrit plus rien depuis 3 min »). Éteint pour de bon : coupé aussitôt ;
+  - réflexion longue : une tâche sans flux en job a 4 min 50
+    (`REMY_FOND_DELAI_MS`, plafonné ; 3 min pour un tap), et un délai dépassé
+    avec `/models` vivant est « délai », plus « injoignable » : le modèle n'est
+    pas noté en panne pour la minute suivante (le routeur à 10 s le faisait).
+    Pas plus de 5 min SANS FLUX : le fetch de Node (undici) abandonne de
+    lui-même une réponse sans en-têtes à 300 s (`headersTimeout`), en
+    « fetch failed » (cause `UND_ERR_HEADERS_TIMEOUT`). Rejoué contre un faux
+    serveur (réponse à 310 s) avec un plafond à 15 min : « ne répond pas
+    (fetch failed) », essai NON compté, repris toutes les 20 min jusqu'à 8 h
+    (5 min de calcul jetées à chaque fois) et modèle noté en panne une minute
+    pour le chat. Les délais d'undici sont maintenant des « délai » ; au-delà
+    de 5 min, il faudra streamer ;
+  - 429 (Sparks saturées) : « occupé », plus « ne répond pas ».
+- **La nuit réessaie.** Une erreur `indisponible` (modèle éteint ou saturé)
+  ne compte pas d'échec pour un type qui déclare `repriseJusqua` : nouvel
+  essai toutes les 20 min (`REMY_REPRISE_LOCAL_MIN`), un dernier à l'heure
+  limite, puis la règle commune (10, 20, 40 min, abandon). La réflexion de la
+  nuit : jusqu'à 8 h, heure de Paris, le jour de la réflexion
+  (`REMY_REFLEXION_LIMITE`, au moins 2 h après son heure). Un essai sur des
+  Sparks éteintes = une sonde `/models`, aucune inférence. Un « délai », lui,
+  compte : on ne relance pas 5 min de calcul toutes les 20 min.
+- **Les messages nomment le modèle servi** (`nomModeleLocal()` : vu sur
+  `/models`, jamais l'ancien réglage ni le défaut ; « le modèle local » tant
+  qu'on ne sait pas) et disent quoi faire selon la cause (`ErreurLocal`,
+  `code` « secours_coupe » ou « prive », `nature`). `SECOURS_COUPE` et
+  `PRIVE_DE_FOND` restent exportés pour qui les compare ; `estSecoursCoupe` /
+  `estPriveDeFond` reconnaissent les deux. Le verdict de `verifierGlm` ne dit
+  plus « Rémy passe par Claude » (faux quand le secours est coupé).
+- **Commerces : mise à jour mensuelle** (`lib/commerces-maj.js`, job
+  `commerces-maj`, circuit « socle », sans IA). Il n'y en avait pas : l'import
+  ne se faisait qu'à la main. Demandée la nuit (1 h–3 h, `REMY_COMMERCES_HEURE`)
+  quand le dernier import a 30 jours (`REMY_COMMERCES_JOURS`) ou que son format
+  est dépassé, seulement si une base existe (le premier import reste un
+  geste) ; `REMY_COMMERCES_AUTO=off` ou `REMY_LIEUX=off` la coupent. Le même
+  importeur, dans un processus à part (75 min au plus) : la mémoire du serveur
+  n'est pas touchée, un import interrompu garde l'ancienne base. Échec : 3
+  essais dans la nuit (30 min, 1 h), puis la nuit suivante (clé du jour).
+  Jamais au-delà de la fenêtre (3 h) : la file des jobs est séquentielle, et
+  un Overpass qui traîne (75 min par essai) retardait la sauvegarde de 3 h et
+  la réflexion de 4 h (rejoué : réflexion due à 0,3 s, lancée à 3,1 s, à la
+  fin de l'import). Chaque essai est borné par la fin de la fenêtre (`avant`
+  dans l'entrée du job) ; un essai qui tombe après ne lance rien.
+  Affichée : ligne `commerces` de `/api/health` (date, prochaine, dernier
+  échec daté) et `commerces.maj` dans la vue des lieux.
+- **Capacités** : `sparks-v1` (`sparks` dans `/api/modeles` et dans un
+  incident) et `commerces-maj-v1` (`commerces.maj` dans `/api/lieux`), pour
+  que l'app ne les cherche que sur une tour qui les sert.
+- **Écartés à la contre-relecture (et pourquoi).** (1) Chaque reprise de la
+  réflexion relit le contexte, Motion compris, avant de sonder le modèle :
+  au plus 3 requêtes Motion toutes les 20 min (quota : 12 par minute ;
+  instantané en cache une minute), aucune IA — sonder d'abord dupliquerait
+  la décision privé / secours de `fournisseurDeFond`. (2) Après 8 h, les 4
+  essais comptés courent jusque vers 9 h 10 : sur Sparks éteintes, une sonde
+  `/models` chacun ; revenues, le briefing sort quand même le matin, et la
+  garde de charge laisse passer le chat d'abord (comme sur main, de 4 h à
+  5 h 10).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil
