@@ -670,6 +670,7 @@ button.prop-ligne:hover { background: var(--fond-2); }
 .ajuster-section .etiquette-champ { margin-top: 8px; }
 .ajuster-raccourcis { margin-top: 10px; }
 .ajuster-forme { display: flex; gap: 6px; flex-wrap: wrap; }
+.ajuster button.puce[role="radio"][aria-checked="true"] { background: var(--encre); color: var(--fond); border-color: var(--encre); }
 .ajuster-note { flex: 1 1 200px; align-self: center; }
 .ajuster .prop-lien { padding-left: 0; }
 .retenir-haut { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 44px; color: var(--encre-2); }

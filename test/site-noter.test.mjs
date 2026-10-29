@@ -18,6 +18,8 @@ console.warn = () => {};
 
 const E = await import("../public/app/analyse/etiquettes.js");
 const R = await import("../public/app/analyse/rangement.js");
+const P = await import("../public/app/vues/propositions.js");
+const A = await import("../public/app/vues/ajuster.js");
 const D = await import("../public/app/dictee.js");
 const T = await import("../public/app/vues/retenir.js");
 const N = await import("../public/app/vues/noter.js");
@@ -173,16 +175,156 @@ test("Noter : l'aperçu et le bouton parlent comme l'iPhone (CaptureView)", () =
 
 // --- Les cartes de proposition (PropositionView, Format.detailAction) ---
 
+test("proposition : un verbe par ligne (liste blanche), le nom, le détail", () => {
+  assert.equal(P.verbe({ type: "creer" }), "Ajouter");
+  assert.equal(P.verbe({ type: "terminer" }), "Marquer fait");
+  assert.equal(P.verbe({ type: "supprimer" }), "Supprimer");
+  assert.equal(P.verbe({ type: "<script>" }), "Modifier", "jamais le type brut");
+  assert.equal(P.libelleAction({ nom: "A", nouveau_nom: "B" }), "B");
+  assert.equal(P.libelleAction({ titre: "Rdv" }), "Rdv");
+  assert.equal(P.libelleAction({}), "(sans nom)");
+  const iso = (d) => R.isoAvecFuseau(d);
+  assert.equal(P.detailAction({ debut: iso(date(30, 10, 9)), lieu: "Cabinet Voltaire" }, true), "ven. 30 oct. à 09:00 · Cabinet Voltaire");
+  assert.equal(P.detailAction({ echeance: iso(date(31, 10, 23)), duree: 30, priorite: "ASAP" }), "avant le sam. 31 oct. · 30 min · urgent");
+  assert.equal(P.detailAction({ echeance: iso(date(31, 10, 13)), duree: "120", priorite: "HIGH" }), "avant le sam. 31 oct. à 13:00 · 2 h · important");
+  assert.equal(P.detailAction({ echeance: "2026-10-31", duree: "REMINDER" }), "avant le sam. 31 oct. · simple rappel", "une date seule : sans heure");
+  assert.equal(P.detailAction({ echeance: iso(date(31, 10, 13)) }, true), "", "l'agenda n'a pas d'échéance");
+  assert.equal(P.detailAction({ duree: "NONE", priorite: "LOW" }), "");
+});
 
+test("proposition : l'en-tête avant et après « Oui »", () => {
+  const actions = [{ type: "creer", nom: "A" }, { type: "creer", nom: "B" }, { type: "creer", nom: "C" }];
+  assert.equal(P.entete({ actions, statut: "en_attente" }), "Rémy propose de changer ton planning");
+  assert.equal(P.entete({ actions, source: "agenda" }), "Rémy propose de changer ton agenda");
+  assert.equal(P.entete({ actions, statut: "applique", bilan: { faits: ["A", "B", "C"], echoues: [] } }), "C'est fait dans ton planning");
+  assert.equal(P.entete({ actions, statut: "applique", source: "agenda", bilan: { faits: ["A", "B"], echoues: [], ecartees: ["C"] } }), "C'est fait dans ton agenda (2 sur 3)");
+  assert.equal(P.entete({ actions, statut: "applique", bilan: { faits: ["A"], echoues: [{ nom: "B", erreur: "x" }], ecartees: ["C"] } }), "En partie fait");
+  assert.equal(P.entete({ actions, statut: "applique", bilan: { faits: [], echoues: actions.map((a) => ({ nom: a.nom, erreur: "x" })) } }), "Rien n'a pu être fait");
+  assert.equal(P.entete({ actions, statut: "applique", bilan: { faits: [], echoues: [], dejaLa: ["A"] } }), "Déjà dans ton planning : rien à ajouter");
+  assert.equal(P.entete({ actions, statut: "applique", annulee: true, bilan: { faits: ["A"] } }), "Annulé : tout est revenu comme avant.");
+  assert.equal(P.entete({ actions, statut: "applique", annulationRatee: [{ nom: "A", erreur: "modifiée" }] }), "Annulation incomplète");
+  assert.equal(P.entete({ actions, statut: "echec", bilan: { echoues: [{ nom: null, erreur: "Motion ne répond pas" }] } }), "Pas fait : Motion ne répond pas");
+  assert.equal(P.entete({ actions, statut: "echec", bilan: { echoues: [{ nom: "B", erreur: "quota" }] } }), "Rien n'a pu être fait", "la raison est sous la ligne");
+  assert.equal(P.entete({ actions: [], statut: "converti" }), "Rangé dans tes rappels");
+});
 
+test("proposition : ligne par ligne, raté, écarté, défait", () => {
+  const p = { statut: "applique", actions: [{ nom: "A" }, { nom: "B" }, { nom: "C" }], bilan: { faits: ["A"], echoues: [{ nom: "B", erreur: "quota Motion" }], ecartees: ["C"] } };
+  assert.equal(P.erreurAffichee(p, p.actions[1]), "Pas fait : quota Motion");
+  assert.equal(P.erreurAffichee(p, p.actions[0]), null);
+  assert.equal(P.estEcartee(p, p.actions[2]), true);
+  assert.equal(P.erreurAffichee(p, p.actions[2]), null, "écartée : barrée, pas en rouge");
+  const q = { ...p, annulationRatee: [{ nom: "A", erreur: "modifiée depuis" }] };
+  assert.equal(P.erreurAffichee(q, q.actions[0]), "Pas défait : modifiée depuis");
+  assert.equal(P.estDefaite(q, q.actions[0]), false);
+  assert.equal(P.estDefaite(q, q.actions[1]), true);
+  assert.equal(P.estDefaite({ annulee: true }, { nom: "X" }), true);
+  assert.equal(P.ouFait({ bilan: { espace: "Perso" } }), "Fait, dans « Perso ».");
+  assert.equal(P.ouFait({ source: "agenda" }), "Fait, dans ton agenda.");
+  assert.equal(P.ouFait({}), "Fait, dans ton planning.");
+  assert.equal(P.rangeesEnRappels({ actionsOrigine: [1, 2, 3], actions: [1] }), 2);
+});
 
+test("proposition : une partie seulement (SelectionLignes) et l'aide", () => {
+  assert.equal(P.libelleOui(3, 3), "Oui, fais-le");
+  assert.equal(P.libelleOui(3, 0), "Rien de coché");
+  assert.equal(P.libelleOui(3, 1), "Oui, celle-ci");
+  assert.equal(P.libelleOui(3, 2), "Oui, les 2");
+  const actions = [{ rang: 0 }, { rang: 3 }, {}];
+  assert.equal(P.rangsGardes(actions, new Set()), null, "rien de décoché : tout part");
+  assert.deepEqual(P.rangsGardes(actions, new Set([3])), [0, 2], "le rang d'origine, sinon la position");
+  assert.equal(P.aideReglage({ partielle: true, ajustable: true }), "Décoche ce que tu ne veux pas ; touche une ligne pour la régler.");
+  assert.equal(P.aideReglage({ partielle: true, ajustable: false }), "Décoche ce que tu ne veux pas.");
+  assert.equal(P.aideReglage({ partielle: false, ajustable: true }), "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel.");
+  assert.equal(P.aideReglage({}), "Pour changer un détail, réponds-le simplement à Rémy.");
+});
 
+test("proposition : le bilan d'une réponse et le bandeau", () => {
+  const p = { actions: [{ nom: "A" }, { nom: "B" }, { nom: "C" }] };
+  const r = { etat: "appliquee_partiellement", ledgerId: "j1", results: [{ ok: true, nom: "A", espace: "Perso" }, { ok: false, nom: "B", erreur: "quota" }], ecartees: ["C"] };
+  const b = P.bilanDeReponse(r);
+  assert.deepEqual(b, { faits: ["A"], echoues: [{ nom: "B", erreur: "quota" }], espace: "Perso", ecartees: ["C"] });
+  assert.equal(P.statutDeReponse(r), "applique");
+  assert.equal(P.statutDeReponse({ etat: "echouee", results: [{ ok: false }] }), "echec");
+  assert.equal(P.statutDeReponse({ etat: "echouee", results: [{ ok: false, erreur: "« A » existe déjà dans Motion" }] }), "applique", "un vieux doublon n'est pas un échec");
+  assert.equal(P.phraseApplication(p, r, b), "1 changement sur 3 n'a pas pu être fait : la raison est sous la ligne.");
+  const r0 = { etat: "echouee", results: [{ ok: false, nom: "A", erreur: "x" }, { ok: false, nom: "B", erreur: "y" }], ecartees: ["C"] };
+  assert.equal(P.phraseApplication(p, r0, P.bilanDeReponse(r0)), "Rien n'a pu être fait : la raison est sous chaque ligne.", "tout ce qui partait a raté (une ligne écartée)");
+  const r2 = { results: [{ ok: true, nom: "A" }, { ok: false, nom: "B", erreur: "x" }, { ok: true, nom: "C" }] };
+  assert.equal(P.phraseApplication(p, r2, P.bilanDeReponse(r2)), "1 changement sur 3 n'a pas pu être fait : la raison est sous la ligne.");
+  const r3 = { results: [{ ok: true, nom: "A" }, { ok: false, nom: "B", erreur: "x" }, { ok: false, nom: "C", erreur: "y" }, { ok: true, nom: "D" }] };
+  assert.equal(P.phraseApplication({ actions: [1, 2, 3, 4] }, r3, P.bilanDeReponse(r3)), "2 changements sur 4 n'ont pas pu être faits : la raison est sous la ligne.");
+  const ok = { results: [{ ok: true, nom: "A", espace: "Perso" }] };
+  assert.equal(P.phraseApplication({ actions: [1] }, ok, P.bilanDeReponse(ok)), "C'est fait dans « Perso ».");
+  assert.equal(P.phraseApplication({ actions: [1, 2], source: "agenda" }, { results: [{ ok: true, titre: "R" }], ecartees: ["S"] }, { echoues: [], ecartees: ["S"] }), "C'est fait dans ton agenda (1 sur 2).");
+  assert.equal(P.phraseApplication(p, { etat: "deja_la", results: [] }, { echoues: [] }), "Déjà dans ton planning : rien à ajouter.");
+});
 
+test("règle et carnet : ce que dit la carte", () => {
+  assert.equal(P.phraseRegle({ regles: [{ deja: true }] }), "Cette règle existait déjà : rien n'a changé.");
+  assert.equal(P.phraseRegle({ regles: [{ deja: false, fusionnee: true }] }), "Règle mise à jour comme sur la carte : Rémy te proposera la tâche avant chaque événement qui correspond.");
+  assert.equal(P.phraseRegle({ regles: [{ id: "r1" }] }), "Règle créée : Rémy te proposera la tâche avant chaque événement qui correspond.");
+  assert.equal(P.quandCarnet(R.isoAvecFuseau(date(30, 10, 9))), "Rappel · ven. 30 oct., 09:00");
+  assert.equal(P.quandCarnet(null), "Rappel sans heure");
+});
 
 // --- Ajuster une ligne (AjusterAction.swift) ---
 
+test("ajuster : l'état de départ, sans date : demain soir (Motion) ou demain 9 h (agenda)", () => {
+  const now = date(15, 10, 10, 40);
+  const e = A.etatInitial({ type: "creer", nom: "Acheter abonnement", duree: 10 }, { maintenant: now });
+  assert.equal(e.avecDate, false);
+  assert.equal(e.quand.getTime(), ms(16, 10, 23), "échéance J+1 23 h (Format.echeanceDans)");
+  assert.equal(e.duree, 10);
+  assert.equal(e.priorite, "MEDIUM");
+  const g = A.etatInitial({ type: "creer", titre: "Studio", debut: R.isoAvecFuseau(date(17, 10, 14)), fin: R.isoAvecFuseau(date(17, 10, 16)) }, { versAgenda: true, maintenant: now });
+  assert.equal(g.avecDate, true, "un rendez-vous a toujours son heure");
+  assert.equal(g.duree, 120, "la durée lue entre le début et la fin");
+  assert.equal(A.etatInitial({ type: "creer", titre: "X" }, { versAgenda: true, maintenant: now }).quand.getTime(), ms(16, 10, 9));
+  assert.equal(A.etatInitial({ type: "modifier", nom: "A", nouveau_nom: "B" }).nom, "B");
+});
 
+test("ajuster : seuls les champs changés partent, avec les bonnes clés", () => {
+  const now = date(15, 10, 10, 40);
+  const e = A.etatInitial({ type: "creer", nom: "A", duree: 10 }, { maintenant: now });
+  assert.deepEqual(A.champsChanges(e), {}, "rien changé : rien ne part (Enregistrer reste grisé)");
+  e.nom = "  B  ";
+  e.duree = 30;
+  e.priorite = "HIGH";
+  assert.deepEqual(A.champsChanges(e), { nom: "B", duree: 30, priorite: "HIGH" });
+  e.avecDate = true;
+  assert.match(A.champsChanges(e).echeance, /^2026-10-16T23:00:00\+02:00$/, "l'échéance avec le décalage de Paris");
+  const avec = A.etatInitial({ type: "creer", nom: "A", echeance: R.isoAvecFuseau(date(20, 10, 23)) }, { maintenant: now });
+  avec.avecDate = false;
+  assert.deepEqual(A.champsChanges(avec), { echeance: null }, "enlever l'échéance : null");
+  const cat = A.etatInitial({ type: "creer", nom: "Vidange", etiquettes: ["x"] });
+  cat.etiquettes = new Set(["et-voiture"]);
+  assert.deepEqual(A.champsChanges(cat, { categoriesPossibles: true, etiquettesValides: ["et-voiture"] }), { etiquettes: ["et-voiture"] });
+  assert.deepEqual(A.champsChanges(cat, { categoriesPossibles: false }), {}, "sans categories-taches-v1 : pas de catégorie");
+  const m = A.etatInitial({ type: "modifier", nom: "Ancien" });
+  m.nom = "Nouveau";
+  assert.deepEqual(A.champsChanges(m), { nouveau_nom: "Nouveau" });
+  const g = A.etatInitial({ type: "creer", titre: "Studio", debut: R.isoAvecFuseau(date(17, 10, 14)) }, { versAgenda: true, maintenant: now });
+  g.duree = 90;
+  assert.deepEqual(A.champsChanges(g, { versAgenda: true }), { debut: "2026-10-17T14:00:00+02:00", fin: "2026-10-17T15:30:00+02:00" }, "agenda : début + fin");
+  g.nom = "Studio photo";
+  assert.equal(A.champsChanges(g, { versAgenda: true }).titre, "Studio photo");
+  const g2 = A.etatInitial({ type: "creer", titre: "R" }, { versAgenda: true, maintenant: now });
+  g2.quand = date(18, 10, 10);
+  assert.equal(A.champsChanges(g2, { versAgenda: true }).fin, "2026-10-18T11:00:00+02:00", "60 min par défaut");
+});
 
+test("ajuster : raccourcis de jour, rappel à une heure où l'on est debout", () => {
+  const now = date(15, 10, 10, 40);
+  assert.equal(A.avecJour(date(20, 10, 18, 15), 1, now).getTime(), ms(16, 10, 18, 15), "« Demain » garde l'heure");
+  assert.equal(A.avecJour(date(20, 10, 18, 15), 7, now).getTime(), ms(22, 10, 18, 15));
+  assert.equal(A.versRappel(date(16, 10, 23)).getTime(), ms(16, 10, 9), "23 h → 9 h");
+  assert.equal(A.versRappel(date(16, 10, 14)).getTime(), ms(16, 10, 14));
+  assert.equal(A.phraseRangeEnRappel(date(16, 10, 9)), "Rangé en rappel, ven. 16 oct. 09:00.");
+  assert.equal(A.phraseRangeEnRappel(null), "Rangé en rappel, sans date.");
+  assert.deepEqual(A.DUREES, [5, 10, 15, 30, 45, 60, 90, 120]);
+  assert.deepEqual(A.PRIORITES.map((p) => p[1]), ["Urgente", "Importante", "Normale", "Basse"]);
+});
 
 // --- Retenir, la dictée, l'appel ---
 
@@ -230,7 +372,7 @@ function rejouer(d, morceaux) {
 
 test("les modules du lot sont dans le cache hors ligne (sw.js) et sans tiers", () => {
   const sw = fs.readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
-  for (const f of ["/app/analyse/etiquettes.js", "/app/analyse/rangement.js", "/app/dictee.js", "/app/vues/retenir.js"]) assert.ok(sw.includes(`"${f}"`), f);
+  for (const f of ["/app/analyse/etiquettes.js", "/app/analyse/rangement.js", "/app/dictee.js", "/app/vues/retenir.js", "/app/vues/propositions.js", "/app/vues/ajuster.js"]) assert.ok(sw.includes(`"${f}"`), f);
   const dictee = fs.readFileSync(new URL("../public/app/dictee.js", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(dictee, /localStorage|indexedDB|caches\./, "l'audio n'est jamais gardé");
 });
@@ -423,8 +565,71 @@ async function conversation(id, proposal) {
   });
 }
 
+test("proposition : Oui sur une partie, bilan ligne par ligne, annuler, « Déjà annulé » est un succès", async () => {
+  await conversation("cp", { id: "p-cp", source: "motion", resume: "r", statut: "en_attente", actions: [
+    { type: "creer", nom: "Imprimer les étiquettes", duree: 30 }, { type: "creer", nom: "Appeler le stand", duree: 10 }, { type: "creer", nom: "Préparer la caisse", duree: 45 },
+  ] });
+  const p = (await appel("/api/conversations/cp")).messages[1].proposal;
+  const r = await appel("/api/motion/apply", { methode: "POST", corps: { actions: p.actions, convId: "cp", index: 1, propositionId: p.id, idCommande: nouvelId(), rangs: [0, 1], confirmer: true } });
+  const b = P.bilanDeReponse(r);
+  Object.assign(p, { statut: P.statutDeReponse(r), bilan: b, ledgerId: r.ledgerId });
+  assert.deepEqual(b.ecartees, ["Préparer la caisse"]);
+  assert.equal(P.entete(p), "C'est fait dans ton planning (2 sur 3)");
+  assert.equal(P.estEcartee(p, p.actions[2]), true);
+  assert.equal(P.phraseApplication(p, r, b), `C'est fait dans « ${b.espace} » (2 sur 3).`);
+  const relue = (await appel("/api/conversations/cp")).messages[1].proposal;
+  assert.equal(relue.statut, "applique", "la tour garde l'état");
+  const u = await appel("/api/motion/undo", { methode: "POST", corps: { id: r.ledgerId } });
+  assert.equal(u.ok, true);
+  await assert.rejects(appel("/api/motion/undo", { methode: "POST", corps: { id: r.ledgerId } }), (e) => e.statut === 409 && /^Déjà annulé/.test(e.message), "le site lit ce 409 comme un succès");
+  const journal = await appel("/api/motion/ledger");
+  assert.ok(journal.entries.find((e) => e.id === r.ledgerId)?.annule, "GET /api/motion/ledger dit « annulé »");
+});
 
+test("ajuster : les clés du site acceptées par la tour, puis « Ranger en rappel » (convertis d'abord)", async () => {
+  await conversation("ca", { id: "p-ca", source: "motion", resume: "r", statut: "en_attente", actions: [
+    { type: "creer", nom: "Prendre rendez-vous pour la vidange", duree: 10 }, { type: "creer", nom: "Acheter du liquide", duree: 20 },
+  ] });
+  const e = A.etatInitial({ type: "creer", nom: "Prendre rendez-vous pour la vidange", duree: 10 });
+  e.nom = "Appeler le garage pour la vidange";
+  e.avecDate = true;
+  e.duree = 15;
+  e.priorite = "HIGH";
+  const r = await appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [{ rang: 0, ...A.champsChanges(e, { categoriesPossibles: true, etiquettesValides: [] }) }], convertis: [] } });
+  assert.equal(r.statut, "en_attente");
+  assert.equal(r.actions[0].nom, "Appeler le garage pour la vidange");
+  assert.equal(r.actions[0].duree, 15);
+  assert.equal(r.actions[0].priorite, "HIGH");
+  assert.ok(r.actions[0].echeance);
+  const c = await appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [], convertis: [1] } });
+  assert.equal(c.actions.length, 1, "la ligne sort de la proposition");
+  const rap = await appel("/api/rappels", { methode: "POST", corps: { rappels: [{ id: "prop-p-ca-1", texte: "Acheter du liquide", quand: null, etiquettes: [] }] } });
+  assert.deepEqual(rap.dejaLa, []);
+  const encore = await appel("/api/rappels", { methode: "POST", corps: { rappels: [{ id: "prop-p-ca-1", texte: "Acheter du liquide", quand: null, etiquettes: [] }] } });
+  assert.deepEqual(encore.dejaLa, [], "le même id renvoyé : réécrit, pas doublé");
+  assert.equal((await appel("/api/rappels")).rappels.filter((x) => x.texte === "Acheter du liquide").length, 1);
+  const tout = await appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [], convertis: [0] } });
+  assert.equal(tout.statut, "converti", "tout rangé en rappels");
+  await assert.rejects(appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [{ rang: 0, duree: 30 }] } }), (err) => err.statut === 409, "409 : la carte relit la conversation");
+});
 
+test("règle et carnet proposés : ce que la tour rend, ce que la carte en dit", async () => {
+  await conversation("cr", { id: "p-cr", source: "regle", resume: "", statut: "en_attente", actions: [
+    { type: "regle", nom: "Se raser avant une sortie", description: "Avant chaque sortie, une tâche « Se raser » (10 min).", mots: ["sortie", "soirée"], tache: { nom: "Se raser", duree: 10 }, delai: "2 h avant" },
+  ] });
+  const r = await appel("/api/conversations/cr/propositions/p-cr/regle", { methode: "POST", corps: {} });
+  assert.ok(Array.isArray(r.regles) && r.regles.length === 1, JSON.stringify(r));
+  assert.match(P.phraseRegle(r), /^(Règle créée|Règle mise à jour|Cette règle existait déjà)/);
+  await conversation("cc", { id: "p-cc", source: "carnet", resume: "", statut: "en_attente", actions: [
+    { type: "liste", liste: "Courses", articles: ["Bougies chauffe-plat"] }, { type: "rappel", texte: "Appeler Léa pour le marché" },
+  ] });
+  const c = await appel("/api/conversations/cc/propositions/p-cc/carnet", { methode: "POST", corps: {} });
+  assert.deepEqual(c.bilan.faits, ["« Bougies chauffe-plat » dans « Courses »", "rappel « Appeler Léa pour le marché »"]);
+  await appel("/api/conversations/cc/propositions/p-cc/refus", { methode: "POST", corps: {} }).then(
+    () => assert.fail("une proposition appliquée ne se refuse pas"),
+    (err) => assert.equal(err.statut, 409, "409 : la carte relit la conversation"),
+  );
+});
 
 test("Retenir : extraire puis { choisis } (les routes de RetenirInfosVue)", async () => {
   // Sans modèle local, la tour le dit : le site affiche son message et « Réessayer ».
