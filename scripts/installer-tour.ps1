@@ -278,7 +278,10 @@ if ($precedente) {
   Write-Output "  retour    : powershell -ExecutionPolicy Bypass -File scripts\installer-tour.ps1 -Ref $precedente"
 }
 Write-Output "  cerveau   : $($h.cerveau)"
-Write-Output "  GLM       : $($h.glm_local)"
+Write-Output "  modèle    : $($h.glm_local)"
+Write-Output "  Sparks    : $($h.sparks)"
 Write-Output "  stockage  : $($h.stockage)"
 Write-Output "  motion    : $($h.motion)"
 Write-Output "  sauvegarde: $($h.sauvegardes)"
+Write-Output "  nuit      : $($h.travail_de_fond)"
+Write-Output "  commerces : $($h.commerces)"

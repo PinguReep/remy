@@ -73,6 +73,54 @@ version précédente (tables ajoutées, jamais retirées).
   `node scripts\spark-tester.mjs --cible <compte>@<adresse>:/sauvegardes`.
 - Vérifier toute la chaîne : `scripts\verifier-tour.ps1`.
 
+## Le modèle local et les Sparks
+
+Rémy suit le modèle que les Sparks servent (`REMY_GLM_URL`, lu sur `/v1/models`) :
+GLM, DeepSeek ou autre, sans rien régler. Les messages nomment ce modèle
+(« le modèle local (DeepSeek-…) »), jamais un nom supposé.
+
+| Réglage (`remy.env`) | Rôle |
+| --- | --- |
+| `REMY_SPARKS` | les serveurs de modèle de chaque Spark, séparés par des virgules, nommés ou non : `spark-1=http://<ip-spark-1>:8888/v1,spark-2=http://<ip-spark-2>:8000/v1`. `/api/health` dit alors « Sparks 2/2 répondent » et ce que sert chacune ; le diagnostic d'un code d'erreur aussi. Sans lui, une seule adresse est connue (`REMY_GLM_URL`) et la ligne ne compte pas les Sparks |
+| `REMY_REFLEXION_LIMITE` | jusqu'à quelle heure la réflexion de la nuit attend un modèle local éteint ou saturé (défaut 8 : nouvel essai toutes les 20 min, sans compter d'échec) |
+| `REMY_FOND_DELAI_MS` | temps laissé au modèle pour une tâche de fond (défaut 900 000, 15 min) |
+
+Dans `/api/health` (et à la fin de l'installeur) :
+
+- `glm_local` (« modèle ») : le serveur du modèle répond-il, et quel modèle Rémy y prend ;
+- `sparks` : chaque Spark déclarée, et le modèle qu'elle sert ;
+- `travail_de_fond` (« nuit ») : les échecs des tâches de fond, **datés** —
+  une alerte disparaît dès que la même tâche réussit ensuite, et au bout de
+  48 h dans tous les cas ; « inférences en cours » est la garde de charge (ce
+  qui tourne en ce moment), pas un compte des Sparks.
+
+Si la réflexion de la nuit dit « … est occupé » ou « … ne répond pas » : elle
+réessaie seule jusqu'à 8 h. « Les Sparks ne servent pas le modèle demandé » :
+regarde Réglages › Modèle dans l'app (ou repasse en automatique).
+
+## Commerces : mise à jour mensuelle
+
+La base des commerces (reconnaître « le coiffeur », « le drive ») vient
+d'OpenStreetMap. Le premier import se fait à la main, une fois :
+
+```powershell
+node --no-warnings --env-file=$env:USERPROFILE\.remy\remy.env $env:USERPROFILE\.remy\app\scripts\commerces-importer.mjs
+```
+
+Ensuite, Rémy la remet à jour tout seul : une nuit par mois au plus (30 jours
+après le dernier import), entre 1 h et 3 h, sans IA ; seuls les numéros de
+département partent vers OpenStreetMap, jamais une position. Un échec est
+réessayé dans la nuit (30 min, puis 1 h), puis la nuit suivante ; l'ancienne
+base reste en place tant qu'un import n'a pas abouti. La date de la dernière
+mise à jour, la prochaine et le dernier échec sont dans `/api/health`
+(ligne `commerces`) et dans la vue des lieux de l'app.
+
+| Réglage (`remy.env`) | Rôle |
+| --- | --- |
+| `REMY_COMMERCES_AUTO=off` | plus de mise à jour automatique (l'import à la main reste possible) |
+| `REMY_COMMERCES_JOURS` | intervalle entre deux mises à jour (défaut 30) |
+| `REMY_COMMERCES_HEURE` | début de la fenêtre de nuit (défaut 1 : de 1 h à 3 h) |
+
 ## Activité du PC (ActivityWatch)
 
 Rémy peut savoir combien de temps tu passes dans chaque appli de la tour
