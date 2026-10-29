@@ -51,10 +51,18 @@ décidé en construisant :
 - **CI** (`bureau-windows.yml`) : `cargo test` puis `tauri build` sur
   `windows-latest` (~9 min, cache Cargo), installateurs renommés sans accent
   (`Remy-Bureau_X.Y.Z_x64-setup.exe`, `.msi`), `SHA256SUMS.txt`, contrôle
-  qu'aucune adresse `*.ts.net` n'est écrite dans le binaire. Lancée aussi par
-  un envoi sur `claude/bureau-windows**` : un workflow absent de `main` ne
-  peut pas être lancé à la main. « publier » crée la Release `bureau-vX.Y.Z`.
+  qu'aucune adresse `*.ts.net` n'est écrite dans le binaire. Lancée par un
+  envoi qui touche `desktop/` (sur `main` et `claude/bureau-windows**`) ou à
+  la main ; « publier » crée alors la Release `bureau-vX.Y.Z`.
 - **Non signé** : SmartScreen prévient (mode d'emploi, `docs/bureau.md` 2.2).
+- **Essai de fumée sous Linux** (`desktop/essais/fumee.mjs`, job `fumee` de
+  la CI) : la coquille compile aussi pour WebKitGTK, ce qui permet de lancer
+  le VRAI binaire sous Xvfb contre une fausse tour et de vérifier de bout en
+  bout ce que ni les tests unitaires ni la CI Windows (qui ne peut pas
+  cliquer) ne voient : `__TAURI__` injecté dans le site distant, commandes
+  locales refusées par les règles d'accès, navigation et `window.open` vers
+  une autre origine bloqués. Les pages embarquées sont jouées à part dans
+  Chromium avec un faux pont (`desktop/essais/pages.cjs`).
 
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 

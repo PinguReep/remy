@@ -521,7 +521,12 @@ C++ de Visual Studio : `cd desktop`, `npm ci`, `npm run dev` (la fenêtre
 s'ouvre sur la page de démarrage ; pour une tour de développement, l'adresse
 `http://localhost:3000`). Tests : `cd desktop/src-tauri`, `cargo test`
 (adresse, origine, règles d'accès, raccourci, réglages, notes, notifications ;
-ils tournent aussi sous Linux avec les bibliothèques WebKitGTK). Icônes :
+ils tournent aussi sous Linux avec les bibliothèques WebKitGTK). Essai de
+fumée du vrai binaire contre une fausse tour, sous Linux (Xvfb) :
+`node desktop/essais/fumee.mjs desktop/src-tauri/target/debug/remy-bureau`
+(sonde, départ sur le site, commandes permises et refusées, notes de secours,
+Noter, navigation vers une autre origine) ; pages embarquées dans Chromium
+avec un faux pont : `node desktop/essais/pages.cjs` (Playwright). Icônes :
 `npm run icones` (depuis `src-tauri/icons/icon.png`). L'installateur se
 construit en CI (`.github/workflows/bureau-windows.yml`) à chaque envoi qui
 touche `desktop/` ; lancé à la main avec « publier », il crée la Release
