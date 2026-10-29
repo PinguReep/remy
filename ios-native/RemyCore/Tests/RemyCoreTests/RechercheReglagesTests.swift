@@ -8,7 +8,7 @@ final class RechercheReglagesTests: XCTestCase {
     /// Une tour à jour, tous ses réglages dits, les interrupteurs allumés.
     static var tout: ContexteReglages {
         let capacites: Set<String> = ["rituel-v1", "dossiers-v1", "modeles-v1", "lieux-v1", "activite-pc-v1", "priorites-v1",
-                                      "regles-v1", "appareils", "a-trancher-v1", "recherche-privee-v1"]
+                                      "regles-v1", "appareils", "a-trancher-v1", "recherche-privee-v1", "conversations-externes-v1"]
         let r = Reglages(secoursCloud: false, secoursCloudSansObjet: false,
                          circuits: ["nuit": Circuit(nom: "nuit", actif: true), "conseil": Circuit(nom: "conseil", actif: true),
                                     "compactage": Circuit(nom: "compactage", actif: true), "regles": Circuit(nom: "regles", actif: true)],
@@ -41,7 +41,7 @@ final class RechercheReglagesTests: XCTestCase {
     /// Les sous-écrans sont dans l'index, pas seulement Réglages.
     func testLesSousEcransSontIndexes() {
         let ecrans = Set(RechercheReglages.index.filter { $0.ancre != nil }.map(\.ecran))
-        for e in [EcranReglages.reglages, .diagnostic, .lieux, .activitePC, .usage] {
+        for e in [EcranReglages.reglages, .diagnostic, .lieux, .activitePC, .usage, .sourcesConversations] {
             XCTAssertTrue(ecrans.contains(e), "aucun réglage de « \(e.titre) » dans l'index")
         }
         XCTAssertEqual(Set(RechercheReglages.index.compactMap(\.section)), ["Rendez-vous quotidien", "Activité en direct"])
@@ -102,6 +102,38 @@ final class RechercheReglagesTests: XCTestCase {
         // Les rappels qui ne sonnent pas : l'autorisation d'iOS, pas la revue du dimanche.
         XCTAssertEqual(ids("rappels").first, "iphone")
         XCTAssertFalse(ids("rappels").contains("revue.dimanche"))
+    }
+
+    /// Les conversations d'ailleurs (#26) : l'écran des sources par ses
+    /// synonymes, l'import ChatGPT, et rien sur une tour qui ne les lit pas.
+    func testSourcesDesConversations() {
+        XCTAssertEqual(ids("Claude Code").first, "sourcesConversations")
+        XCTAssertEqual(ids("T3").first, "sourcesConversations")
+        XCTAssertEqual(ids("t3 code").first, "sourcesConversations")
+        XCTAssertEqual(ids("OpenAI").first, "sourcesConversations")
+        XCTAssertEqual(Set(ids("ChatGPT").prefix(2)), ["sourcesConversations.import", "sourcesConversations"])
+        XCTAssertEqual(ids("import").first, "sourcesConversations.import")
+        XCTAssertEqual(ids("importer chatgpt").first, "sourcesConversations.import")
+        XCTAssertTrue(ids("import").contains("sourcesConversations"))
+        XCTAssertTrue(ids("conversations").prefix(3).contains("sourcesConversations"), "\(ids("conversations"))")
+        XCTAssertEqual(ids("effacer chatgpt").first, "sourcesConversations.effacer")
+        // « Claude » seul reste d'abord le secours (son titre).
+        XCTAssertEqual(ids("Claude").first, "secours")
+        // Le chemin et la cible : l'écran des sources, la ligne mise en évidence.
+        let imp = RechercheReglages.index.first { $0.id == "sourcesConversations.import" }!
+        XCTAssertEqual(imp.chemin, "Réglages › Sources des conversations")
+        XCTAssertEqual(RechercheReglages.cible(imp, contexte: Self.tout),
+                       CibleReglage(ecran: .sourcesConversations, ancre: "Importer un export ChatGPT", tutoriel: nil, note: nil))
+        let ecran = RechercheReglages.index.first { $0.id == "sourcesConversations" }!
+        XCTAssertEqual(ecran.chemin, "Réglages")
+        XCTAssertNil(RechercheReglages.cible(ecran, contexte: Self.tout).ancre)
+        // Une tour qui ne lit pas encore les conversations : rien de proposé, et l'état vide le dit.
+        var c = Self.tout
+        c.capacites.remove("conversations-externes-v1")
+        let r = RechercheReglages.chercher("ChatGPT", contexte: c)
+        XCTAssertEqual(r.entrees, [])
+        XCTAssertTrue(r.indisponibles.map(\.id).contains("sourcesConversations"))
+        XCTAssertTrue(r.detailVide?.contains("dépend de ta tour") == true, r.detailVide ?? "")
     }
 
     func testPlusieursMotsEtMotsVides() {

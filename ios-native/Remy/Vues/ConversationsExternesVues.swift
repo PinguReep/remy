@@ -792,6 +792,8 @@ struct SourcesConversationsVue: View {
             }
         }
         .listeAtelier()
+        // Un résultat de la recherche dans Réglages : la ligne visée, mise en évidence.
+        .allerAuRepere(.sourcesConversations)
         .navigationTitle("Sources des conversations")
         .navigationBarTitleDisplayMode(.inline)
         .task { if m.etat == nil { await m.charger() } }
@@ -872,6 +874,7 @@ struct SourcesConversationsVue: View {
                 }
                 .disabled(m.importEnCours)
                 .accessibilityIdentifier("sources.importer")
+                .repere("Importer un export ChatGPT", dans: .sourcesConversations)
                 Text(m.dernierImport?.phrase ?? "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Choisis ici le .zip reçu par mail (ou dépose-le dans le dossier Imports de ton coffre).")
                     .font(Police.texte(12))
                     .foregroundStyle(Palette.encre3)
@@ -921,6 +924,7 @@ struct SourcesConversationsVue: View {
             .tint(Palette.signal)
             .frame(minHeight: 60)
             .disabled(u.forceParLaTour || m.enCours)
+            .repere("S'en inspirer dans ses réponses", dans: .sourcesConversations)
             Toggle(isOn: Binding(get: { u.nuit }, set: { oui in Task { await m.reglerUsage(nuit: oui) } })) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Relire celles de la veille, la nuit").font(Police.texte(16, .medium))
@@ -931,6 +935,7 @@ struct SourcesConversationsVue: View {
             .tint(Palette.signal)
             .frame(minHeight: 60)
             .disabled(u.forceParLaTour || m.enCours)
+            .repere("Relire celles de la veille, la nuit", dans: .sourcesConversations)
             if u.forceParLaTour {
                 Text("Coupé sur la tour (REMY_CONVERSATIONS_USAGE=off).").font(Police.texte(13)).foregroundStyle(Palette.encre2)
             }
@@ -952,6 +957,7 @@ struct SourcesConversationsVue: View {
                 Label("Tout effacer de la tour", systemImage: "trash").frame(minHeight: 44)
             }
             .disabled(app.conversationsExternes.enCours)
+            .repere("Tout effacer de la tour", dans: .sourcesConversations)
         } header: {
             Text("Vie privée")
         }

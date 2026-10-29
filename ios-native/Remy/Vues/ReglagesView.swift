@@ -618,6 +618,7 @@ extension ReglagesView {
         case .modeles: modelesOuverts = true
         case .lieux: lieuxOuverts = true
         case .activitePC: activitePCOuverte = true
+        case .sourcesConversations: sourcesConversationsOuvertes = true
         case .priorites: prioritesOuvertes = true
         case .regles: reglesOuvertes = true
         case .appareils: appareilsOuverts = true

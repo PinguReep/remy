@@ -22,6 +22,8 @@ public enum EcranReglages: String, CaseIterable, Sendable {
     case modeles
     case lieux
     case activitePC
+    /// Les sources des conversations d'ailleurs (Claude Code, T3, ChatGPT ; 29/10).
+    case sourcesConversations
     case priorites
     case regles
     case appareils
@@ -41,6 +43,7 @@ public enum EcranReglages: String, CaseIterable, Sendable {
         case .modeles: return "Modèle"
         case .lieux: return "Localisation"
         case .activitePC: return "Activité du PC"
+        case .sourcesConversations: return "Sources des conversations"
         case .priorites: return "Ce qui compte"
         case .regles: return "Règles de Rémy"
         case .appareils: return "Appareils connectés"
@@ -355,6 +358,29 @@ public enum RechercheReglages {
                       symbole: "trash", ecran: .activitePC, ancre: "Tout effacer",
                       mots: ["effacer", "supprimer", "historique", "activité", "pc", "ordinateur"],
                       si: [.capacite("activite-pc-v1")]),
+        // Tes conversations d'ailleurs (conversations-externes-v1, 29/10) : l'écran
+        // des sources, l'import ChatGPT, ce que Rémy en fait, tout effacer.
+        EntreeReglage("sourcesConversations", "Sources des conversations", sous: "Claude Code, T3 Code, ChatGPT : lues sur ta tour, chiffrées.",
+                      symbole: "bubble.left.and.bubble.right", ecran: .sourcesConversations,
+                      mots: ["conversations", "conversation", "sources", "ChatGPT", "OpenAI", "Claude Code", "Claude", "T3", "T3 Code", "import",
+                             "importer", "export", "sessions", "fils", "historique", "discussions", "chats", "ailleurs", "lire maintenant"],
+                      si: [.capacite("conversations-externes-v1")]),
+        EntreeReglage("sourcesConversations.import", "Importer un export ChatGPT", sous: "Le .zip reçu par mail depuis ChatGPT, envoyé à ta tour.",
+                      symbole: "square.and.arrow.down", ecran: .sourcesConversations, ancre: "Importer un export ChatGPT",
+                      mots: ["import", "importer", "export", "exporter", "ChatGPT", "OpenAI", "zip", "fichier", "conversations", "historique", "envoyer"],
+                      si: [.capacite("conversations-externes-v1")]),
+        EntreeReglage("sourcesConversations.chat", "S'en inspirer dans ses réponses", sous: "Quand ta question en parle : quelques passages, modèle local seulement, la conversation devient privée.",
+                      symbole: "text.bubble", ecran: .sourcesConversations, ancre: "S'en inspirer dans ses réponses",
+                      mots: ["conversations", "ChatGPT", "Claude Code", "T3", "passages", "contexte", "réponses", "s'inspirer", "modèle local"],
+                      si: [.capacite("conversations-externes-v1")]),
+        EntreeReglage("sourcesConversations.nuit", "Relire celles de la veille, la nuit", sous: "Thèmes, décisions, choses à faire : une ligne dans ton briefing.",
+                      symbole: "moon.zzz", ecran: .sourcesConversations, ancre: "Relire celles de la veille, la nuit",
+                      mots: ["conversations", "ChatGPT", "Claude Code", "T3", "nuit", "veille", "hier", "briefing", "thèmes", "choses à faire", "propositions"],
+                      si: [.capacite("conversations-externes-v1")]),
+        EntreeReglage("sourcesConversations.effacer", "Effacer les conversations d'ailleurs", sous: "Tout ce que la tour a gardé de Claude Code, T3 et ChatGPT.",
+                      symbole: "trash", ecran: .sourcesConversations, ancre: "Tout effacer de la tour",
+                      mots: ["effacer", "supprimer", "oublier", "conversations", "ChatGPT", "Claude Code", "T3", "import", "clé", "vie privée"],
+                      si: [.capacite("conversations-externes-v1")]),
         EntreeReglage("priorites", "Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.",
                       symbole: "star", ecran: .priorites,
                       mots: ["priorités", "priorité", "objectifs", "important", "focus", "valeurs"],
