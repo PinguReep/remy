@@ -439,6 +439,39 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .conseil .texte-conseil { font: 400 17px/1.45 var(--serif); }
 .conseil ul { margin-top: 8px; padding-left: 18px; color: var(--encre-2); font-size: 14px; }
 
+/* --- lot aujourdhui : conseil du moment, tâches et Gérer, journée et 7 jours, bandeau d'état */
+/* Une zone dont le module (boîte, À trancher, rappels) n'a rien à montrer ne laisse pas de trou. */
+.auj-zone:has(> [hidden]:only-child), .auj-zone:has(> :only-child:empty) { display: none; }
+
+/* Le conseil du moment : la carte (clic, Entrée, clic droit) et son panneau. */
+.conseil-carte { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: start; padding: 14px 10px 14px 14px; }
+.conseil-ouvrir { border-radius: 12px; padding: 6px; cursor: pointer; min-height: 44px; transition: background-color 120ms ease-out; }
+.conseil-ouvrir:hover { background: var(--fond-2); }
+.conseil-tete { font-size: 13px; color: var(--encre-3); margin-bottom: 6px; }
+.conseil-tete strong { color: var(--encre); font-weight: 600; }
+.conseil-carte .texte-conseil { font: italic 400 19px/1.4 var(--serif); }
+.conseil-autre[aria-busy="true"] svg.ic { display: none; }
+.conseil-autre[aria-busy="true"]::after { margin: 0; }
+.conseil-tete-panneau { display: flex; }
+.conseil-puces { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 18px; }
+.conseil-grand { font: italic 400 24px/1.4 var(--serif); color: var(--encre); }
+.conseil-source { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; color: var(--encre-3); font-size: 13px; }
+.conseil-source svg.ic { width: 14px; height: 14px; margin-top: 2px; }
+.conseil-priorite { display: flex; gap: 6px; align-items: center; margin-top: 10px; color: var(--signal-texte); font-weight: 500; font-size: 14px; }
+.conseil-priorite svg.ic { width: 15px; height: 15px; }
+.conseil-plier { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 14px; border: 0; background: none; padding: 0; text-align: left; }
+.conseil-plier .titre-section { margin: 0; flex: 1; }
+.conseil-plier .chevron-plier { color: var(--encre-3); transition: transform 150ms ease-out; }
+.conseil-plier[aria-expanded="true"] .chevron-plier { transform: rotate(180deg); }
+.conseil-pourquoi .titre-section { margin: 14px 0 8px; }
+.conseil-raisons { list-style: none; display: grid; gap: 8px; }
+.conseil-raisons li { display: flex; gap: 8px; align-items: baseline; }
+.conseil-raisons li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--signal); flex: none; transform: translateY(-2px); }
+.conseil-raisons.discretes li { color: var(--encre-2); }
+.conseil-raisons.discretes li::before { background: var(--encre-3); }
+.conseil-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+/* --- fin lot aujourdhui */
+
 /* ---------- Rémy (conversations) ---------- */
 .remy { display: grid; grid-template-columns: 290px minmax(0, 1fr) 270px; height: 100dvh; }
 .remy.sans-panneau { grid-template-columns: 290px minmax(0, 1fr); }

@@ -12,12 +12,13 @@
 // Lectures : /api/dashboard à l'affichage, au retour au premier plan et
 // toutes les 5 min quand la fenêtre est visible (jamais en boucle serrée : il
 // peut relancer le conseil réfléchi du modèle local).
-import { api, ecrire, sait, evenements } from "../api.js";
+import { api, sait, evenements } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, occupe, local } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import { gerer, terminer, decaler, prolonger, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite } from "./gerer.js";
 import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
 import { BROUILLONS, titreFilJournee } from "../analyse/journee.js";
+import { creerConseil } from "./conseil.js";
 
 let racine;
 let donnees = null; // dashboard
@@ -30,6 +31,7 @@ let minuteurHorloge = null;
 let minuteurLecture = null;
 let ctx;
 let enLecture = null;
+let conseil = null; // la carte « Conseil du moment » (vues/conseil.js)
 
 const zones = {};
 
@@ -56,6 +58,9 @@ export default {
         h("div", { class: "auj-colonne laterale" }, zones.conseil, zones.menacees, zones.rituel, zones.semaine, zones.trancher)));
     ajouterA(zones.maintenant, h("section", { class: "carte maintenant" }, squelette([0.3, 0.8, 0.5], true)));
     ajouterA(zones.journee, h("section", { class: "carte" }, squelette([0.5, 0.9, 0.9, 0.7])));
+    conseil?.arreter();
+    conseil = creerConseil(ctx, { journee: journeeVue, ouvrirGerer: (e) => gerer(e, gestesDe(e)), surChange: () => majModules({ seulement: "boite" }) });
+    vider(zones.conseil, conseil.carte);
     evenements.addEventListener("remy:sujets", surSujets);
     modulesPrets = monterModules();
     await charger();
@@ -65,6 +70,7 @@ export default {
       if (document.visibilityState === "visible" && donnees) {
         dessinerMaintenant();
         dessinerJournee();
+        conseil?.dessiner();
       }
     }, 30e3);
     clearInterval(minuteurLecture);
@@ -75,6 +81,7 @@ export default {
   demonter() {
     clearInterval(minuteurHorloge);
     clearInterval(minuteurLecture);
+    conseil?.arreter();
     evenements.removeEventListener("remy:sujets", surSujets);
   },
   actualiser() {
@@ -124,12 +131,12 @@ async function monterModules() {
 }
 
 /** Chaque module reçoit le tableau (il ne lit jamais /api/dashboard lui-même). */
-function majModules({ frais = false } = {}) {
-  const conseil = conseilAffiche();
+function majModules({ frais = false, seulement = null } = {}) {
+  const affiche = conseil?.affiche() || null;
   for (const [nom, m] of Object.entries(accueil)) {
-    if (!m?.maj) continue;
+    if (!m?.maj || (seulement && nom !== seulement)) continue;
     try {
-      m.maj(nom === "boite" ? { dashboard: donnees, conseil, frais } : { dashboard: donnees, frais });
+      m.maj(nom === "boite" ? { dashboard: donnees, conseil: affiche, frais } : { dashboard: donnees, frais });
     } catch (err) {
       console.warn(`Aujourd'hui : le module ${nom} n'a pas pu se mettre à jour.`, err);
     }
@@ -240,6 +247,16 @@ function prochain(j, m) {
   return { cas: "rien", retards: j.retard?.total || 0 };
 }
 
+/** La journée telle qu'elle s'affiche : sans les lignes retirées tout de suite (Terminer). */
+function journeeVue() {
+  const j = donnees?.journee;
+  if (!j || !masquees.size) return j || null;
+  const garder = (x) => !masquees.has(x.id);
+  const retard = j.retard ? { ...j.retard, items: (j.retard.items || []).filter(garder) } : j.retard;
+  if (retard) retard.total = Math.max(0, (j.retard.total ?? 0) - ((j.retard.items || []).length - retard.items.length));
+  return { ...j, items: (j.items || []).filter(garder), aFaire: (j.aFaire || []).filter(garder), retard };
+}
+
 const pucesProjet = (p) => (p ? h("span", { class: "puce" }, h("span", { class: "point", style: { background: couleurProjet(p) } }), h("span", null, p)) : null);
 
 function retirerLigne(id) {
@@ -247,12 +264,14 @@ function retirerLigne(id) {
   dessinerMaintenant();
   dessinerJournee();
   dessinerRetards();
+  conseil?.dessiner();
 }
 function remettreLigne(id) {
   masquees.delete(id);
   dessinerMaintenant();
   dessinerJournee();
   dessinerRetards();
+  conseil?.dessiner();
 }
 const gestesDe = (e) => ({ apres, contexte: ctx, retirer: () => retirerLigne(e.id), remettre: () => remettreLigne(e.id) });
 const sansCreneau = (t, retard) => ({ ...t, type: "sans-creneau", debut: null, retard });
@@ -542,31 +561,7 @@ function dessinerSemaine(err) {
   vider(zones.semaine, carte);
 }
 
-// --- Le conseil du moment ---
-/** Le conseil affiché, pour la boîte (contrat A) : { texte, source }. */
-function conseilAffiche() {
-  const c = donnees?.conseil;
-  const texte = c?.conseil?.texte || c?.texte;
-  return texte ? { texte, source: c?.conseil?.source || "glm" } : null;
-}
-
+// --- Le conseil du moment (vues/conseil.js) ---
 function dessinerConseil() {
-  const c = donnees?.conseil;
-  if (!c?.conseil?.texte && !c?.texte) return vider(zones.conseil);
-  const texte = c.conseil?.texte || c.texte;
-  const pourquoi = c.conseil?.pourquoi || c.pourquoi || [];
-  const renouveler = bouton("Renouveler", { classe: "texte petit", icone: "rafraichir", titre: "Demander un nouveau conseil (modèle local)" });
-  renouveler.addEventListener("click", () => occupe(renouveler, async () => {
-    try {
-      const r = await ecrire("/api/conseil/renouveler", { type: c.type || "maintenant" }, { delai: 90000 });
-      if (r) donnees.conseil = r;
-      dessinerConseil();
-    } catch (err) {
-      direErreur(err, null, "Pas de nouveau conseil");
-    }
-  }));
-  vider(zones.conseil, h("section", { class: "carte", "aria-label": "Conseil du moment" },
-    h("h2", { class: "titre-section" }, "Conseil du moment", h("span", { class: "fin" }, renouveler)),
-    h("div", { class: "conseil" }, h("p", { class: "texte-conseil" }, texte),
-      pourquoi.length ? h("ul", null, pourquoi.map((p) => h("li", null, p))) : null)));
+  conseil?.maj({ dashboard: donnees });
 }
