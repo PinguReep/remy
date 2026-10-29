@@ -2,7 +2,10 @@ Polices auto-hébergées de Rémy (aucune requête vers un service tiers).
 
 - Inter — Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 - JetBrains Mono — Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+- Source Serif 4 — Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+  (https://github.com/adobe-fonts/source-serif) ; titres du site, à la place de New York (iPhone)
 
-Toutes deux distribuées sous la SIL Open Font License, version 1.1 :
+Toutes trois distribuées sous la SIL Open Font License, version 1.1 :
 https://openfontlicense.org/open-font-license-official-text/
-Sous-ensembles « latin » et « latin-ext » en WOFF2, tels que publiés par Google Fonts.
+Sous-ensembles « latin » et « latin-ext » en WOFF2, tels que publiés par Google Fonts
+(Source Serif 4 : paquet @fontsource/source-serif-4 5.3.1, graisses 400 et 600, italique 400).
