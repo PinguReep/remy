@@ -115,7 +115,11 @@ jobs:
           Write-Output "Sources embarquées : $($fichiers.Count) fichiers, aucune adresse de tour."
 
       - name: Construire l'installateur
-        run: npx tauri build --ci
+        run: |
+          # Le cache Cargo garde target/ : on efface les paquets d'avant, pour
+          # ne rassembler (et contrôler) que ceux de cette construction.
+          Remove-Item -Recurse -Force src-tauri/target/release/bundle -ErrorAction SilentlyContinue
+          npx tauri build --ci
 
       - name: Rassembler l'installateur (noms sans accent, empreintes)
         run: |
