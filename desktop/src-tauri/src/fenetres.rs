@@ -77,9 +77,14 @@ pub fn panne_de_page(statut: u16, vide: bool) -> Option<Panne> {
     }
 }
 
+/// Par fenêtre, sa dernière navigation (dans `Etat`). À part de `Etat` pour
+/// les tests : construire `Etat` sous Windows tire le code des menus, qui
+/// demande Common Controls v6 (absent du manifeste des exécutables de test).
+pub type Navigations = std::sync::Mutex<std::collections::HashMap<String, Navigation>>;
+
 /// Nouvelle navigation de la fenêtre `label` : rend son numéro.
-pub fn nouvelle_navigation(etat: &Etat, label: &str) -> u64 {
-    let mut n = etat.navigations.lock().unwrap();
+pub fn nouvelle_navigation(navigations: &Navigations, label: &str) -> u64 {
+    let mut n = navigations.lock().unwrap();
     let e = n.entry(label.to_string()).or_default();
     e.numero += 1;
     e.signalee = false;
@@ -87,13 +92,13 @@ pub fn nouvelle_navigation(etat: &Etat, label: &str) -> u64 {
 }
 
 /// La page de la tour de la fenêtre `label` s'est signalée.
-pub fn page_signalee(etat: &Etat, label: &str) {
-    etat.navigations.lock().unwrap().entry(label.to_string()).or_default().signalee = true;
+pub fn page_signalee(navigations: &Navigations, label: &str) {
+    navigations.lock().unwrap().entry(label.to_string()).or_default().signalee = true;
 }
 
 /// La navigation `numero` de `label` est-elle toujours la dernière, et muette ?
-pub fn navigation_muette(etat: &Etat, label: &str, numero: u64) -> bool {
-    etat.navigations
+pub fn navigation_muette(navigations: &Navigations, label: &str, numero: u64) -> bool {
+    navigations
         .lock()
         .unwrap()
         .get(label)
@@ -265,7 +270,7 @@ pub fn vers_tour(app: &AppHandle, label: &str) -> Result<(), String> {
     let w = app
         .get_webview_window(label)
         .ok_or("Fenêtre introuvable.".to_string())?;
-    let numero = nouvelle_navigation(&etat, label);
+    let numero = nouvelle_navigation(&etat.navigations, label);
     w.navigate(url).map_err(|e| format!("Navigation impossible : {e}"))?;
     // Garde-fou : une page qui ne s'est pas signalée en 20 s (chargement
     // bloqué, page d'erreur) ramène la fenêtre sur sa page embarquée, qui
@@ -275,10 +280,10 @@ pub fn vers_tour(app: &AppHandle, label: &str) -> Result<(), String> {
     let label = label.to_string();
     std::thread::spawn(move || {
         std::thread::sleep(GARDE_CHARGEMENT);
-        if navigation_muette(&app.state::<Etat>(), &label, numero) {
+        if navigation_muette(&app.state::<Etat>().navigations, &label, numero) {
             let a = app.clone();
             let _ = app.run_on_main_thread(move || {
-                if navigation_muette(&a.state::<Etat>(), &label, numero) {
+                if navigation_muette(&a.state::<Etat>().navigations, &label, numero) {
                     vers_secours(&a, &label, Panne::Muette);
                 }
             });
@@ -294,7 +299,7 @@ pub fn vers_tour(app: &AppHandle, label: &str) -> Result<(), String> {
 /// secours (la note reste possible, gardée sur ce PC).
 pub fn vers_secours(app: &AppHandle, label: &str, panne: Panne) {
     let etat = app.state::<Etat>();
-    nouvelle_navigation(&etat, label);
+    nouvelle_navigation(&etat.navigations, label);
     let page = if label == NOTER {
         format!("noter.html?retour={}", panne.code())
     } else {
@@ -313,7 +318,7 @@ pub fn vers_demarrage(app: &AppHandle, changer: bool) {
     let page = if changer { "demarrage.html?changer=1" } else { "demarrage.html" };
     let etat = app.state::<Etat>();
     etat.site_charge.store(false, Ordering::SeqCst);
-    nouvelle_navigation(&etat, PRINCIPALE);
+    nouvelle_navigation(&etat.navigations, PRINCIPALE);
     if let Some(w) = app.get_webview_window(PRINCIPALE) {
         let _ = w.navigate(url_locale(page));
     }
@@ -321,7 +326,7 @@ pub fn vers_demarrage(app: &AppHandle, changer: bool) {
     // Changer de tour : la Noter de la tour d'avant n'a plus lieu d'être,
     // retour à la page de secours (elle repassera sur le site de la nouvelle).
     if changer {
-        nouvelle_navigation(&etat, NOTER);
+        nouvelle_navigation(&etat.navigations, NOTER);
         if let Some(n) = app.get_webview_window(NOTER) {
             let _ = n.navigate(url_locale("noter.html"));
         }
@@ -410,16 +415,16 @@ mod tests {
 
     #[test]
     fn le_garde_fou_ne_touche_qu_a_la_derniere_navigation_muette() {
-        let etat = Etat::nouveau(std::path::PathBuf::from("inutilise"), Default::default());
-        assert!(!navigation_muette(&etat, PRINCIPALE, 1), "aucune navigation encore");
-        let n1 = nouvelle_navigation(&etat, PRINCIPALE);
-        assert!(navigation_muette(&etat, PRINCIPALE, n1));
-        page_signalee(&etat, PRINCIPALE);
-        assert!(!navigation_muette(&etat, PRINCIPALE, n1), "la page s'est signalée");
-        let n2 = nouvelle_navigation(&etat, PRINCIPALE);
-        assert!(!navigation_muette(&etat, PRINCIPALE, n1), "une navigation plus récente existe");
-        assert!(navigation_muette(&etat, PRINCIPALE, n2));
-        assert!(!navigation_muette(&etat, NOTER, n2), "chaque fenêtre a ses navigations");
+        let navigations = Navigations::default();
+        assert!(!navigation_muette(&navigations, PRINCIPALE, 1), "aucune navigation encore");
+        let n1 = nouvelle_navigation(&navigations, PRINCIPALE);
+        assert!(navigation_muette(&navigations, PRINCIPALE, n1));
+        page_signalee(&navigations, PRINCIPALE);
+        assert!(!navigation_muette(&navigations, PRINCIPALE, n1), "la page s'est signalée");
+        let n2 = nouvelle_navigation(&navigations, PRINCIPALE);
+        assert!(!navigation_muette(&navigations, PRINCIPALE, n1), "une navigation plus récente existe");
+        assert!(navigation_muette(&navigations, PRINCIPALE, n2));
+        assert!(!navigation_muette(&navigations, NOTER, n2), "chaque fenêtre a ses navigations");
     }
 
     #[test]

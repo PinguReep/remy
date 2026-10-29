@@ -93,7 +93,7 @@ pub fn etat_bureau(app: &AppHandle, etat: &Etat, fenetre: &str) -> EtatBureau {
 pub fn bureau_etat(app: AppHandle, webview: Webview, etat: State<'_, Etat>) -> Result<EtatBureau, String> {
     verifier_tour(&webview, &etat)?;
     let fenetre = webview.window().label().to_string();
-    fenetres::page_signalee(&etat, &fenetre);
+    fenetres::page_signalee(&etat.navigations, &fenetre);
     if fenetre == fenetres::PRINCIPALE && !etat.site_charge.swap(true, Ordering::SeqCst) {
         fenetres::noter_vers_tour_si_secours(&app);
     }
@@ -305,7 +305,7 @@ pub fn bureau_page_chargee(
     let fenetre = webview.window().label().to_string();
     match fenetres::panne_de_page(statut.unwrap_or(0), vide.unwrap_or(false)) {
         Some(panne) => fenetres::vers_secours(&app, &fenetre, panne),
-        None => fenetres::page_signalee(&etat, &fenetre),
+        None => fenetres::page_signalee(&etat.navigations, &fenetre),
     }
     Ok(())
 }

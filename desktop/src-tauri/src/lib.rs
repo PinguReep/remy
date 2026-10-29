@@ -6,7 +6,6 @@
 //! global « Noter », le démarrage avec Windows, des notifications natives.
 //! Conception et contrat avec le site : `docs/bureau.md`.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
@@ -38,7 +37,7 @@ pub struct Etat {
     pub site_charge: AtomicBool,
     /// Par fenêtre : la dernière navigation vers la tour, et si sa page s'est
     /// signalée (voir `fenetres::vers_tour`, garde-fou de 20 s).
-    pub navigations: Mutex<HashMap<String, fenetres::Navigation>>,
+    pub navigations: fenetres::Navigations,
     pub notifs: Mutex<commandes::Notifs>,
     pub menu: Mutex<Option<zone::MenuZone>>,
     /// Quand la fenêtre principale a perdu le focus : un clic sur l'icône le
@@ -55,7 +54,7 @@ impl Etat {
             raccourci_actif: Mutex::new(None),
             raccourci_erreur: Mutex::new(None),
             site_charge: AtomicBool::new(false),
-            navigations: Mutex::new(HashMap::new()),
+            navigations: fenetres::Navigations::default(),
             notifs: Mutex::new(commandes::Notifs::default()),
             menu: Mutex::new(None),
             principale_quittee_a: Mutex::new(None),
