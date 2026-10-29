@@ -20,10 +20,11 @@ import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../an
 import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, plusEnRetard, estPerimee, phraseRafraichi, phrasesSources, phraseGestes, phraseCaptures, carteConnaissance } from "../analyse/journee.js";
 import * as fileEnvoi from "../file-envoi.js";
 import { creerConseil } from "./conseil.js";
+import { creerSemaine } from "./semaine.js";
 
 let racine;
 let donnees = null; // dashboard
-let semaine = null;
+let semaine = null; // Demain et les 7 jours, « À l'échelle » (vues/semaine.js)
 let journeeEntiere = false; // « Toute la journée » déplié
 let menaceesTout = false;
 let erreur = null;
@@ -65,11 +66,14 @@ export default {
     conseil?.arreter();
     conseil = creerConseil(ctx, { journee: journeeVue, ouvrirGerer: (e) => gerer(e, gestesDe(e)), surChange: () => majModules({ seulement: "boite" }) });
     vider(zones.conseil, conseil.carte);
+    semaine = creerSemaine(ctx, { journee: journeeVue, gestes: gestesDe });
+    vider(zones.semaine, semaine.carte);
     evenements.addEventListener("remy:sujets", surSujets);
     // Les tâches cochées d'ici : la journée suit leur liste (et la file d'envoi, sans réseau).
     desabonnerCochees?.();
     desabonnerCochees = cochees.surChangement(() => {
       if (racine?.isConnected && donnees) redessiner();
+      semaine?.dessiner();
     });
     suivreFileCochees({ apres });
     // Ce qui attend la tour (captures, coches) : la ligne d'état suit la file d'envoi.
@@ -176,6 +180,8 @@ async function ouvrirRoute(args = []) {
   } else if (["trancher", "revue", "retards"].includes(quoi)) {
     if (accueil.trancher?.ouvrir) accueil.trancher.ouvrir(quoi);
     else absent();
+  } else if (quoi === "echelle") {
+    semaine?.ouvrir(arg || "aujourdhui");
   }
 }
 
@@ -187,10 +193,7 @@ function salutation(d) {
 async function charger({ frais = false, discret = false } = {}) {
   if (enLecture) return enLecture;
   enLecture = (async () => {
-    const [d, s] = await Promise.allSettled([
-      api(`/api/dashboard${frais ? "?frais=1" : ""}`, { delai: 45000 }),
-      api("/api/semaine?jours=7", { delai: 45000 }),
-    ]);
+    const [d] = await Promise.allSettled([api(`/api/dashboard${frais ? "?frais=1" : ""}`, { delai: 45000 })]);
     if (d.status === "fulfilled") {
       donnees = d.value;
       erreur = null;
@@ -199,10 +202,12 @@ async function charger({ frais = false, discret = false } = {}) {
       erreur = d.reason;
       if (!discret || !donnees) donnees = donnees || null;
     }
-    if (s.status === "fulfilled") semaine = s.value;
     masquees = new Set();
-    toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null } });
-    if (d.status === "fulfilled") majModules({ frais });
+    toutDessiner();
+    if (d.status === "fulfilled") {
+      majModules({ frais });
+      semaine?.maj({ frais });
+    }
     if (frais && d.status === "fulfilled" && !estPerimee(donnees?.journee)) {
       // « À jour. » seulement si Motion a vraiment été relu ; sinon, pourquoi.
       const m = donnees?.journee?.motion;
@@ -221,7 +226,7 @@ async function charger({ frais = false, discret = false } = {}) {
 
 const apres = () => setTimeout(() => charger({ discret: true }), 600);
 
-function toutDessiner({ erreursSecondaires = {} } = {}) {
+function toutDessiner() {
   if (!racine?.isConnected) return;
   // Une page restée d'un autre jour (fenêtre ouverte depuis hier, relecture ratée) : l'afficher tromperait.
   const perimee = Boolean(donnees) && estPerimee(donnees.journee);
@@ -244,7 +249,7 @@ function toutDessiner({ erreursSecondaires = {} } = {}) {
   dessinerEtat();
   dessinerMenacees();
   dessinerConnaissance();
-  dessinerSemaine(erreursSecondaires.semaine);
+  semaine?.dessiner();
   dessinerConseil();
 }
 
@@ -463,9 +468,14 @@ function dessinerJournee() {
   if (!j) return vider(zones.journee);
   const m = Date.now();
   const items = (j.items || []).filter((e) => e.debut != null);
-  const carte = h("section", { class: "carte journee-echelle", "aria-label": "La journée" });
+  const carte = h("section", { class: "carte journee-echelle", "aria-label": "La journée", oncontextmenu: (ev) => {
+    if (ev.target.closest?.("input, textarea")) return;
+    ev.preventDefault();
+    semaine?.ouvrir("aujourdhui");
+  } });
   ajouterA(carte, h("h2", { class: "titre-section" }, "La journée", items.length ? h("span", { class: "compte" }, String(items.length)) : null,
-    h("span", { class: "fin" }, j.motion?.luA ? `Motion lu à ${heure(j.motion.luA)}` : "")));
+    h("span", { class: "fin" }, j.motion?.luA ? h("span", { class: "lu" }, `Motion lu à ${heure(j.motion.luA)}`) : null,
+      bouton("À l'échelle", { classe: "texte petit", icone: "frise", etiquette: "À l'échelle : aujourd'hui, demain et les 7 jours (clic droit sur la journée)", titre: "À l'échelle (clic droit sur la journée)", onclick: () => semaine?.ouvrir("aujourdhui") }))));
   if (j.toute?.length) ajouterA(carte, h("p", { class: "toute-journee" }, "Toute la journée : " + j.toute.map((t) => t.titre).join(" · ")));
   if (!items.length) {
     ajouterA(carte, vide(null, "Rien à heure fixe aujourd'hui."));
@@ -639,38 +649,6 @@ function dessinerMenacees() {
     h("h2", { class: "titre-section", style: { color: "var(--danger)" } }, liste.length > 1 ? "Échéances menacées" : "Échéance menacée", h("span", { class: "compte" }, String(liste.length))),
     h("ul", { class: "liste" }, montrees.map(ligneMenacee)),
     liste.length > 1 ? bouton(menaceesTout ? "Seulement la première" : `Voir tout (${liste.length})`, { classe: "texte petit", onclick: () => { menaceesTout = !menaceesTout; dessinerMenacees(); } }) : null));
-}
-
-// --- Demain et 7 jours ---
-function dessinerSemaine(err) {
-  const carte = h("section", { class: "carte", "aria-label": "Demain et les 7 jours" });
-  ajouterA(carte, h("h2", { class: "titre-section" }, "Demain et 7 jours"));
-  if (!semaine && err) ajouterA(carte, blocErreur(err, () => charger()));
-  else if (!semaine) ajouterA(carte, squelette([0.7, 0.6, 0.8]));
-  else {
-    const jours = (semaine.jours || []).slice(1);
-    if (!jours.length) ajouterA(carte, vide(null, "Rien de prévu les prochains jours."));
-    ajouterA(carte, h("div", { class: "jours-semaine" }, jours.map((j, i) => {
-      const d = new Date(`${j.jour}T12:00:00`);
-      const nom = i === 0 ? "Demain" : new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric" }).format(d);
-      const items = j.items || [];
-      const rdv = items.filter((x) => x.type === "rdv").length;
-      const taches = items.filter((x) => x.type === "tache").length;
-      const charge = j.charge?.disponible ? Math.min(1, (j.charge.taches + j.charge.rdv) / Math.max(1, j.charge.travail || j.charge.disponible)) : 0;
-      const menacees = (j.echeances || []).filter((x) => x.menacee).length;
-      const det = h("details", { class: "jour-semaine", open: i === 0 },
-        h("summary", null, h("span", { class: "nom" }, nom),
-          menacees ? h("span", { class: "risque" }, icone("alerte"), `${menacees}`) : null,
-          h("span", { class: "resume" }, [rdv ? `${rdv} rdv` : null, taches ? `${taches} tâche${taches > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ") || "libre"),
-          h("span", { class: "charge", title: `Chargé à ${Math.round(charge * 100)} %` }, h("span", { style: { width: `${Math.round(charge * 100)}%` } }))),
-        items.length ? h("ul", { class: "liste" }, items.map((x) => h("li", { class: "ligne" },
-          h("span", { class: "heure" }, x.debut ? heure(x.debut) : "—"),
-          h("span", { class: "projet-trait", style: { "--couleur": x.type === "rdv" ? "var(--encre-2)" : couleurProjet(x.projet), width: "3px", alignSelf: "stretch", borderRadius: "2px", background: "var(--couleur)" } }),
-          h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, x.titre), x.lieu || x.projet ? h("div", { class: "meta" }, x.lieu || x.projet) : null)))) : h("p", { class: "aide" }, "Rien à heure fixe."));
-      return det;
-    })));
-  }
-  vider(zones.semaine, carte);
 }
 
 // --- Faire connaissance : l'onboarding, tant qu'il reste une étape ---

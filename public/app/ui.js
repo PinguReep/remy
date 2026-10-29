@@ -206,6 +206,7 @@ Object.assign(CHEMINS, {
   deplacer: "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
   arriere: "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5",
+  drapeau: "M5 21V4M5 4h11l-2 4 2 4H5",
 });
 // --- fin lot aujourdhui
 

@@ -555,6 +555,57 @@ button.etat-captures:hover { background: var(--fond-3); }
 .auj-perimee .auj-zone:not(.zone-maintenant):not(.zone-motion) { display: none; }
 @media (max-width: 1023px) { .zone-connaissance { order: 10; } }
 
+/* Demain et les 7 jours : une carte par jour ; « À l'échelle » en grand. */
+.journee-echelle .titre-section .fin { display: inline-flex; align-items: center; gap: 6px; }
+.journee-echelle .titre-section .fin .lu { color: var(--encre-3); }
+.semaine-carte .titre-section .fin .btn, .journee-echelle .titre-section .fin .btn { text-transform: none; letter-spacing: 0; }
+.semaine-cartes { display: flex; flex-direction: column; gap: 10px; }
+.semaine-jour { border: 1px solid var(--filet); border-radius: 16px; padding: 2px 12px 6px; background: var(--surface); }
+.semaine-jour-tete { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 44px; padding: 10px 0; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; border-radius: 10px; }
+.semaine-jour-tete:hover .ligne-nom strong { text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; }
+.semaine-jour-tete .ligne-nom { display: flex; align-items: center; gap: 8px; }
+.semaine-jour-tete .ligne-nom strong { font: 600 17px/1.2 var(--serif); }
+.semaine-jour-tete .chevron-jour { margin-left: auto; color: var(--encre-3); width: 14px; height: 14px; }
+.semaine-jour-tete .resume, .semaine-jour-tete .toute { color: var(--encre-2); font-size: 13px; }
+.semaine-jour-tete .rdv { display: flex; gap: 6px; align-items: baseline; font-size: 14px; }
+.semaine-jour-tete .rdv span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.semaine-jour-tete .rdv svg.ic { width: 11px; height: 11px; flex: none; color: var(--encre-2); }
+.semaine-jauge { height: 6px; border-radius: 999px; background: var(--fond-3); overflow: hidden; }
+.semaine-jauge span { display: block; height: 100%; border-radius: 999px; background: var(--encre-2); }
+.semaine-jauge.charge span { background: var(--signal); }
+.semaine-jauge.deborde span { background: var(--danger); }
+.semaine-echeance { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 6px 4px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; border-radius: 10px; }
+.semaine-echeance:hover { background: var(--fond-2); }
+.semaine-echeance > svg.ic { width: 13px; height: 13px; margin-top: 3px; flex: none; color: var(--encre-2); }
+.semaine-echeance.menacee > svg.ic { color: var(--danger); }
+.semaine-echeance .textes { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.semaine-echeance .t { font-size: 15px; overflow-wrap: anywhere; }
+.semaine-echeance .d { font-size: 12px; font-weight: 500; color: var(--encre-3); }
+.semaine-echeance.menacee .d { color: var(--danger); }
+.semaine-plus { min-height: 44px; width: 100%; border: 0; background: none; text-align: left; color: var(--encre-2); font-weight: 500; font-size: 14px; cursor: pointer; padding: 0 4px; border-radius: 10px; }
+.semaine-plus:hover { background: var(--fond-2); }
+.semaine-note { margin-top: 10px; }
+.semaine-bandeau { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 44px; padding: 4px 6px 4px 12px; margin-bottom: 10px; border-radius: 12px; background: var(--fond-2); color: var(--encre-2); font-size: 13px; }
+.semaine-bandeau .msg { flex: 1 1 200px; }
+.semaine-squelettes { display: grid; gap: 14px; }
+dialog.feuille-echelle { width: min(900px, calc(100vw - 32px)); }
+.feuille-echelle .feuille-tete { align-items: center; }
+.feuille-echelle .echelle-retour[hidden] { display: none; }
+.echelle-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 14px; background: var(--fond-2); margin-bottom: 14px; }
+.echelle-segment button { min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: var(--encre); font-weight: 500; font-size: 15px; }
+.echelle-segment button[aria-pressed="true"] { background: var(--encre); color: var(--fond); font-weight: 600; }
+.echelle-resume { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; margin-bottom: 12px; border-bottom: 1px solid var(--filet); }
+.echelle-resume .ligne-charge { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+.echelle-resume .toute { color: var(--encre-2); font-size: 14px; }
+.echelle-defile { max-height: min(58dvh, 560px); overflow: auto; overscroll-behavior: contain; padding: 8px 6px 8px 0; border-radius: 12px; }
+.echelle-grande { margin-top: 8px; }
+.echelle-grande .bloc .t { display: flex; align-items: center; gap: 5px; }
+.echelle-grande .bloc .t svg.ic { width: 12px; height: 12px; flex: none; }
+.echelle-grande .bloc .t svg.ic.retard { color: var(--danger); }
+.echelle-vide { padding: 24px 0; text-align: center; }
+.echelle-aide { margin-top: 14px; }
+@media (hover: none) { .echelle-aide { display: none; } }
+
 /* « Et maintenant ? » : en bas à droite, au-dessus des bandeaux (et des onglets sous 720 px). */
 .maintenant-suite {
   position: fixed; z-index: 80; right: 24px; bottom: calc(24px + var(--sa-bas)); width: min(380px, calc(100vw - 32px));
