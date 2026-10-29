@@ -540,7 +540,8 @@ function dessinerJournee() {
     const debutVu = Math.max(minDe(e.debut), h0);
     const finVue = Math.min(minDe(finEffective(e)), h1);
     const top = (debutVu - h0) * PX;
-    const haut = Math.max(44, (finVue - debutVu) * PX - 2);
+    // 46 px au moins : le bouton du bloc, dans sa bordure, garde ses 44 px.
+    const haut = Math.max(46, (finVue - debutVu) * PX - 2);
     const { col, n } = places.get(e);
     ajouterA(echelle, blocFrise(e, { m, top, haut, col, n }));
   }
