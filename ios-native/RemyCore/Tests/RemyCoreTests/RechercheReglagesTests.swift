@@ -44,7 +44,11 @@ final class RechercheReglagesTests: XCTestCase {
         for e in [EcranReglages.reglages, .diagnostic, .lieux, .activitePC, .usage] {
             XCTAssertTrue(ecrans.contains(e), "aucun réglage de « \(e.titre) » dans l'index")
         }
-        XCTAssertEqual(Set(RechercheReglages.index.compactMap(\.section)), ["Rendez-vous quotidien", "Capture", "Activité en direct"])
+        XCTAssertEqual(Set(RechercheReglages.index.compactMap(\.section)), ["Rendez-vous quotidien", "Activité en direct"])
+        XCTAssertEqual(ids("capture").first, "capture")
+        // Les heures ne se coupent pas en fin de ligne (« 22 h » / « 45 »).
+        XCTAssertTrue(RechercheReglages.index.first { $0.id == "rituel.heureSoir" }!.sousTitre.hasPrefix("22\u{00A0}h\u{00A0}45"))
+        XCTAssertEqual(ids("22 h 45").first, "rituel.heureSoir")
     }
 
     // MARK: Les mots du propriétaire
@@ -95,6 +99,9 @@ final class RechercheReglagesTests: XCTestCase {
         XCTAssertEqual(ids("code d'erreur").first, "diagnostic")
         XCTAssertEqual(Set(ids("alarme").prefix(2)), ["rituel.matin", "rituel.soir"])
         XCTAssertEqual(ids("batterie").first, "lieux")
+        // Les rappels qui ne sonnent pas : l'autorisation d'iOS, pas la revue du dimanche.
+        XCTAssertEqual(ids("rappels").first, "iphone")
+        XCTAssertFalse(ids("rappels").contains("revue.dimanche"))
     }
 
     func testPlusieursMotsEtMotsVides() {
