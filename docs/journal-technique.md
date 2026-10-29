@@ -11,8 +11,10 @@ notes privées, sur la tour.
   nombre d'appels au modèle local, chacun avec sa réflexion : le modèle
   principal écrit la question (réflexion « high »), la salle blanche choisit
   une page, la lit, en choisit une autre, rédige sa synthèse, puis le modèle
-  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits à ~40
-  jetons/s (débit de la jauge), plus la lecture de ~7 000 jetons de pages.
+  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits (estimés)
+  à ~40 jetons/s (débit de la jauge), plus la lecture de ~7 000 jetons de
+  pages. Les mesures et l'estimation sont ci-dessous ; le banc de la tour
+  (vrai modèle) les confirme ou non.
 - **Les stratégies** (`lib/recherche-rapide.js`, `REMY_RECHERCHE_MODE`) :
   `salle` (le 25/10, inchangé) ; `direct` — pour une question classée « web »
   (`indiceWeb`, sans routeur), la TOUR cherche avec la question de Sam, classe
@@ -69,13 +71,44 @@ notes privées, sur la tour.
 - **Mesures** (`scripts/mesurer-recherche.mjs`, 29/10, depuis une machine de
   développement : adresse de centre de données, d'où beaucoup de blocages
   DuckDuckGo et de pages refusées qu'une adresse résidentielle ne verrait
-  pas) — MESURES_ICI
+  pas) — trois passes, 12 questions (règles, montants, taux, date limite, horaires
+  de mairie, prix du gazole, produit, météo, actualité, abonnement) :
+  - DuckDuckGo html, la question telle quelle : 24 réponses sur 36 (8
+    vérifications anti-robot, 4 délais de 10 s), médiane 724 ms, mais 4
+    réponses sur 24 vers 5,7 s (P90 5,7 s) — d'où le relais à 2 s. Site de
+    référence dans les 3 premiers : 23/24 (24/24 une fois les sites officiels
+    remontés), premier : 20/24 (21/24). Mots-clés au lieu de la question :
+    7/8 dans les 3 premiers, P90 6,0 s. Lite : médiane 700 ms, 7/7, mais
+    autant bloqué.
+  - Lire 3 pages (une par site, officiels d'abord, jusqu'à 3 lues) : en série
+    médiane 1,6 s (P90 3,8 s), en parallèle 1,0 s (P90 1,6 s), sur 33 trios ;
+    une fois 11,1 s en parallèle à cause d'une seule page lente — 2,4 s avec
+    le délai de grâce. Pages : 90/118 lues (27 refusées : Cloudflare, 403 —
+    l'adresse de centre de données), médiane 489 ms, P90 1,1 s ; 68 datées.
+  - Extraction : la matière jointe pèse 4 800 caractères (médiane, ~1 500
+    jetons) contre 22 200 pour les trois pages entières (~6 900 jetons ; la
+    salle blanche en lit une ou deux). La réponse attendue (le montant,
+    l'heure, la date, le taux) est dans les passages pour 12 questions sur
+    12 à la dernière passe.
+  - Côté web, chaque stratégie coûte 1,5 à 2,5 s (banc avec un faux modèle :
+    salle 1,9 s, direct 1,7 s pour l'ACRE) : la lenteur est dans le modèle.
 - **Choix du défaut : `hybride`, réflexion `low`.** Estimation (même script :
   tailles mesurées de ce qu'envoie chaque appel ; supposés : 40 jetons/s en
   écriture — la jauge —, 2 000 jetons/s en lecture, réflexion high 400 /
-  medium 250 / low 120 jetons, réponse et synthèse 350) — ESTIMATIONS_ICI
+  medium 250 / low 120 jetons, réponse et synthèse 350), par
+  message, médianes des 12 questions :
+
+  | Stratégie | Appels | Jetons écrits | Estimé, consigne en cache (8 000 / 31 000 jetons de consigne : pareil) | Consigne froide, 8 000 / 31 000 |
+  | --- | --- | --- | --- | --- |
+  | salle (2 pages) | 5 | ~2 090 | 59 s | 63 s / 75 s |
+  | salle (1 page) | 4 | ~1 800 | 49 s | 53 s / 65 s |
+  | direct (réflexion low) | 1 | ~470 | 15 s | 19 s / 30 s |
+  | direct sans réflexion | 1 | ~350 | 12 s | 16 s / 27 s |
+  | hybride avec relance | 2 | ~940 | 29 s | 33 s / 45 s |
+
+  (Hybride sans relance : comme direct.)
   Direct et hybride font le même appel quand les passages suffisent (les
-  passages contenaient la réponse attendue pour RECOUVREMENT_ICI) ; la
+  passages contenaient la réponse attendue pour 12 questions sur 12) ; la
   relance de l'hybride ne coûte que quand ils ne suffisent pas, et rattrape
   une page mal choisie. Le banc de la tour tranche : si la relance part
   souvent pour rien, `direct` ; si la réponse sans réflexion vaut l'autre,
