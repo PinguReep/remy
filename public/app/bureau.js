@@ -30,6 +30,8 @@ export function reglerNotifs(changement) {
 
 // --- Logique pure (testée sous node : test/site-bureau.test.mjs) ---
 export const DEUX_HEURES = 2 * 3600e3;
+/** Au-delà de 3 jours, un rappel pas fait relève d'« À trancher », plus d'une notification. */
+export const OUBLI = 3 * 86400e3;
 export const cleRappel = (r) => `rappel:${r.id}@${r.quand}`;
 const borner = (s, n) => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -44,7 +46,7 @@ const borner = (s, n) => {
  */
 export function rappelsADire(rappels, { maintenant = Date.now(), deja = new Set() } = {}) {
   const dus = (rappels || [])
-    .filter((r) => r && !r.fait && !r.supprime && typeof r.quand === "number" && r.quand <= maintenant && !deja.has(cleRappel(r)))
+    .filter((r) => r && !r.fait && !r.supprime && typeof r.quand === "number" && r.quand <= maintenant && maintenant - r.quand <= OUBLI && !deja.has(cleRappel(r)))
     .sort((a, b) => a.quand - b.quand);
   const recents = dus.filter((r) => maintenant - r.quand <= DEUX_HEURES);
   const anciens = dus.filter((r) => maintenant - r.quand > DEUX_HEURES);
@@ -122,7 +124,8 @@ export async function regler(changement) {
   etat = await invoke("bureau_regler", changement);
   return etat;
 }
-export const notifier = (titre, corps, cle) => invoke("bureau_notifier", { titre: borner(titre, 80), corps: borner(corps, 240), cle: cle ? String(cle).slice(0, 200) : undefined });
+/** Une notification Windows ; `vue` : ouverte au clic (« projets/rappels »). */
+export const notifier = (titre, corps, cle, vue) => invoke("bureau_notifier", { titre: borner(titre, 80), corps: borner(corps, 240), cle: cle ? String(cle).slice(0, 200) : undefined, vue: vue || undefined });
 export const fermerNoter = () => (estBureau() ? invoke("bureau_noter_fermer").catch(() => {}) : Promise.resolve());
 export const changerAdresse = () => invoke("bureau_changer_adresse");
 export const ouvrirLien = (url) => invoke("bureau_ouvrir_lien", { url });
@@ -138,7 +141,7 @@ async function tic() {
     try {
       const { rappels } = await api("/api/rappels", { delai: 15000 });
       const { notifications, cles } = rappelsADire(rappels, { deja });
-      for (const n of notifications) await notifier(n.titre, n.corps, n.cle).catch(() => {});
+      for (const n of notifications) await notifier(n.titre, n.corps, n.cle, "projets/rappels").catch(() => {});
       if (cles.length) noterDeja(cles);
     } catch {
       // Tour injoignable ou session perdue : le site le dit déjà ; on réessaiera.
@@ -150,7 +153,7 @@ async function tic() {
     try {
       const rituel = await api("/api/rituel", { delai: 30000 });
       const t = texteRituel(du.nom, rituel);
-      await notifier(t.titre, t.corps, du.cle);
+      await notifier(t.titre, t.corps, du.cle, "aujourdhui");
     } catch {}
   }
 }
@@ -161,7 +164,7 @@ export function demarrerNotifications() {
   boucle = setInterval(tic, 60e3);
 }
 /** Une notification d'essai (Réglages › Ordinateur). */
-export const notificationEssai = () => notifier("Rémy", "Les notifications marchent. Tu verras ici tes rappels à l'heure.", `essai@${Date.now()}`);
+export const notificationEssai = () => notifier("Rémy", "Les notifications marchent. Tu verras ici tes rappels à l'heure.", `essai@${Date.now()}`, "reglages/ordinateur");
 
 // --- Les notes de secours (tapées dans « Noter » quand le site n'était jamais chargé) ---
 async function notesDeSecours() {
@@ -227,7 +230,7 @@ function accueil() {
       bascule("Rappels à l'heure", "Une notification Windows quand un rappel tombe.", "rappels"),
       bascule("Briefing du matin", `Ta journée en deux lignes, à ${r.heureBriefing}.`, "briefing"),
       bascule("Bilan du soir", `Fait, glissé, ce qui reste, à ${r.heureBilan}.`, "bilan"),
-      h("p", { class: "aide", style: { marginTop: "10px" } }, `Noter de n'importe où : ${etat?.raccourci || "Ctrl+Alt+Espace"}. Tout se règle dans Réglages › Ordinateur.`)),
+      h("p", { class: "aide", style: { marginTop: "10px" } }, `Noter de n'importe où : ${etat?.raccourciLibelle || etat?.raccourci || "Ctrl+Alt+Espace"}. Tout se règle dans Réglages › Ordinateur.`)),
     pied: [bouton("C'est parti", { classe: "plein", onclick: () => f.fermer() })],
   });
 }

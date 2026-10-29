@@ -144,8 +144,8 @@ const SECTIONS_RENDU = {
     }
     const etat = await bureau.lireEtat();
     const notifs = bureau.reglagesNotifs();
-    const raccourci = h("input", { class: "champ", type: "text", readonly: true, value: etat.raccourci || "", "aria-label": "Raccourci global", style: { maxWidth: "260px" }, title: "Clique puis tape la combinaison voulue" });
-    const erreurRaccourci = h("p", { class: "erreur-champ", role: "alert" });
+    const raccourci = h("input", { class: "champ", type: "text", readonly: true, value: etat.raccourciLibelle || etat.raccourci || "", "aria-label": "Raccourci global", style: { maxWidth: "260px" }, title: "Clique puis tape la combinaison voulue" });
+    const erreurRaccourci = h("p", { class: "erreur-champ", role: "alert" }, etat.raccourciErreur ? `${etat.raccourciErreur} Choisis-en un autre.` : "");
     raccourci.addEventListener("keydown", async (e) => {
       if (["Tab", "Escape"].includes(e.key)) return;
       e.preventDefault();
@@ -157,11 +157,12 @@ const SECTIONS_RENDU = {
       raccourci.value = combi;
       erreurRaccourci.textContent = "";
       try {
-        await bureau.regler({ raccourci: combi });
-        dire(`Raccourci : ${combi}.`, { genre: "succes" });
+        const e2 = await bureau.regler({ raccourci: combi });
+        raccourci.value = e2?.raccourciLibelle || combi;
+        dire(`Raccourci : ${raccourci.value}.`, { genre: "succes" });
       } catch (err) {
-        erreurRaccourci.textContent = `${typeof err === "string" ? err : err?.message || "Refusé"}. L'ancien reste actif.`;
-        raccourci.value = bureau.etatBureau()?.raccourci || "";
+        erreurRaccourci.textContent = `${typeof err === "string" ? err : err?.message || "Refusé"} L'ancien reste actif.`;
+        raccourci.value = bureau.etatBureau()?.raccourciLibelle || bureau.etatBureau()?.raccourci || "";
       }
     });
     const heure = (cle, valeur) => {
