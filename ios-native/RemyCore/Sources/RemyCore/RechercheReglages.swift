@@ -453,14 +453,16 @@ public enum RechercheReglages {
     /// Ce que l'écran montre pour cette saisie. Une saisie vide : rien (l'écran
     /// Réglages reste tel quel).
     public static func chercher(_ requete: String, contexte: ContexteReglages,
-                                index: [EntreeReglage] = index) -> ResultatsReglages {
+                                index: [EntreeReglage]? = nil) -> ResultatsReglages {
         let propre = requete.trimmingCharacters(in: .whitespacesAndNewlines)
         let q = motsRequete(propre)
         guard !q.isEmpty else { return ResultatsReglages(requete: propre, entrees: [], indisponibles: [], approchee: false) }
         var approchee = false
-        var trouves = classer(q, index, tolerance: false)
+        // L'index de l'app : ses mots normalisés une fois pour toutes (une saisie par lettre tapée).
+        let prepares = index.map { $0.map(Prepare.init) } ?? Self.prepares
+        var trouves = classer(q, prepares, tolerance: false)
         if trouves.isEmpty {
-            trouves = classer(q, index, tolerance: true)
+            trouves = classer(q, prepares, tolerance: true)
             approchee = !trouves.isEmpty
         }
         let dispo = trouves.filter { e in e.conditions.allSatisfy(contexte.permet) }
@@ -483,17 +485,31 @@ public enum RechercheReglages {
 
     // MARK: Score
 
+    /// Une entrée et ses mots normalisés : titre, mots-clés, le reste.
+    struct Prepare: Sendable {
+        let entree: EntreeReglage
+        let titre: [String]
+        let cles: [String]
+        let reste: [String]
+        init(_ e: EntreeReglage) {
+            entree = e
+            titre = RechercheReglages.mots(e.titre)
+            cles = e.motsCles.flatMap(RechercheReglages.mots)
+            reste = RechercheReglages.mots(e.sousTitre) + RechercheReglages.mots(e.chemin)
+        }
+    }
+
+    static let prepares: [Prepare] = index.map(Prepare.init)
+
     /// Les entrées dont chaque mot de la saisie trouve un mot (le début d'un
     /// mot) dans le titre, les mots-clés, le sous-titre ou le chemin ; les
     /// mieux placées d'abord (le titre compte plus que le reste), l'ordre de
     /// l'écran à égalité.
-    static func classer(_ q: [String], _ index: [EntreeReglage], tolerance: Bool) -> [EntreeReglage] {
+    static func classer(_ q: [String], _ index: [Prepare], tolerance: Bool) -> [EntreeReglage] {
         let phrase = q.joined(separator: " ")
         var notes: [(Int, Int, EntreeReglage)] = []
-        for (rang, e) in index.enumerated() {
-            let titre = mots(e.titre)
-            let cles = e.motsCles.flatMap(mots)
-            let reste = mots(e.sousTitre) + mots(e.chemin)
+        for (rang, p) in index.enumerated() {
+            let (e, titre, cles, reste) = (p.entree, p.titre, p.cles, p.reste)
             var total = 0
             var toutTrouve = true
             for m in q {
