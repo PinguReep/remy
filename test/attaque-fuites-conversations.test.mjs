@@ -111,7 +111,11 @@ const fx = await import("./outils/conversations-fictives.mjs");
 const store = await import("../lib/store.js");
 const sync = await import("../lib/connaissances/sync.js");
 const { preparerNuit, jourPrecedent } = await import("../lib/connaissances/nuit.js");
-const { fournisseurDeFond, PRIVE_DE_FOND } = await import("../lib/providers.js");
+const { fournisseurDeFond, estPriveDeFond } = await import("../lib/providers.js");
+// Le message nomme le modèle et dit la panne vue par la tour (#22) : on vérifie sa
+// nature (« prive ») et ce qu'il promet, pas sa formulation exacte.
+const priveDeFond = (err) =>
+  estPriveDeFond(err) && /^Matière privée \(conversations importées\) : .+\. Rien n'est parti chez Claude/.test(err.message);
 const { _oublierBlocage } = await import("../lib/recherche.js");
 const { routeApi } = await import("../lib/routes.js");
 const { enregistrerPriorites } = await import("../lib/priorites.js");
@@ -352,7 +356,7 @@ test("tient — REMY_CERVEAU=cloud : la nuit des conversations refuse Claude (mo
   reset();
   process.env.REMY_CERVEAU = "cloud";
   try {
-    await assert.rejects(preparerNuit({ jour: jourPrecedent(Date.now()), fournisseur: fournisseurDeFond(), relire: false }), { message: PRIVE_DE_FOND });
+    await assert.rejects(preparerNuit({ jour: jourPrecedent(Date.now()), fournisseur: fournisseurDeFond(), relire: false }), priveDeFond);
     assert.equal(claude.length, 0);
   } finally {
     delete process.env.REMY_CERVEAU;

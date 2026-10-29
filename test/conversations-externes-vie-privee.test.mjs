@@ -110,8 +110,12 @@ const fx = await import("./outils/conversations-fictives.mjs");
 const store = await import("../lib/store.js");
 const sync = await import("../lib/connaissances/sync.js");
 const { preparerNuit, ligneDuMatin, jourPrecedent } = await import("../lib/connaissances/nuit.js");
-const { fournisseurDeFond, PRIVE_DE_FOND } = await import("../lib/providers.js");
-const { PRIVE_INJOIGNABLE, logCost } = await import("../lib/chat.js");
+const { fournisseurDeFond, estPriveDeFond } = await import("../lib/providers.js");
+// Le message nomme le modèle et dit la panne vue par la tour (#22) : on vérifie sa
+// nature (« prive ») et ce qu'il promet, pas sa formulation exacte.
+const priveDeFond = (err) =>
+  estPriveDeFond(err) && /^Matière privée \(conversations importées\) : .+\. Rien n'est parti chez Claude/.test(err.message);
+const { logCost } = await import("../lib/chat.js");
 const { _oublierBlocage } = await import("../lib/recherche.js");
 const { routeApi } = await import("../lib/routes.js");
 const { fermer } = await import("../lib/db.js");
@@ -220,7 +224,8 @@ test("le modèle local lâche avant d'écrire : pas de secours Claude, même act
     glm.panne = true;
     const id = await nouveauFil();
     const ev = await envoyer(id, "Avec Claude Code hier, on avait dit quoi pour les fiches produits ?");
-    assert.equal(erreurDe(ev)?.message, PRIVE_INJOIGNABLE);
+    // Le message nomme le modèle servi (#22) : « le modèle local (glm) ne répond pas ».
+    assert.match(erreurDe(ev)?.message || "", /^Conversation privée : .+ ne répond pas \(tour ou Sparks éteintes \?\)\. Rien n'est parti chez Claude/);
     assert.equal(claude.length, 0, "secours activé, et pourtant rien chez Claude");
     // Une conversation ordinaire, elle, aurait eu le secours : la différence vient bien des passages.
     const autre = await nouveauFil();
@@ -306,7 +311,7 @@ test("la nuit, modèle local en panne : rien chez Claude, même avec le secours 
   await json("PUT", "/api/reglages", { secoursCloud: true });
   try {
     glm.panneCourt = true;
-    await assert.rejects(preparerNuit({ jour: jourPrecedent(Date.now()), fournisseur: fournisseurDeFond(), relire: false }), { message: PRIVE_DE_FOND });
+    await assert.rejects(preparerNuit({ jour: jourPrecedent(Date.now()), fournisseur: fournisseurDeFond(), relire: false }), priveDeFond);
     assert.equal(claude.length, 0);
   } finally {
     await json("PUT", "/api/reglages", { secoursCloud: false });
