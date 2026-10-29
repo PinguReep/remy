@@ -4,6 +4,59 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 — Conversations externes : Claude Code, T3 Code, ChatGPT (`conversations-externes-v1`)
+
+Le lot B (19/10) lisait les sessions Claude Code, mais rien n'en sortait :
+source coupée par défaut sans écran pour l'allumer, aucune vue de lecture,
+Rémy ne s'en servait pas, T3 vu seulement à travers les JSONL de Claude (ni
+Codex ni titres), ChatGPT seulement par l'ancien import du site, et une base
+en clair. Refait de bout en bout (`docs/conversations-externes.md`) :
+
+- **Allumées par défaut** (Claude Code, T3 ; ChatGPT au premier envoi), parce
+  que la lecture est locale et à sens unique ; `REMY_SOURCE_*=off` l'emporte
+  sur l'app. L'état dit, par source, où la tour a cherché, ce qu'elle a
+  trouvé, la dernière lecture, l'erreur et quoi faire.
+- **Chiffrement au repos** dans la base elle-même (pas de BitLocker) :
+  AES-256-GCM par champ, l'emplacement du texte en données associées (un
+  texte recopié ailleurs dans la base ne se déchiffre pas) ; sous-clés HKDF.
+  Clé dans `%USERPROFILE%\.remy\conversations.cle` (hors du coffre), ou
+  `REMY_CONVERSATIONS_CLE` ; une empreinte de contrôle dans la base détecte une
+  clé changée (« Tout effacer » plutôt qu'une base à moitié lisible). Les
+  curseurs (dossier de travail d'une session) sont chiffrés aussi : un mot de
+  projet traînait en clair dans le WAL.
+- **Index aveugle** : FTS5 sans contenu (`contentless_delete`, `detail=none`)
+  sur des empreintes HMAC des mots et de leurs débuts (4 et 6 lettres) ; ni
+  mots ni positions sur le disque. bm25 vaut 0 sans positions : classement
+  maison (mots trouvés, puis date). Le prix : pas de recherche de phrase.
+- **T3** : `statev2.sqlite` ouverte en lecture seule quand T3 tourne, en
+  `immutable=1` quand il est fermé (aucun `-wal`/`-shm` créé chez lui) ;
+  curseur `(updated_at, message_id)` par pages de 1 000. Une session Claude
+  menée depuis T3 est liée (`provider_threads`) et ne s'affiche qu'une fois,
+  sous T3.
+- **ChatGPT** : lecteur ZIP minimal (ZIP64, deflate en flux) et découpeur de
+  tableau JSON en flux : un export de plusieurs centaines de Mo ne passe
+  jamais en mémoire d'un bloc. Seule la branche affichée (`current_node`) ;
+  ni système, ni consignes personnalisées, ni appels d'outils. Idempotent
+  (empreinte du fichier, `update_time` par conversation). Le dossier `Imports`
+  n'entre pas dans les sauvegardes (lourd, en clair, déjà dans la base) ;
+  l'envoi depuis l'iPhone est un `.tmp`, effacé après l'import.
+- **Usage, toujours local** : les passages ne vont qu'aux blocs du modèle
+  local, seulement quand la question s'y rapporte (source citée, nom de
+  projet, ou rappel « on avait dit… » avec des passages assez proches) ; la
+  conversation devient privée (`done.prive`), ce qui coupe le secours Claude,
+  le titre et la mémoire en ligne ; les mots des passages entrent au filtre de
+  la salle blanche ; la recherche web d'une conversation devenue privée suit
+  `recherchePrivee`. La nuit passe `prive: true` à `fournisseurDeFond` :
+  modèle local ou rien. La ligne du matin est lue à l'affichage, jamais
+  écrite dans le briefing stocké.
+- **iPhone** : Projets › Conversations (puces par source, jours, recherche
+  sur la tour, lecture paginée, digest de la nuit avec « Me le rappeler »),
+  Réglages › Sources des conversations (état, emplacements, lire maintenant,
+  effacer, import par le sélecteur de fichiers, envoyé depuis le disque :
+  `upload(fromFile:)`), ligne dans le briefing, Nouveautés (série 5).
+  Parcours P25 contre une tour de démo aux données fictives, dossier
+  personnel factice (jamais le `~/.claude` de la machine de CI).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil

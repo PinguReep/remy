@@ -276,3 +276,34 @@ test("une base mise de côté par une restauration n'alourdit pas les sauvegarde
   assert.equal(n, 0);
 });
 
+
+test("les exports ChatGPT déposés pour Rémy ne partent pas dans les sauvegardes (lourds, en clair, déjà chiffrés dans la base)", async () => {
+  remplirCoffre();
+  const imports = path.join(coffre, "Imports");
+  fs.mkdirSync(path.join(imports, "Importés"), { recursive: true });
+  fs.writeFileSync(path.join(imports, "Importés", "export-chatgpt.zip"), "export ChatGPT fictif déjà lu");
+  fs.writeFileSync(path.join(imports, "en-attente.zip"), "export ChatGPT fictif en attente");
+  fs.mkdirSync(path.join(base, "imports-en-cours"), { recursive: true });
+  fs.writeFileSync(path.join(base, "imports-en-cours", "envoi.tmp"), "envoi depuis l'iPhone en cours");
+  const avant = { ...process.env };
+  process.env.REMY_SAUVEGARDES = path.join(racine, "sans-imports");
+  delete process.env.REMY_SAUVEGARDES_EXTERNE;
+  delete process.env.REMY_SAUVEGARDES_SPARK;
+  delete process.env.REMY_IMPORTS_DIR;
+  try {
+    const r = await sv.sauvegarderRemy({ raison: "test" });
+    assert.equal(r.copies[0].ok, true);
+    const { manifeste } = sv.lireArchive(fs.readFileSync(r.copies[0].fichier), { cle });
+    const chemins = manifeste.fichiers.map((f) => f.chemin);
+    assert.ok(chemins.includes("coffre/Mémoire de Rémy.md"), "le reste du coffre part");
+    assert.deepEqual(chemins.filter((c) => /Imports|imports-en-cours/.test(c)), []);
+  } finally {
+    for (const k of ["REMY_SAUVEGARDES", "REMY_SAUVEGARDES_EXTERNE", "REMY_SAUVEGARDES_SPARK", "REMY_IMPORTS_DIR"]) {
+      if (avant[k] === undefined) delete process.env[k];
+      else process.env[k] = avant[k];
+    }
+    fs.rmSync(imports, { recursive: true, force: true });
+    fs.rmSync(path.join(base, "imports-en-cours"), { recursive: true, force: true });
+    (await import("../lib/db.js")).fermer();
+  }
+});

@@ -24,6 +24,16 @@ inspire (modèle local seulement). Capacité : `conversations-externes-v1`
 - **Secrets masqués** avant tout stockage (clés d'API, jetons, mots de passe,
   valeurs de `remy.env`).
 - **Effaçable par source**, sans toucher aux originaux.
+- **Pas dans les sauvegardes en double** : le dossier `Imports` (exports
+  ChatGPT déposés, en clair, souvent des centaines de Mo) et les envois en
+  cours ne partent jamais dans les sauvegardes de la tour ; la base, elle, y
+  part (chiffrée), et sa clé n'y est pas.
+
+Ce que la tour ne chiffre pas : l'export ChatGPT que **tu** déposes dans
+`Imports` reste tel quel dans `Imports\Importés` (il contient aussi tes images,
+que Rémy ne garde pas). Efface-le quand tu as vu tes conversations dans l'app
+si le coffre est synchronisé ailleurs. Un export envoyé depuis l'iPhone, lui,
+n'est gardé que le temps de l'import.
 
 Ce qui reste visible sans la clé : le nombre de conversations et de messages,
 leurs dates et tailles, des identifiants techniques (UUID), et quels messages
@@ -35,7 +45,7 @@ partagent une même empreinte de mot.
 | --- | --- | --- |
 | `claude-code` | `%USERPROFILE%\.claude\projects\**\*.jsonl` (trouvé seul), `CLAUDE_CONFIG_DIR`, `REMY_CLAUDE_DIRS` | relecture incrémentale toutes les 30 min, la nuit et à la demande ; ton texte et celui de Claude, jamais les outils ni la réflexion ; sous-agents et `claude -p` (Rémy, titres de T3) écartés |
 | `t3` | `%USERPROFILE%\.t3\userdata\statev2.sqlite` (trouvé seul ; aussi `dev\`, et l'ancien `state.sqlite`), `T3CODE_HOME`, `REMY_T3_DIRS` | même rythme ; base ouverte en lecture seule (T3 lancé) ou « immutable » (T3 fermé : aucun fichier créé à côté) ; fils supprimés et sous-agents écartés ; une session Claude menée depuis T3 n'apparaît qu'une fois, sous T3 |
-| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` (relu toutes les 30 min, puis rangé dans `Imports\Importés`) ; idempotent |
+| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` (relu toutes les 30 min, puis rangé dans `Imports\Importés`, jamais effacé) ; idempotent |
 
 Allumées par défaut (Claude Code, T3) ; l'import ChatGPT s'allume au premier
 envoi. Chaque source se coupe dans l'app, ou sur la tour.
