@@ -312,7 +312,8 @@ export function creerBoite(ctx, { relire } = {}) {
     f.corps.scrollTop = defile;
     if (cle) {
       const cible = [...corps.querySelectorAll("[data-cle]")].find((x) => x.dataset.cle === cle && !x.disabled);
-      (cible || corps).focus({ preventScroll: false });
+      if (cible) cible.focus();
+      else corps.focus({ preventScroll: true });
     }
   }
   function ouvrirFeuille() {
@@ -379,13 +380,15 @@ export function creerBoite(ctx, { relire } = {}) {
     const etatSujets = n ? `${n} ${n > 1 ? "ouverts" : "ouvert"}` : liste.length ? "tous réglés" : dashboard ? R.rienBoite(b, dashboard?.systeme?.reflexion) : "…";
     corps.push(h("div", { class: "boite-ligne-sujets" },
       icone(n ? "plateauPlein" : "plateau"),
-      h("span", { class: "boite-ligne-sujets-texte" }, h("strong", null, avecRituel ? "Sujets de la nuit" : "À voir avec Rémy"), ` · ${etatSujets}`),
+      h("span", { class: "boite-ligne-sujets-texte" }, h("strong", null, "Sujets de la nuit"), ` · ${etatSujets}`),
       avecCle(bouton("Voir", { classe: "papier petit", etiquette: avecRituel ? "Voir le briefing et les sujets de la nuit" : "Voir les sujets de la nuit", onclick: () => ouvrir("boite") }), "voir")));
     if (avecRituel) corps.push(h("div", { class: "boite-organiser-court" }, boutonOrganiser("texte")));
-    const titre = h("h2", { class: "titre-section" }, "Briefing du matin", n ? h("span", { class: "compte" }, String(n)) : null);
+    // Une tour sans rituel-v1 n'a pas de briefing : seulement les sujets de la nuit.
+    const nom = avecRituel ? "Briefing du matin" : "À voir avec Rémy";
+    const titre = h("h2", { class: "titre-section" }, nom, n ? h("span", { class: "compte" }, String(n)) : null);
     // Le matin, ouvert ; l'après-midi et le soir, replié (un clic l'ouvre).
-    if (!replie) return h("section", { class: "carte boite-briefing", "aria-label": "Briefing du matin" }, titre, corps);
-    const det = h("details", { class: "carte briefing-replie boite-briefing", "aria-label": "Briefing du matin", open: replieOuvert },
+    if (!replie) return h("section", { class: "carte boite-briefing", "aria-label": nom }, titre, corps);
+    const det = h("details", { class: "carte briefing-replie boite-briefing", "aria-label": nom, open: replieOuvert },
       avecCle(h("summary", null, titre, icone("bas", "chevron-replie")), "replie"), corps);
     det.addEventListener("toggle", () => (replieOuvert = det.open));
     return det;

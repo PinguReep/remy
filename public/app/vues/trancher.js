@@ -137,7 +137,8 @@ export function creerTrancher(ctx, { relire } = {}) {
         R.gestesTri(l.type).map(([g, lib]) => {
           const b = bouton(lib, { classe: R.PRINCIPAUX.has(g) ? "plein" : "papier", icone: ICONES_GESTE[g], etiquette: `${lib} : ${l.texte}` });
           b.dataset.geste = g;
-          b.disabled = occupee;
+          // En route : occupé mais focalisable (le focus ne saute pas en haut de la feuille ; agir() ignore un second clic).
+          if (occupee) b.setAttribute("aria-disabled", "true");
           b.addEventListener("click", () => agir(g, l));
           return b;
         }),
@@ -201,7 +202,8 @@ export function creerTrancher(ctx, { relire } = {}) {
         const lignes = [...corps.querySelectorAll("li.trancher-ligne")];
         const cible = lignes.find((x) => x.dataset.cle === cleLigne) || lignes[Math.min(rang, lignes.length - 1)];
         const b = cible && ([...cible.querySelectorAll("button:not(:disabled)")].find((x) => x.dataset.geste === geste) || cible.querySelector("button:not(:disabled)"));
-        (b || corps).focus({ preventScroll: false });
+        if (b) b.focus();
+        else corps.focus({ preventScroll: true });
       },
     };
     feuillesOuvertes.add(f);

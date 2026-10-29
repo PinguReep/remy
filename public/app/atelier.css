@@ -673,6 +673,7 @@ main.ecran:focus { outline: none; }
 .trancher-gestes { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0 26px; }
 .trancher-gestes > .btn:not(.trancher-voir) { flex: 1 1 120px; max-width: 220px; }
 .trancher-ligne.occupee .trancher-gestes { opacity: .5; }
+.trancher-ligne.occupee .trancher-gestes .btn { cursor: progress; }
 .trancher-pied, .trancher-reportes { margin-top: 8px; }
 .trancher-chargement { display: flex; align-items: center; gap: 12px; min-height: 44px; color: var(--encre-2); }
 .trancher-intro { margin-bottom: 4px; }
