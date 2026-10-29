@@ -227,6 +227,8 @@ test("la requête : les mots de Sam, sans politesses ; une suite, un nom propre 
   assert.deepEqual(q.mots, ["smic", "horaire", "brut", "2026"]);
   assert.equal(q.raison, null);
   assert.equal(rr.requeteDepuisMessage("Cherche-moi les horaires de la mairie de Nantes").requete, "les horaires de la mairie de Nantes");
+  assert.equal(rr.requeteDepuisMessage("Cherche sur internet le prix du gazole").requete, "le prix du gazole");
+  assert.equal(rr.requeteDepuisMessage("Recherche d'emploi : quelles aides en 2026 ?").requete, "Recherche d'emploi : quelles aides en 2026 ?", "un nom, pas un impératif");
   // Plusieurs phrases : les questions seulement.
   assert.equal(rr.requeteDepuisMessage("Je lance ma boîte en janvier. Est-ce que j'ai droit à l'ACRE ?").requete, "Est-ce que j'ai droit à l'ACRE ?");
   assert.equal(rr.requeteDepuisMessage("Et pour les commerçants ?").raison, "trop court");
