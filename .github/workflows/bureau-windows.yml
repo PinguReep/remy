@@ -50,6 +50,8 @@ jobs:
     steps:
       - name: Publier seulement depuis main
         if: github.event_name == 'workflow_dispatch' && inputs.publier && github.ref != 'refs/heads/main'
+        # Avant le checkout : desktop/ n'existe pas encore.
+        working-directory: ${{ github.workspace }}
         run: |
           Write-Output "::error::Publier seulement depuis main (ici : $env:GITHUB_REF). Relance sans « publier » pour avoir l'installateur en artefact, ou depuis main une fois fusionné."
           exit 1
