@@ -1,0 +1,16 @@
+{
+  "name": "remy-bureau",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rémy sur Windows : coquille Tauri v2 autour du site servi par la tour",
+  "license": "MIT",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icones": "tauri icon src-tauri/icons/icon.png -o src-tauri/icons"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Noter — Rémy</title>
+  <link rel="stylesheet" href="atelier.css">
+  <script src="noter.js" defer></script>
+</head>
+<body class="noter">
+  <!-- La Noter de secours : quand le site de la tour n'a pas pu se charger.
+       La note attend sur ce PC ; le site l'envoie dès que la tour répond. -->
+  <form class="fenetre-noter" id="form-noter" novalidate>
+    <div class="entete">
+      <span class="sur-titre signal">Noter</span>
+      <span class="pastille" id="etat">Hors ligne · gardée sur ce PC</span>
+      <button type="button" class="fermer" id="bouton-fermer" aria-label="Fermer (Échap)" title="Fermer (Échap)">×</button>
+    </div>
+    <textarea id="champ" placeholder="Une tâche, une idée, un rappel…" aria-label="Ta note"
+              aria-describedby="message" maxlength="4000" spellcheck="true"></textarea>
+    <div class="pied">
+      <p class="message meta" id="message" role="status" aria-live="polite"><kbd>Entrée</kbd> garder · <kbd>Maj+Entrée</kbd> nouvelle ligne · <kbd>Échap</kbd> fermer</p>
+      <button type="submit" class="bouton signal" id="bouton-garder">Garder</button>
+    </div>
+  </form>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rémy</title>
+  <link rel="stylesheet" href="atelier.css">
+  <script src="demarrage.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <header class="marque">
+      <span class="logo" aria-hidden="true">R<span class="point"></span></span>
+      <span class="sur-titre">Rémy · ordinateur</span>
+    </header>
+
+    <!-- La tour est-elle là ? Le temps de la sonde (5 s au plus). -->
+    <section id="vue-connexion" class="carte" aria-busy="true" hidden>
+      <p class="sur-titre signal">Connexion</p>
+      <h1>Je rejoins ta tour…</h1>
+      <p class="adresse mono" id="connexion-adresse"></p>
+      <div class="squelette" aria-hidden="true"><span></span><span></span><span></span></div>
+    </section>
+
+    <!-- Premier lancement, ou « Changer l'adresse ». -->
+    <section id="vue-adresse" class="carte" hidden>
+      <p class="sur-titre signal" id="adresse-sur-titre">Premier lancement</p>
+      <h1>Où est ta tour ?</h1>
+      <p>L'adresse que Tailscale publie, la même que sur l'iPhone. Elle reste sur ce PC.</p>
+      <form id="form-adresse" novalidate>
+        <label for="champ-adresse">Adresse de la tour</label>
+        <input id="champ-adresse" class="mono" type="text" inputmode="url" autocomplete="off"
+               autocapitalize="off" spellcheck="false" placeholder="ma-tour.mon-tailnet.ts.net:8444"
+               aria-describedby="adresse-message">
+        <p id="adresse-message" class="message" role="status" aria-live="polite"></p>
+        <div class="actions">
+          <button type="submit" class="bouton signal" id="bouton-continuer">Continuer</button>
+          <button type="button" class="bouton" id="bouton-garder" hidden>Garder cette adresse quand même</button>
+          <button type="button" class="bouton" id="bouton-annuler" hidden>Annuler</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Tour injoignable, ou Rémy arrêté derrière (?injoignable=502 : la
+         coquille y revient d'elle-même) : l'adresse, quoi vérifier, Réessayer. -->
+    <section id="vue-hors-ligne" class="carte" hidden>
+      <p class="sur-titre alerte" id="hors-ligne-sur-titre">Hors ligne</p>
+      <h1 id="hors-ligne-titre">La tour ne répond pas</h1>
+      <p class="adresse mono" id="hors-ligne-adresse"></p>
+      <p id="hors-ligne-explication">Rémy vit sur ta tour. Vérifie qu'elle est allumée et que Tailscale est connecté sur ce PC.</p>
+      <div class="actions">
+        <button type="button" class="bouton signal" id="bouton-reessayer">Réessayer</button>
+        <button type="button" class="bouton" id="bouton-changer">Changer l'adresse</button>
+      </div>
+      <p class="message" id="reessai-message" role="status" aria-live="polite"></p>
+      <p class="meta">Tu peux quand même noter avec <kbd id="raccourci">Ctrl+Alt+Espace</kbd> : la note attend sur ce PC et part dès que la tour répond.</p>
+    </section>
+
+    <footer class="meta" id="version"></footer>
+  </main>
+</body>
+</html>

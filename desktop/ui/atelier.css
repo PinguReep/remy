@@ -1,0 +1,292 @@
+/* L'« Atelier » de l'iPhone (ios-native/Remy/Design), pour les deux pages
+   embarquées dans l'app Windows : démarrage / hors ligne, et Noter de secours.
+   Polices du système (aucune requête à un tiers) : serif pour les titres,
+   Segoe UI pour le texte, Cascadia / Consolas pour l'adresse. */
+
+:root {
+  color-scheme: light dark;
+  --fond: #F4EFE6;
+  --surface: #FFFCF6;
+  --fond-2: #EDE5D8;
+  --fond-3: #E2D8C8;
+  --encre: #221E18;
+  --encre-2: #564E43;
+  --encre-3: #6F675B;
+  --filet: #E2D8C8;
+  --signal: #F2541B;
+  --sur-signal: #221E18;
+  --danger: #B2361D;
+  --ombre: rgba(92, 70, 48, .10);
+  --serif: "Sitka Heading", "Sitka Text", Georgia, Cambria, "Times New Roman", serif;
+  --texte: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+  --rayon: 18px;
+  --duree: 160ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #14120F;
+    --surface: #1F1C18;
+    --fond-2: #2B2722;
+    --fond-3: #342F28;
+    --encre: #F3ECE1;
+    --encre-2: #C2B9AB;
+    --encre-3: #9A9286;
+    --filet: #342F28;
+    --signal: #FF6A33;
+    --sur-signal: #14120F;
+    --danger: #FF8A6B;
+    --ombre: rgba(0, 0, 0, .10);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--fond);
+  color: var(--encre);
+  font: 15px/1.5 var(--texte);
+  -webkit-font-smoothing: antialiased;
+}
+
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ démarrage */
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 24px;
+  padding: 32px 16px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.marque {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #0C0C0B;
+  color: #F2F0EB;
+  font: 700 20px/1 var(--texte);
+  position: relative;
+}
+.logo .point {
+  position: absolute;
+  right: 7px;
+  bottom: 8px;
+  width: 6px;
+  height: 6px;
+  background: #FF5000;
+}
+
+.sur-titre {
+  margin: 0;
+  font: 600 12px/1.4 var(--mono);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--encre-2);
+}
+.sur-titre.signal { color: var(--encre); }
+.sur-titre.signal::before,
+.sur-titre.alerte::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 2px;
+  background: var(--signal);
+  vertical-align: 1px;
+}
+.sur-titre.alerte::before { background: var(--danger); }
+
+.carte {
+  align-self: center;
+  background: var(--surface);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  box-shadow: 0 8px 18px var(--ombre);
+  padding: 28px;
+  animation: entree var(--duree) ease-out;
+}
+
+h1 {
+  margin: 8px 0 12px;
+  font: 600 30px/1.2 var(--serif);
+  letter-spacing: -.2px;
+  text-wrap: balance;
+}
+
+p { margin: 0 0 12px; color: var(--encre-2); text-wrap: pretty; }
+
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.adresse {
+  color: var(--encre);
+  background: var(--fond-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  word-break: break-all;
+}
+
+.meta { color: var(--encre-3); font-size: 13px; margin: 0; }
+
+label {
+  display: block;
+  margin: 16px 0 6px;
+  font-weight: 600;
+  color: var(--encre);
+}
+
+input[type="text"], textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--filet);
+  border-radius: 12px;
+  background: var(--fond);
+  color: var(--encre);
+  font: inherit;
+  transition: border-color var(--duree) ease-out, background var(--duree) ease-out;
+}
+input[type="text"].mono { font-family: var(--mono); }
+input[type="text"]:hover, textarea:hover { background: var(--fond-2); }
+input[aria-invalid="true"] { border-color: var(--danger); }
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible { outline-offset: 0; border-color: transparent; }
+
+.message { min-height: 1.5em; margin: 8px 0 0; font-size: 14px; }
+.message.erreur { color: var(--danger); }
+.message.succes { color: var(--encre); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.bouton {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--filet);
+  background: var(--surface);
+  color: var(--encre);
+  font: 600 15px/1 var(--texte);
+  cursor: pointer;
+  transition: background var(--duree) ease-out, transform var(--duree) ease-out, opacity var(--duree) ease-out;
+}
+.bouton:hover { background: var(--fond-2); }
+.bouton:active { transform: scale(.98); }
+.bouton.signal { background: var(--signal); border-color: var(--signal); color: var(--sur-signal); }
+.bouton.signal:hover { background: var(--signal); filter: brightness(1.05); }
+.bouton[disabled] { opacity: .6; cursor: progress; }
+
+kbd {
+  font: 12px/1 var(--mono);
+  padding: 3px 6px;
+  border: 1px solid var(--filet);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--fond-2);
+  color: var(--encre);
+  white-space: nowrap;
+}
+
+/* Squelette : la forme de ce qui vient, jamais un spinner seul. */
+.squelette { display: grid; gap: 10px; margin-top: 16px; }
+.squelette span {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, var(--fond-2), var(--fond-3), var(--fond-2));
+  background-size: 200% 100%;
+  animation: lueur 1.2s ease-in-out infinite;
+}
+.squelette span:nth-child(2) { width: 82%; }
+.squelette span:nth-child(3) { width: 64%; }
+
+@keyframes lueur { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes entree { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ------------------------------------------------------------ Noter */
+
+body.noter { background: var(--surface); overflow: hidden; }
+
+.fenetre-noter {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--filet);
+}
+
+.fenetre-noter .entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fenetre-noter textarea {
+  resize: none;
+  min-height: 0;
+  height: 100%;
+  font-size: 17px;
+  line-height: 1.45;
+  background: var(--fond);
+}
+
+.fenetre-noter .pied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pastille {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--encre-2);
+  background: var(--fond-2);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.fermer {
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--encre-2);
+  font: 22px/1 var(--texte);
+  cursor: pointer;
+}
+.fermer:hover { background: var(--fond-2); color: var(--encre); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

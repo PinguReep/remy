@@ -371,6 +371,148 @@ que le chat répondait. Rejoué contre de faux serveurs compatibles OpenAI
   `ios-prototypes.yml`) : la direction A est en place depuis le Lot 1, ils ne
   servaient plus qu'à leurs propres captures.
 
+## 2026-10-29 (fin) — Bureau Windows : intégration des lots SHELL et SITE
+
+- **Deux fusions `--no-ff`** dans `claude/bureau-windows` : le lot SHELL
+  (`desktop/`, workflow de l'installateur) puis le lot SITE (`public/`,
+  `server.js`, tests du site). Les lots touchaient des fichiers disjoints
+  (1.8 de `docs/bureau.md`) : aucun conflit, aucune retouche de code.
+- **Ce que chaque lot laissait à l'intégration**, porté dans
+  `docs/bureau.md` : côté coquille, les deux conditions du script de
+  contrôle (jamais de 2xx vide, garder `allow-bureau-page-chargee`) ;
+  côté site, la notification « Rémy est déconnecté » (une fois par jour),
+  la fenêtre Noter qui marche sans session, les rituels retentés toutes les
+  5 min et le rail replié dès 1279 px.
+- **Reste hors de cette intégration** : la session de la tour expire
+  toujours au bout de 30 jours (une fenêtre glissante dans `lib/auth.js`
+  la renouvellerait à chaque usage) ; à faire dans un lot de la tour.
+
+## 2026-10-29 (suite) — Coquille Windows : contre-relecture
+
+- **Tour jointe, Rémy arrêté (502) : la coquille lit le statut de la page.**
+  À l'ouverture de session, la tâche « Rémy » et l'app démarrent ensemble ;
+  Tailscale Serve répond 502 tant que `server.js` n'écoute pas. La sonde
+  `no-cors` ne voit pas le statut : la fenêtre partait sur une page blanche,
+  sans Réessayer, Noter aussi, et le site ne démarrait jamais les
+  notifications. Correctif : un script injecté par la coquille dans chaque
+  page (`desktop/src-tauri/src/controle.js`) lit le statut de la navigation
+  (`PerformanceNavigationTiming.responseStatus`, donné par WebView2 ; WebKit
+  non, d'où « page vide » en repli) et le dit par `bureau_page_chargee`. 5xx
+  ou vide → retour sur la page embarquée sans changer de visibilité, message
+  « Rémy ne répond pas encore », nouvel essai seul à 30 s (60 s pour Noter),
+  jamais d'aller-retour immédiat. Garde-fou de 20 s pour une page qui ne se
+  signale pas (chargement bloqué, page d'erreur), mesuré dans un fil Rust
+  (les minuteries d'une fenêtre cachée sont ralenties).
+  **Écarté** : renvoyer la fenêtre si `bureau_etat` n'arrive pas en 20 s —
+  sans déploiement automatique, la tour peut encore servir l'ancien site
+  (qui ne l'appelle pas) : la fenêtre ferait des allers-retours sans fin. Le
+  script de contrôle, lui, accepte toute page 2xx. **Écarté aussi** : lire le
+  statut par une sonde CORS sur `/api/version` — le 502 vient de Tailscale,
+  sans en-tête CORS, il resterait illisible ; et une tour pas encore mise à
+  jour bloquerait l'app sur « ne répond pas ».
+- **Plus de `.msi`** : celui de Tauri s'installe pour toute la machine et sa
+  désinstallation laisse la valeur « Rémy » de la clé `Run` (posée par l'app)
+  pointer vers un programme effacé ; l'installateur NSIS par utilisateur
+  l'efface. La CI échoue si un `.msi` réapparaît.
+- **Adresses dans les sources, avant la construction** : les pages de
+  `desktop/ui` sont compressées (brotli) dans `Remy.exe`, le contrôle du
+  binaire ne les voyait pas. La CI cherche maintenant `*.ts.net`
+  (hors exemples `*.mon-tailnet.ts.net`, `*.exemple.ts.net`) et les IP
+  privées du réseau local dans les sources embarquées ; le contrôle du binaire reste pour les chaînes
+  Rust.
+- **Publier seulement depuis `main`** : une Release lancée d'une branche
+  posait le tag sur du code non fusionné et prenait le numéro de version. Le
+  job Windows refuse d'emblée (« Publier seulement depuis main ») et le job
+  de publication a la même condition.
+- **AltGr = Ctrl+Alt sous Windows** : un raccourci Ctrl+Alt + lettre, chiffre
+  ou ponctuation volerait le caractère AltGr partout (Ctrl+Alt+0 = « @ » sur
+  un clavier français). Refusé, sauf avec Maj ou Win en plus ; Espace,
+  Entrée, F1–F12 restent permis. Un raccourci gardé devenu invalide repasse
+  au défaut au lancement (comme avant).
+- **Notes de secours chiffrées par DPAPI** (`CryptProtectData`, portée de
+  l'utilisateur, avec une valeur propre à l'app) : données personnelles au
+  repos, sans clé à garder nous-mêmes. Fichier `notes-en-attente.dat` (en-tête
+  `REMY-DPAPI-1` puis le bloc) ; l'ancien `.json` en clair de la 0.1.0 est
+  repris puis effacé ; un fichier illisible (profil réinitialisé, autre PC)
+  est renommé `notes-en-attente.illisible`, jamais écrasé, et Noter le dit.
+  Hors Windows (tests, essai de fumée), en clair. Testé sous Windows par la
+  CI (`cargo test` : le texte n'apparaît pas dans le fichier).
+- **File d'envoi du site dans `localStorage`, en clair** (lot SITE) : laissée
+  ainsi. Le site tourne aussi dans un navigateur, où il n'a aucune clé à lui
+  (une clé à côté des données ne protégerait rien) ; dans l'app, le profil
+  WebView2 est sous `%LOCALAPPDATA%` du compte, la file ne garde que ce qui
+  n'est pas encore parti et se vide au retour de la tour. Le disque n'est
+  pas chiffré au niveau du volume (pas de BitLocker, choix du propriétaire) :
+  pour cette file, c'est la session Windows qui protège, rien de plus — dit
+  tel quel dans `docs/bureau.md` 1.3.
+
+## 2026-10-29 — Rémy sur Windows : la coquille (desktop/, Tauri v2)
+
+Conception complète et contrat avec le site : `docs/bureau.md`. Ce qui a été
+décidé en construisant :
+
+- **Tauri v2 (WebView2) plutôt qu'Electron** : installateur de 1,5 Mo
+  (NSIS) au lieu d'une centaine, WebView2 déjà dans Windows 11, et des règles
+  d'accès par origine pour les API natives. La fenêtre affiche le site de la
+  tour (pas une copie) : la tour mise à jour, l'app l'est aussi.
+- **Deux verrous pour les commandes natives.** Les règles d'accès de Tauri
+  n'acceptent que des motifs génériques (`https://*.ts.net:*/*`, localhost) ;
+  chaque commande vérifie ensuite que la page vient exactement de l'adresse
+  configurée (`adresse::meme_origine`). Les commandes des pages embarquées
+  (adresse, notes de secours) sont refusées à toute page distante ; un test
+  vérifie que `build.rs`, les deux fichiers de règles et `run()` concordent.
+- **Ni shell, ni fichiers, ni HTTP côté Rust.** La sonde de la tour est un
+  `fetch` `no-cors` de la page de démarrage vers `/api/version` (et non
+  `/api/health`, qui teste la clé Anthropic et Motion quand l'appel vient de
+  la tour elle-même). Les liens externes partent au navigateur (`http(s)`
+  seulement, sans identifiants) ; toute autre navigation est refusée.
+- **Démarrage avec Windows par `auto-launch` directement**, pas par
+  `tauri-plugin-autostart` : le greffon inscrit le chemin du programme sans
+  guillemets dans la clé `Run`, ambigu dès que le profil Windows contient une
+  espace. Valeur « Rémy » (= `productName`) : le désinstallateur Tauri
+  l'efface déjà. Allumé une fois au premier lancement, ensuite Windows fait
+  foi (Gestionnaire des tâches compris).
+- **Identifiant d'app explicite** (`SetCurrentProcessExplicitAppUserModelID`,
+  = l'identifiant du raccourci du menu Démarrer posé par l'installateur) :
+  l'épingle de la barre des tâches retrouve la même app qu'elle ait été
+  lancée par le menu ou au démarrage de Windows, et les notifications portent
+  le nom de Rémy.
+- **Notifications bornées côté coquille** : titre 80, corps 240 caractères,
+  10 par minute, la même clé pas deux fois en 10 minutes — une page qui
+  s'emballe ne peut pas inonder l'écran. C'est le site qui décide quoi
+  notifier (il a la session) ; la coquille ne fait aucune requête.
+- **Noter de secours** : la fenêtre Noter est préchargée cachée sur une page
+  embarquée qui passe sur le site de la tour dès qu'elle répond, jamais
+  pendant qu'on tape. Hors ligne, la note est gardée dans
+  `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.dat` (200 au plus,
+  4 000 caractères chacune, chiffrée — voir la suite) jusqu'à ce que le site
+  l'envoie.
+- **« Recharger » repasse par la page de démarrage** : tour tombée, on obtient
+  « La tour ne répond pas » + Réessayer au lieu de la page d'erreur de WebView2.
+- **Raccourci** : écriture française acceptée (Maj, Espace, Win), forme rangée
+  re-lisible, au moins Ctrl, Alt ou Win ; refusé par Windows → l'ancien reste.
+- **Clic sur l'icône = montrer / ranger** : le clic donne d'abord le focus à
+  la barre des tâches, donc « la fenêtre est-elle devant ? » se lit sur la
+  perte de focus de moins d'une demi-seconde, pas sur le focus actuel (sinon
+  le clic ne rangerait jamais).
+- **CI** (`bureau-windows.yml`) : `cargo test` puis `tauri build` sur
+  `windows-latest` (~9 min, cache Cargo), installateurs renommés sans accent
+  (`Remy-Bureau_X.Y.Z_x64-setup.exe`), `SHA256SUMS.txt`, contrôle
+  qu'aucune adresse `*.ts.net` n'est écrite dans les sources embarquées ni
+  dans le binaire. Lancée par un
+  envoi qui touche `desktop/` (sur `main` et `claude/bureau-windows**`) ou à
+  la main ; « publier » (depuis `main` seulement) crée alors la Release
+  `bureau-vX.Y.Z`.
+- **Non signé** : SmartScreen prévient (mode d'emploi, `docs/bureau.md` 2.2).
+- **Essai de fumée sous Linux** (`desktop/essais/fumee.mjs`, job `fumee` de
+  la CI) : la coquille compile aussi pour WebKitGTK, ce qui permet de lancer
+  le VRAI binaire sous Xvfb contre une fausse tour et de vérifier de bout en
+  bout ce que ni les tests unitaires ni la CI Windows (qui ne peut pas
+  cliquer) ne voient : `__TAURI__` injecté dans le site distant, commandes
+  locales refusées par les règles d'accès, navigation et `window.open` vers
+  une autre origine bloqués. Les pages embarquées sont jouées à part dans
+  Chromium avec un faux pont (`desktop/essais/pages.cjs`).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil
@@ -1729,3 +1871,6 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
 - `ios-parcours.yml` (à la demande) : les parcours du quotidien joués sur le
   simulateur (XCUITest, `ios-native/RemyParcours/`) contre une tour de démo
   pilotée ; captures par étape, gestes et durées, résumé dans la page du run.
+- `bureau-windows.yml` : l'app Windows (`desktop/`) — `cargo test`, puis
+  l'installateur NSIS en artefact sur `windows-latest` ; lancé à la main
+  depuis `main` avec « publier », la Release `bureau-vX.Y.Z`.
