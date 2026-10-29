@@ -543,6 +543,18 @@ button.puce.suggeree[aria-pressed="true"] { background: color-mix(in srgb, var(-
 .suggestion { margin-left: 4px; }
 .feuille-gerer .feuille-pied .btn.large { width: 100%; }
 
+/* Le bandeau d'état : des lignes de 44 px, liseré rouge pour ce qui manque ; la ligne des captures s'ouvre. */
+.etat-lignes { display: flex; flex-direction: column; gap: 8px; }
+.etat-ligne { min-height: 44px; }
+button.etat-captures { width: 100%; text-align: left; font-weight: 600; cursor: pointer; }
+button.etat-captures:hover { background: var(--fond-3); }
+.etat-captures .voir { margin-left: auto; color: var(--encre-2); }
+.etat-captures svg.ic.signal { color: var(--signal); }
+.etat-captures svg.ic.danger { color: var(--danger); }
+/* Une page d'un autre jour : seule la carte « Rafraîchir » reste. */
+.auj-perimee .auj-zone:not(.zone-maintenant):not(.zone-motion) { display: none; }
+@media (max-width: 1023px) { .zone-connaissance { order: 10; } }
+
 /* « Et maintenant ? » : en bas à droite, au-dessus des bandeaux (et des onglets sous 720 px). */
 .maintenant-suite {
   position: fixed; z-index: 80; right: 24px; bottom: calc(24px + var(--sa-bas)); width: min(380px, calc(100vw - 32px));

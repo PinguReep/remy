@@ -298,3 +298,76 @@ export const lienAgendaJour = (ms) => {
 
 /** La page date-t-elle d'un autre jour ? (Jour.estPerimee) L'afficher tromperait. */
 export const estPerimee = (j, maintenant = Date.now()) => Boolean(j?.jour) && j.jour !== jourISO(maintenant);
+
+// --- Le bandeau d'état d'Aujourd'hui (Bandeau, AujourdhuiView.swift) ---
+
+/** La journée affichée n'est pas fraîche : la relecture a échoué (null : rien à dire). */
+export function phraseRafraichi(erreur, misAJour, maintenant = Date.now()) {
+  if (!erreur) return null;
+  const quand = misAJour != null ? depuis(misAJour, maintenant) : null;
+  if (erreur.nature === "reseau" || erreur.nature === "delai") {
+    return quand ? `Rémy est injoignable — Tailscale est-il actif ? Ta journée date ${quand}.` : "Rémy est injoignable — Tailscale est-il actif ?";
+  }
+  return `Rémy n'a pas pu rafraîchir ta journée${quand ? ` (elle date ${quand}).` : "."}`;
+}
+
+/** Motion ou l'agenda en erreur, l'autre répondant : ce qui peut manquer (chaque ligne a son « Réessayer » ou pas). */
+export function phrasesSources(j) {
+  const s = j?.sources;
+  if (!s || sourcesEnPanne(s) || sourcesAucune(s)) return [];
+  const lignes = [];
+  if (s.motion === "erreur" && !j.motion) lignes.push({ texte: "Motion ne répond pas : des tâches peuvent manquer.", reessayer: true });
+  if (s.agenda === "erreur") lignes.push({ texte: "Ton agenda ne répond pas : des rendez-vous peuvent manquer.", reessayer: s.motion !== "erreur" });
+  return lignes;
+}
+
+/** « 1 changement partira… » : les coches qui attendent la tour dans la file d'envoi. */
+export const phraseGestes = (n) => (n <= 0 ? null : n === 1 ? "1 changement partira dès que Rémy sera joignable." : `${n} changements partiront dès que Rémy sera joignable.`);
+
+/** La ligne des captures qui attendent (file d'envoi, hors coches) : { texte, aRevoir } ou null. */
+export function phraseCaptures(file) {
+  const captures = (file || []).filter((x) => x.genre !== "terminer");
+  const n = captures.length;
+  if (!n) return null;
+  const aRevoir = captures.filter((x) => x.refus).length;
+  const s = n > 1 ? "s" : "";
+  if (aRevoir === n) return { texte: `${n} capture${s} à revoir : pas partie${s}`, aRevoir };
+  return { texte: `${n} en attente d'envoi${aRevoir ? `, dont ${aRevoir} à revoir` : ""}`, aRevoir };
+}
+
+// --- Faire connaissance : l'onboarding, tant qu'il reste une étape (Onboarding, Logique.swift) ---
+
+/** Repères couverts / repères ; une étape cochée à la main vaut 100 %. */
+export function pctEtape(s, e) {
+  if (e?.etats?.[s.id] === "faite") return 100;
+  const reperes = s.reperes || [];
+  if (!reperes.length) return 0;
+  const connus = new Set(reperes.map((r) => r.id));
+  const couverts = new Set((e?.couverture?.[s.id] || []).filter((x) => connus.has(x)));
+  return Math.round((couverts.size / reperes.length) * 100);
+}
+/** Les repères qui restent à couvrir. */
+export const resteEtape = (s, e) => (e?.etats?.[s.id] === "faite" ? [] : (s.reperes || []).filter((r) => !(e?.couverture?.[s.id] || []).includes(r.id)));
+
+/**
+ * La carte « Faire connaissance » : l'étape en cours, sinon la première pas
+ * finie ; null s'il n'y a plus rien à faire. Rend ce que la carte affiche.
+ */
+export function carteConnaissance(e) {
+  const sessions = e?.sessions || [];
+  if (!sessions.length) return null;
+  const s = sessions.find((x) => e.etats?.[x.id] === "en_cours") ?? sessions.find((x) => e.etats?.[x.id] !== "faite" && pctEtape(x, e) < 100);
+  if (!s) return null;
+  const faites = sessions.filter((x) => e.etats?.[x.id] === "faite").length;
+  const reste = resteEtape(s, e);
+  const reperes = s.reperes || [];
+  return {
+    session: s,
+    texte: faites === 0
+      ? `Quelques conversations pour que Rémy te connaisse vraiment : ${sessions.length} étapes, à ton rythme.`
+      : `${faites} étape${faites > 1 ? "s" : ""} finie${faites > 1 ? "s" : ""} sur ${sessions.length}.`,
+    titre: s.title,
+    detail: reste.length && reperes.length && reste.length < reperes.length ? `Il reste : ${reste.map((r) => r.label).join(" · ")}` : s.desc || null,
+    libelle: e.convs?.[s.id] ? "Continuer" : "Commencer",
+  };
+}

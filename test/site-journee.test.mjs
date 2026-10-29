@@ -190,6 +190,60 @@ test("les formats de l'iPhone : depuis, autre jour, jour en titre, page d'un aut
   assert.equal(J.dureeTotale({ debut: h(10), fin: h(10, 45) }), 45, "à défaut de durée Motion, celle du créneau");
 });
 
+// --- Le bandeau d'état et « Faire connaissance » ---
+
+test("le bandeau : relecture ratée (datée), injoignable, sources en erreur, coches et captures en attente", () => {
+  const lu = h(10, 20);
+  assert.equal(J.phraseRafraichi({ nature: "serveur" }, lu, maintenant), "Rémy n'a pas pu rafraîchir ta journée (elle date de 10:20).");
+  assert.equal(J.phraseRafraichi({ nature: "serveur" }, null, maintenant), "Rémy n'a pas pu rafraîchir ta journée.");
+  assert.equal(J.phraseRafraichi({ nature: "reseau" }, lu, maintenant), "Rémy est injoignable — Tailscale est-il actif ? Ta journée date de 10:20.");
+  assert.equal(J.phraseRafraichi({ nature: "reseau" }, lu - 86400e3, maintenant), "Rémy est injoignable — Tailscale est-il actif ? Ta journée date d'hier, 10:20.");
+  assert.equal(J.phraseRafraichi(null, lu, maintenant), null);
+  assert.deepEqual(J.phrasesSources({ sources: { motion: "ok", agenda: "erreur" } }), [{ texte: "Ton agenda ne répond pas : des rendez-vous peuvent manquer.", reessayer: true }]);
+  assert.deepEqual(J.phrasesSources({ sources: { motion: "erreur", agenda: "ok" } }), [{ texte: "Motion ne répond pas : des tâches peuvent manquer.", reessayer: true }]);
+  assert.deepEqual(J.phrasesSources({ sources: { motion: "erreur", agenda: "ok" }, motion: { etat: "panne" } }), [], "Motion dit déjà pourquoi");
+  assert.deepEqual(J.phrasesSources({ sources: { motion: "erreur", agenda: "erreur" } }), [], "tout en panne : la carte le dit");
+  assert.deepEqual(J.phrasesSources({ sources: { motion: "ok", agenda: "ok" } }), []);
+  assert.equal(J.phraseGestes(0), null);
+  assert.equal(J.phraseGestes(1), "1 changement partira dès que Rémy sera joignable.");
+  assert.equal(J.phraseGestes(3), "3 changements partiront dès que Rémy sera joignable.");
+  assert.equal(J.phraseCaptures([]), null);
+  assert.equal(J.phraseCaptures([{ genre: "terminer" }]), null, "une coche n'est pas une capture");
+  assert.equal(J.phraseCaptures([{ genre: "idee" }, { genre: "tache", refus: "non" }]).texte, "2 en attente d'envoi, dont 1 à revoir");
+  assert.equal(J.phraseCaptures([{ genre: "idee", refus: "non" }]).texte, "1 capture à revoir : pas partie");
+  assert.equal(J.phraseCaptures([{ genre: "idee", refus: "a" }, { genre: "note", refus: "b" }]).texte, "2 captures à revoir : pas parties");
+  assert.equal(J.phraseCaptures([{ genre: "idee" }]).aRevoir, 0);
+});
+
+// CoeurTests.swift : les pourcentages comme le site, les étapes dans le désordre.
+const sessions = [
+  { id: "tete", title: "Vider ta tête", desc: "Tout ce qui traîne.", reperes: [{ id: "a", label: "A" }, { id: "b", label: "B" }] },
+  { id: "projets", title: "Projets actifs", desc: "Résultat attendu.", reperes: [{ id: "c", label: "C" }, { id: "d", label: "D" }, { id: "e", label: "E" }, { id: "f", label: "F" }] },
+];
+test("Faire connaissance : pourcentages, reste, l'étape à reprendre et ce que dit la carte", () => {
+  const e = { etats: { tete: "faite", projets: "en_cours" }, couverture: { projets: ["c", "inconnu"] }, sessions, convs: { projets: "conv-1" } };
+  assert.equal(J.pctEtape(sessions[0], e), 100, "cochée à la main = 100 %");
+  assert.equal(J.pctEtape(sessions[1], e), 25, "un repère inventé ne compte pas");
+  assert.deepEqual(J.resteEtape(sessions[1], e).map((r) => r.id), ["d", "e", "f"]);
+  const c = J.carteConnaissance(e);
+  assert.equal(c.session.id, "projets");
+  assert.equal(c.texte, "1 étape finie sur 2.");
+  assert.equal(c.detail, "Il reste : D · E · F");
+  assert.equal(c.libelle, "Continuer");
+  const neuf = J.carteConnaissance({ etats: {}, sessions, convs: {} });
+  assert.equal(neuf.texte, "Quelques conversations pour que Rémy te connaisse vraiment : 2 étapes, à ton rythme.");
+  assert.equal(neuf.session.id, "tete");
+  assert.equal(neuf.detail, "Tout ce qui traîne.", "rien de couvert : la description");
+  assert.equal(neuf.libelle, "Commencer");
+  const s3 = [...sessions, { id: "rythme", title: "Ton rythme", reperes: [{ id: "g", label: "G" }] }];
+  assert.equal(J.carteConnaissance({ etats: { rythme: "faite" }, couverture: {}, sessions: s3 }).session.id, "tete", "la première pas finie, même si une suivante l'est");
+  assert.equal(J.carteConnaissance({ etats: { tete: "faite", projets: "faite" }, sessions }), null, "tout est fait : plus de carte");
+  assert.equal(J.carteConnaissance({ sessions: [] }), null);
+  assert.equal(J.carteConnaissance(null), null);
+  assert.equal(J.carteConnaissance({ etats: { tete: "faite", projets: "faite", rythme: "faite" }, sessions: s3 }), null);
+  assert.equal(J.carteConnaissance({ etats: {}, couverture: { tete: ["a", "b"] }, sessions }).session.id, "projets", "tous les repères couverts : l'étape suivante");
+});
+
 // --- Les routes des gestes, contre les vraies routes de la tour ---
 
 console.log = () => {};

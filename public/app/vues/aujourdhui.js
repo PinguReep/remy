@@ -12,12 +12,13 @@
 // Lectures : /api/dashboard à l'affichage, au retour au premier plan et
 // toutes les 5 min quand la fenêtre est visible (jamais en boucle serrée : il
 // peut relancer le conseil réfléchi du modèle local).
-import { api, sait, evenements } from "../api.js";
+import { api, ecrire, seg, sait, evenements } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, duree, occupe, local } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import { gerer, terminer, decaler, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite, marquerFaite, cochees, renoncerCochee, suivreFileCochees, chargerEtiquettes, nomsEtiquettes, preparerQuestion } from "./gerer.js";
 import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
-import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, plusEnRetard } from "../analyse/journee.js";
+import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, plusEnRetard, estPerimee, phraseRafraichi, phrasesSources, phraseGestes, phraseCaptures, carteConnaissance } from "../analyse/journee.js";
+import * as fileEnvoi from "../file-envoi.js";
 import { creerConseil } from "./conseil.js";
 
 let racine;
@@ -33,6 +34,8 @@ let ctx;
 let enLecture = null;
 let conseil = null; // la carte « Conseil du moment » (vues/conseil.js)
 let desabonnerCochees = null;
+let desabonnerFile = null;
+let misAJour = null; // quand la journée affichée a été lue
 
 const zones = {};
 
@@ -50,13 +53,13 @@ export default {
     actionsEntete = h("div", { class: "actions-entete" }, rafraichir, noter);
     // Chaque zone a sa place (classe zone-…) : deux colonnes sur grand écran,
     // une seule dans l'ordre de l'iPhone en dessous de 1024 px (atelier.css).
-    for (const k of ["motion", "conseil", "maintenant", "rappels", "menacees", "rituel", "journee", "retards", "semaine", "trancher"]) zones[k] = h("div", { class: `auj-zone zone-${k}` });
+    for (const k of ["motion", "conseil", "maintenant", "rappels", "menacees", "rituel", "journee", "retards", "semaine", "trancher", "connaissance"]) zones[k] = h("div", { class: `auj-zone zone-${k}` });
     vider(el,
       h("header", { class: "entete-ecran" }, titre, actionsEntete),
       zones.motion,
       h("div", { class: "auj-grille" },
         h("div", { class: "auj-colonne principale" }, zones.maintenant, zones.rappels, zones.journee, zones.retards),
-        h("div", { class: "auj-colonne laterale" }, zones.conseil, zones.menacees, zones.rituel, zones.semaine, zones.trancher)));
+        h("div", { class: "auj-colonne laterale" }, zones.conseil, zones.menacees, zones.rituel, zones.semaine, zones.trancher, zones.connaissance)));
     ajouterA(zones.maintenant, h("section", { class: "carte maintenant" }, squelette([0.3, 0.8, 0.5], true)));
     ajouterA(zones.journee, h("section", { class: "carte" }, squelette([0.5, 0.9, 0.9, 0.7])));
     conseil?.arreter();
@@ -69,6 +72,11 @@ export default {
       if (racine?.isConnected && donnees) redessiner();
     });
     suivreFileCochees({ apres });
+    // Ce qui attend la tour (captures, coches) : la ligne d'état suit la file d'envoi.
+    desabonnerFile?.();
+    desabonnerFile = fileEnvoi.surChangement(() => {
+      if (racine?.isConnected) dessinerEtat();
+    });
     if (sait("etiquettes-v1")) chargerEtiquettes().then(() => { if (racine?.isConnected && donnees) redessiner(); }).catch(() => {});
     modulesPrets = monterModules();
     await charger();
@@ -93,6 +101,8 @@ export default {
     evenements.removeEventListener("remy:sujets", surSujets);
     desabonnerCochees?.();
     desabonnerCochees = null;
+    desabonnerFile?.();
+    desabonnerFile = null;
   },
   actualiser() {
     charger({ discret: true });
@@ -184,6 +194,7 @@ async function charger({ frais = false, discret = false } = {}) {
     if (d.status === "fulfilled") {
       donnees = d.value;
       erreur = null;
+      misAJour = Date.now();
     } else {
       erreur = d.reason;
       if (!discret || !donnees) donnees = donnees || null;
@@ -192,7 +203,7 @@ async function charger({ frais = false, discret = false } = {}) {
     masquees = new Set();
     toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null } });
     if (d.status === "fulfilled") majModules({ frais });
-    if (frais && d.status === "fulfilled") {
+    if (frais && d.status === "fulfilled" && !estPerimee(donnees?.journee)) {
       // « À jour. » seulement si Motion a vraiment été relu ; sinon, pourquoi.
       const m = donnees?.journee?.motion;
       if (motionFrais(m)) dire("À jour.", { duree: 1500 });
@@ -202,6 +213,8 @@ async function charger({ frais = false, discret = false } = {}) {
     }
   })().finally(() => {
     enLecture = null;
+    // Les « Réessayer » du bandeau redeviennent cliquables.
+    if (racine?.isConnected) dessinerEtat();
   });
   return enLecture;
 }
@@ -210,6 +223,15 @@ const apres = () => setTimeout(() => charger({ discret: true }), 600);
 
 function toutDessiner({ erreursSecondaires = {} } = {}) {
   if (!racine?.isConnected) return;
+  // Une page restée d'un autre jour (fenêtre ouverte depuis hier, relecture ratée) : l'afficher tromperait.
+  const perimee = Boolean(donnees) && estPerimee(donnees.journee);
+  racine.classList.toggle("auj-perimee", perimee);
+  if (perimee) {
+    vider(zones.maintenant, h("section", { class: "carte" }, vide(null, "Cette page date d'un autre jour : Rémy doit la rafraîchir.",
+      bouton("Rafraîchir", { classe: "plein", icone: "rafraichir", onclick: (ev) => occupe(ev.currentTarget, () => charger({ frais: true })) }))));
+    dessinerEtat();
+    return;
+  }
   if (!donnees && erreur) {
     vider(zones.maintenant, h("section", { class: "carte" }, blocErreur(erreur, () => charger())));
     vider(zones.journee);
@@ -219,23 +241,58 @@ function toutDessiner({ erreursSecondaires = {} } = {}) {
     dessinerJournee();
     dessinerRetards();
   }
-  dessinerMotion();
+  dessinerEtat();
   dessinerMenacees();
+  dessinerConnaissance();
   dessinerSemaine(erreursSecondaires.semaine);
   dessinerConseil();
 }
 
-// --- Motion : le bandeau quand quelque chose ne va pas (Bandeau de l'iPhone) ---
-function dessinerMotion() {
-  const m = donnees?.journee?.motion;
-  const src = donnees?.journee?.sources || {};
-  // Les deux sources en panne : la carte Maintenant le dit déjà.
-  const phrase = src.motion !== "ok" && src.agenda !== "ok" ? null : phraseMotion(m);
-  if (!phrase) return vider(zones.motion);
-  const alerte = ALERTES_MOTION.has(m.etat);
-  vider(zones.motion, h("div", { class: `bandeau-motion${alerte ? " alerte" : ""}`, role: alerte ? "alert" : "status" },
-    icone(alerte ? "alerte" : "horloge"), h("span", { class: "msg" }, phrase),
-    REESSAI_MOTION.has(m.etat) ? bouton("Réessayer", { classe: "papier petit", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, () => charger({ frais: true })) }) : null));
+// --- Le bandeau d'état : seulement quand quelque chose ne va pas (Bandeau de l'iPhone) ---
+// Ce qui attend la tour (captures, coches), une journée pas rafraîchie (avec sa
+// date), Motion ou l'agenda qui ne répondent pas, la phrase de Motion. Jamais
+// un succès qui n'a pas eu lieu.
+function ligneEtat(texte, { alerte = true, reessayer = null } = {}) {
+  return h("div", { class: `bandeau-motion etat-ligne${alerte ? " alerte" : ""}`, role: alerte ? "alert" : "status" },
+    icone(alerte ? "alerte" : "horloge"), h("span", { class: "msg" }, texte),
+    reessayer ? boutonReessayer(reessayer) : null);
+}
+/** « Réessayer », « … » et désactivé pendant la lecture. */
+function boutonReessayer(faire) {
+  const b = bouton(enLecture ? "…" : "Réessayer", { classe: "papier petit", icone: "rafraichir", onclick: async (ev) => {
+    const btn = ev.currentTarget;
+    const lib = btn.querySelector(".lib");
+    if (lib) lib.textContent = "…";
+    await occupe(btn, faire);
+    if (btn.isConnected && lib) lib.textContent = "Réessayer";
+  } });
+  if (enLecture) b.disabled = true;
+  return b;
+}
+const relireFrais = () => charger({ frais: true });
+
+function dessinerEtat() {
+  const lignes = [];
+  const file = fileEnvoi.liste();
+  const captures = phraseCaptures(file);
+  if (captures) {
+    lignes.push(h("button", { type: "button", class: "bandeau-motion etat-ligne etat-captures", "aria-label": `${captures.texte}. Ouvre la liste de ce qui attend Rémy.`, onclick: () => ctx.aller("reglages/file") },
+      icone(captures.aRevoir ? "alerte" : "plateau", captures.aRevoir ? "danger" : "signal"), h("span", { class: "msg" }, captures.texte),
+      h("span", { class: "voir" }, "Voir"), icone("chevron")));
+  }
+  const j = donnees?.journee;
+  const enErreur = Boolean(donnees && erreur);
+  if (enErreur) lignes.push(ligneEtat(phraseRafraichi(erreur, misAJour), { reessayer: () => charger() }));
+  const gestes = phraseGestes(file.filter((x) => x.genre === "terminer").length);
+  if (gestes) lignes.push(ligneEtat(gestes, { alerte: false, reessayer: enErreur ? null : () => fileEnvoi.vider({ sansAttendre: true }).catch(() => {}) }));
+  if (!enErreur && j && !estPerimee(j)) {
+    const src = j.sources || {};
+    // Les deux sources en panne : la carte Maintenant le dit déjà.
+    const phrase = src.motion !== "ok" && src.agenda !== "ok" ? null : phraseMotion(j.motion);
+    if (phrase) lignes.push(ligneEtat(phrase, { alerte: ALERTES_MOTION.has(j.motion.etat), reessayer: REESSAI_MOTION.has(j.motion.etat) ? relireFrais : null }));
+    for (const l of phrasesSources(j)) lignes.push(ligneEtat(l.texte, { reessayer: l.reessayer ? relireFrais : null }));
+  }
+  vider(zones.motion, lignes.length ? h("div", { class: "etat-lignes" }, lignes) : null);
 }
 
 // --- La journée : état de chaque élément selon l'heure ---
@@ -614,6 +671,58 @@ function dessinerSemaine(err) {
     })));
   }
   vider(zones.semaine, carte);
+}
+
+// --- Faire connaissance : l'onboarding, tant qu'il reste une étape ---
+function dessinerConnaissance() {
+  const c = carteConnaissance(donnees?.setup);
+  if (!c) return vider(zones.connaissance);
+  vider(zones.connaissance, h("section", { class: "carte connaissance", "aria-label": "Faire connaissance" },
+    h("h2", { class: "titre-section" }, "Faire connaissance"),
+    h("p", { class: "aide-carte" }, c.texte),
+    h("p", { class: "carte-titre", style: { marginTop: "10px" } }, c.titre),
+    c.detail ? h("p", { class: "aide", style: { marginTop: "4px" } }, c.detail) : null,
+    h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton(c.libelle, { classe: "papier", onclick: (ev) => lancerEtape(c.session, ev.currentTarget) }))));
+}
+
+/**
+ * Ouvre la conversation d'une étape (une seule par étape) : la reprend si
+ * elle a des messages, sinon la crée, note l'étape « en cours » et envoie son
+ * amorce (le clic est le geste, contrat C).
+ */
+async function lancerEtape(s, btn) {
+  const lib = btn?.querySelector(".lib");
+  const avant = lib?.textContent;
+  if (lib) lib.textContent = "Ouverture…";
+  await occupe(btn, async () => {
+    try {
+      const setup = donnees?.setup || {};
+      const etats = { ...(setup.etats || {}) };
+      const convs = { ...(setup.convs || {}) };
+      if (convs[s.id]) {
+        const existante = await api(`/api/conversations/${seg(convs[s.id])}`).catch((err) => {
+          if (err?.statut === 404) return null;
+          throw err;
+        });
+        if (existante?.messages?.length) return ctx.aller(`remy/${seg(convs[s.id])}`);
+      }
+      const conv = await ecrire("/api/conversations", { session: s.id });
+      const neuve = !conv?.messages?.length;
+      convs[s.id] = conv.id;
+      if (neuve && etats[s.id] !== "faite") etats[s.id] = "en_cours";
+      if (donnees) donnees.setup = { ...setup, etats, convs };
+      try {
+        await api("/api/setup", { methode: "PUT", corps: { etats, convs, vuA: setup.updatedAt } });
+      } catch (err) {
+        if (err?.nature !== "auth") dire("Étape ouverte, mais son suivi n'a pas pu être enregistré.", { genre: "erreur" });
+      }
+      if (neuve && s.prompt) local.ecrire("remy-envoi", { texte: s.prompt, a: Date.now(), conv: conv.id });
+      ctx.aller(`remy/${seg(conv.id)}`);
+    } catch (err) {
+      direErreur(err, () => lancerEtape(s, btn), "L'étape n'a pas pu s'ouvrir");
+    }
+  });
+  if (lib && btn.isConnected) lib.textContent = avant;
 }
 
 // --- Le conseil du moment (vues/conseil.js) ---
