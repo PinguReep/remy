@@ -421,7 +421,7 @@ final class ParcoursQuotidien: ParcoursBase {
             verifier("« Jauge du contexte » est le premier résultat de « jauge ».", premier.identifier == "recherche.diagnostic.jauge")
             auditerCibles("Résultats de la recherche")
             try toucher(resultat, "Jauge du contexte")
-            let interrupteur = nomme(app.switches.matching(NSPredicate(format: "label BEGINSWITH %@", "Jauge du contexte")).firstMatch,
+            let interrupteur = nomme(app.switches.matching(NSPredicate(format: "label CONTAINS %@", "Jauge du contexte")).firstMatch,
                                      "interrupteur « Jauge du contexte »")
             try etape("reglage-atteint", attendu: [app.navigationBars["Diagnostic"], interrupteur])
             verifier("Le réglage trouvé est à l'écran, touchable sans défiler.", interrupteur.isHittable)

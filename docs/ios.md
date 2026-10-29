@@ -188,8 +188,9 @@ tag) avant l'échéance.
   synonymes (« notif », « jauge », « privé », « Siri »), sans IA. Toucher un
   résultat ouvre son écran, la ligne mise en évidence. L'index est dans le
   cœur (`RechercheReglages.swift`) ; une ligne se déclare avec `.repere(…)`.
-  **Une nouvelle ligne de Réglages = une entrée dans l'index** : les tests du
-  cœur relisent les vues et échouent sinon. Captures : `REMY_DEMO_ECRAN=
+  **Une nouvelle ligne de Réglages = une entrée dans `RechercheReglages.index`**
+  (et, pour un nouvel écran, un cas d'`EcranReglages` et sa branche dans
+  `ReglagesView.aller`) : les tests du cœur relisent les vues et échouent sinon. Captures : `REMY_DEMO_ECRAN=
   reglages-recherche`, `reglages-recherche-vide`, `reglages-repere`.
 - Bilan du soir : 22 h 45 par défaut (avant le coucher), briefing à 7 h 30 ;
   une heure déjà choisie n'est jamais remplacée.
