@@ -335,6 +335,26 @@ export function isoLocal(d) {
 export const versChampDate = (d) => isoLocal(d).slice(0, 16);
 export const depuisChampDate = (v) => (v ? new Date(v) : null);
 
+// --- lot projets : icônes du carnet (rappels, listes, dossiers, historique) ---
+Object.assign(CHEMINS, {
+  agenda: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
+  etiquette: "M3 12V4h8l10 10-8 8zM7.5 7.5h.01",
+  entonnoir: "M3 5h18l-7 8v6l-4 2v-8z",
+  plateau: "M3 14h5l1.5 2.5h5L16 14h5M3 14l2.5-9h13l2.5 9v6H3zM8 8.5h8M7 11h10",
+  points: "M5 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0zM10.8 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0zM16.6 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0z",
+  moins: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8",
+  grille: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  pile: "M8 9h12v11H8zM6 6h12M4 3h12",
+  blocnotes: "M6 3h9l4 4v14H6zM9 9h7M9 13h7M9 17h4",
+  personne: "M3 5h18v14H3zM8.5 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5.5 16.5a3 3 0 0 1 6 0M14 9h4M14 13h4",
+  chariot: "M3 4h2l2.5 11h10L20 7H6.5M9 19a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0-2.6 0zM15.5 19a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0-2.6 0z",
+  trousse: "M4 8h16v12H4zM9 8V5h6v3M12 11v6M9 14h6",
+  cadeau: "M4 9h16v4H4zM5 13h14v8H5zM12 9v12M12 9c-1.5-4-6-4-5-1s5 1 5 1M12 9c1.5-4 6-4 5-1s-5 1-5 1",
+  livre: "M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2zM4 20a2 2 0 0 1 2-2h13v3H6a2 2 0 0 1-2-1",
+  valise: "M4 8h16v12H4zM9 8V5h6v3M9 8v12M15 8v12",
+});
+// --- fin lot projets
+
 // --- Markdown (réponses de Rémy) : échappé d'abord, puis un sous-ensemble sûr ---
 const echapper = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 function enLigne(s) {

@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
   "/app/atelier.css", "/app/main.js", "/app/api.js", "/app/ui.js", "/app/bureau.js", "/app/file-envoi.js", "/app/palette.js", "/app/couleurs.js",
   "/app/analyse/dates.js", "/app/analyse/genre.js", "/app/analyse/motion.js", "/app/analyse/privee.js", "/app/analyse/conversations.js",
   "/app/vues/aujourdhui.js", "/app/vues/gerer.js", "/app/vues/remy.js", "/app/vues/noter.js", "/app/vues/projets.js", "/app/vues/rappels.js",
+  "/app/vues/tri-rappels.js", "/app/analyse/carnet.js", "/app/menu.js",
   "/app/vues/reglages.js", "/app/vues/conversations-externes.js", "/app/vues/connexion.js",
 ];
 
