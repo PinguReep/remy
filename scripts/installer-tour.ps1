@@ -180,7 +180,13 @@ if (-not (Test-Path $envFile)) {
     'REMY_SAUVEGARDES_SPARK=',
     '# Limites par appareil derrière Tailscale Serve : à activer une fois que /api/health',
     '# (ligne « proxy ») confirme que les adresses des appareils arrivent (docs\tour.md, V5).',
-    '# TRUST_PROXY=1'
+    '# TRUST_PROXY=1',
+    '# Conversations d''ailleurs (Claude Code, T3 Code, ChatGPT) : lues sur la tour seule, chiffrées,',
+    '# jamais envoyées à Claude ni ailleurs (docs\tour.md). Trouvées seules dans ~\.claude et ~\.t3 ;',
+    '# un dossier en plus (fork, WSL) : chemins séparés par « ; ». =off coupe une source.',
+    '# REMY_CLAUDE_DIRS=',
+    '# REMY_T3_DIRS=',
+    '# REMY_SOURCE_CHATGPT=off'
   )
   [IO.File]::WriteAllText($envFile, ($lignes -join "`n") + "`n", (New-Object Text.UTF8Encoding($false)))
   # Lisible par Sam seul.
