@@ -1,7 +1,16 @@
 // La connexion : le mot de passe de la tour, avec une erreur claire pour
-// chaque cas (mauvais mot de passe, trop d'essais, tour injoignable).
+// chaque cas (mauvais mot de passe, trop d'essais, tour injoignable). Ce qui
+// attend dans la file d'envoi est dit (le nombre seulement, jamais le texte) :
+// gardé dans ce navigateur, il partira après la connexion (main.js vide la file).
 import { api, ErreurAPI } from "../api.js";
-import { h, vider, bouton, occupe } from "../ui.js";
+import { h, vider, bouton, occupe, icone } from "../ui.js";
+import * as fileEnvoi from "../file-envoi.js";
+
+/** « 2 notes tapées sur cet ordinateur : elles partiront après la connexion. » ; null sans rien en attente. */
+export function phraseFile(n) {
+  if (!n) return null;
+  return n === 1 ? "1 note tapée sur cet ordinateur : elle partira après la connexion." : `${n} notes tapées sur cet ordinateur : elles partiront après la connexion.`;
+}
 
 export function monter(racine, { surConnecte }) {
   racine.className = "connexion";
@@ -30,7 +39,8 @@ export function monter(racine, { surConnecte }) {
     },
   },
   h("label", { class: "etiquette-champ", for: "mot-de-passe" }, "Mot de passe"),
-  champ, erreur, envoyer);
+  champ, erreur, envoyer,
+  phraseFile(fileEnvoi.compte()) ? h("p", { class: "aide connexion-file" }, icone("plateau"), h("span", null, phraseFile(fileEnvoi.compte()))) : null);
   vider(racine, h("div", { class: "carte" },
     h("span", { class: "marque-r", "aria-hidden": "true", style: { width: "44px", height: "44px", fontSize: "24px", borderRadius: "13px" } }, "R"),
     h("h1", null, "Bonjour"),

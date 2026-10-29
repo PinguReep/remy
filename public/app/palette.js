@@ -58,6 +58,10 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   let elements = [...base];
   let choisi = 0;
   let affiches = [];
+  // Le groupe Réglages : le même classement que la recherche de Réglages
+  // (rechercherReglages : accents, ordre des mots, fautes de frappe), limité
+  // à ce que la tour propose (indexVisible).
+  let reglagesModule = null;
 
   const dessiner = () => {
     const q = plier(champ.value.trim());
@@ -75,6 +79,10 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
       .slice(0, 40)
       .map((x) => x.e);
     if (!mots.length) affiches = affiches.filter((e) => e.groupe === "Aller à" || e.groupe === "Actions");
+    else if (reglagesModule?.rechercherReglages) {
+      affiches.push(...reglagesModule.rechercherReglages(champ.value, contexte).slice(0, 8)
+        .map((r) => ({ groupe: "Réglages", titre: r.titre, icone: "reglages", detail: r.chemin === "Réglages" ? null : r.chemin.replace(/^Réglages › /, ""), faire: r.faire })));
+    }
     choisi = Math.min(choisi, Math.max(0, affiches.length - 1));
     if (!affiches.length) {
       vider(liste, h("li", { class: "palette-vide" }, `Rien pour « ${champ.value} ». Entrée : noter ce texte.`));
@@ -137,7 +145,7 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   }
   if (listes.status === "fulfilled") elements.push(...(listes.value.listes || []).map((l) => ({ groupe: "Listes", titre: l.nom, icone: "liste", mots: "liste", faire: aller(`projets/liste/${encodeURIComponent(l.id)}`) })));
   if (dossiers.status === "fulfilled") elements.push(...(dossiers.value.dossiers || []).map((x) => ({ groupe: "Dossiers", titre: x.nom, icone: "dossier", mots: "dossier projet", faire: aller(`projets/dossier/${encodeURIComponent(x.id)}`) })));
-  if (reglages.status === "fulfilled") elements.push(...(reglages.value.indexVisible?.() ?? reglages.value.INDEX).map(([s, lib, mots]) => ({ groupe: "Réglages", titre: lib, icone: "reglages", mots: `réglage ${mots}`, faire: aller(`reglages/${s}`) })));
+  if (reglages.status === "fulfilled") reglagesModule = reglages.value;
   dessiner();
 }
 

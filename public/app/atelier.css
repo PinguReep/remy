@@ -581,6 +581,121 @@ body.mode-noter .app { display: block; }
 button.etat-tour { width: 100%; min-height: 44px; border: 0; background: none; border-radius: 10px; cursor: pointer; text-align: left; }
 button.etat-tour:hover { background: var(--fond-2); color: var(--encre); }
 @media (max-width: 1279px) { button.etat-tour { width: 52px; justify-content: center; padding: 0; } }
+
+/* Le maître : les sections par groupe ; la recherche et ses résultats. */
+.reglages-grille .recherche-champ + .maitre { margin-top: 14px; }
+.reglages-groupe-titre { font: 500 11px/1.2 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--encre-3); padding: 0 12px 6px; }
+.reglages-entete { color: var(--encre-3); font: 500 13px/1.3 var(--texte); margin: 4px 0 6px; }
+.reglages-resultat { display: flex; align-items: flex-start; gap: 12px; width: 100%; min-height: 60px; padding: 10px 8px; border: 0; border-top: 1px solid var(--filet); background: none; color: var(--encre); text-align: left; cursor: pointer; border-radius: 10px; font: inherit; }
+.resultats-recherche li:first-child .reglages-resultat { border-top: 0; }
+.reglages-resultat:hover, .reglages-resultat:focus-visible { background: var(--fond-2); }
+.reglages-resultat > svg.ic { flex: none; margin-top: 2px; color: var(--encre-2); }
+.reglages-resultat > svg.ic:last-child { color: var(--encre-3); width: 16px; height: 16px; margin-top: 4px; }
+.reglages-resultat .corps, .reglages-ligne-lien .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.reglages-resultat .chemin { font: 500 12px/1.3 var(--texte); color: var(--encre-3); }
+.reglages-resultat .sous, .reglages-ligne-lien .sous { font-size: 13px; color: var(--encre-2); }
+.vide-recherche { padding: 12px 4px; }
+.vide-recherche strong { display: block; font: 600 18px/1.3 var(--serif); margin: 8px 0 4px; }
+.reglages-loupe { width: 28px; height: 28px; color: var(--encre-3); }
+.reglages-suggestions { margin-top: 10px; }
+/* La ligne trouvée : fond orange pâle et filet à gauche, quelques secondes (RepereReglages). */
+.section-reglage [data-repere] { transition: background-color 300ms ease-out, box-shadow 300ms ease-out; border-radius: 10px; }
+/* Le fond déborde de 6 px autour de la ligne, le filet de 3 px est à sa gauche : le texte ne bouge pas. */
+.section-reglage .reglages-repere { --repere: color-mix(in srgb, var(--signal) 14%, var(--surface)); background: var(--repere); box-shadow: 0 0 0 6px var(--repere), -9px 0 0 0 var(--signal); }
+.section-reglage .reglages-repere:focus { outline: none; }
+
+/* Les briques des sections. */
+.reglages-sous-titre { margin: 18px 0 6px; }
+.reglages-sous-titre .fin { margin-left: auto; letter-spacing: 0; text-transform: none; font: 500 13px/1 var(--mono); color: var(--encre-2); }
+.reglages-info { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; color: var(--encre-2); font-size: 14px; }
+.reglages-info svg.ic { flex: none; color: var(--encre-3); margin-top: 1px; }
+.reglages-tourne { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--fond-3); border-top-color: var(--encre); animation: tourne 800ms linear infinite; display: inline-block; }
+.reglages-en-cours { gap: 8px; min-height: 44px; }
+.bascule.grise .textes strong { color: var(--encre-2); }
+.reglages-ligne-lien { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 6px; border: 0; border-top: 1px solid var(--filet); background: none; color: var(--encre); text-align: left; cursor: pointer; font: inherit; }
+.reglages-ligne-lien:hover { background: var(--fond-2); }
+.reglages-ligne-lien > svg.ic:last-child { color: var(--encre-3); width: 16px; height: 16px; flex: none; }
+.reglages-ligne-lien .titre-ligne { font-weight: 600; }
+.reglages-ligne-lien .fin { display: inline-flex; align-items: center; }
+.reglages-heure { padding-left: 24px; min-height: 52px; }
+.reglages-danger { color: var(--danger); }
+.reglages-a-revoir { color: var(--danger); font: 600 13px/1.4 var(--texte); }
+.reglages-a-revoir svg.ic { flex: none; }
+.reglages-pale { color: var(--encre-3); }
+
+/* Envoi en attente : une carte par envoi, bordée de rouge quand elle attend Sam. */
+.reglages-envois { display: flex; flex-direction: column; gap: 10px; }
+.reglages-envoi { padding: 12px 14px; border: 1px solid var(--filet); border-radius: 16px; background: var(--surface); }
+.reglages-envoi.a-revoir { border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.reglages-envoi-tete { align-items: flex-start; gap: 10px; }
+.reglages-envoi-tete > svg.ic { color: var(--encre-2); margin-top: 2px; flex: none; }
+.reglages-envoi-tete .corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.reglages-quatre-lignes { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.reglages-envoi-actions { justify-content: flex-end; gap: 4px; margin-top: 6px; }
+
+/* Ce que Rémy sait de toi. */
+.reglages-memoire { font: 400 16px/1.6 var(--serif); overflow-wrap: anywhere; }
+.reglages-memoire-champ { font: 400 14px/1.5 var(--mono); min-height: 320px; }
+
+/* Ce qui compte. */
+.reglages-priorites { display: flex; flex-direction: column; gap: 12px; }
+.reglages-priorite { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--filet); border-radius: 14px; background: var(--surface); }
+.reglages-priorite input:first-child { font-weight: 600; font-size: 16px; }
+.reglages-priorite textarea { resize: vertical; min-height: 44px; }
+.reglages-priorite-pied { justify-content: space-between; align-items: center; min-height: 44px; }
+.reglages-neglige { color: var(--danger); font: 600 13px/1.4 var(--texte); }
+
+/* Modèle : une liste à cocher. */
+.reglages-choix .reglages-choix-ligne[aria-checked="true"] .titre-ligne { font-weight: 700; }
+.reglages-coche { color: var(--signal); }
+.reglages-modele-actif { font: 600 18px/1.3 var(--texte); }
+
+/* Règles. */
+.reglages-regle-rangee { flex-wrap: nowrap; align-items: center; gap: 6px; border-top: 1px solid var(--filet); }
+.reglages-regles .reglages-regle-rangee:first-child { border-top: 0; }
+.reglages-regle-rangee .bascule { flex: 1; min-width: 0; border-top: 0; }
+
+/* Activité du PC : barres, applis, sites. */
+.reglages-barres { display: flex; flex-direction: column; gap: 10px; }
+.reglages-barre-ligne { display: flex; flex-direction: column; gap: 5px; }
+.reglages-barre { height: 6px; border-radius: 999px; background: var(--fond-3); overflow: hidden; }
+.reglages-barre > span { display: block; height: 100%; border-radius: 999px; background: var(--signal); }
+.reglages-appli { position: relative; border-radius: 10px; }
+.reglages-appli:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+/* « Ne plus compter » au survol et au focus, par-dessus la durée (rien ne bouge) ; toujours là au toucher. */
+.reglages-appli .reglages-exclure { position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: var(--surface); opacity: 0; pointer-events: none; transition: opacity 120ms ease-out; color: var(--danger); }
+.reglages-appli:hover .reglages-exclure, .reglages-appli:focus-within .reglages-exclure { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .reglages-appli .reglages-exclure { position: static; transform: none; opacity: 1; pointer-events: auto; } }
+.reglages-sites > summary { list-style: none; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.reglages-sites > summary::-webkit-details-marker { display: none; }
+.reglages-sites[open] > summary .chevron-replie { transform: rotate(180deg); }
+.ligne.grise .titre-ligne { color: var(--encre-2); }
+
+/* Localisation. */
+.reglages-lieu { border: 0; background: none; text-align: left; font: inherit; color: var(--encre); padding: 4px 0; border-radius: 10px; }
+.reglages-lieu:hover { background: var(--fond-2); }
+.reglages-sans-doute { color: var(--signal-texte); font: 600 13px/1.4 var(--texte); }
+
+/* Temps de réponse. */
+.reglages-mesure { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-top: 1px solid var(--filet); font-size: 14px; }
+.liste > .reglages-mesure:first-child { border-top: 0; }
+.reglages-mesure .mono { font-size: 12px; }
+
+/* Nouveautés : la liste et la feuille paginée. */
+.reglages-nouveautes .pastille { margin-left: 6px; }
+.nouveautes-feuille .feuille-corps { min-height: 260px; }
+.nouveautes-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.nouveautes-compteur { font-size: 12px; color: var(--encre-3); }
+.nouveautes-page { display: flex; flex-direction: column; gap: 12px; }
+.nouveautes-icone { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; background: var(--signal); color: var(--sur-signal); }
+.nouveautes-icone svg.ic { width: 26px; height: 26px; }
+.nouveautes-sur-titre { font-size: 11px; letter-spacing: .1em; color: var(--encre-3); }
+.nouveautes-page h3 { font: 600 22px/1.25 var(--texte); }
+.nouveautes-page p { font-size: 16px; color: var(--encre-2); }
+
+/* La connexion dit ce qui attend d'être envoyé (le nombre seulement). */
+.connexion-file { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.connexion-file svg.ic { flex: none; }
 /* --- fin lot reglages */
 
 /* ---------- Connexion ---------- */
