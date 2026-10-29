@@ -172,7 +172,7 @@ async function essai(q, mode) {
       agendaActif: false,
       motionActif: false,
       lectureMotion: true,
-      recherche: directe ? m === "hybride" && salleBlancheActive() : true,
+      recherche: directe ? Boolean(prep.relance) && salleBlancheActive() : true,
       filtre,
       reflexion: opt.reflexion,
       effort: opt.effort,
