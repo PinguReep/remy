@@ -447,7 +447,7 @@ test("ChatGPT : un fichier qui n'est pas l'export est refusé avec quoi faire ; 
   }
 });
 
-test("ChatGPT : un export déposé dans Imports est importé à la lecture suivante, puis rangé dans Imports\\Importés", async () => {
+test("ChatGPT : un export déposé dans Imports est importé à la lecture suivante, puis QUITTE le coffre (effacé après le délai)", async () => {
   fs.mkdirSync(imports, { recursive: true });
   const conv = fx.conversationChatGPT({ id: "6f1c0000-aaaa-4000-8000-000000000003", titre: "Mèches en coton", debut: Math.round(HIER / 1000), echanges: [["Quelle mèche pour un pot de 8 cm ?", "Une mèche en coton de taille moyenne."]] });
   const f = path.join(imports, "export-chatgpt.zip");
@@ -461,7 +461,12 @@ test("ChatGPT : un export déposé dans Imports est importé à la lecture suiva
   const r = await lireTout();
   assert.equal(r.bilan.sources.chatgpt.importes, 1, JSON.stringify(r.bilan.sources.chatgpt));
   assert.ok(!fs.existsSync(f));
-  assert.ok(fs.existsSync(path.join(imports, "Importés", "export-chatgpt.zip")), "rangé, jamais effacé");
+  // Hors du coffre (contre-relecture du 29/10) : à côté de la clé, pas dans Imports.
+  assert.deepEqual(fichiers(imports), []);
+  const originaux = path.join(process.env.REMY_CLES_DIR, "imports-importes");
+  assert.ok(fichiers(originaux).some((n) => n.endsWith("-export-chatgpt.zip")), "mis de côté hors du coffre");
+  assert.equal(r.etat.imports.originaux.fichiers, 1);
+  assert.equal(r.etat.imports.originaux.gardeJours, 7);
   assert.equal(source(r.etat, "chatgpt").conversations, 3);
   // Un fichier illisible reste là, et l'état dit pourquoi.
   const casse = path.join(imports, "casse.zip");
@@ -657,7 +662,8 @@ test("une base du lot B (passages EN CLAIR) est vidée de son texte à la migrat
       CREATE TABLE passages (id INTEGER PRIMARY KEY, texte TEXT); INSERT INTO passages (texte) VALUES ('${"Kervella secret du lot B ".repeat(50)}');`);
     b.close();
     assert.ok(fs.readFileSync(vrai).includes(Buffer.from("Kervella")));
-    assert.equal(base().prepare("SELECT valeur FROM meta WHERE cle = 'schema'").get().valeur, "2");
+    const { VERSION_SCHEMA } = await import("../lib/connaissances/base.js");
+    assert.equal(base().prepare("SELECT valeur FROM meta WHERE cle = 'schema'").get().valeur, String(VERSION_SCHEMA));
     assert.equal(base().prepare("SELECT name FROM sqlite_master WHERE name = 'passages'").get(), undefined);
     fermer();
     assert.equal(fs.readFileSync(vrai).includes(Buffer.from("Kervella")), false, "VACUUM : le texte en clair a quitté le fichier");
