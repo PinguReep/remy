@@ -36,9 +36,15 @@ for (let i = 0; i < 80; i++) {
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-test.after(() => {
-  serveur.kill();
-  fs.rmSync(dossier, { recursive: true, force: true });
+// Sous Windows, la base reste verrouillée tant que server.js n'est pas mort :
+// kill() n'attend pas, d'où l'attente de la sortie (et des reprises si EBUSY).
+test.after(async () => {
+  if (serveur.exitCode === null && serveur.signalCode === null) {
+    const fin = new Promise((r) => serveur.once("exit", r));
+    serveur.kill();
+    await fin;
+  }
+  fs.rmSync(dossier, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 test("la page, les modules et la feuille de style sont revalidés à chaque chargement", async () => {
