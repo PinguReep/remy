@@ -49,8 +49,10 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   `localhost` / `127.0.0.1` ; ni chemin, ni requête, ni identifiants ; un hôte
   nu (`tour.exemple.ts.net:8444`) devient `https://…`. Modifiable ensuite
   (menu de l'icône, ou Réglages › Ordinateur du site).
-- **Démarrage** : la page locale sonde `<adresse>/api/health` (`fetch` en
-  `no-cors`, 5 s) ; réponse → la fenêtre part sur la tour ; sinon page « La
+- **Démarrage** : la page locale sonde `<adresse>/api/version` (`fetch` en
+  `no-cors`, sans cookie, 5 s ; `/api/version` plutôt que `/api/health`, qui
+  vérifie la clé Anthropic et Motion quand l'appel vient de la tour elle-même)
+  ; réponse → la fenêtre part sur la tour ; sinon page « La
   tour ne répond pas » avec l'adresse, **Réessayer** (et nouvel essai seul
   toutes les 30 s), **Changer l'adresse**. Une fois le site chargé une fois,
   son service worker sert la page même tour éteinte, et c'est le site qui dit
@@ -67,8 +69,10 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   menu : Ouvrir Rémy · Noter… (Ctrl+Alt+Espace) · Aujourd'hui · Réglages de
   l'ordinateur · ─ · ☑ Démarrer avec Windows · Changer l'adresse de la tour ·
   Recharger · ─ · Quitter Rémy.
-- **Démarrage avec Windows** (`tauri-plugin-autostart`, clé `Run` de
-  l'utilisateur, pas d'admin), **allumé par défaut** à l'installation, lancé
+- **Démarrage avec Windows** (clé `Run` de l'utilisateur, valeur « Rémy »,
+  pas d'admin ; par `auto-launch` directement, car `tauri-plugin-autostart`
+  écrit le chemin sans guillemets, ce qui casse sur un profil Windows dont le
+  nom contient une espace), **allumé par défaut** au premier lancement, lancé
   avec `--demarrage` : la fenêtre se charge **cachée** (les notifications
   tournent), l'icône seule apparaît.
 - **Raccourci global** (`tauri-plugin-global-shortcut`), `Ctrl+Alt+Space` par
@@ -108,7 +112,7 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   URL à ouvrir autre que `http(s)` ; les textes de notification sont bornés
   (titre 80, corps 240 caractères) et limités à 10 par minute.
 - **CSP stricte** sur les pages embarquées (`default-src 'self'`, `connect-src`
-  limité à la sonde `/api/health`) ; outils de développement fermés en
+  limité à `https:` et au local, pour la sonde) ; outils de développement fermés en
   version publiée.
 - **Session** : le cookie de la tour (`HttpOnly; SameSite=Strict`) vit dans le
   profil WebView2 de l'app (`%LOCALAPPDATA%\com.pingureep.remy.bureau\EBWebView`) ;
@@ -128,9 +132,9 @@ Dans un navigateur, tout ce qui suit est simplement absent.
 
 | Commande | Arguments | Réponse | Rôle |
 | --- | --- | --- | --- |
-| `bureau_etat` | — | `{ version, adresse, raccourci, demarrage, fermerDansZone, fenetre }` (`fenetre` : `"main"` ou `"noter"`) | le site sait qu'il est dans l'app ; marque « site chargé » côté coquille |
+| `bureau_etat` | — | `{ version, adresse, raccourci, raccourciLibelle, raccourciErreur, demarrage, fermerDansZone, fenetre }` (`fenetre` : `"main"` ou `"noter"` ; `raccourci` rangé, à renvoyer tel quel, ex. `Ctrl+Alt+Space` ; `raccourciLibelle` pour l'affichage, ex. `Ctrl+Alt+Espace` ; `raccourciErreur` : texte si Windows l'a refusé au démarrage) | le site sait qu'il est dans l'app ; marque « site chargé » côté coquille (la Noter de secours passe alors sur le site) |
 | `bureau_regler` | `{ raccourci?, demarrage?, fermerDansZone? }` | l'état à jour, ou une erreur texte (« Raccourci invalide », « Déjà pris par une autre application ») | Réglages › Ordinateur |
-| `bureau_notifier` | `{ titre, corps, cle? }` | `null` | une notification Windows (`cle` : la même ne repart pas deux fois en 10 min) |
+| `bureau_notifier` | `{ titre, corps, cle?, vue? }` | `null` | une notification Windows (`cle` : la même ne repart pas deux fois en 10 min ; `vue` : ouverte au clic sur la notification) |
 | `bureau_noter_fermer` | — | `null` | cache la fenêtre Noter (après envoi, Échap) |
 | `bureau_ouvrir` | `{ vue? }` | `null` | montre la fenêtre principale ; avec `vue`, lui envoie `bureau://aller` |
 | `bureau_ouvrir_lien` | `{ url }` | `null` | ouvre un lien `http(s)` dans le navigateur par défaut |
@@ -153,7 +157,14 @@ Adresses chargées par la coquille :
 
 Commandes locales (pages embarquées seulement) : `bureau_adresse_lire`,
 `bureau_adresse_enregistrer { adresse }` (normalise, refuse, ou rend
-l'adresse propre), `bureau_aller_tour`, `bureau_note_locale { texte }`.
+l'adresse propre), `bureau_adresse_normaliser { adresse }` (sans garder : la
+page sonde d'abord), `bureau_aller_tour`, `bureau_note_locale { texte }`,
+`bureau_notes_locales_compte` ; et, pour les pages locales comme pour le site,
+`bureau_noter_fermer` et `bureau_ouvrir`.
+
+Côté site, en mode `?fenetre=noter` : mettre le focus dans le champ au
+chargement ET à chaque `bureau://noter-ouvert` (la fenêtre est préchargée
+cachée), appeler `bureau_noter_fermer` après l'envoi et sur Échap.
 
 **Qui décide des notifications : le site**, dans la fenêtre principale
 seulement (cachée, elle tourne encore ; WebView2 ralentit alors ses minuteries
@@ -281,7 +292,7 @@ Les deux lots avancent en parallèle ; ils ne se parlent que par le contrat
 | `desktop/.gitignore` | `node_modules/`, `src-tauri/target/`, `src-tauri/gen/` |
 | `desktop/ui/demarrage.html`, `desktop/ui/demarrage.js`, `desktop/ui/atelier.css` | adresse, sonde, hors ligne, Réessayer (Atelier, polices système) |
 | `desktop/ui/noter.html`, `desktop/ui/noter.js` | Noter de secours (site jamais chargé) → `bureau_note_locale` |
-| `desktop/src-tauri/Cargo.toml`, `Cargo.lock`, `build.rs` | `tauri` 2.12 (`tray-icon`), plugins single-instance, window-state, autostart, global-shortcut, notification, opener ; `serde`, `url` ; `AppManifest` des commandes |
+| `desktop/src-tauri/Cargo.toml`, `Cargo.lock`, `build.rs` | `tauri` 2.12 (`tray-icon`), plugins single-instance, window-state, global-shortcut, notification, opener ; `auto-launch`, `serde`, `url`, `windows-sys` (identifiant d'app) ; `AppManifest` des commandes |
 | `desktop/src-tauri/tauri.conf.json` | identifiant `com.pingureep.remy.bureau`, `productName` « Rémy », fenêtres, CSP, `withGlobalTauri`, NSIS `currentUser` en français + MSI, icônes |
 | `desktop/src-tauri/capabilities/locale.json`, `distante.json` | 1.3 |
 | `desktop/src-tauri/icons/*` | générées depuis `public/icons/icon-512.png` (`tauri icon`) |
@@ -289,7 +300,7 @@ Les deux lots avancent en parallèle ; ils ne se parlent que par le contrat
 | `desktop/src-tauri/src/adresse.rs` | normalisation + vérification d'origine (tests `cargo test`) |
 | `desktop/src-tauri/src/reglages.rs` | `bureau.json`, notes de secours |
 | `desktop/src-tauri/src/commandes.rs` | les commandes du contrat, chacune avec son verrou d'origine |
-| `desktop/src-tauri/src/zone.rs`, `raccourci.rs`, `fenetres.rs` | icône et menu, raccourci global, fenêtres main/noter, navigation externe |
+| `desktop/src-tauri/src/zone.rs`, `raccourci.rs`, `fenetres.rs`, `demarrage.rs` | icône et menu, raccourci global, fenêtres main/noter, navigation externe, démarrage avec Windows |
 | `.github/workflows/bureau-windows.yml` | `windows-latest` : `cargo test`, `tauri build` → artefact (`.exe` NSIS, `.msi`, `SHA256SUMS.txt`) ; lancement manuel avec `publier` → Release `bureau-vX.Y.Z` (version lue dans `tauri.conf.json`, refus si le tag existe) |
 | `docs/bureau.md` | ce document : partie 2 (mode d'emploi) |
 | `docs/journal-technique.md` | l'entrée du 29/10 (coquille + décisions du site rapportées par le lot SITE) |
@@ -350,5 +361,169 @@ Réglages › Ordinateur, notifications déclenchées une seule fois.
 
 ## 2. Mode d'emploi
 
-*(À écrire par le lot SHELL : installer, premier lancement, raccourcis,
-SmartScreen, désinstaller, ce que l'app peut et ne peut pas faire.)*
+### 2.1 Installer
+
+1. **Récupérer l'installateur.**
+   - Version publiée : page *Releases* du dépôt, `bureau-vX.Y.Z`, fichier
+     `Remy-Bureau_X.Y.Z_x64-setup.exe`.
+   - Avant toute publication : onglet *Actions* › « Bureau Windows —
+     installateur » › le dernier passage vert › artefact
+     `remy-bureau-windows-X.Y.Z` (un `.zip` : l'extraire).
+2. **Vérifier l'empreinte** (facultatif, recommandé : l'installateur n'est
+   pas signé). Dans PowerShell, à côté du fichier :
+   `Get-FileHash .\Remy-Bureau_X.Y.Z_x64-setup.exe` ; la valeur doit être
+   celle de `SHA256SUMS.txt` (même artefact ou même Release).
+3. **Double-clic sur `Remy-Bureau_X.Y.Z_x64-setup.exe`.** Installation pour
+   ton compte seulement, **sans droits d'administrateur**, dans
+   `%LOCALAPPDATA%\Rémy` ; raccourci « Rémy » dans le menu Démarrer.
+   WebView2 est déjà dans Windows 11 (sinon l'installateur le télécharge).
+   Le `.msi` fait la même chose pour toute la machine (droits
+   d'administrateur) : inutile sur la tour, l'`.exe` suffit.
+
+### 2.2 « Windows a protégé votre ordinateur » (SmartScreen)
+
+L'installateur n'est pas signé (un certificat de signature de code coûte
+plusieurs centaines d'euros par an). SmartScreen prévient donc au premier
+lancement d'une nouvelle version :
+
+1. clique **Informations complémentaires** ;
+2. vérifie que l'éditeur est « Éditeur inconnu » et le fichier
+   `Remy-Bureau_…-setup.exe` (pas un autre nom) ;
+3. clique **Exécuter quand même**.
+
+Si le fichier a été téléchargé et que Windows refuse sans bouton : clic
+droit › Propriétés › cocher **Débloquer** › OK, puis relancer.
+Si le **Contrôle intelligent des applications** (Sécurité Windows › Contrôle
+des applications et du navigateur) est **activé**, Windows bloque toute app
+non signée sans proposer de passer outre. Le désactiver est un choix lourd
+(sur certaines versions de Windows, on ne peut plus le réactiver sans
+réinstaller) : dans ce cas, garde Rémy dans le navigateur (même adresse, même
+interface) plutôt que de l'affaiblir.
+
+### 2.3 Premier lancement
+
+1. **« Où est ta tour ? »** : tape l'adresse que Tailscale publie, la même que
+   sur l'iPhone (forme `ma-tour.mon-tailnet.ts.net:8444` ; le `https://` est
+   ajouté seul). **Continuer** vérifie qu'elle répond ; si elle ne répond pas
+   (Tailscale coupé sur ce PC, tour éteinte), le message le dit et propose
+   « Garder cette adresse quand même ». L'adresse reste sur ce PC
+   (`%APPDATA%\com.pingureep.remy.bureau\bureau.json`), jamais ailleurs.
+   Sur la tour elle-même, la même adresse marche.
+2. **Connexion** : le mot de passe de Rémy, comme dans le navigateur. La
+   session reste dans le profil WebView2 de l'app.
+3. **Épingler à la barre des tâches** : clic droit sur l'icône de Rémy dans la
+   barre des tâches › **Épingler à la barre des tâches** (ou menu Démarrer ›
+   Rémy › clic droit › Épingler). Toutes les fenêtres de Rémy portent le même
+   identifiant d'app : l'épingle relance bien la même app, même lancée au
+   démarrage de Windows.
+4. **L'icône près de l'horloge** : Windows la range parfois sous la flèche ^.
+   Pour la garder visible : Paramètres › Personnalisation › Barre des tâches ›
+   Autres icônes de la barre d'état système › **Rémy** : activé.
+5. **Démarrer avec Windows** est allumé d'office (sinon pas de rappels quand
+   la fenêtre n'a pas été ouverte) : à l'ouverture de session, Rémy démarre
+   **caché**, icône seule ; un clic sur l'icône ouvre la fenêtre. Pour le
+   couper : menu de l'icône › « Démarrer avec Windows » (décocher), ou
+   Réglages › Ordinateur dans Rémy, ou le Gestionnaire des tâches (l'app
+   suit ce que dit Windows).
+
+### 2.4 Au quotidien
+
+| Geste | Effet |
+| --- | --- |
+| **Ctrl+Alt+Espace** (partout dans Windows) | ouvre la petite fenêtre **Noter**, au-dessus de tout, sur l'écran de la souris ; **Entrée** envoie, **Maj+Entrée** passe à la ligne, **Échap** (ou un clic ailleurs) la referme. Le même raccourci la referme. |
+| Clic sur l'icône près de l'horloge | montre la fenêtre, ou la range si elle est déjà devant |
+| Clic droit sur l'icône | Ouvrir Rémy · Noter… · Aujourd'hui · Réglages de l'ordinateur · Démarrer avec Windows · Changer l'adresse de la tour · Recharger · Quitter Rémy |
+| Fermer la fenêtre (×) | elle se **range près de l'horloge** (les rappels continuent) ; la première fois, une notification le rappelle. Pour quitter : clic droit sur l'icône › **Quitter Rémy**. Réglable (Réglages › Ordinateur : « Fermer = quitter »). |
+| Relancer Rémy (épingle, menu Démarrer) alors qu'il tourne | ramène la fenêtre existante (une seule instance) |
+| **Ctrl+=** / **Ctrl+-** / **Ctrl+0** | zoom de l'interface |
+| **N**, **/**, **Ctrl+K**, **Ctrl+1…5**, **?** | raccourcis du site (noter, chercher, palette de commandes, vues, aide) — ils marchent aussi dans le navigateur |
+| Lien vers un autre site | s'ouvre dans ton navigateur par défaut, jamais dans la fenêtre de Rémy |
+
+**Le raccourci Noter se change** dans Réglages › Ordinateur (par exemple
+`Ctrl+Maj+N`, `Win+Alt+R` ; les noms français marchent : Maj, Espace, Win).
+Il faut au moins Ctrl, Alt ou Win : une lettre seule volerait la frappe dans
+toutes les applications. S'il est déjà pris par une autre application,
+Windows le refuse : le message le dit et l'ancien reste actif. Au
+démarrage, un raccourci devenu indisponible est signalé par une notification.
+
+**Notifications** : les rappels dus (lus sur la tour au plus une fois par
+minute, sans IA) ; le briefing du matin et le bilan du soir si tu les
+allumes (Réglages › Ordinateur). Un clic sur la notification ouvre Rémy (à
+la vue concernée quand le site la précise). L'assistant de concentration de Windows (Ne pas déranger) peut
+les retenir : Paramètres › Système › Notifications › Rémy.
+
+**La tour ne répond pas** : la fenêtre affiche « La tour ne répond pas »,
+l'adresse, **Réessayer** (et un nouvel essai seul toutes les 30 s, ou dès que
+le réseau revient) et **Changer l'adresse**. Une fois le site chargé une fois,
+il sait aussi s'afficher hors ligne. **Noter marche quand même** : la note est
+gardée sur ce PC (`notes-en-attente.json`) et part vers Rémy dès que le site
+répond, puis elle est effacée du PC.
+
+### 2.5 Ce que l'app garde sur ce PC
+
+| Où | Quoi |
+| --- | --- |
+| `%APPDATA%\com.pingureep.remy.bureau\bureau.json` | adresse de la tour, raccourci, démarrage, « fermer = ranger » |
+| `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.json` | notes tapées hors ligne, jusqu'à leur envoi (absent s'il n'y en a pas) |
+| `%APPDATA%\com.pingureep.remy.bureau\.window-state.json` | taille et position de la fenêtre |
+| `%LOCALAPPDATA%\com.pingureep.remy.bureau\EBWebView` | profil WebView2 : cookie de session de la tour, cache du site |
+| `HKCU\…\CurrentVersion\Run`, valeur « Rémy » | démarrage avec Windows (si allumé) |
+
+Rien d'autre : pas de télémétrie, aucune requête de la coquille elle-même
+(seule la page de démarrage sonde l'adresse de la tour).
+
+### 2.6 Mettre à jour
+
+- **L'interface** se met à jour avec la tour (`installer-tour.ps1`) : rien à
+  faire sur le PC, c'est le site de la tour qui s'affiche.
+- **La coquille** (fenêtre, icône, raccourci, notifications) : télécharger
+  le nouvel installateur et le lancer par-dessus ; réglages, adresse et
+  session sont gardés. Pas de mise à jour automatique (elle demanderait des
+  clés de signature à garder quelque part : pas cette fois).
+
+### 2.7 Désinstaller
+
+Paramètres › Applications › Applications installées › **Rémy** ›
+Désinstaller (ou menu Démarrer › Rémy › clic droit › Désinstaller). Le
+désinstallateur retire le programme, les raccourcis et le démarrage avec
+Windows ; coche « Supprimer les données de l'application » pour effacer
+aussi l'adresse, les notes en attente et la session (sinon elles restent
+pour une réinstallation). Rien n'est touché sur la tour.
+
+### 2.8 Ce que l'app fait, et ce qu'elle ne fait pas
+
+**Elle fait** : une vraie fenêtre « Rémy » épinglable, qui retient sa taille
+et sa position ; l'icône près de l'horloge et son menu ; Noter au clavier
+depuis n'importe quelle application ; le démarrage avec Windows (caché) ; les
+notifications Windows des rappels (et du briefing / bilan si allumés) ; un
+écran clair quand la tour ne répond pas ; des notes gardées hors ligne ; les
+liens externes dans le navigateur.
+
+**Elle ne fait pas** :
+
+- rien sans la tour : c'est la tour qui pense, range et répond (hors notes
+  gardées hors ligne et pages déjà en cache) ;
+- pas de notification quand Rémy ne tourne pas sur ce PC (quitté, ou session
+  Windows fermée), ni quand le PC dort ;
+- pas de mise à jour automatique de la coquille (2.6) ; non signée (2.2) ;
+- aucun accès à tes fichiers, aucun programme lancé, aucune commande système :
+  les pages n'ont que les commandes `bureau_*` du contrat (1.4), et seulement
+  depuis l'adresse exacte de ta tour (une tour hors `*.ts.net` s'affiche, mais
+  sans icône active, notifications ni Noter du site) ;
+- Windows 10 : devrait marcher (WebView2 à jour), pas testé ; macOS et Linux :
+  non (le code compile sous Linux pour les tests, rien n'est construit ni
+  essayé ailleurs que sous Windows).
+
+### 2.9 Développer la coquille
+
+Sur un PC Windows avec Rust (stable), Node 22 et les outils de compilation
+C++ de Visual Studio : `cd desktop`, `npm ci`, `npm run dev` (la fenêtre
+s'ouvre sur la page de démarrage ; pour une tour de développement, l'adresse
+`http://localhost:3000`). Tests : `cd desktop/src-tauri`, `cargo test`
+(adresse, origine, règles d'accès, raccourci, réglages, notes, notifications ;
+ils tournent aussi sous Linux avec les bibliothèques WebKitGTK). Icônes :
+`npm run icones` (depuis `src-tauri/icons/icon.png`). L'installateur se
+construit en CI (`.github/workflows/bureau-windows.yml`) à chaque envoi qui
+touche `desktop/` ; lancé à la main avec « publier », il crée la Release
+`bureau-vX.Y.Z` — monter alors la version dans `tauri.conf.json`,
+`Cargo.toml` et `package.json` (la CI refuse un tag existant).

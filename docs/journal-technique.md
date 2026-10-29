@@ -4,6 +4,58 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 — Rémy sur Windows : la coquille (desktop/, Tauri v2)
+
+Conception complète et contrat avec le site : `docs/bureau.md`. Ce qui a été
+décidé en construisant :
+
+- **Tauri v2 (WebView2) plutôt qu'Electron** : installateur de 1,5 Mo
+  (NSIS) au lieu d'une centaine, WebView2 déjà dans Windows 11, et des règles
+  d'accès par origine pour les API natives. La fenêtre affiche le site de la
+  tour (pas une copie) : la tour mise à jour, l'app l'est aussi.
+- **Deux verrous pour les commandes natives.** Les règles d'accès de Tauri
+  n'acceptent que des motifs génériques (`https://*.ts.net:*/*`, localhost) ;
+  chaque commande vérifie ensuite que la page vient exactement de l'adresse
+  configurée (`adresse::meme_origine`). Les commandes des pages embarquées
+  (adresse, notes de secours) sont refusées à toute page distante ; un test
+  vérifie que `build.rs`, les deux fichiers de règles et `run()` concordent.
+- **Ni shell, ni fichiers, ni HTTP côté Rust.** La sonde de la tour est un
+  `fetch` `no-cors` de la page de démarrage vers `/api/version` (et non
+  `/api/health`, qui teste la clé Anthropic et Motion quand l'appel vient de
+  la tour elle-même). Les liens externes partent au navigateur (`http(s)`
+  seulement, sans identifiants) ; toute autre navigation est refusée.
+- **Démarrage avec Windows par `auto-launch` directement**, pas par
+  `tauri-plugin-autostart` : le greffon inscrit le chemin du programme sans
+  guillemets dans la clé `Run`, ambigu dès que le profil Windows contient une
+  espace. Valeur « Rémy » (= `productName`) : le désinstallateur Tauri
+  l'efface déjà. Allumé une fois au premier lancement, ensuite Windows fait
+  foi (Gestionnaire des tâches compris).
+- **Identifiant d'app explicite** (`SetCurrentProcessExplicitAppUserModelID`,
+  = l'identifiant du raccourci du menu Démarrer posé par l'installateur) :
+  l'épingle de la barre des tâches retrouve la même app qu'elle ait été
+  lancée par le menu ou au démarrage de Windows, et les notifications portent
+  le nom de Rémy.
+- **Notifications bornées côté coquille** : titre 80, corps 240 caractères,
+  10 par minute, la même clé pas deux fois en 10 minutes — une page qui
+  s'emballe ne peut pas inonder l'écran. C'est le site qui décide quoi
+  notifier (il a la session) ; la coquille ne fait aucune requête.
+- **Noter de secours** : la fenêtre Noter est préchargée cachée sur une page
+  embarquée qui passe sur le site de la tour dès qu'elle répond, jamais
+  pendant qu'on tape. Hors ligne, la note est gardée dans
+  `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.json` (200 au plus,
+  4 000 caractères chacune) jusqu'à ce que le site l'envoie.
+- **« Recharger » repasse par la page de démarrage** : tour tombée, on obtient
+  « La tour ne répond pas » + Réessayer au lieu de la page d'erreur de WebView2.
+- **Raccourci** : écriture française acceptée (Maj, Espace, Win), forme rangée
+  re-lisible, au moins Ctrl, Alt ou Win ; refusé par Windows → l'ancien reste.
+- **CI** (`bureau-windows.yml`) : `cargo test` puis `tauri build` sur
+  `windows-latest` (~9 min, cache Cargo), installateurs renommés sans accent
+  (`Remy-Bureau_X.Y.Z_x64-setup.exe`, `.msi`), `SHA256SUMS.txt`, contrôle
+  qu'aucune adresse `*.ts.net` n'est écrite dans le binaire. Lancée aussi par
+  un envoi sur `claude/bureau-windows**` : un workflow absent de `main` ne
+  peut pas être lancé à la main. « publier » crée la Release `bureau-vX.Y.Z`.
+- **Non signé** : SmartScreen prévient (mode d'emploi, `docs/bureau.md` 2.2).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil
@@ -1362,3 +1414,6 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
 - `ios-parcours.yml` (à la demande) : les parcours du quotidien joués sur le
   simulateur (XCUITest, `ios-native/RemyParcours/`) contre une tour de démo
   pilotée ; captures par étape, gestes et durées, résumé dans la page du run.
+- `bureau-windows.yml` : l'app Windows (`desktop/`) — `cargo test`, puis
+  l'installateur NSIS (+ MSI) en artefact sur `windows-latest` ; lancé à la
+  main avec « publier », la Release `bureau-vX.Y.Z`.

@@ -61,7 +61,7 @@ fn nouvelle_fenetre_refusee(app: AppHandle) -> impl Fn(Url, tauri::webview::NewW
 }
 
 pub fn creer_principale(app: &AppHandle, etat: &Etat, cachee: bool) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, PRINCIPALE, WebviewUrl::App("demarrage.html".into()))
+    let w = WebviewWindowBuilder::new(app, PRINCIPALE, WebviewUrl::App("demarrage.html".into()))
         .title("Rémy")
         .inner_size(1280.0, 800.0)
         .min_inner_size(420.0, 560.0)
@@ -71,7 +71,13 @@ pub fn creer_principale(app: &AppHandle, etat: &Etat, cachee: bool) -> tauri::Re
         .zoom_hotkeys_enabled(true)
         .on_navigation(politique_navigation(app.clone(), etat.adresse_partagee.clone()))
         .on_new_window(nouvelle_fenetre_refusee(app.clone()))
-        .build()
+        .build()?;
+    // Au démarrage de Windows, la fenêtre reste cachée même si la position
+    // retrouvée était « agrandie » (agrandir montre la fenêtre).
+    if cachee {
+        let _ = w.hide();
+    }
+    Ok(w)
 }
 
 pub fn creer_noter(app: &AppHandle, etat: &Etat) -> tauri::Result<WebviewWindow> {
@@ -178,13 +184,17 @@ pub fn vers_tour(app: &AppHandle, label: &str) -> Result<(), String> {
 /// l'adresse, ou réessayer).
 pub fn vers_demarrage(app: &AppHandle, changer: bool) {
     let page = if changer { "demarrage.html?changer=1" } else { "demarrage.html" };
+    app.state::<Etat>().site_charge.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(PRINCIPALE) {
         let _ = w.navigate(url_locale(page));
     }
     afficher_principale(app);
-    // La Noter de la tour d'avant n'a plus lieu d'être : retour à la page de secours.
-    if let Some(n) = app.get_webview_window(NOTER) {
-        let _ = n.navigate(url_locale("noter.html"));
+    // Changer de tour : la Noter de la tour d'avant n'a plus lieu d'être,
+    // retour à la page de secours (elle repassera sur le site de la nouvelle).
+    if changer {
+        if let Some(n) = app.get_webview_window(NOTER) {
+            let _ = n.navigate(url_locale("noter.html"));
+        }
     }
 }
 
@@ -238,11 +248,6 @@ pub fn sur_evenement(fenetre: &tauri::Window, evenement: &WindowEvent) {
         }
         _ => {}
     }
-}
-
-/// Le site a-t-il déjà répondu dans la fenêtre principale ?
-pub fn site_charge(app: &AppHandle) -> bool {
-    app.state::<Etat>().site_charge.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]

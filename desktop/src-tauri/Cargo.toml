@@ -20,7 +20,7 @@ tauri-build = { version = "=2.7.4", features = [] }
 tauri = { version = "=2.12.5", features = ["tray-icon"] }
 tauri-plugin-single-instance = "=2.5.5"
 tauri-plugin-window-state = "=2.5.0"
-tauri-plugin-autostart = "=2.7.0"
+auto-launch = "=0.6.0"
 tauri-plugin-global-shortcut = "=2.4.1"
 tauri-plugin-notification = "=2.8.0"
 tauri-plugin-opener = "=2.7.2"

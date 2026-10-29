@@ -107,7 +107,7 @@ jobs:
           $lignes | Set-Content -Encoding ascii (Join-Path $sortie "SHA256SUMS.txt")
           Get-ChildItem $sortie | Format-Table Name, Length -AutoSize | Out-String | Write-Output
           $taille = (Get-Item (Join-Path $sortie "Remy-Bureau_${v}_x64-setup.exe")).Length
-          if ($taille -lt 1MB -or $taille -gt 40MB) { throw "Taille inattendue de l'installateur : $taille octets" }
+          if ($taille -lt 512KB -or $taille -gt 40MB) { throw "Taille inattendue de l'installateur : $taille octets" }
           "## Rémy bureau $v" >> $env:GITHUB_STEP_SUMMARY
           '```' >> $env:GITHUB_STEP_SUMMARY
           $lignes >> $env:GITHUB_STEP_SUMMARY

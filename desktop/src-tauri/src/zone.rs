@@ -90,12 +90,10 @@ fn sur_menu(app: &AppHandle, id: &str) {
             actualiser(app, &etat);
         }
         "adresse" => fenetres::vers_demarrage(app, true),
-        "recharger" => {
-            if let Some(w) = app.get_webview_window(fenetres::PRINCIPALE) {
-                let _ = w.reload();
-            }
-            fenetres::afficher_principale(app);
-        }
+        // Repasser par la page de démarrage plutôt que recharger la page :
+        // si la tour est tombée, on obtient l'écran « La tour ne répond pas »
+        // (avec Réessayer) au lieu de la page d'erreur de WebView2.
+        "recharger" => fenetres::vers_demarrage(app, false),
         "quitter" => app.exit(0),
         _ => {}
     }

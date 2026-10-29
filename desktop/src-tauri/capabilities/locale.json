@@ -8,6 +8,7 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-bureau-adresse-lire",
+    "allow-bureau-adresse-normaliser",
     "allow-bureau-adresse-enregistrer",
     "allow-bureau-aller-tour",
     "allow-bureau-note-locale",

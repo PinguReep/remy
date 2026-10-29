@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, State, Webview};
-use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_notification::NotificationExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -131,9 +130,7 @@ pub fn appliquer_reglages(
         etat.reglages.lock().unwrap().raccourci = nouveau.texte;
     }
     if let Some(oui) = demarrage {
-        let al = app.autolaunch();
-        let resultat = if oui { al.enable() } else { al.disable() };
-        resultat.map_err(|e| format!("Windows a refusé de changer le démarrage automatique : {e}"))?;
+        crate::demarrage::regler(oui)?;
         etat.reglages.lock().unwrap().demarrage = oui;
     }
     if let Some(oui) = fermer_dans_zone {
@@ -332,6 +329,16 @@ pub fn bureau_adresse_lire(app: AppHandle, webview: Webview, etat: State<'_, Eta
     })
 }
 
+const ADRESSE_INVALIDE: &str = "Adresse invalide : il faut l'adresse https de la tour, par exemple \
+     ma-tour.mon-tailnet.ts.net:8444 (sans chemin après le port).";
+
+/// Normalise sans garder : la page sonde d'abord cette adresse.
+#[tauri::command]
+pub fn bureau_adresse_normaliser(webview: Webview, adresse: String) -> Result<String, String> {
+    verifier_locale(&webview)?;
+    adresse::normaliser(&adresse).ok_or_else(|| ADRESSE_INVALIDE.to_string())
+}
+
 /// Normalise et garde l'adresse ; rend l'adresse propre, ou dit pourquoi non.
 #[tauri::command]
 pub fn bureau_adresse_enregistrer(
@@ -341,10 +348,7 @@ pub fn bureau_adresse_enregistrer(
     adresse: String,
 ) -> Result<String, String> {
     verifier_locale(&webview)?;
-    let propre = adresse::normaliser(&adresse).ok_or(
-        "Adresse invalide : il faut l'adresse https de la tour, par exemple ma-tour.mon-tailnet.ts.net:8444 \
-         (sans chemin après le port).",
-    )?;
+    let propre = adresse::normaliser(&adresse).ok_or_else(|| ADRESSE_INVALIDE.to_string())?;
     etat.reglages.lock().unwrap().adresse = Some(propre.clone());
     *etat.adresse_partagee.write().unwrap() = Some(propre.clone());
     etat.site_charge.store(false, Ordering::SeqCst);

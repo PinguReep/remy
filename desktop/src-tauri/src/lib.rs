@@ -11,12 +11,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_notification::NotificationExt as _;
 use tauri_plugin_window_state::StateFlags;
 
 pub mod adresse;
 pub mod commandes;
+pub mod demarrage;
 pub mod fenetres;
 pub mod raccourci;
 pub mod reglages;
@@ -89,17 +89,20 @@ fn mise_en_place(app: &mut tauri::App, cachee: bool) -> Result<(), Box<dyn std::
 
     // Démarrage avec Windows : posé une fois au premier lancement (sinon pas de
     // notifications), ensuite Windows fait foi (Gestionnaire des tâches compris).
-    let al = app.autolaunch();
     if !r.premier_lancement_fait {
         if r.demarrage {
-            if let Err(e) = al.enable() {
-                eprintln!("démarrage avec Windows non posé : {e}");
+            if let Err(e) = demarrage::regler(true) {
+                eprintln!("{e}");
                 r.demarrage = false;
             }
         }
         r.premier_lancement_fait = true;
-    } else if let Ok(actif) = al.is_enabled() {
+    } else if let Ok(actif) = demarrage::actif() {
         r.demarrage = actif;
+        // Réinscrit le chemin du programme (il a pu changer à la réinstallation).
+        if actif {
+            let _ = demarrage::regler(true);
+        }
     }
 
     let etat = Etat::nouveau(dossier, r);
@@ -169,12 +172,6 @@ pub fn run() {
                 .build(),
         )
         .plugin(
-            tauri_plugin_autostart::Builder::new()
-                .args([ARG_DEMARRAGE])
-                .app_name("Rémy")
-                .build(),
-        )
-        .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(raccourci::sur_raccourci)
                 .build(),
@@ -194,6 +191,7 @@ pub fn run() {
             commandes::bureau_notes_attente,
             commandes::bureau_notes_acquitter,
             commandes::bureau_adresse_lire,
+            commandes::bureau_adresse_normaliser,
             commandes::bureau_adresse_enregistrer,
             commandes::bureau_aller_tour,
             commandes::bureau_note_locale,
@@ -209,4 +207,47 @@ pub fn run() {
             api.prevent_exit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    /// Les commandes déclarées (build.rs), les règles d'accès et la liste
+    /// branchée dans `run()` disent la même chose ; aucune commande des pages
+    /// embarquées (adresse, notes de secours) n'est ouverte à une page distante.
+    #[test]
+    fn commandes_regles_et_branchement_concordent() {
+        let build = include_str!("../build.rs");
+        let lib = include_str!("lib.rs");
+        let declarees: Vec<&str> = build
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix('"').and_then(|l| l.strip_suffix("\",")))
+            .collect();
+        assert!(declarees.len() >= 10, "{declarees:?}");
+        let lire = |brut: &str| -> Vec<String> {
+            let json: serde_json::Value = serde_json::from_str(brut).unwrap();
+            json["permissions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|p| p.as_str())
+                .filter_map(|p| p.strip_prefix("allow-"))
+                .map(|p| p.replace('-', "_"))
+                .collect()
+        };
+        let locales = lire(include_str!("../capabilities/locale.json"));
+        let distantes = lire(include_str!("../capabilities/distante.json"));
+        for c in &declarees {
+            assert!(lib.contains(&format!("commandes::{c},")), "{c} n'est pas branchée dans run()");
+            assert!(
+                locales.contains(&c.to_string()) || distantes.contains(&c.to_string()),
+                "{c} n'est permise nulle part"
+            );
+        }
+        for c in locales.iter().chain(distantes.iter()) {
+            assert!(declarees.contains(&c.as_str()), "{c} permise mais pas déclarée");
+        }
+        for reservee in ["bureau_adresse_lire", "bureau_adresse_normaliser", "bureau_adresse_enregistrer", "bureau_aller_tour", "bureau_note_locale", "bureau_notes_locales_compte"] {
+            assert!(!distantes.contains(&reservee.to_string()), "{reservee} ouverte à une page distante");
+        }
+    }
 }
