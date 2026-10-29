@@ -103,7 +103,8 @@ test("« Lire maintenant » : ce qui est relu, ou les sources en échec", () => 
   assert.deepEqual(C.phraseSynchro({ bilan: { ok: true, sources: { "claude-code": { ok: true }, t3: { ok: true } } } }), { texte: "Conversations relues.", erreur: false });
   assert.deepEqual(C.phraseSynchro({ bilan: { sources: { t3: { ok: false, erreur: { message: "base occupée" } } } } }), { texte: "Lu, sauf : T3 Code (base occupée).", erreur: true });
   assert.deepEqual(C.corpsSynchro("t3"), { source: "t3" });
-  assert.deepEqual(C.corpsSynchro("chatgpt"), {}, "ChatGPT ne se relit pas : on relit tout le reste");
+  // Depuis le soir du 29/10, ChatGPT se relit aussi : le dossier Imports et Téléchargements.
+  assert.deepEqual(C.corpsSynchro("chatgpt"), { source: "chatgpt" });
   assert.deepEqual(C.corpsSynchro(""), {});
 });
 
@@ -111,6 +112,33 @@ test("« Lire maintenant » : ce qui est relu, ou les sources en échec", () => 
 
 // Ce que fait main.js : tout le fragment décodé, puis découpé aux « / ».
 const commeMain = (route) => decodeURIComponent(`#/${route}`.replace(/^#\/?/, "")).split("/").filter(Boolean);
+
+test("le recensement : la phrase de la tour, sinon rien (tour plus ancienne)", () => {
+  assert.equal(C.phraseRecensement({ recensement: { phrase: "312 sessions : 280 lues, 30 d'un seul échange lancées par un programme (claude -p)." } }), "312 sessions : 280 lues, 30 d'un seul échange lancées par un programme (claude -p).");
+  assert.equal(C.phraseRecensement({ recensement: { sessions: 3 } }), null);
+  assert.equal(C.phraseRecensement({}), null);
+  assert.equal(C.phraseRecensement(null), null);
+});
+
+test("Téléchargements et la carte « Exporter ChatGPT » : les mêmes mots que l'iPhone", () => {
+  const t = { actif: true, forceParLaTour: false, dossiers: [{ chemin: "~\\Downloads", trouve: true }], joursMax: 90 };
+  assert.equal(C.phraseTelechargements(t), "Rémy regarde ~\\Downloads en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.");
+  assert.equal(C.phraseTelechargements({ ...t, forceParLaTour: true, actif: false, dossiers: [] }), "Coupé sur la tour (REMY_TELECHARGEMENTS=off).");
+  assert.equal(C.phraseTelechargements(null), null);
+  // Pas de carte : la tour ne la demande pas, ou ne connaît pas encore ce réglage.
+  assert.equal(C.carteExportChatGPT({}), null);
+  assert.equal(C.carteExportChatGPT({ chatgpt: { rappel: { aMontrer: false } } }), null);
+  const jamais = C.carteExportChatGPT({ chatgpt: { telechargements: t, rappel: { aMontrer: true, dernierImport: null, depuisJours: null, lien: C.LIEN_EXPORT_CHATGPT } } });
+  assert.deepEqual([jamais.titre, jamais.bouton, jamais.lien], ["Exporter ChatGPT", "Ouvrir ChatGPT", "https://chatgpt.com/#settings/DataControls"]);
+  assert.equal(jamais.texte, "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements.");
+  assert.equal(jamais.detail, "Aucun export importé pour l'instant.");
+  const vieux = C.carteExportChatGPT({ chatgpt: { telechargements: { ...t, actif: false }, rappel: { aMontrer: true, dernierImport: 1, depuisJours: 45 } } });
+  assert.equal(vieux.texte, "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.");
+  assert.equal(vieux.detail, "Dernier import il y a 45 jours.");
+  assert.equal(vieux.lien, C.LIEN_EXPORT_CHATGPT, "sans lien de la tour : celui de ChatGPT");
+  // Un lien qui ne mène pas à ChatGPT n'est jamais suivi.
+  assert.equal(C.carteExportChatGPT({ chatgpt: { rappel: { aMontrer: true, depuisJours: 40, dernierImport: 1, lien: "https://ailleurs.example/" } } }).lien, C.LIEN_EXPORT_CHATGPT);
+});
 
 test("une conversation a son adresse, ouverte au message trouvé si besoin, même avec un « / » dans l'identifiant", () => {
   for (const id of ["5e551011-0000-4000-8000-000000000001", "fil-paiement", "dossier/avec/barres", "été 100%", "a?b#c"]) {
@@ -269,6 +297,28 @@ test("contrat : la liste (par source, par jour), les jours, la recherche, la lec
   assert.ok(absente.corps.message);
 });
 
+test("contrat : la carte « Exporter ChatGPT » et les deux réglages, joués contre la tour", async () => {
+  let e = (await appel(C.cheminEtat())).corps;
+  assert.ok(e.chatgpt?.telechargements && e.chatgpt?.rappel, "la tour annonce les réglages que la vue montre");
+  assert.equal(C.carteExportChatGPT(e), null, "un export vient d'être importé : pas de carte");
+  assert.match(C.phraseTelechargements(C.telechargements(e)), /Downloads en lecture seule/);
+  // Coupée puis rallumée, par le chemin de la vue.
+  e = (await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: { telechargements: false } })).corps;
+  assert.equal(C.telechargements(e).actif, false);
+  e = (await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: { telechargements: true, rappel: false } })).corps;
+  assert.deepEqual([C.telechargements(e).actif, e.chatgpt.rappel.actif], [true, false]);
+  e = (await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: { rappel: true } })).corps;
+  assert.equal(e.chatgpt.rappel.actif, true);
+  assert.equal((await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: {} })).statut, 400);
+  // « Lire maintenant » sur ChatGPT : relu, sans erreur.
+  const s = await appel(C.cheminSynchro(), { methode: "POST", corps: C.corpsSynchro("chatgpt") });
+  assert.equal(s.statut, 200);
+  assert.equal(C.phraseSynchro(s.corps).erreur, false, JSON.stringify(s.corps.bilan));
+  assert.ok(s.corps.bilan.sources.chatgpt.telechargements, "Téléchargements est relu avec Imports");
+  // Le recensement de Claude Code, tel que la vue l'affiche.
+  assert.match(C.phraseRecensement(e.sources.find((x) => x.id === "claude-code")), /^1 session : 1 lue\.$/);
+});
+
 test("contrat : couper une source, l'usage, effacer une source puis tout", async () => {
   let e = (await appel(C.cheminSource("t3"), { methode: "PUT", corps: { actif: false } })).corps;
   assert.equal(e.sources.find((s) => s.id === "t3").actif, false, "PUT …/sources/:id rend l'état");
@@ -295,13 +345,20 @@ test("contrat : couper une source, l'usage, effacer une source puis tout", async
   assert.equal(C.resumeEtat(tout.etat), "Rien encore : Claude Code, T3 Code, ChatGPT.");
   // « Lire maintenant » relit Claude Code et T3.
   await appel(C.cheminSynchro(), { methode: "POST", corps: {} });
-  assert.equal((await appel(C.cheminEtat())).corps.total.conversations, 3);
+  const apres = (await appel(C.cheminEtat())).corps;
+  assert.equal(apres.total.conversations, 3);
+  // ChatGPT effacé puis rallumé, jamais importé : la carte le propose.
+  await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: { actif: true } });
+  const carte = C.carteExportChatGPT((await appel(C.cheminEtat())).corps);
+  assert.ok(carte, "jamais importé, source allumée : la carte");
+  assert.equal(carte.detail, "Aucun export importé pour l'instant.");
 });
 
 test("le site : la vue, Réglages et Ctrl+K passent par ces chemins et ces phrases", () => {
   const vue = fs.readFileSync(new URL("../public/app/vues/conversations-externes.js", import.meta.url), "utf8");
   assert.doesNotMatch(vue, /["'`]\/api\/conversations-externes/, "aucun chemin écrit à la main : analyse/conversations.js les tient");
-  for (const f of ["cheminListe", "cheminRecherche", "cheminLecture", "cheminJours", "cheminNuit", "cheminSynchro", "cheminSource", "cheminUsage", "cheminToutEffacer", "cheminImport", "phraseImport", "phraseSource", "lireRoute", "route"]) {
+  for (const f of ["cheminListe", "cheminRecherche", "cheminLecture", "cheminJours", "cheminNuit", "cheminSynchro", "cheminSource", "cheminUsage", "cheminToutEffacer", "cheminImport", "phraseImport", "phraseSource", "lireRoute", "route",
+    "phraseRecensement", "carteExportChatGPT", "phraseTelechargements", "telechargements"]) {
     assert.match(vue, new RegExp(`C\\.${f}\\(`), f);
   }
   const reglages = fs.readFileSync(new URL("../public/app/vues/reglages.js", import.meta.url), "utf8");

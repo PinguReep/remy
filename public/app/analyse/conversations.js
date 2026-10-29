@@ -79,6 +79,13 @@ export function phraseSource(s, maintenant = Date.now()) {
   return `Lue ${depuis(s.derniereLecture, maintenant)} · ${nb}`;
 }
 
+/**
+ * Ce que la dernière lecture a vu, toutes sessions confondues : « 312
+ * sessions : 280 lues, 30 d'un seul échange… » (la phrase vient de la tour,
+ * la même pour l'iPhone), ou null (tour plus ancienne, rien lu encore).
+ */
+export const phraseRecensement = (s) => (typeof s?.recensement?.phrase === "string" && s.recensement.phrase) || null;
+
 /** Quoi faire pour une source en erreur, ou sans rien (erreur.quoiFaire, aide.quoiFaire). */
 export const quoiFaireSource = (s) => (s?.erreur || (Number(s?.conversations) ? null : s?.aide))?.quoiFaire || null;
 
@@ -173,8 +180,11 @@ export const cheminUsage = () => "/api/conversations-externes/usage";
 export const cheminToutEffacer = () => "/api/conversations-externes/tout";
 export const cheminImport = () => "/api/conversations-externes/chatgpt";
 
-/** Le corps de « Lire maintenant » : une source qui se relit (pas ChatGPT, qui s'envoie). */
-export const corpsSynchro = (source) => (source && source !== "chatgpt" ? { source } : {});
+/**
+ * Le corps de « Lire maintenant » : une source, ou toutes. ChatGPT aussi : la
+ * tour relit alors le dossier Imports et Téléchargements (soir du 29/10).
+ */
+export const corpsSynchro = (source) => (source ? { source } : {});
 
 // --- Les adresses du site (#/conversations/<source>/<id>[/<message>]) ---
 
@@ -199,6 +209,44 @@ export function lireRoute(args = []) {
 }
 
 // --- L'import ChatGPT ---
+
+// L'export ChatGPT automatique (soir du 29/10) : Rémy prend l'export dans
+// Téléchargements, et une carte rappelle de le demander quand le dernier a
+// plus de 30 jours. Les mêmes phrases que l'iPhone (ConversationsExternes.swift).
+export const LIEN_EXPORT_CHATGPT = "https://chatgpt.com/#settings/DataControls";
+
+/** Téléchargements surveillé, sur cette tour : { actif, forceParLaTour, dossiers } ou null (tour plus ancienne). */
+export const telechargements = (etat) => etat?.chatgpt?.telechargements || null;
+
+/** Ce que l'interrupteur « Téléchargements » dit sous son titre. */
+export function phraseTelechargements(t) {
+  if (!t) return null;
+  if (t.forceParLaTour) return "Coupé sur la tour (REMY_TELECHARGEMENTS=off).";
+  const ou = (t.dossiers || []).map((d) => d.chemin).filter(Boolean).join(", ") || "Téléchargements";
+  return `Rémy regarde ${ou} en lecture seule : il n'y prend que les exports ChatGPT de moins de ${t.joursMax || 90} jours, sans jamais rien y déplacer ni effacer.`;
+}
+
+/**
+ * La carte « Exporter ChatGPT », ou null : la tour dit quand la montrer
+ * (dernier import de plus de 30 jours, ou jamais, la source allumée).
+ */
+export function carteExportChatGPT(etat) {
+  const r = etat?.chatgpt?.rappel;
+  if (!r?.aMontrer) return null;
+  const t = telechargements(etat);
+  const dansTelechargements = Boolean(t?.actif && (t.dossiers || []).length);
+  const jours = Number(r.depuisJours);
+  return {
+    titre: "Exporter ChatGPT",
+    texte: dansTelechargements
+      ? "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements."
+      : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
+    detail: r.dernierImport == null || !Number.isFinite(jours) ? "Aucun export importé pour l'instant." : `Dernier import il y a ${jours} jour${jours > 1 ? "s" : ""}.`,
+    lien: typeof r.lien === "string" && /^https:\/\/chatgpt\.com\//.test(r.lien) ? r.lien : LIEN_EXPORT_CHATGPT,
+    bouton: "Ouvrir ChatGPT",
+    apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.",
+  };
+}
 
 /** Un fichier que la tour sait importer : le .zip de l'export, ou conversations.json. */
 export const importable = (nom) => /\.(zip|json)$/i.test(String(nom || ""));
