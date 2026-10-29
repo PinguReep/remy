@@ -21,6 +21,7 @@ const R = await import("../public/app/analyse/rangement.js");
 const P = await import("../public/app/vues/propositions.js");
 const A = await import("../public/app/vues/ajuster.js");
 const D = await import("../public/app/dictee.js");
+const V = await import("../public/app/vues/appel.js");
 const T = await import("../public/app/vues/retenir.js");
 const N = await import("../public/app/vues/noter.js");
 const { apercu } = await import("../public/app/analyse/genre.js");
@@ -368,11 +369,53 @@ function rejouer(d, morceaux) {
   return ["continuer", t];
 }
 
+test("appel : la fin de parole (DetecteurParoleTests)", () => {
+  let [v, t] = rejouer(new V.DetecteurParole(), [[-55, 0.5], [-20, 2], [-55, 3]]);
+  assert.equal(v, "finDeParole");
+  assert.ok(Math.abs(t - (2.5 + 1.7)) <= 0.11, `≈ 1,7 s de silence après la voix (${t})`);
+  [v] = rejouer(new V.DetecteurParole(), [[-55, 0.5], [-20, 1], [-55, 1], [-22, 1]]);
+  assert.equal(v, "continuer", "une pause d'une seconde n'est pas une fin de phrase");
+  [v, t] = rejouer(new V.DetecteurParole(), [[-55, 40]]);
+  assert.equal(v, "rienEntendu");
+  assert.ok(Math.abs(t - 30) <= 0.11);
+  const rue = new V.DetecteurParole();
+  [v] = rejouer(rue, [[-42, 5]]);
+  assert.equal(v, "continuer", "une rue bruyante à −42 dB n'est pas de la voix");
+  assert.equal(rue.parole, false);
+  assert.equal(rue.seuil, -35 + 12 > -50 ? Math.max(Math.min(-42, -35) + 12, -50) : -50);
+  [v, t] = rejouer(new V.DetecteurParole(), [[-55, 0.4], [-20, 95]]);
+  assert.equal(v, "finDeParole", "90 s max");
+  assert.ok(t <= 90.6);
+  assert.equal(V.DetecteurParole.normaliser(-160), 0);
+  assert.equal(V.DetecteurParole.normaliser(0), 1);
+});
 
+test("appel : la voix ne lit ni Markdown ni lien (ParoleTests), voix locales seulement", () => {
+  assert.equal(V.pourVoix("**Oui.** Regarde [le site](https://exemple.fr/page) ou https://autre.fr. [COUVERT:tete/vrac]"), "Oui. Regarde le site ou (lien)");
+  assert.equal(V.pourVoix("Je ré\n\n*(interrompu)*"), "Je ré");
+  assert.equal(V.pourVoix("Voici :\n```js\nx()\n```\nfin"), "Voici : (code) fin");
+  const voix = [
+    { name: "En ligne", lang: "fr-FR", localService: false },
+    { name: "Amélie", lang: "fr-CA", localService: true },
+    { name: "Thomas", lang: "fr-FR", localService: true },
+    { name: "Daniel", lang: "en-GB", localService: true },
+  ];
+  assert.deepEqual(V.voixLocales(voix).map((v) => v.name), ["Thomas", "Amélie"], "jamais une voix en ligne (aucun nouveau tiers), le français de France d'abord");
+  assert.deepEqual(V.voixLocales([]), []);
+  assert.equal(V.textesEtat("ecoute").titre, "Parle quand tu veux");
+  assert.equal(V.textesEtat("ecoute", { parleDeja: true }).titre, "Je t'écoute…");
+  assert.equal(V.textesEtat("transcription").sous, "Sur ta tour : l'audio n'est pas gardé.");
+  assert.equal(V.textesEtat("reflexion").sous, "Réponse courte, à voix haute.");
+  assert.equal(V.textesEtat("reflexion", { statut: "Je relis ton planning" }).sous, "Je relis ton planning");
+  assert.equal(V.textesEtat("parole").sous, "Le micro est coupé. Touche le carré pour me couper.");
+  assert.deepEqual(V.textesEtat("erreur", { message: "Micro refusé" }), { titre: "Ça coince", sous: "Micro refusé" });
+});
 
 test("les modules du lot sont dans le cache hors ligne (sw.js) et sans tiers", () => {
   const sw = fs.readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
-  for (const f of ["/app/analyse/etiquettes.js", "/app/analyse/rangement.js", "/app/dictee.js", "/app/vues/retenir.js", "/app/vues/propositions.js", "/app/vues/ajuster.js"]) assert.ok(sw.includes(`"${f}"`), f);
+  for (const f of ["/app/analyse/etiquettes.js", "/app/analyse/rangement.js", "/app/dictee.js", "/app/vues/retenir.js", "/app/vues/propositions.js", "/app/vues/ajuster.js", "/app/vues/appel.js"]) assert.ok(sw.includes(`"${f}"`), f);
+  const appel = fs.readFileSync(new URL("../public/app/vues/appel.js", import.meta.url), "utf8");
+  assert.match(appel, /localService === true/, "la voix : locale seulement");
   const dictee = fs.readFileSync(new URL("../public/app/dictee.js", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(dictee, /localStorage|indexedDB|caches\./, "l'audio n'est jamais gardé");
 });
