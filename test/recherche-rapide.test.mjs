@@ -446,6 +446,8 @@ test("mode direct : la tour cherche la question, lit en parallèle, et le modèl
 test("mode hybride (défaut) : un appel si les passages suffisent ; sinon UNE relance, exécutée par la tour", async () => {
   reset();
   assert.equal(rr.modeRecherche(), "hybride");
+  assert.equal((await (await json("GET", "/api/reglages")).json()).rechercheMode, "hybride");
+  assert.ok((await (await json("GET", "/api/version")).json()).capacites.includes("recherche-rapide-v1"));
   glm.principal = [texte("Le seuil est de 77 700 €.")];
   await envoyer(await nouveauFil(), QUESTION);
   assert.equal(glm.flux.length, 1);
