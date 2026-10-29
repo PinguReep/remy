@@ -66,7 +66,11 @@ d'avant, passent après).
   ChatGPT gardés ; Claude Code garde le texte tapé avec une capture de
   plusieurs Mo (les `"data"` base64 sont retirés au fil de l'eau), écarte
   « [Request interrupted by user] » et reprend après des octets nuls ;
-  écritures par lots de 400 (la tour ne se fige plus) ; noms de projets avec
+  écritures par lots de 400 messages ou ~120 000 caractères (indexer, c'est
+  un HMAC par mot), lecture qui rend la main chaque Mo, requêtes préparées
+  une fois : sur 300 Mo de sessions fictives, la boucle d'événements bloquée
+  au pire 143 ms (1,24 s avant) ; sur un export de 1 000 conversations,
+  342 ms (858 avant) ; noms de projets avec
   leurs majuscules ; pages sur `(date, identifiant)` ; `autour=` pour ouvrir
   au message trouvé ; « Aller à un jour » sur l'iPhone.
 - **Écartés, et pourquoi** : « Me le rappeler » et une tâche Motion proposée
