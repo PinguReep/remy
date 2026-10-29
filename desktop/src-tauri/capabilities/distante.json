@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "distante",
+  "description": "Le site servi par la tour : seulement les commandes bureau_* du contrat (docs/bureau.md, 1.4). Motifs génériques (tailnet, développement local) ; chaque commande vérifie en plus que la page vient exactement de l'adresse configurée.",
+  "windows": ["main", "noter"],
+  "local": false,
+  "remote": {
+    "urls": ["https://*.ts.net:*/*", "http://localhost:*/*", "http://127.0.0.1:*/*"]
+  },
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-bureau-etat",
+    "allow-bureau-regler",
+    "allow-bureau-notifier",
+    "allow-bureau-noter-fermer",
+    "allow-bureau-ouvrir",
+    "allow-bureau-ouvrir-lien",
+    "allow-bureau-changer-adresse",
+    "allow-bureau-notes-attente",
+    "allow-bureau-notes-acquitter"
+  ]
+}

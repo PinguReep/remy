@@ -1,0 +1,169 @@
+# Rémy sur Windows (desktop/, Tauri v2) : tests de la coquille, puis
+# l'installateur (.exe NSIS par utilisateur, et .msi) en artefact.
+# Lancé à la main avec « publier » coché : une Release GitHub bureau-vX.Y.Z
+# (version lue dans desktop/src-tauri/tauri.conf.json ; refusée si le tag existe).
+#
+# Aucun secret : l'adresse de la tour n'est jamais dans l'app (demandée au
+# premier lancement). Non signé : voir docs/bureau.md (SmartScreen).
+
+name: Bureau Windows — installateur
+
+on:
+  workflow_dispatch:
+    inputs:
+      publier:
+        description: "Publier une Release GitHub bureau-vX.Y.Z avec l'installateur"
+        type: boolean
+        default: false
+  # Les branches du chantier aussi : un workflow absent de main ne peut pas
+  # être lancé à la main (workflow_dispatch), mais il tourne sur un envoi.
+  push:
+    branches: [main, "claude/bureau-windows**"]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/bureau-windows.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/bureau-windows.yml"
+
+concurrency:
+  group: bureau-windows-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Tests + installateur (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/src-tauri/target
+          key: bureau-cargo-${{ runner.os }}-${{ hashFiles('desktop/src-tauri/Cargo.lock') }}
+          restore-keys: bureau-cargo-${{ runner.os }}-
+
+      - name: Version (tauri.conf.json)
+        id: version
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version illisible dans tauri.conf.json : $v" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Output "Rémy bureau $v"
+
+      - name: Dépendances (CLI Tauri épinglée)
+        run: npm ci --no-audit --no-fund
+
+      - name: Tests de la coquille (adresse, origine, raccourci, réglages, notifications)
+        working-directory: desktop/src-tauri
+        run: cargo test --locked
+
+      - name: Construire l'installateur
+        run: npx tauri build --ci
+
+      - name: Rassembler l'installateur (noms sans accent, empreintes)
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $bundle = "src-tauri/target/release/bundle"
+          $sortie = New-Item -ItemType Directory -Force -Path dist-bureau
+          $exe = Get-ChildItem "$bundle/nsis" -Filter *-setup.exe | Select-Object -First 1
+          if (-not $exe) { throw "Installateur NSIS introuvable dans $bundle/nsis" }
+          Copy-Item $exe.FullName (Join-Path $sortie "Remy-Bureau_${v}_x64-setup.exe")
+          $msi = Get-ChildItem "$bundle/msi" -Filter *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msi) { Copy-Item $msi.FullName (Join-Path $sortie "Remy-Bureau_${v}_x64_fr-FR.msi") }
+          else { Write-Warning "Pas de .msi : l'installateur .exe suffit." }
+          $lignes = Get-ChildItem $sortie -File | Sort-Object Name | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          }
+          $lignes | Set-Content -Encoding ascii (Join-Path $sortie "SHA256SUMS.txt")
+          Get-ChildItem $sortie | Format-Table Name, Length -AutoSize | Out-String | Write-Output
+          $taille = (Get-Item (Join-Path $sortie "Remy-Bureau_${v}_x64-setup.exe")).Length
+          if ($taille -lt 1MB -or $taille -gt 40MB) { throw "Taille inattendue de l'installateur : $taille octets" }
+          "## Rémy bureau $v" >> $env:GITHUB_STEP_SUMMARY
+          '```' >> $env:GITHUB_STEP_SUMMARY
+          $lignes >> $env:GITHUB_STEP_SUMMARY
+          '```' >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Aucune adresse de tour dans l'app construite
+        run: |
+          # L'adresse est demandée au premier lancement : aucun hôte du tailnet
+          # (*.ts.net) ne doit être écrit dans le binaire.
+          $octets = [System.IO.File]::ReadAllBytes((Resolve-Path "src-tauri/target/release/Remy.exe"))
+          $texte = [System.Text.Encoding]::ASCII.GetString($octets)
+          $trouve = [regex]::Matches($texte, '[a-z0-9-]+\.[a-z0-9-]+\.ts\.net') | ForEach-Object Value |
+            Where-Object { $_ -ne 'ma-tour.mon-tailnet.ts.net' } | Sort-Object -Unique
+          if ($trouve) { throw "Adresse de tailnet trouvée dans le binaire : $($trouve -join ', ')" }
+          Write-Output "Aucune adresse *.ts.net en dur dans Remy.exe."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: remy-bureau-windows-${{ steps.version.outputs.version }}
+          path: desktop/dist-bureau/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publier:
+    name: Release bureau-v${{ needs.windows.outputs.version }}
+    needs: windows
+    if: github.event_name == 'workflow_dispatch' && inputs.publier
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: remy-bureau-windows-${{ needs.windows.outputs.version }}
+          path: installateur
+
+      - name: Créer la Release (refusée si le tag existe déjà)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          tag="bureau-v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::La Release $tag existe déjà : monte la version dans desktop/src-tauri/tauri.conf.json (et Cargo.toml, package.json)."
+            exit 1
+          fi
+          cat > notes.md <<EOF
+          Rémy sur Windows ${VERSION} (Tauri v2, WebView2).
+
+          - Installer : \`Remy-Bureau_${VERSION}_x64-setup.exe\` (par utilisateur, sans droits d'administrateur).
+          - Non signé : Windows SmartScreen peut prévenir au premier lancement (« Informations complémentaires » › « Exécuter quand même »). Vérifie l'empreinte dans \`SHA256SUMS.txt\`.
+          - Mode d'emploi : docs/bureau.md, partie 2.
+          EOF
+          gh release create "$tag" installateur/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Rémy bureau ${VERSION}" \
+            --notes-file notes.md

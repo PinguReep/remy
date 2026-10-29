@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "locale",
+  "description": "Pages embarquées dans l'app (démarrage, Noter de secours) : l'adresse de la tour et les notes tapées hors ligne. Rien d'autre.",
+  "windows": ["main", "noter"],
+  "local": true,
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-bureau-adresse-lire",
+    "allow-bureau-adresse-enregistrer",
+    "allow-bureau-aller-tour",
+    "allow-bureau-note-locale",
+    "allow-bureau-notes-locales-compte",
+    "allow-bureau-noter-fermer",
+    "allow-bureau-ouvrir"
+  ]
+}
