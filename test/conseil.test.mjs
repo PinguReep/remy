@@ -142,6 +142,7 @@ test("GLM en panne : le dernier conseil reste affiché et la raison est dite", a
   const r = await conseil.conseilPour("maintenant", autre, { maintenant, relancer: false });
   assert.equal(r.conseil.texte, "Prépare le trajet chez Paulette.", "le dernier conseil reste affiché, daté");
   assert.equal(r.aJour, false);
-  assert.match(r.raison, /GLM n'a pas pu réfléchir/);
+  // Le modèle que les Sparks servent est nommé (pas un « GLM » supposé).
+  assert.match(r.raison, /^Le modèle local \(GLM-test\) n'a pas pu réfléchir/);
   panne = false;
 });
