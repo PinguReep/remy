@@ -22,8 +22,10 @@ notes privées, sur la tour.
   l'ordre du moteur ; une page par site d'abord), lit 3 pages EN PARALLÈLE,
   en extrait les passages utiles sans IA (mots de la question pondérés par
   leur rareté sur la page, chiffres — montants, pourcentages, heures, dates,
-  durées —, lignes de tableau chiffrées, chapeau, avec le titre qui précède ;
-  ~1 500 caractères par page), et le modèle principal répond en UN appel, sans
+  durées —, lignes de tableau chiffrées, chapeau, avec le titre qui précède,
+  et la liste qu'annonce une ligne finie par « : » — « vous devez : » suivi
+  des conditions de l'ACRE, vérifié sur la page de l'Urssaf ; une année seule
+  ne rend pas une ligne pertinente ; ~1 500 caractères par page), et le modèle principal répond en UN appel, sans
   aucun outil web, la matière jointe au message de Sam dans
   `<matiere_externe>` avec liens et dates ; `hybride` (le défaut) — direct, plus
   UNE relance possible : l'outil `rechercher` avec un budget de 1, que le

@@ -299,6 +299,20 @@ test("les passages : les mots de la question, les chiffres, la ligne de tableau,
   assert.match(q[0].texte, /21,2 %/);
   assert.ok(q[0].texte.length <= 330);
   assert.deepEqual(rr.passagesPertinents("", ["x"]), []);
+
+  // Une ligne qui annonce une liste (« vous devez : ») emporte la liste : c'est la réponse.
+  const conditions = [
+    "Quelles sont les conditions pour bénéficier de l'Acre ?",
+    "À compter du 1er janvier 2026, pour bénéficier de l'Acre, vous devez :",
+    "- être en début d'activité ;",
+    "- ne pas en avoir bénéficié dans les 3 années précédentes ;",
+    "- être demandeur d'emploi indemnisé.",
+    "Il démarre son activité le 3 septembre 2026.",
+  ].join("\n");
+  const c = rr.passagesPertinents(conditions, ["conditions", "beneficier", "acre", "2026"]).map((x) => x.texte).join("\n");
+  assert.match(c, /vous devez :\n- être en début d'activité ;\n- ne pas en avoir bénéficié dans les 3 années précédentes ;\n- être demandeur d'emploi indemnisé\./);
+  // Une année seule ne rend pas une ligne pertinente.
+  assert.doesNotMatch(c, /3 septembre/);
 });
 
 test("lectures en parallèle : trois pages en même temps, une page refusée remplacée, et le délai total tient", async () => {
