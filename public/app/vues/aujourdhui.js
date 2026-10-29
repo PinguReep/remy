@@ -271,7 +271,7 @@ function dessinerJournee() {
   const minDe = (ms) => (ms - debutJ.getTime()) / 60e3;
   const h0 = Math.max(0, Math.min(8 * 60, Math.floor(Math.min(...items.map((e) => minDe(e.debut))) / 60) * 60));
   const h1 = Math.min(24 * 60, Math.max(20 * 60, Math.ceil(Math.max(...items.map((e) => minDe(finEffective(e)))) / 60) * 60));
-  const PX = 1.1; // pixels par minute
+  const PX = 1.3; // pixels par minute (30 min ≈ 40 px : une cible au doigt)
   const echelle = h("div", { class: "echelle", style: { height: `${(h1 - h0) * PX}px` } });
   for (let t = h0; t <= h1; t += 60) {
     const y = (t - h0) * PX;
@@ -304,12 +304,12 @@ function dessinerJournee() {
   clore();
   for (const e of tries) {
     const top = (minDe(e.debut) - h0) * PX;
-    const haut = Math.max(24, (minDe(finEffective(e)) - minDe(e.debut)) * PX - 2);
+    const haut = Math.max(40, (minDe(finEffective(e)) - minDe(e.debut)) * PX - 2);
     const { col, n } = places.get(e);
     const st = etat(e, m);
     const bloc = h("button", {
       type: "button",
-      class: `bloc ${e.type === "rdv" ? "rdv" : "tache"} ${st}${haut < 40 ? " court" : ""}`,
+      class: `bloc ${e.type === "rdv" ? "rdv" : "tache"} ${st}${haut < 46 ? " court" : ""}`,
       style: { top: `${top}px`, height: `${haut}px`, left: `calc(8px + (100% - 8px) * ${col / n})`, width: `calc((100% - 8px) / ${n} - 4px)`, "--couleur": e.type === "rdv" ? "var(--encre-2)" : couleurProjet(e.projet) },
       title: `${e.titre} · ${heure(e.debut)} – ${heure(finEffective(e))}`,
       onclick: () => gerer(e, gestesDe(e)),

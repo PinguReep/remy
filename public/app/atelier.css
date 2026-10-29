@@ -602,6 +602,8 @@ main.ecran:focus { outline: none; }
   dialog.palette { top: 0; margin-top: calc(8px + var(--sa-haut)); border-radius: 22px; width: calc(100vw - 16px); margin-left: auto; margin-right: auto; }
   .actions-entete .lib-longue { display: none; }
   .composeur .aide-clavier { display: none; }
+  .noter-pied .aide { display: none; }
+  .noter-pied { justify-content: flex-end; }
 }
 @media (hover: none) { .rail-lien .kbd-raccourci, .btn .kbd { display: none; } }
 @media (prefers-reduced-motion: reduce) {

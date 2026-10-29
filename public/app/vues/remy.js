@@ -18,6 +18,7 @@ let envoi = null; // { convId, ctrl, bloc }
 let fileApres = []; // « Envoyer après » : messages tapés pendant une réponse
 let etapes = []; // les étapes de la dernière réponse (panneau)
 let refs = {};
+const brouillons = new Map(); // ce qui est tapé et pas envoyé, par conversation
 
 const CLE_LUS = "remy-conversations-lues";
 const lus = () => local.lire(CLE_LUS, null);
@@ -182,6 +183,13 @@ function dessinerListe() {
 
 // --- Ouvrir une conversation ---
 async function ouvrir(id) {
+  // Le texte tapé reste attaché à sa conversation (changer de fil ne le perd ni ne l'emporte).
+  const avant = courante?.id || (courante?.nouvelle ? "nouvelle" : null);
+  if (refs.champ) {
+    if (avant) brouillons.set(avant, refs.champ.value);
+    refs.champ.value = brouillons.get(id || "") || "";
+    ajusterChamp();
+  }
   if (envoi && envoi.convId !== id) {
     // La réponse continue sur la tour : on la relira en revenant sur ce fil.
     envoi.ctrl.abort();
@@ -588,6 +596,7 @@ async function soumettre() {
   if (courante?.chargement) return;
   refs.champ.value = "";
   ajusterChamp();
+  brouillons.delete(courante?.id || "nouvelle");
   if (envoi) {
     fileApres.push(texte);
     majComposeur();

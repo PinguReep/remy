@@ -45,6 +45,21 @@ function messageDe(statut, corps) {
  * `corps` : objet envoyé en JSON. `delai` en ms.
  */
 export async function api(chemin, { methode = "GET", corps, delai = 25000, signal } = {}) {
+  // Une écriture Motion qui tarde : la tour la fait attendre dans la file du
+  // quota. Au bout de 4 s, le site le dit (« ça part tout seul »).
+  if (chemin === "/api/motion/apply") {
+    const suivi = setTimeout(() => signaler("motion-lent"), 4000);
+    try {
+      return await appel(chemin, { methode, corps, delai, signal });
+    } finally {
+      clearTimeout(suivi);
+      signaler("motion-fini");
+    }
+  }
+  return appel(chemin, { methode, corps, delai, signal });
+}
+
+async function appel(chemin, { methode, corps, delai, signal }) {
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => ctrl.abort("delai"), delai);
   const relais = () => ctrl.abort("annule");

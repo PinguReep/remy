@@ -289,6 +289,20 @@ function lancer() {
     vueCourante = null;
     ecranConnexion();
   });
+  let fermerMotion = null;
+  evenements.addEventListener("motion-lent", async () => {
+    if (fermerMotion) return;
+    let detail = "Motion limite le nombre d'écritures par minute : la tienne part dès que possible.";
+    try {
+      const f = await api("/api/motion/file", { delai: 4000 });
+      if (f?.enFile > 0) detail = `${f.enFile} écriture${f.enFile > 1 ? "s" : ""} avant la tienne, environ ${Math.max(1, Math.round((f.attenteMs || 0) / 1000))} s.`;
+    } catch {}
+    fermerMotion = dire("Motion fait la queue : ne ferme pas, ça part tout seul.", { detail, duree: 0 });
+  });
+  evenements.addEventListener("motion-fini", () => {
+    fermerMotion?.();
+    fermerMotion = null;
+  });
   document.addEventListener("keydown", clavier);
   // Revenue au premier plan : la vue relit ce qui a pu changer, la file part.
   document.addEventListener("visibilitychange", () => {

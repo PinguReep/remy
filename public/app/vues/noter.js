@@ -129,7 +129,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
   });
   zone.value = texte;
   const vueApercu = h("div", { class: "apercu", "aria-live": "polite" });
-  const envoyerBtn = bouton("Envoyer", { classe: "plein", icone: "envoyer", kbd: "Entrée" });
+  const envoyerBtn = bouton("Envoyer", { classe: "plein", icone: "envoyer", kbd: "Entrée", type: "submit" });
   const form = h("form", { class: "noter", onsubmit: (e) => { e.preventDefault(); soumettre(); } },
     zone, vueApercu,
     h("div", { class: "noter-pied" },

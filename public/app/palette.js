@@ -5,6 +5,7 @@
 import { api } from "./api.js";
 import { h, vider, icone, appliquerTheme } from "./ui.js";
 
+const ORDRE = ["Aller à", "Actions", "Listes", "Dossiers", "Conversations", "Réglages"];
 const plier = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 export async function ouvrir({ contexte, vues, vueCourante }) {
@@ -49,11 +50,12 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
       .map((e) => {
         const t = plier(`${e.titre} ${e.mots || ""}`);
         if (mots.length && !mots.every((m) => t.includes(m))) return null;
-        const score = !mots.length ? 0 : plier(e.titre).startsWith(mots[0]) ? 2 : t.includes(` ${mots[0]}`) ? 1 : 0;
+        const titre = plier(e.titre);
+        const score = !mots.length ? 0 : titre === q ? 3 : titre.startsWith(mots[0]) ? 2 : t.includes(` ${mots[0]}`) ? 1 : 0;
         return { e, score };
       })
       .filter(Boolean)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => b.score - a.score || ORDRE.indexOf(a.e.groupe) - ORDRE.indexOf(b.e.groupe))
       .slice(0, 40)
       .map((x) => x.e);
     if (!mots.length) affiches = affiches.filter((e) => e.groupe === "Aller à" || e.groupe === "Actions");
