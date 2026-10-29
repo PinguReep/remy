@@ -1,29 +1,49 @@
-// La mémoire de projets vue depuis la tour, sans l'app : ce que Rémy a lu de
-// tes sessions Claude Code (projets, sessions, passages, dernière lecture).
-// Rien n'est modifié chez Claude Code. Le contenu des passages n'est jamais
-// affiché : seulement des noms de projets, des dates et des comptes.
+// Tes conversations d'ailleurs vues depuis la tour, sans l'app : ce que Rémy
+// a lu de Claude Code, de T3 Code et de tes exports ChatGPT (comptes, dates,
+// emplacements, erreurs et quoi faire). Rien n'est modifié chez Claude Code,
+// T3 ni ChatGPT ; le contenu des conversations n'est jamais affiché.
 //
 //   node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\connaissances-etat.mjs [--lire]
 //
-// --lire : lit tout de suite les sessions accordées (sinon, Rémy le fait seul
+// --lire : lit tout de suite les sources allumées (sinon, Rémy le fait seul
 // toutes les 30 minutes).
 
 import * as sync from "../lib/connaissances/sync.js";
 
-const date = (ms) => (ms ? new Date(ms).toLocaleString("fr-FR", { timeZone: process.env.REMY_TZ || "Europe/Paris" }) : "—");
+const date = (ms) => (ms ? new Date(ms).toLocaleString("fr-FR", { timeZone: process.env.REMY_TZ || "Europe/Paris" }) : "jamais");
 
 if (process.argv.includes("--lire")) {
-  if (!sync.sourceActive()) {
-    console.log("Lecture non accordée : ajoute REMY_SOURCE_CLAUDE_CODE=on dans remy.env (ou active-la dans l'app).");
+  let r;
+  try {
+    r = await sync.synchroniser();
+  } catch (err) {
+    const p = sync.erreurDe(null, err);
+    console.log(`Lecture impossible : ${p.message}\nÀ faire : ${p.quoiFaire}`);
+    process.exit(1);
+  }
+  if (r.raison === "source-coupee") {
+    console.log("Toutes les sources sont coupées (dans l'app, ou REMY_SOURCE_…=off dans remy.env).");
     process.exit(2);
   }
-  const b = await sync.synchroniser();
-  console.log(`Lecture : ${b.lus} session(s) lue(s), ${b.passages} passage(s) ajouté(s), ${b.masques} secret(s) masqué(s), ${b.exclus} exclue(s), ${b.horsFiltre} hors filtre, ${b.erreurs} erreur(s) — ${Math.round(b.duree / 100) / 10} s`);
+  for (const [id, b] of Object.entries(r.sources)) {
+    const nom = sync.SOURCES[id]?.nom || id;
+    if (!b.ok) console.log(`${nom} : ÉCHEC — ${b.erreur.message}\n  À faire : ${b.erreur.quoiFaire}`);
+    else if (id === sync.SOURCE_CHATGPT) console.log(`${nom} : ${b.importes} export(s) importé(s), ${b.deja} déjà vu(s), ${b.enAttente} en attente — ${b.duree} ms`);
+    else console.log(`${nom} : ${b.messages} message(s) ajouté(s), ${b.masques} secret(s) masqué(s), ${b.erreurs} erreur(s) — ${b.duree} ms`);
+  }
 }
+
 const e = sync.etat();
-const s = e.sources["claude-code"];
-console.log(`Source Claude Code : ${s.actif ? "accordée" : "COUPÉE"}${s.forceParLaTour ? " (réglée dans remy.env)" : ""}, filtre de projets : ${s.filtre ? "oui" : "non (tous)"}`);
-console.log(`Dernière lecture : ${s.derniereSync ? date(s.derniereSync.fin || s.derniereSync.debut) : "jamais"}`);
-console.log(`Données non chiffrées sur le disque de la tour : ${e.chiffre ? "non" : "oui"}`);
-if (!e.projets.length) console.log("Aucun projet lu pour l'instant.");
-for (const p of e.projets) console.log(`  ${p.nom.padEnd(28)} ${String(p.sessions).padStart(4)} session(s) ${String(p.passages).padStart(6)} passage(s)   dernier : ${date(p.derniere)}`);
+console.log(`Chiffré au repos : ${e.chiffre ? "oui" : "NON"} — clé : ${e.cle?.emplacement || "?"}`);
+if (e.cle?.erreur) console.log(`  ERREUR : ${e.cle.erreur.message}\n  À faire : ${e.cle.erreur.quoiFaire}`);
+console.log(`Rémy s'en sert : réponses ${e.usage.chat ? "oui" : "non"}, nuit ${e.usage.nuit ? "oui" : "non"}${e.usage.forceParLaTour ? " (coupé dans remy.env)" : ""}`);
+for (const s of e.sources) {
+  console.log(`\n${s.nom} : ${s.actif ? "allumée" : "COUPÉE"}${s.forceParLaTour ? " (réglée dans remy.env)" : ""}`);
+  console.log(`  ${s.conversations} conversation(s), ${s.messages} message(s) ; dernière lecture : ${date(s.derniereLecture)}`);
+  for (const l of s.emplacements) console.log(`  ${l.trouve ? "trouvé" : "absent"} : ${l.chemin} (${l.origine})`);
+  const p = s.erreur || s.aide;
+  if (p) console.log(`  ${s.erreur ? "ERREUR" : "Rien encore"} : ${p.message}${p.quoiFaire ? `\n  À faire : ${p.quoiFaire}` : ""}`);
+}
+console.log(`\nExports ChatGPT à déposer dans : ${e.imports.dossier} (${e.imports.enAttente} en attente, ${e.imports.importes} déjà importé(s))`);
+const o = e.imports.originaux;
+if (o?.fichiers) console.log(`  ${o.fichiers} export(s) importé(s) encore en clair hors du coffre : ${o.dossier} (effacé(s) ${o.gardeJours} jour(s) après l'import)`);

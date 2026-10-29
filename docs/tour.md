@@ -156,6 +156,56 @@ relance-le depuis l'icône d'ActivityWatch près de l'horloge (menu des modules)
 ou quitte et relance `aw-qt`, puis tire pour relever.
 « Tout effacer » vide ce que Rémy a gardé, sans toucher à ActivityWatch.
 
+## Conversations d'ailleurs (Claude Code, T3 Code, ChatGPT)
+
+Rémy lit tes sessions Claude Code et T3 Code de la tour, et les exports
+ChatGPT que tu lui donnes : consultables dans l'app (Projets › Conversations),
+relues la nuit par le modèle local, citées dans ses réponses quand ta question
+s'y rapporte. À sens unique : rien n'est écrit chez Claude Code, T3 ni
+ChatGPT, et rien ne repart vers Anthropic ou OpenAI. Détail et contrat :
+`docs/conversations-externes.md`.
+
+1. **Rien à faire pour Claude Code et T3** : allumées par défaut, lues toutes
+   les 30 minutes (`%USERPROFILE%\.claude\projects`, `%USERPROFILE%\.t3\userdata`).
+   Un dossier ailleurs (fork de T3, autre profil, WSL) : `REMY_CLAUDE_DIRS` ou
+   `REMY_T3_DIRS` dans `remy.env` (séparés par `;`), puis l'installeur.
+2. **ChatGPT** : ChatGPT › Réglages › Contrôle des données › Exporter ; le
+   .zip arrive par mail (lien valable 24 h). Envoie-le depuis l'app
+   (Réglages › Sources des conversations › Importer un export ChatGPT), ou
+   dépose-le dans `<coffre>\Imports` (le .zip, ou le dossier que crée
+   « Extraire tout ») : lu au passage suivant (30 min au plus), puis il
+   **quitte le coffre** pour `%USERPROFILE%\.remy\imports-importes`, effacé
+   7 jours après. Le même export deux fois ne crée rien. Trop gros pour
+   l'envoi depuis l'iPhone : dans Fichiers, touche le .zip pour le
+   décompresser et envoie seulement `conversations.json`.
+3. **La clé** : `%USERPROFILE%\.remy\conversations.cle`, créée au premier
+   usage, hors du coffre. Garde-en une copie avec la clé des sauvegardes : sans
+   elle, une base restaurée est illisible (Claude Code et T3 se relisent, un
+   export ChatGPT se réenvoie).
+4. **Vérifier** depuis la tour, sans rien afficher du contenu :
+   `node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\connaissances-etat.mjs --lire`
+   (chaque source : allumée ou non, emplacements trouvés, comptes, erreur et
+   quoi faire).
+
+| Réglage (`remy.env`) | Rôle |
+| --- | --- |
+| `REMY_SOURCE_CLAUDE_CODE=off` / `REMY_SOURCE_T3=off` / `REMY_SOURCE_CHATGPT=off` | coupe la source côté tour (l'app ne peut plus l'allumer) |
+| `REMY_CONVERSATIONS_USAGE=off` | Rémy ne s'en sert plus (ni réponses, ni nuit) ; la consultation reste |
+| `REMY_CLAUDE_DIRS`, `REMY_T3_DIRS` | des dossiers en plus, séparés par `;` |
+| `REMY_IMPORTS_DIR` | le dossier surveillé des exports (défaut `<coffre>\Imports`) |
+| `REMY_IMPORT_MAX_MO` | taille maximale d'un envoi depuis l'app (défaut 2048) |
+| `REMY_IMPORTS_GARDE_JOURS` | jours pendant lesquels un export importé est gardé hors du coffre (défaut 7 ; 0 : effacé tout de suite) |
+| `REMY_CONNAISSANCES_PROJETS` | ne garder que les projets dont le dossier contient l'un de ces mots |
+| `REMY_GLM_LOCAL=oui` | à poser seulement si `REMY_GLM_URL` désigne un modèle chez toi sous un nom public : sinon passages et nuit sont refusés hors de la machine, du réseau privé et du tailnet |
+
+La base (`<coffre>\.remy\connaissances.db`) est chiffrée. Une conversation
+de Rémy qui cite ces conversations, ou importée d'un autre assistant, est
+**scellée** dans `conversations.json` (chiffrée avec la même clé) et le coffre
+Obsidian n'en garde qu'un renvoi (« Conversation privée (…).md »). Le dossier
+`Imports` n'entre pas dans les sauvegardes (lourd, en clair, déjà dans la
+base), et un export importé n'y reste pas. « Tout effacer » (app) vide la base
+et ce que la nuit en a tiré, sans toucher aux originaux.
+
 ## Recherche web (modèle local)
 
 Depuis le 25/10, le modèle local cherche et lit lui-même sur le web, depuis la

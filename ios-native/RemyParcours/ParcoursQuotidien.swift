@@ -657,6 +657,81 @@ final class ParcoursQuotidien: ParcoursBase {
         }
     }
 
+    /// Tes conversations d'ailleurs (29/10) : Projets › Conversations, la
+    /// première lecture, les sources, une conversation T3 relue, une recherche
+    /// qui ouvre au message trouvé, un jour choisi, puis un export ChatGPT
+    /// déposé dans le dossier Imports qui apparaît.
+    @MainActor
+    func test26_conversationsDAilleurs() {
+        jouer("P26", "Conversations Claude Code, T3, ChatGPT : lire, chercher, importer") {
+            lancer()
+            try attendreAccueil()
+            try toucher(onglet("projets"), "onglet Projets")
+            let carte = ident("projets.conversations")
+            amener(carte)
+            try etape("carte-projets", attendu: [carte])
+            try toucher(carte, "Conversations")
+            let lire = ident("conversations.lire")
+            try etape("premiere-fois", attendu: [texte("Rien encore ici"), lire], delai: 20)
+            verifier("L'écran vide dit quoi faire pour ChatGPT (l'export).", texte("Exporter").exists)
+            auditerCibles("conversations vide")
+            try toucher(lire, "Lire maintenant")
+            let fiches = texte("Fiches produits de la boutique")
+            let paiement = texte("Paiement en trois fois")
+            try etape("lues", attendu: [fiches, paiement, texteI("Hier")], delai: 30)
+            verifier("La source se lit sur la ligne (lu : « \(paiement.label) »).", texte("T3 Code").exists)
+            try toucher(ident("conversations.filtre.t3"), "filtre T3 Code")
+            try etape("filtre-t3", attendu: [paiement], absent: [fiches], delai: 15)
+            try toucher(paiement, "Paiement en trois fois")
+            try etape("lecture", attendu: [ident("conversation.titre"), texte("paiement en trois fois au panier"), texte("prestataire de paiement")], delai: 20)
+            verifier("La lecture dit que rien ne repart.", texte("Rien ne repart vers Claude ni OpenAI").exists)
+            auditerCibles("lecture d'une conversation")
+            try toucher(nomme(app.navigationBars.buttons.element(boundBy: 0), "retour"), "Retour")
+            try toucher(ident("conversations.filtre.toutes"), "filtre Toutes")
+            let champ = ident("conversations.recherche")
+            try toucher(champ, "recherche")
+            try saisir("livraison", dans: champ)
+            try etape("recherche", attendu: [texteI("Trouvé"), texte("Livraison offerte")], delai: 20)
+            // Un résultat ouvre la conversation AU message trouvé, mis en avant.
+            try toucher(texte("Livraison offerte"), "résultat « Livraison offerte »")
+            try etape("au-message", attendu: [ident("conversation.titre"), texte("Frais de livraison"), texte("Trouvé · ")], delai: 20)
+            try toucher(nomme(app.navigationBars.buttons.element(boundBy: 0), "retour"), "Retour")
+            viderChamp(champ)
+            // Aller à un jour (hier, à Paris) sans dérouler « Plus ancien ».
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "Europe/Paris")!
+            let c = cal.dateComponents([.year, .month, .day], from: cal.date(byAdding: .day, value: -1, to: Date())!)
+            let hier = String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+            try toucher(ident("conversations.jour"), "Aller à un jour")
+            let ligneHier = ident("conversations.jour.\(hier)")
+            try etape("jours", attendu: [texte("Aller à un jour"), ligneHier], delai: 20)
+            auditerCibles("aller à un jour")
+            try toucher(ligneHier, "hier")
+            try etape("un-jour", attendu: [ident("conversations.jour.tous"), fiches], delai: 20)
+            try toucher(ident("conversations.jour.tous"), "Tous les jours")
+            try etape("tous-les-jours", attendu: [paiement], absent: [ident("conversations.jour.tous")], delai: 20)
+            // Un export ChatGPT déposé dans le dossier Imports du coffre.
+            Pilote.demander("/deposer-export")
+            try toucher(ident("conversations.sources"), "Sources")
+            let lireChatGPT = ident("sources.lire.chatgpt")
+            // Une liste : les lignes hors de l'écran n'existent qu'une fois amenées.
+            try etape("sources", attendu: [texte("Lire Claude Code"), texte("Lire T3 Code")], delai: 20)
+            auditerCibles("sources des conversations")
+            amener(ident("sources.importer"))
+            amener(lireChatGPT)
+            if lireChatGPT.exists, lireChatGPT.frame.maxY > app.frame.height * 0.7 { amenerPlusHaut() }
+            try etape("sources-chatgpt", attendu: [ident("sources.importer"), lireChatGPT])
+            try toucher(lireChatGPT, "Lire maintenant (ChatGPT)")
+            try etape("export-lu", attendu: [texte("Lu : ChatGPT")], delai: 30)
+            let usage = texteI("Ce que Rémy en fait")
+            amener(usage)
+            verifier("Les sources disent ce que Rémy en fait (réponses, nuit).", usage.exists)
+            try toucher(nomme(app.navigationBars.buttons.element(boundBy: 0), "retour"), "Retour")
+            try toucher(ident("conversations.filtre.chatgpt"), "filtre ChatGPT")
+            try etape("chatgpt", attendu: [texte("Idées de coffrets de Noël")], delai: 20)
+        }
+    }
+
     @MainActor
     func test18_texteTresLong() {
         jouer("P18", "Coller un très long texte dans le « + »") {

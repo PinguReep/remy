@@ -29,6 +29,9 @@ await new Promise((r) => glm.listen(0, "127.0.0.1", r));
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), "remy-encadre-"));
 for (const v of ["REMY_VAULT", "MOTION_API_KEY", "GOOGLE_CLIENT_ID", "UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "VERCEL", "REMY_CERVEAU", "REMY_SECOURS_CLOUD"]) delete process.env[v];
 process.env.REMY_DATA_DIR = dossier;
+// Les conversations importées sont scellées avec la clé des conversations
+// externes : la sienne, jamais celle du vrai profil.
+process.env.REMY_CLES_DIR = path.join(dossier, "cles");
 process.env.REMY_GLM_URL = `http://127.0.0.1:${glm.address().port}/v1`;
 
 const { encadrer, ligneTierce, nomAssistant, CONSIGNE_MATIERE } = await import("../lib/encadrement.js");

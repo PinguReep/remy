@@ -28,6 +28,7 @@ struct ReglagesView: View {
     @State private var activitePCOuverte = false
     @State private var nouveautesOuvertes = false
     @State private var prioritesOuvertes = false
+    @State private var sourcesConversationsOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -139,6 +140,13 @@ struct ReglagesView: View {
                             activitePCOuverte = true
                         }
                     }
+                    // Tes conversations d'ailleurs (29/10) : leurs sources, l'import ChatGPT.
+                    if app.conversationsExternes.disponible {
+                        ligne("Sources des conversations", sous: app.conversationsExternes.resume ?? "Claude Code, T3 Code, ChatGPT : lues sur ta tour.",
+                              symbole: "bubble.left.and.bubble.right") {
+                            sourcesConversationsOuvertes = true
+                        }
+                    }
                     if app.serveur?.sait("priorites-v1") == true {
                         ligne("Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", symbole: "star") {
                             prioritesOuvertes = true
@@ -240,6 +248,7 @@ struct ReglagesView: View {
         .sheet(isPresented: $triOuvert) { ATrancherFeuille() }
         .sheet(isPresented: $revueOuverte) { RevueDimanche() }
         .sheet(isPresented: $prioritesOuvertes) { PrioritesVue() }
+        .sheet(isPresented: $sourcesConversationsOuvertes) { SourcesConversationsVue(dansFeuille: true) }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()

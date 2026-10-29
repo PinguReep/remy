@@ -86,6 +86,8 @@ public struct RituelTour: Codable, Sendable, Equatable {
     public var demain: BriefingMatin?
     public var soir: BilanSoirTour?
     public var menacees: [MenaceeTour]?
+    /// Une ligne tirée la nuit de tes conversations d'hier (conversations-externes-v1).
+    public var conversations: LigneConversations? = nil
 }
 
 public struct RetourBilan: Codable, Sendable { public var ok: Bool?; public var phrase: String? }

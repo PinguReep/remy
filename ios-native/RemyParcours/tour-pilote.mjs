@@ -14,12 +14,16 @@
 //                        zéro, les réponses du cerveau à qui la tour a offert un
 //                        outil de recherche web, et celles où elle a dit
 //                        « conversation privée : pas de recherche web »
+//   POST /deposer-export l'export ChatGPT fictif déposé dans le dossier Imports
+//                        (comme Sam le ferait dans son coffre), prêt à être lu
+// Les conversations d'ailleurs (29/10) : une session Claude Code, une base de
+// T3 Code et un export ChatGPT, fictifs (test/outils/conversations-fictives.mjs).
 // Aucune vraie clé, aucune vraie donnée. Rien de ce fichier n'entre dans l'app.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const RACINE = path.resolve(ICI, "..", "..");
@@ -31,6 +35,7 @@ const P = { motion: port("PORT_MOTION", 9998), google: port("PORT_GOOGLE", 9995)
 // Les faux services (ports figés dans le script de la CI ; une copie aux ports décalés en local).
 const FAUX = process.env.FAUX_SERVICES || path.join(RACINE, "ios-native/ci/faux-services.mjs");
 const DONNEES = path.join(RACINE, "data");
+const CONVERSATIONS = path.join(DONNEES, "conversations-demo");
 const JOURNAL = process.env.JOURNAL_TOUR || path.join(RACINE, "serveur-parcours.log");
 
 const envTour = () => ({
@@ -44,6 +49,11 @@ const envTour = () => ({
   // qui relaie le reste au faux modèle de la CI.
   REMY_GLM_URL: `http://127.0.0.1:${PORT_CERVEAU}/v1`, REMY_PLANIF: "off",
   CRON_SECRET: "ci", REMY_ENV: "test", PORT: String(PORT_TOUR),
+  // Les conversations d'ailleurs, fictives : jamais les vrais dossiers de la machine.
+  CLAUDE_CONFIG_DIR: path.join(CONVERSATIONS, "claude"), REMY_T3_DIRS: path.join(CONVERSATIONS, "t3"),
+  REMY_IMPORTS_DIR: path.join(CONVERSATIONS, "imports"), REMY_CLES_DIR: path.join(DONNEES, "cles"),
+  // Un dossier personnel vide : la tour de démo ne lit jamais ~/.claude ni ~/.t3 de la machine.
+  HOME: path.join(DONNEES, "maison"), USERPROFILE: path.join(DONNEES, "maison"),
 });
 
 let tour = null;
@@ -125,6 +135,9 @@ async function reinitialiser() {
     const s = lancer(path.join(RACINE, "ios-native/ci/donnees-demo.mjs"), { ...process.env, REMY_DATA_DIR: "" });
     s.once("exit", (c) => (c === 0 ? fin() : rate(new Error(`données de démo : code ${c}`))));
   });
+  // Les conversations d'ailleurs : hier et aujourd'hui, recalées sur maintenant.
+  const { jeuDeDemo } = await import(pathToFileURL(path.join(RACINE, "test/outils/conversations-fictives.mjs")).href);
+  jeuDeDemo({ racine: CONVERSATIONS });
   // La journée des faux services est calculée à leur démarrage : relancés, ils suivent l'heure.
   faux = lancer(FAUX, process.env, path.dirname(FAUX));
   await attendre(`http://127.0.0.1:${P.motion}/v1/workspaces`);
@@ -237,6 +250,19 @@ http.createServer((req, res) => {
     if (u === "/couper") return enFile(() => finirPanne().then(() => arreter(tour))).then(() => repondre(200, { ok: true }));
     if (u === "/panne") return enFile(mettreEnPanne).then(() => repondre(200, { ok: true }), (e) => repondre(500, { erreur: String(e) }));
     if (u === "/relancer") return enFile(demarrerTour).then((ok) => repondre(ok ? 200 : 500, { ok }));
+    if (u === "/deposer-export") {
+      try {
+        const dest = path.join(CONVERSATIONS, "imports", "export-chatgpt.zip");
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(CONVERSATIONS, "export-chatgpt.zip"), dest);
+        // Copié il y a une minute : la tour ne le prend pas pour une copie en cours.
+        const avant = new Date(Date.now() - 60_000);
+        fs.utimesSync(dest, avant, avant);
+        return repondre(200, { ok: true });
+      } catch (e) {
+        return repondre(500, { erreur: String(e) });
+      }
+    }
     if (u === "/compter") {
       const nom = new URL(req.url, "http://x").searchParams.get("nom") || "";
       return fetch(`http://127.0.0.1:${P.motion}/v1/tasks`)

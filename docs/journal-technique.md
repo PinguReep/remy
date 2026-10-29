@@ -513,6 +513,136 @@ décidé en construisant :
   une autre origine bloqués. Les pages embarquées sont jouées à part dans
   Chromium avec un faux pont (`desktop/essais/pages.cjs`).
 
+## 2026-10-29 (suite) — Conversations externes : deux contre-relectures (fuites, formats)
+
+Deux relectures adverses ont trouvé 4 bloquants et 8 importants ; tous
+corrigés, chacun rejoué en test (les tests d'attaque échouent sur le code
+d'avant, passent après).
+
+- **Rien en clair hors de la base** : une réponse de Rémy qui cite ces
+  passages était recopiée en clair dans le coffre Obsidian (nom de fichier
+  compris) et dans `conversations.json`. Plutôt que chiffrer toute la base
+  JSON (changement de format pour tout Rémy, risque de migration), seules les
+  conversations « matière d'ailleurs » (`matiereExterne`, ou `origine` pour
+  les imports du site) sont **scellées** : un en-tête lisible (id, dates,
+  épinglée, privée) et le reste chiffré avec la clé des conversations
+  (AES-256-GCM, l'identifiant en données associées). En mémoire rien ne
+  change (`fileLoad` déscelle) ; une clé changée rend la conversation
+  « illisible » sans jamais réécrire son texte chiffré. Les imports d'avant
+  sont scellés à la première lecture, et le coffre ne garde qu'un renvoi.
+- **Réflexion de nuit** : `priorites.traces()` lisait le titre de toutes les
+  conversations, privées comprises, et la réflexion peut partir chez Claude.
+  Le titre d'une privée sert encore à reconnaître la priorité, jamais à la
+  dire (« une conversation privée, le … »).
+- **Modèle « local »** : `REMY_GLM_URL` acceptait n'importe quel hôte ;
+  passages et nuit exigent maintenant un hôte de la machine, du réseau privé
+  ou du tailnet (`modeleLocalChezToi`), sinon `REMY_GLM_LOCAL=oui`.
+- **Exports hors du coffre** : un export importé quitte `Imports` pour
+  `%USERPROFILE%\.remy\imports-importes` (copie puis effacement s'il change de
+  disque), effacé après 7 jours ; un export abîmé n'est plus relu toutes les
+  30 min (signature nom/taille/date mémorisée) ; la somme de contrôle CRC-32
+  du .zip est vérifiée (le lecteur JSON draine l'entrée jusqu'au bout pour
+  que la vérification ait lieu).
+- **T3, curseur sur l'ordre d'insertion** : le curseur `(updated_at, id)`
+  perdait les sessions que T3 importe avec leurs dates d'origine, et un
+  message daté dans le futur bloquait tout. Maintenant : `rowid >` dernier vu
+  (les nouvelles lignes), une fenêtre de 2 h sur `julianday(updated_at)` à
+  partir de l'heure de la dernière lecture (les modifications), un fil
+  inconnu relu en entier ; une réponse « en cours » de moins d'1 h retient le
+  curseur. Une colonne `version` (migration v3) évite de rechiffrer un message
+  inchangé. La copie Claude Code d'une session menée dans T3 n'est cachée que
+  si le fil T3 a des messages, ou s'il a été effacé dans T3 (`liens.efface`).
+- **Quand Rémy puise** : « où j'en suis » seul, le dossier OneDrive\Bureau ou
+  le dépôt de l'assistant lui-même rendaient privées des conversations
+  ordinaires. Un nom de projet générique ne compte plus ; un nom d'un seul mot
+  doit être désigné (« le projet X », « dans X »). Classement par rareté des
+  mots (idf calculé à partir des résultats de l'index), tes messages avant
+  les réponses, et seulement les décisions (ou les choses à faire) quand la
+  question en demande ; couverture minimale de la question et seuil relatif au
+  meilleur passage.
+- **La nuit lit tout le jour** : toutes les conversations, le budget réparti,
+  et dans chacune les lignes marquées (« il faut », « avant vendredi »,
+  « on part sur »…) où qu'elles soient, tes messages, les deux dernières
+  réponses.
+- **Envoi de 5 min et plus** : `requestTimeout` de Node (300 s) coupait un
+  gros export en 4G. Sans toucher à `server.js`, la route allonge le délai du
+  serveur (3 h) tant qu'un envoi authentifié est en cours, puis le rend ; un
+  envoi qui ne reçoit plus rien pendant 2 min est coupé. L'iPhone affiche le
+  pourcentage envoyé (pas de session d'arrière-plan : elle exige un délégué
+  d'app et un fichier recopié, à faire si les envois longs deviennent courants).
+- **Formats** : lignes `.env`/YAML masquées (le `\b` ne coupait pas après
+  « _ ») ; transcriptions des conversations vocales et documents Canvas de
+  ChatGPT gardés ; Claude Code garde le texte tapé avec une capture de
+  plusieurs Mo (les `"data"` base64 sont retirés au fil de l'eau), écarte
+  « [Request interrupted by user] » et reprend après des octets nuls ;
+  écritures par lots de 400 messages ou ~120 000 caractères (indexer, c'est
+  un HMAC par mot), lecture qui rend la main chaque Mo, requêtes préparées
+  une fois : sur 300 Mo de sessions fictives, la boucle d'événements bloquée
+  au pire 143 ms (1,24 s avant) ; sur un export de 1 000 conversations,
+  342 ms (858 avant) ; noms de projets avec
+  leurs majuscules ; pages sur `(date, identifiant)` ; `autour=` pour ouvrir
+  au message trouvé ; « Aller à un jour » sur l'iPhone.
+- **Écartés, et pourquoi** : « Me le rappeler » et une tâche Motion proposée
+  dans une conversation privée restent possibles — c'est ton geste, sur un
+  texte que tu vois ; worktrees T3 rattachés à leur dépôt (il faudrait lire
+  git) ; T3 servi depuis WSL (`\\wsl.localhost\…`, non testé :
+  `REMY_T3_DIRS`) ; recherche de phrase exacte (index sans positions, par
+  choix).
+
+## 2026-10-29 — Conversations externes : Claude Code, T3 Code, ChatGPT (`conversations-externes-v1`)
+
+Le lot B (19/10) lisait les sessions Claude Code, mais rien n'en sortait :
+source coupée par défaut sans écran pour l'allumer, aucune vue de lecture,
+Rémy ne s'en servait pas, T3 vu seulement à travers les JSONL de Claude (ni
+Codex ni titres), ChatGPT seulement par l'ancien import du site, et une base
+en clair. Refait de bout en bout (`docs/conversations-externes.md`) :
+
+- **Allumées par défaut** (Claude Code, T3 ; ChatGPT au premier envoi), parce
+  que la lecture est locale et à sens unique ; `REMY_SOURCE_*=off` l'emporte
+  sur l'app. L'état dit, par source, où la tour a cherché, ce qu'elle a
+  trouvé, la dernière lecture, l'erreur et quoi faire.
+- **Chiffrement au repos** dans la base elle-même (pas de BitLocker) :
+  AES-256-GCM par champ, l'emplacement du texte en données associées (un
+  texte recopié ailleurs dans la base ne se déchiffre pas) ; sous-clés HKDF.
+  Clé dans `%USERPROFILE%\.remy\conversations.cle` (hors du coffre), ou
+  `REMY_CONVERSATIONS_CLE` ; une empreinte de contrôle dans la base détecte une
+  clé changée (« Tout effacer » plutôt qu'une base à moitié lisible). Les
+  curseurs (dossier de travail d'une session) sont chiffrés aussi : un mot de
+  projet traînait en clair dans le WAL.
+- **Index aveugle** : FTS5 sans contenu (`contentless_delete`, `detail=none`)
+  sur des empreintes HMAC des mots et de leurs débuts (4 et 6 lettres) ; ni
+  mots ni positions sur le disque. bm25 vaut 0 sans positions : classement
+  maison (mots trouvés, puis date). Le prix : pas de recherche de phrase.
+- **T3** : `statev2.sqlite` ouverte en lecture seule quand T3 tourne, en
+  `immutable=1` quand il est fermé (aucun `-wal`/`-shm` créé chez lui) ;
+  curseur `(updated_at, message_id)` par pages de 1 000. Une session Claude
+  menée depuis T3 est liée (`provider_threads`) et ne s'affiche qu'une fois,
+  sous T3.
+- **ChatGPT** : lecteur ZIP minimal (ZIP64, deflate en flux) et découpeur de
+  tableau JSON en flux : un export de plusieurs centaines de Mo ne passe
+  jamais en mémoire d'un bloc. Seule la branche affichée (`current_node`) ;
+  ni système, ni consignes personnalisées, ni appels d'outils. Idempotent
+  (empreinte du fichier, `update_time` par conversation). Le dossier `Imports`
+  n'entre pas dans les sauvegardes (lourd, en clair, déjà dans la base) ;
+  l'envoi depuis l'iPhone est un `.tmp`, effacé après l'import.
+- **Usage, toujours local** : les passages ne vont qu'aux blocs du modèle
+  local, seulement quand la question s'y rapporte (source citée, nom de
+  projet, ou rappel « on avait dit… » avec des passages assez proches) ; la
+  conversation devient privée (`done.prive`), ce qui coupe le secours Claude,
+  le titre et la mémoire en ligne ; les mots des passages entrent au filtre de
+  la salle blanche ; la recherche web d'une conversation devenue privée suit
+  `recherchePrivee`. La nuit passe `prive: true` à `fournisseurDeFond` :
+  modèle local ou rien. La ligne du matin est lue à l'affichage, jamais
+  écrite dans le briefing stocké.
+- **iPhone** : Projets › Conversations (puces par source, jours, recherche
+  sur la tour, lecture paginée, digest de la nuit avec « Me le rappeler »),
+  Réglages › Sources des conversations (état, emplacements, lire maintenant,
+  effacer, import par le sélecteur de fichiers, envoyé depuis le disque :
+  `upload(fromFile:)`), ligne dans le briefing, Nouveautés (série 5).
+  Parcours P26 (P25 à l'origine, renuméroté à l'intégration) contre une
+  tour de démo aux données fictives, dossier personnel factice (jamais le
+  `~/.claude` de la machine de CI).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil

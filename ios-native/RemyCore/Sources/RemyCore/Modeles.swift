@@ -116,6 +116,8 @@ public final class AppModel {
     public let rituel: RituelModel
     /// « À trancher », la revue du dimanche et le tri des retards (24/10).
     public let aTrancher: ATrancherModel
+    /// Tes conversations ailleurs : Claude Code, T3 Code, ChatGPT (29/10).
+    public let conversationsExternes: ConversationsExternesModel
     /// La file du quota Motion pendant qu'une écriture attend (motion-file-v1,
     /// 24/10) : la carte dit « En file chez Motion : ~20 s ». nil : rien à dire.
     public var attenteMotion: AttenteMotion?
@@ -150,6 +152,7 @@ public final class AppModel {
         self.nouveautes = NouveautesModel(reglages: reglages)
         self.rituel = RituelModel(api: api, rangement: rangement)
         self.aTrancher = ATrancherModel(api: api, reglages: reglages)
+        self.conversationsExternes = ConversationsExternesModel(api: api)
         tableau.app = self
         projets.app = self
         semaine.app = self
@@ -166,6 +169,7 @@ public final class AppModel {
         nouveautes.app = self
         rituel.app = self
         aTrancher.app = self
+        conversationsExternes.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
@@ -1276,6 +1280,8 @@ struct FinDeReponse: Decodable {
     var session_done: String?
     var couverture: [String: [String]]?
     var mesures: MesuresReponse?
+    /// Passée en privée pour citer tes conversations ailleurs (29/10).
+    var prive: Bool?
 }
 
 /// Un événement « debit » (jauge-v1) : la vitesse d'écriture en direct.
@@ -1627,6 +1633,16 @@ public final class ChatModel {
             rendreLeBrouillonPrive()
         }
         return privee
+    }
+
+    /// La tour a rendu la conversation privée pour y citer tes conversations
+    /// ailleurs (Claude Code, T3, ChatGPT) : le cadenas suit, et Sam le sait.
+    func marquerPrivee(_ id: String) {
+        if let i = conversations.firstIndex(where: { $0.id == id }) { conversations[i].prive = true }
+        guard idCourant == id, !privee else { return }
+        privee = true
+        modeRetenir = false
+        app?.dire("Conversation passée en privée : elle cite tes conversations d'ailleurs, qui ne sortent pas de ta tour.")
     }
 
     /// Rendre privée la conversation en cours. Sans retour : la tour refuse
@@ -1993,6 +2009,7 @@ public final class ChatModel {
                     if lignes[i].debutEtapes != nil { lignes[i].finEtapes = Date() }
                     lignes[i].enCours = false
                     if let c = f?.couverture { app?.tableau.majCouverture(c) }
+                    if f?.prive == true { marquerPrivee(convId) }
                     if f?.session_done != nil {
                         sessionCourante = nil
                         app?.dire("Étape terminée : Rémy te connaît un peu mieux.")
