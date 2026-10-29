@@ -112,6 +112,14 @@ final class ConversationsExternesTests: XCTestCase {
         let p = try JSONDecoder().decode(PageConversations.self, from: Data(Self.liste.utf8))
         let fin = try XCTUnwrap(p.conversations[0].fin)
         XCTAssertEqual(p.conversations[0].meta(maintenant: Date(timeIntervalSince1970: fin / 1000 + 60)), "Codex · \(Format.heure(fin)) · 2 messages · Site de la boutique")
+        XCTAssertEqual(p.conversations[0].ligne(maintenant: Date(timeIntervalSince1970: fin / 1000 + 60)), "T3 Code · Codex · \(Format.heure(fin)) · 2 messages · Site de la boutique")
+        // ChatGPT n'est pas dit deux fois (source et assistant portent le même nom).
+        var g2 = p.conversations[0]
+        g2.source = "chatgpt"
+        g2.assistant = "ChatGPT"
+        g2.projet = nil
+        XCTAssertNil(g2.assistantDistinct)
+        XCTAssertEqual(g2.ligne(maintenant: Date(timeIntervalSince1970: fin / 1000 + 60)), "ChatGPT · \(Format.heure(fin)) · 2 messages")
         XCTAssertEqual(p.suite, 2)
         XCTAssertEqual(p.total, 5)
     }

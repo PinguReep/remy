@@ -374,7 +374,7 @@ struct LigneConversationExterne: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
-                Text("\(ConversationsExternes.nomSource(c.source)) · \(c.meta())")
+                Text(c.ligne())
                     .font(Police.mono(11))
                     .foregroundStyle(Palette.encre3)
                     .lineLimit(1)
@@ -540,7 +540,7 @@ struct ConversationExterneVue: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .accessibilityIdentifier("conversation.titre")
-            Text([ConversationsExternes.nomSource(c.source), c.assistant, c.projet?.nom].compactMap { $0 }.joined(separator: " · "))
+            Text([ConversationsExternes.nomSource(c.source), c.assistantDistinct, c.projet?.nom].compactMap { $0 }.joined(separator: " · "))
                 .font(Police.texte(14))
                 .foregroundStyle(Palette.encre2)
             if let d = c.debut {

@@ -210,9 +210,21 @@ public struct ConversationExterne: Codable, Equatable, Hashable, Identifiable, S
     }
 
     /// « Claude · 14:32 · 12 messages · bougies »
+    /// L'assistant, s'il ne fait pas que répéter la source (ChatGPT · ChatGPT).
+    public var assistantDistinct: String? {
+        guard let a = assistant, a != ConversationsExternes.nomSource(source) else { return nil }
+        return a
+    }
+
+    /// La ligne d'une conversation dans la liste : « T3 Code · Codex · Hier ·
+    /// 2 messages · Projet ».
+    public func ligne(maintenant: Date = Date()) -> String {
+        "\(ConversationsExternes.nomSource(source)) · \(meta(maintenant: maintenant))"
+    }
+
     public func meta(maintenant: Date = Date()) -> String {
         var p: [String] = []
-        if let a = assistant { p.append(a) }
+        if let a = assistantDistinct { p.append(a) }
         if let f = fin { p.append(Format.relatif(f, maintenant: maintenant)) }
         p.append(messages == 1 ? "1 message" : "\(messages) messages")
         if let n = projet?.nom { p.append(n) }
