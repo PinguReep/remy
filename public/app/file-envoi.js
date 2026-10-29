@@ -72,17 +72,38 @@ export async function envoyerElement(e) {
 }
 
 let enCours = null;
+let reveil = null;
+/**
+ * Le prochain essai se programme tout seul : une capture en attente (502,
+ * 503, 429…) repart à l'heure dite même si rien d'autre ne se passe sur la
+ * page (pas de retour au premier plan, pas d'événement « en ligne »).
+ */
+function programmer() {
+  clearTimeout(reveil);
+  reveil = null;
+  if (typeof setTimeout !== "function") return;
+  const prochains = lireFile().filter((x) => !x.refus && x.prochain > Date.now()).map((x) => x.prochain);
+  if (!prochains.length) return;
+  const dans = Math.max(1000, Math.min(...prochains) - Date.now() + 250);
+  reveil = setTimeout(() => {
+    reveil = null;
+    vider().catch(() => {});
+  }, dans);
+  reveil?.unref?.(); // sous node (tests), ne retient pas le processus
+}
+
 /**
  * Vide la file : s'arrête au premier échec réseau (inutile d'insister). Rend
  * `{ envoyes: [resume…], restants }`. `force` : ignore l'attente entre deux essais
- * et retente les refus.
+ * et retente les refus. `sansAttendre` : la tour vient de répondre de nouveau,
+ * l'attente entre deux essais ne sert plus (les refus, eux, attendent Sam).
  */
-export function vider({ force = false } = {}) {
+export function vider({ force = false, sansAttendre = false } = {}) {
   if (enCours) return enCours;
   enCours = (async () => {
     const envoyes = [];
     for (const e of lireFile()) {
-      if (!force && (e.refus || e.prochain > Date.now())) continue;
+      if (!force && (e.refus || (!sansAttendre && e.prochain > Date.now()))) continue;
       try {
         const r = await envoyerElement(e);
         if (r && r.ok === false && Array.isArray(r.results)) {
@@ -109,6 +130,7 @@ export function vider({ force = false } = {}) {
     return { envoyes, restants: compte() };
   })().finally(() => {
     enCours = null;
+    programmer();
   });
   return enCours;
 }

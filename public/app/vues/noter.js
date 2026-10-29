@@ -141,6 +141,8 @@ function phraseEnFile(err) {
 export function formulaireNoter({ texte = "", id: idImpose, compact = false, surEnvoye, extra, contexte, fenetre = false, confirmation = "bandeau", brouillon = null } = {}) {
   let id = idImpose || nouvelId();
   let genreChoisi = null;
+  let envois = 0; // envois en cours (le bouton tourne, le champ reste libre)
+  let form = null;
   let listeChoisie = local.lire(CLE_LISTE, null);
   const zone = h("textarea", {
     class: "champ", rows: compact ? 2 : 4, "aria-label": "Ce que tu veux noter",
@@ -150,6 +152,12 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
   zone.value = texte || (brouillon ? local.lire(brouillon, "") || "" : "");
   const garderBrouillon = () => {
     if (!brouillon) return;
+    // Une feuille déjà fermée (un envoi refusé après Échap) ne remplace pas le
+    // brouillon d'une nouvelle feuille : elle ne remplit qu'une place vide.
+    if (!form?.isConnected) {
+      if (zone.value.trim() && !local.lire(brouillon, "")) local.ecrire(brouillon, zone.value);
+      return;
+    }
     if (zone.value.trim()) local.ecrire(brouillon, zone.value);
     else local.effacer(brouillon);
   };
@@ -168,7 +176,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     else dire(texteLigne, { genre, action, detail });
   };
   const envoyerBtn = bouton("Envoyer", { classe: "plein", icone: "envoyer", kbd: "Entrée", type: "submit" });
-  const form = h("form", { class: "noter", onsubmit: (e) => { e.preventDefault(); soumettre(); } },
+  form = h("form", { class: "noter", onsubmit: (e) => { e.preventDefault(); soumettre(); } },
     zone, vueApercu, ligneFaite,
     h("div", { class: "noter-pied" },
       compact ? h("span", { class: "aide" }) : h("span", { class: "aide" }, kbd("Entrée"), " envoie · ", kbd("Maj"), " ", kbd("Entrée"), " passe à la ligne · ", kbd("Échap"), " ferme"),
@@ -194,7 +202,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     const d = decrireDate(a);
     if (a.genre === "liste") {
       const listes = connu.listes || [];
-      const sel = h("select", { class: "champ", style: { width: "auto", minHeight: "36px", padding: "4px 10px" }, "aria-label": "Dans quelle liste" },
+      const sel = h("select", { class: "champ", style: { width: "auto", minHeight: "44px", padding: "4px 10px" }, "aria-label": "Dans quelle liste" },
         listes.length ? listes.map((l) => h("option", { value: l.id }, l.nom)) : h("option", { value: "" }, "Courses (nouvelle)"));
       if (listeChoisie && listes.some((l) => l.id === listeChoisie)) sel.value = listeChoisie;
       sel.addEventListener("change", () => { listeChoisie = sel.value; local.ecrire(CLE_LISTE, sel.value); });
@@ -239,44 +247,61 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
       return;
     }
     const liste = (connu.listes || []).find((l) => l.id === listeChoisie) || (connu.listes || [])[0] || null;
-    const prep = preparer(a, brut, id, liste);
-    await occupe(envoyerBtn, async () => {
-      try {
-        const r = await envoyer(prep);
-        if (r && r.ok === false && Array.isArray(r.results)) {
-          const res = r.results.find((x) => !x.ok);
-          if (res?.nature === "passager" || /quota|indisponible|429/i.test(res?.erreur || "")) throw Object.assign(new Error(res.erreur), { nature: "reseau" });
-          annoncer(`Motion a refusé : ${res?.erreur || "raison inconnue"}. Ton texte est toujours là.`, { genre: "erreur" });
-          return;
-        }
-        const phrase = a.genre === "retenir" ? (r?.phrase || "Rémy l'a lu et retenu l'essentiel.") : phraseFaite(a, prep);
-        const ici = confirmation === "ligne" ? direIci : null;
-        annoncer(confirmation === "ligne" ? `Noté : ${phrase}` : phrase, { action: prep.defaire || r?.ledgerId ? { libelle: "Annuler", faire: () => defaire(prep, r?.ledgerId, ici) } : null });
-        id = nouvelId();
-        zone.value = "";
-        genreChoisi = null;
-        garderBrouillon();
-        dessiner();
-        surEnvoye?.(a.genre);
-      } catch (err) {
-        // Pas de réponse nette, ou une tour momentanément indisponible (502,
-        // 503, 429…) : la capture attend ici. Les identifiants sont fixés à la
-        // capture : la file renverra sans doubler (NatureEchec de l'iPhone).
-        if (natureEchec(err) !== "refus") {
-          fileEnvoi.ajouter({ id, resume: prep.resume, genre: a.genre, requetes: prep.requetes });
-          annoncer(phraseEnFile(err), { genre: "info", detail: prep.resume });
-          id = nouvelId();
-          zone.value = "";
-          genreChoisi = null;
-          garderBrouillon();
-          dessiner();
-          contexte?.majCompteurs?.();
-          surEnvoye?.(a.genre);
-          return;
-        }
-        direErreur(err, () => soumettre(), "Pas envoyé");
+    // Chaque envoi emporte SON identifiant, et le champ se vide tout de suite :
+    // au clavier, Sam enchaîne la note suivante pendant que celle-ci part (deux
+    // notes tapées vite ne partagent plus le même id, la seconde n'écrase plus
+    // la première). Un refus remet le texte dans le champ s'il est resté vide.
+    const idEnvoi = id;
+    id = nouvelId();
+    const prep = preparer(a, brut, idEnvoi, liste);
+    const genreAvant = genreChoisi;
+    zone.value = "";
+    genreChoisi = null;
+    garderBrouillon();
+    dessiner();
+    const ici = confirmation === "ligne" ? direIci : null;
+    if (ici) ici(`Envoi : ${prep.resume}…`, "info");
+    envois += 1;
+    envoyerBtn.setAttribute("aria-busy", "true");
+    // Rend le texte au champ s'il est libre ; sinon il est cité dans le message.
+    const rendre = () => {
+      if (zone.value.trim()) return false;
+      zone.value = brut;
+      genreChoisi = genreAvant;
+      garderBrouillon();
+      dessiner();
+      return true;
+    };
+    const ouEst = (revenu) => (revenu ? "Ton texte est revenu dans le champ." : `Ton texte : « ${court(brut)} ».`);
+    try {
+      const r = await envoyer(prep);
+      if (r && r.ok === false && Array.isArray(r.results)) {
+        const res = r.results.find((x) => !x.ok);
+        if (res?.nature === "passager" || /quota|indisponible|429/i.test(res?.erreur || "")) throw Object.assign(new Error(res.erreur), { nature: "serveur", statut: 429 });
+        annoncer(`Motion a refusé : ${res?.erreur || "raison inconnue"}. ${ouEst(rendre())}`, { genre: "erreur" });
+        return;
       }
-    });
+      const phrase = a.genre === "retenir" ? (r?.phrase || "Rémy l'a lu et retenu l'essentiel.") : phraseFaite(a, prep);
+      annoncer(ici ? `Noté : ${phrase}` : phrase, { action: prep.defaire || r?.ledgerId ? { libelle: "Annuler", faire: () => defaire(prep, r?.ledgerId, ici) } : null });
+      surEnvoye?.(a.genre);
+    } catch (err) {
+      // Pas de réponse nette, ou une tour momentanément indisponible (502,
+      // 503, 429…), ou plus de session : la capture attend ici, avec son
+      // identifiant : la file renverra sans doubler (NatureEchec de l'iPhone).
+      if (natureEchec(err) !== "refus") {
+        fileEnvoi.ajouter({ id: idEnvoi, resume: prep.resume, genre: a.genre, requetes: prep.requetes });
+        annoncer(phraseEnFile(err), { genre: "info", detail: prep.resume });
+        contexte?.majCompteurs?.();
+        surEnvoye?.(a.genre);
+        return;
+      }
+      const revenu = rendre();
+      direErreur(err, revenu ? () => soumettre() : null, "Pas envoyé");
+      if (ici) ici(`Pas envoyé : ${prep.resume}. ${ouEst(revenu)}`, "erreur");
+    } finally {
+      envois -= 1;
+      if (!envois) envoyerBtn.removeAttribute("aria-busy");
+    }
   };
 
   zone.addEventListener("input", () => {

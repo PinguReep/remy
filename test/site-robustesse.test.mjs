@@ -98,9 +98,12 @@ test("file d'envoi : un 502 du relais garde la capture, qui part seule au retour
   const a = await fileEnvoi.vider({ force: true });
   assert.deepEqual(a, { envoyes: [], restants: 1 });
   assert.equal(fileEnvoi.liste()[0].refus, null, "pas un refus : elle n'attend pas Sam");
-  // La tour revient : la capture part sans que Sam fasse rien.
+  // Sans retour de la tour, l'attente entre deux essais est respectée…
+  fausseTour({ "/api/rappels": { statut: 502, corps: "Bad Gateway" } });
+  assert.deepEqual(await fileEnvoi.vider(), { envoyes: [], restants: 1 });
+  // …la tour revient (« en ligne ») : la capture part tout de suite, sans que Sam fasse rien.
   const recues = fausseTour({ "/api/rappels": { statut: 200, corps: { ok: true } } });
-  const b = await fileEnvoi.vider({ force: true });
+  const b = await fileEnvoi.vider({ sansAttendre: true });
   assert.deepEqual(b, { envoyes: ["Rappel r-502"], restants: 0 });
   assert.deepEqual(recues, ["POST /api/rappels"]);
 });

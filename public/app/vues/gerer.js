@@ -332,7 +332,7 @@ export function gerer(e, { apres, contexte, retirer, remettre } = {}) {
     if (e.duree) dur.value = String(e.duree);
     const prio = h("select", { class: "champ", "aria-label": "Priorité" }, h("option", { value: "" }, "Priorité inchangée"), PRIORITES.map(([v, l]) => h("option", { value: v }, l)));
     if (e.priorite) prio.value = e.priorite;
-    const details = h("details", null, h("summary", { class: "titre-section", style: { cursor: "pointer", minHeight: "32px" } }, "Modifier"),
+    const details = h("details", null, h("summary", { class: "titre-section", style: { cursor: "pointer", minHeight: "44px", alignItems: "center", marginBottom: "0" } }, "Modifier"),
       h("div", { style: { display: "grid", gap: "10px", gridTemplateColumns: "1fr 1fr" } },
         h("label", { style: { gridColumn: "1 / -1" } }, h("span", { class: "etiquette-champ" }, "Nom"), nom),
         h("label", null, h("span", { class: "etiquette-champ" }, "Échéance"), ech),

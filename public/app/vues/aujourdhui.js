@@ -331,7 +331,7 @@ function dessinerJournee() {
     ajouterA(carte, vide(null, mn0 >= h1Jour ? "Plus rien à heure fixe aujourd'hui." : "Rien à heure fixe dans les prochaines heures."), basculeJournee ? h("div", { class: "rangee" }, basculeJournee) : null);
     return vider(zones.journee, carte);
   }
-  const PX = 1.3; // pixels par minute (30 min ≈ 40 px : une cible au doigt)
+  const PX = 1.5; // pixels par minute (30 min = 45 px : une cible au doigt, 44 px au moins)
   const echelle = h("div", { class: "echelle", style: { height: `${(h1 - h0) * PX}px` } });
   for (let t = h0; t <= h1; t += 60) {
     const y = (t - h0) * PX;
@@ -367,12 +367,12 @@ function dessinerJournee() {
     const debutVu = Math.max(minDe(e.debut), h0);
     const finVue = Math.min(minDe(finEffective(e)), h1);
     const top = (debutVu - h0) * PX;
-    const haut = Math.max(40, (finVue - debutVu) * PX - 2);
+    const haut = Math.max(44, (finVue - debutVu) * PX - 2);
     const { col, n } = places.get(e);
     const st = etat(e, m);
     const bloc = h("button", {
       type: "button",
-      class: `bloc ${e.type === "rdv" ? "rdv" : "tache"} ${st}${haut < 46 ? " court" : ""}`,
+      class: `bloc ${e.type === "rdv" ? "rdv" : "tache"} ${st}${haut < 50 ? " court" : ""}`,
       style: { top: `${top}px`, height: `${haut}px`, left: `calc(8px + (100% - 8px) * ${col / n})`, width: `calc((100% - 8px) / ${n} - 4px)`, "--couleur": e.type === "rdv" ? "var(--encre-2)" : couleurProjet(e.projet) },
       title: `${e.titre} · ${heure(e.debut)} – ${heure(finEffective(e))}`,
       onclick: () => gerer(e, gestesDe(e)),
@@ -749,7 +749,7 @@ function dessinerConseil() {
     }
   }));
   vider(zones.conseil, h("section", { class: "carte", "aria-label": "Conseil du moment" },
-    h("h2", { class: "titre-section" }, "Le conseil du moment", h("span", { class: "fin" }, renouveler)),
+    h("h2", { class: "titre-section" }, "Conseil du moment", h("span", { class: "fin" }, renouveler)),
     h("div", { class: "conseil" }, h("p", { class: "texte-conseil" }, texte),
       pourquoi.length ? h("ul", null, pourquoi.map((p) => h("li", null, p))) : null)));
 }

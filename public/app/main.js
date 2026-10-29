@@ -151,7 +151,8 @@ function enLigne() {
   clearInterval(relance);
   relance = null;
   majCompteurs();
-  fileEnvoi.vider().then(majCompteurs).catch(() => {});
+  // La tour répond de nouveau : ce qui attendait part tout de suite.
+  fileEnvoi.vider({ sansAttendre: true }).then(majCompteurs).catch(() => {});
 }
 async function verifierTour() {
   const ok = await sonder();
