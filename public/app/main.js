@@ -1,12 +1,14 @@
 // Démarrage du site : session, charpente (rail à gauche, onglets en bas sous
 // 720 px), routeur `#/…`, raccourcis clavier (N, /, Ctrl+K, Ctrl+1…5, ?),
-// bandeau « tour injoignable », pont vers l'app Windows, file d'envoi.
+// bandeau « tour injoignable », pont vers l'app Windows, file d'envoi, signe
+// de vie au premier plan, nouveautés au lancement, compteurs d'usage.
 import { api, evenements, chargerVersion, versionTour, sait, sonder, tourJoignable } from "./api.js";
 import { h, vider, icone, bouton, dire, feuille, kbd, ctrl, squelette, appliquerTheme, themeChoisi, occupe } from "./ui.js";
 import * as bureau from "./bureau.js";
 import * as fileEnvoi from "./file-envoi.js";
 import * as noter from "./vues/noter.js";
 import * as palette from "./palette.js";
+import * as usage from "./usage.js";
 
 const MODULE_NON_LUS = "./non-lus.js";
 const params = new URLSearchParams(location.search);
@@ -46,6 +48,12 @@ function lireRoute() {
 
 async function afficher() {
   const { def, args, brut } = lireRoute();
+  // Des changements pas encore enregistrés (Réglages) : la vue demande avant qu'on la quitte.
+  if (vueCourante && vueCourante.def.id !== def.id && vueCourante.module?.peutQuitter && !(await vueCourante.module.peutQuitter())) {
+    history.replaceState(null, "", `#/${routeCourante ?? vueCourante.def.id}`);
+    majNavigation(vueCourante.def.id);
+    return;
+  }
   routeCourante = brut;
   majNavigation(def.id);
   // Même vue, autre argument (une autre conversation, un autre réglage) : la vue suit.
@@ -54,6 +62,8 @@ async function afficher() {
     return;
   }
   vueCourante?.module?.demonter?.();
+  // Ce que tu utilises vraiment : une vue ouverte (sans rien de ce qu'elle montre).
+  if (["aujourdhui", "remy", "projets"].includes(def.id)) usage.noter(def.id);
   const el = h("main", { class: def.plein ? "zone-pleine" : "ecran", id: "contenu-principal", tabindex: "-1" });
   vider(zoneVue, el);
   if (!def.plein) el.append(h("div", { class: "carte" }, squelette([0.4, 0.9, 0.7, 0.8], true)));
@@ -173,6 +183,26 @@ async function verifierTour() {
   }
 }
 
+// --- Signe de vie (OngletsView) ---
+// Tant que Rémy est ouvert, visible et connecté, un signe de vie chaque
+// minute : c'est la mesure de présence de la tour (lib/activite.js). Rien
+// fenêtre cachée (l'app Windows rangée près de l'horloge) ni dans la petite
+// fenêtre Noter. Un échec ne dit rien : le bandeau « tour injoignable »
+// parle pour les vraies requêtes. Ce n'est pas un appel IA.
+let sessionOuverte = false;
+let minuteurVie = null;
+function ping() {
+  if (document.visibilityState !== "visible") return;
+  fetch("/api/activite/ping", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", credentials: "same-origin", cache: "no-store" }).catch(() => {});
+}
+function signeDeVie() {
+  clearInterval(minuteurVie);
+  minuteurVie = null;
+  if (modeNoter || !sessionOuverte || document.visibilityState !== "visible") return;
+  ping();
+  minuteurVie = setInterval(ping, 60000);
+}
+
 // --- Noter et palette (chargés à la demande) ---
 // Noter et la palette sont chargés avec la page : ils s'ouvrent dans la même
 // tâche que la touche, sans qu'une lettre tapée vite se perde ou déclenche un
@@ -251,16 +281,23 @@ async function demarrerSession() {
   // reconnexion dans la fenêtre principale.
   if (modeNoter) return demarrerNoter({ sansSession: !v?.serveur });
   if (!v?.serveur) return ecranConnexion();
+  sessionOuverte = true;
+  usage.noter("ouverture");
   construire();
   window.addEventListener("hashchange", afficher);
   if (!location.hash) history.replaceState(null, "", "#/aujourdhui");
   await afficher();
   majCompteurs();
-  fileEnvoi.vider().then(majCompteurs).catch(() => {});
+  // La tour vient de répondre (session ouverte) : ce qui attendait part tout de suite.
+  fileEnvoi.vider({ sansAttendre: true }).then(majCompteurs).catch(() => {});
   bureau.demarrer({ aller, ouvrirNoter, contexte }).catch((err) => console.warn("Pont bureau :", err));
   // La pastille des réponses de Rémy pas encore vues (contrat F) : un module
   // d'un autre lot, chargé par son nom (absent, rien ne change ici).
   import(MODULE_NON_LUS).then((m) => m.demarrer?.(contexte)).catch(() => {});
+  signeDeVie();
+  // Les nouveautés d'une mise à jour, une fois, après le chargement (jamais
+  // par-dessus une feuille ni pendant une saisie).
+  setTimeout(() => import("./nouveautes.js").then((m) => m.auLancement({ sait })).catch((err) => console.warn("Nouveautés :", err)), 1200);
 }
 
 async function ecranConnexion() {
@@ -308,6 +345,8 @@ function lancer() {
       return;
     }
     if (document.querySelector(".connexion")) return;
+    sessionOuverte = false;
+    signeDeVie();
     vueCourante?.module?.demonter?.();
     vueCourante = null;
     ecranConnexion();
@@ -327,9 +366,12 @@ function lancer() {
     fermerMotion = null;
   });
   document.addEventListener("keydown", clavier);
-  // Revenue au premier plan : la vue relit ce qui a pu changer, la file part.
+  // Revenue au premier plan : la vue relit ce qui a pu changer, la file part,
+  // le signe de vie reprend (caché : il s'arrête).
   document.addEventListener("visibilitychange", () => {
+    signeDeVie();
     if (document.visibilityState !== "visible") return;
+    if (sessionOuverte && !modeNoter) usage.noter("ouverture");
     vueCourante?.module?.actualiser?.();
     if (fileEnvoi.compte()) fileEnvoi.vider().then(majCompteurs).catch(() => {});
   });
