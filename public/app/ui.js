@@ -210,6 +210,23 @@ export function blocErreur(err, reessayer) {
   return vide(titre, texteErreur(err), reessayer ? bouton("Réessayer", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, reessayer) }) : null);
 }
 
+// --- lot chat : icônes de la vue Rémy (appel, privée, étapes, diagnostic) ---
+Object.assign(CHEMINS, {
+  telephone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z",
+  "cadenas-ouvert": "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 6.8-1.2",
+  "haut-gauche": "M17 17 7 7M7 15V7h8",
+  "point-plein": "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+  diagnostic: "M6 3v6a4 4 0 0 0 8 0V3M10 13v2a5 5 0 0 0 10 0v-3M20 9a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z",
+  plateau: "M4 13h4l1.5 3h5l1.5-3h4M4 13l2-8h12l2 8v6H4z",
+  branche: "M7 4v16M7 12c6 0 10-3 10-8M14 4h3v3",
+  "puce-calcul": "M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4",
+  cerveau: "M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V6a2 2 0 0 0-3-2zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1",
+  boussole: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM15.5 8.5l-2 5-5 2 2-5z",
+  "calendrier-plus": "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5M12 13v5M9.5 15.5h5",
+  sablier: "M7 3h10M7 21h10M8 3c0 5 8 6 8 9s-8 4-8 9M16 3c0 5-8 6-8 9s8 4 8 9",
+});
+// --- fin lot chat
+
 // --- Feuilles ---
 /**
  * Ouvre une feuille (dialog modale) : Échap ou la croix la ferment, le focus
