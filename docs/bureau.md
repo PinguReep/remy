@@ -188,7 +188,11 @@ Adresses chargées par la coquille :
 Commande interne (ni à appeler ni à imiter par le site) :
 `bureau_page_chargee { statut, vide }`, envoyée par le script de contrôle
 que la coquille injecte dans chaque page (1.2, « Tour jointe, Rémy
-arrêté »). Le site n'a rien à faire pour en profiter.
+arrêté »). Le site n'a rien à faire pour en profiter, à deux conditions :
+ne jamais répondre 2xx avec une page vide (elle serait prise pour un échec
+et la fenêtre reviendrait sur sa page embarquée), et, si une intégration
+ajoute ses propres capabilities, garder `allow-bureau-page-chargee` dans
+`desktop/src-tauri/capabilities/distante.json`.
 
 Commandes locales (pages embarquées seulement) : `bureau_adresse_lire`,
 `bureau_adresse_enregistrer { adresse }` (normalise, refuse, ou rend
@@ -199,7 +203,10 @@ page sonde d'abord), `bureau_aller_tour`, `bureau_note_locale { texte }`,
 
 Côté site, en mode `?fenetre=noter` : mettre le focus dans le champ au
 chargement ET à chaque `bureau://noter-ouvert` (la fenêtre est préchargée
-cachée), appeler `bureau_noter_fermer` après l'envoi et sur Échap.
+cachée), appeler `bureau_noter_fermer` après l'envoi et sur Échap. Sans
+session, la fenêtre Noter ne montre **jamais** l'écran de connexion : un
+avis le dit, la note attend dans la file du site et part après la
+reconnexion dans la fenêtre principale.
 
 **Qui décide des notifications : le site**, dans la fenêtre principale
 seulement (cachée, elle tourne encore ; WebView2 ralentit alors ses minuteries
@@ -213,7 +220,16 @@ seulement (cachée, elle tourne encore ; WebView2 ralentit alors ses minuteries
 - **Briefing du matin / bilan du soir** — `GET /api/rituel` **une fois**, à
   l'heure choisie (7 h 30 et 21 h 30 par défaut, comme l'iPhone), pour le
   texte de la notification. **Coupés par défaut**, comme sur l'iPhone ; la
-  carte de premier lancement de l'app les propose d'un clic.
+  carte de premier lancement de l'app les propose d'un clic. Un rituel raté
+  (tour pas encore joignable au réveil du PC, refus de Windows) se retente
+  **au plus toutes les 5 min**, tant qu'on est dans sa fenêtre de 4 h.
+- **Une clé n'est marquée « dite »** qu'après un `bureau_notifier` réussi :
+  une notification refusée repart au tour suivant.
+- **Session perdue** — si la tour répond 401 à la boucle, une notification
+  « Rémy est déconnecté » part **une fois par jour** (clé `session@<jour>`,
+  clic : Aujourd'hui) : sans session, plus aucun rappel ne part, et la
+  fenêtre est peut-être rangée près de l'horloge. Le site ne force pas
+  l'ouverture de la fenêtre.
 - Jamais `/api/dashboard` en boucle : il peut relancer le conseil réfléchi
   (modèle local). Le site ne le relit qu'à l'affichage, au retour au premier
   plan, et toutes les 5 min quand la fenêtre est visible.
@@ -255,7 +271,8 @@ signal**. Mêmes valeurs, en variables CSS :
   `0 8px 18px var(--ombre)`), puces de geste (44 px de haut), bouton plein
   (encre) / secondaire (papier) / signal (une seule action principale par vue).
 - **Pour l'ordinateur** : un **rail** à gauche (232 px : Aujourd'hui, Rémy,
-  Projets, Conversations, Réglages, et « Noter » en bouton plein), le contenu
+  Projets, Conversations, Réglages, et « Noter » en bouton plein ; replié en
+  icônes, 76 px, dès 1279 px, libellés en infobulle), le contenu
   en colonnes selon la largeur (1.6), états de survol (`--fond-2`), focus
   visible partout (anneau 2 px `--signal`), infobulles qui donnent le
   raccourci (`<kbd>`), densité plus serrée que l'iPhone (texte 15 px,
@@ -491,7 +508,10 @@ démarrage, un raccourci devenu indisponible est signalé par une notification.
 minute, sans IA) ; le briefing du matin et le bilan du soir si tu les
 allumes (Réglages › Ordinateur). Un clic sur la notification ouvre Rémy (à
 la vue concernée quand le site la précise). L'assistant de concentration de Windows (Ne pas déranger) peut
-les retenir : Paramètres › Système › Notifications › Rémy.
+les retenir : Paramètres › Système › Notifications › Rémy. Si la session
+de la tour a expiré, une notification « Rémy est déconnecté » le dit une
+fois par jour : ouvre Rémy et reconnecte-toi (Noter continue de garder tes
+notes en attendant).
 
 **La tour ne répond pas** : la fenêtre affiche « La tour ne répond pas »,
 l'adresse, **Réessayer** (et un nouvel essai seul toutes les 30 s, ou dès que

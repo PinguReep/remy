@@ -4,6 +4,22 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 (fin) — Bureau Windows : intégration des lots SHELL et SITE
+
+- **Deux fusions `--no-ff`** dans `claude/bureau-windows` : le lot SHELL
+  (`desktop/`, workflow de l'installateur) puis le lot SITE (`public/`,
+  `server.js`, tests du site). Les lots touchaient des fichiers disjoints
+  (1.8 de `docs/bureau.md`) : aucun conflit, aucune retouche de code.
+- **Ce que chaque lot laissait à l'intégration**, porté dans
+  `docs/bureau.md` : côté coquille, les deux conditions du script de
+  contrôle (jamais de 2xx vide, garder `allow-bureau-page-chargee`) ;
+  côté site, la notification « Rémy est déconnecté » (une fois par jour),
+  la fenêtre Noter qui marche sans session, les rituels retentés toutes les
+  5 min et le rail replié dès 1279 px.
+- **Reste hors de cette intégration** : la session de la tour expire
+  toujours au bout de 30 jours (une fenêtre glissante dans `lib/auth.js`
+  la renouvellerait à chaque usage) ; à faire dans un lot de la tour.
+
 ## 2026-10-29 (suite) — Coquille Windows : contre-relecture
 
 - **Tour jointe, Rémy arrêté (502) : la coquille lit le statut de la page.**
