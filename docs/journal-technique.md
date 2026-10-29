@@ -48,6 +48,10 @@ décidé en construisant :
   « La tour ne répond pas » + Réessayer au lieu de la page d'erreur de WebView2.
 - **Raccourci** : écriture française acceptée (Maj, Espace, Win), forme rangée
   re-lisible, au moins Ctrl, Alt ou Win ; refusé par Windows → l'ancien reste.
+- **Clic sur l'icône = montrer / ranger** : le clic donne d'abord le focus à
+  la barre des tâches, donc « la fenêtre est-elle devant ? » se lit sur la
+  perte de focus de moins d'une demi-seconde, pas sur le focus actuel (sinon
+  le clic ne rangerait jamais).
 - **CI** (`bureau-windows.yml`) : `cargo test` puis `tauri build` sur
   `windows-latest` (~9 min, cache Cargo), installateurs renommés sans accent
   (`Remy-Bureau_X.Y.Z_x64-setup.exe`, `.msi`), `SHA256SUMS.txt`, contrôle

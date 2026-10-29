@@ -36,6 +36,9 @@ pub struct Etat {
     pub site_charge: AtomicBool,
     pub notifs: Mutex<commandes::Notifs>,
     pub menu: Mutex<Option<zone::MenuZone>>,
+    /// Quand la fenêtre principale a perdu le focus : un clic sur l'icône le
+    /// lui prend juste avant d'arriver (voir `fenetres::basculer_principale`).
+    pub principale_quittee_a: Mutex<Option<std::time::Instant>>,
 }
 
 impl Etat {
@@ -49,6 +52,7 @@ impl Etat {
             site_charge: AtomicBool::new(false),
             notifs: Mutex::new(commandes::Notifs::default()),
             menu: Mutex::new(None),
+            principale_quittee_a: Mutex::new(None),
         }
     }
 

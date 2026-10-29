@@ -8,6 +8,7 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{
@@ -108,15 +109,25 @@ pub fn afficher_principale(app: &AppHandle) {
 }
 
 /// Clic sur l'icône : montre la fenêtre, ou la range si elle est déjà devant.
+/// Le clic donne d'abord le focus à la barre des tâches : une fenêtre qui
+/// vient de le perdre (moins d'une demi-seconde) était devant.
 pub fn basculer_principale(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PRINCIPALE) {
-        let devant = w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false) && w.is_focused().unwrap_or(false);
+        let quittee = *app.state::<Etat>().principale_quittee_a.lock().unwrap();
+        let devant = w.is_visible().unwrap_or(false)
+            && !w.is_minimized().unwrap_or(false)
+            && (w.is_focused().unwrap_or(false) || etait_devant(quittee, Instant::now()));
         if devant {
             let _ = w.hide();
         } else {
             afficher_principale(app);
         }
     }
+}
+
+/// La fenêtre a perdu le focus il y a moins d'une demi-seconde.
+pub fn etait_devant(quittee: Option<Instant>, maintenant: Instant) -> bool {
+    quittee.is_some_and(|q| maintenant.saturating_duration_since(q) < Duration::from_millis(500))
 }
 
 #[derive(Clone, Serialize)]
@@ -220,6 +231,9 @@ pub fn sur_evenement(fenetre: &tauri::Window, evenement: &WindowEvent) {
         (NOTER, WindowEvent::Focused(false)) => {
             let _ = fenetre.hide();
         }
+        (PRINCIPALE, WindowEvent::Focused(focus)) => {
+            *app.state::<Etat>().principale_quittee_a.lock().unwrap() = if *focus { None } else { Some(Instant::now()) };
+        }
         (PRINCIPALE, WindowEvent::CloseRequested { api, .. }) => {
             let etat = app.state::<Etat>();
             let (dans_zone, deja_explique) = {
@@ -253,6 +267,14 @@ pub fn sur_evenement(fenetre: &tauri::Window, evenement: &WindowEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn un_clic_sur_l_icone_juste_apres_la_perte_du_focus_range_la_fenetre() {
+        let t = Instant::now();
+        assert!(etait_devant(Some(t), t + Duration::from_millis(120)));
+        assert!(!etait_devant(Some(t), t + Duration::from_millis(900)));
+        assert!(!etait_devant(None, t));
+    }
 
     #[test]
     fn les_pages_embarquees_sont_bien_locales() {
