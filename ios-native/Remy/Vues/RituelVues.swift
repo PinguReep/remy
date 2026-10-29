@@ -98,6 +98,8 @@ struct CarteMenacee: View {
 struct BriefingVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
+    /// Ouvre Projets › Conversations (la ligne d'hier, 29/10) ; nil : pas de lien.
+    var ouvrirConversations: (() -> Void)? = nil
 
     var body: some View {
         let r = app.rituel
@@ -111,6 +113,13 @@ struct BriefingVue: View {
                         encadre("Ta tour ne sait pas encore préparer le briefing : relance son installeur pour la mettre à jour.")
                     } else if let b {
                         TroisLignes(b: b, le: r.le, chargement: r.chargement, erreur: r.erreur) { Task { await r.charger() } }
+                        // Une ligne tirée la nuit de tes conversations d'hier (Claude Code, T3, ChatGPT).
+                        if let l = r.donnees?.conversations {
+                            LigneConversationsBriefing(ligne: l, ouvrir: ouvrirConversations == nil ? nil : {
+                                fermer()
+                                ouvrirConversations?()
+                            })
+                        }
                     } else if r.chargement {
                         Squelette(largeurs: [0.55, 0.95, 0.85, 0.9])
                             .padding(18)

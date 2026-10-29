@@ -228,7 +228,12 @@ private struct RendezVousQuotidien: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var ui = ui
         content
-            .sheet(isPresented: $ui.briefingOuvert) { BriefingVue() }
+            .sheet(isPresented: $ui.briefingOuvert) {
+                BriefingVue(ouvrirConversations: {
+                    app.onglet = .projets
+                    ui.cheminProjets = [.conversations]
+                })
+            }
             .sheet(isPresented: $ui.bilanOuvert) { BilanVue() }
             .task(id: cle) {
                 await Notifications.planifierRituel(app.rituel.donnees, prepareA: app.rituel.le, reglages: .lire())
@@ -353,6 +358,12 @@ extension OngletsView {
             ui.cheminProjets = [.noeud(env["REMY_DEMO_ANCRE"] ?? "motion:p1")]
         case "boite": ui.boiteOuverte = true
         case "briefing": ui.briefingOuvert = true
+        case "conversations":
+            app.onglet = .projets
+            ui.cheminProjets = [.conversations]
+        case "conversations-sources":
+            app.onglet = .projets
+            ui.cheminProjets = [.conversations, .sourcesConversations]
         case "bilan": ui.bilanOuvert = true
         case "a-trancher", "retards":
             await app.aTrancher.charger()
