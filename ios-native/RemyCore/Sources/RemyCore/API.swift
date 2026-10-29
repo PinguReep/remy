@@ -160,6 +160,31 @@ public final class ClientAPI: @unchecked Sendable {
         return donnees
     }
 
+    /// Un fichier entier en corps (l'export ChatGPT, jusqu'à des centaines de
+    /// Mo), envoyé depuis le disque sans être chargé en mémoire (conversations-externes-v1).
+    func envoyerFichier(_ chemin: String, fichier: URL, type: String, delai: TimeInterval = 900) async throws -> Data {
+        var r = requete(chemin, methode: "POST", delai: delai)
+        r.setValue(type, forHTTPHeaderField: "Content-Type")
+        let (donnees, reponse): (Data, URLResponse)
+        do {
+            #if canImport(FoundationNetworking)
+            r.httpBody = try Data(contentsOf: fichier)
+            (donnees, reponse) = try await session.data(for: r)
+            #else
+            (donnees, reponse) = try await session.upload(for: r, fromFile: fichier)
+            #endif
+        } catch {
+            throw ErreurAPI.reseau(error.localizedDescription)
+        }
+        do {
+            try Self.verifier(reponse, donnees)
+        } catch ErreurAPI.nonConnecte {
+            coffre.ecrire(nil)
+            throw ErreurAPI.nonConnecte
+        }
+        return donnees
+    }
+
     func json<T: Decodable>(_ type: T.Type, _ chemin: String, methode: String = "GET", corps: [String: Any]? = nil, delai: TimeInterval = 30) async throws -> T {
         let donnees = try await brut(chemin, methode: methode, corps: try corps.map { try JSONSerialization.data(withJSONObject: $0) }, delai: delai)
         do {

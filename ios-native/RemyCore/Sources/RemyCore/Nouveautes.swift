@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "conversations-externes", serie: 5, date: "29 oct.", titre: "Tes conversations d'ailleurs, ici", capacite: "conversations-externes-v1", pages: [
+            .init(symbole: "bubble.left.and.bubble.right", titre: "Claude Code, T3, ChatGPT",
+                  texte: "Projets › Conversations : tes sessions Claude Code et tes fils T3 Code (ordinateur ou téléphone), lus par ta tour, par source et par date. Cherche un mot, ouvre une conversation, relis-la."),
+            .init(symbole: "square.and.arrow.down", titre: "ChatGPT en un geste",
+                  texte: "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Puis « Importer ChatGPT » ici, et choisis le .zip reçu par mail. Ou dépose-le dans le dossier Imports de ton coffre."),
+            .init(symbole: "lock.shield", titre: "Rien ne repart",
+                  texte: "Tout est chiffré sur ta tour ; rien ne retourne chez Claude ni chez OpenAI. Rémy s'en inspire avec son modèle local, et la nuit en tire thèmes et choses à faire. Réglages › Sources des conversations pour couper ou effacer."),
+        ]),
         Nouveaute(id: "privee-iphone", serie: 4, date: "27 oct.", titre: "Conversation privée sur l'iPhone", capacite: nil, pages: [
             .init(symbole: "lock", titre: "Une conversation qui reste chez toi",
                   texte: "Nouvelle conversation : touche « Privée » au-dessus du champ. Ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas reste sur la marque de Rémy, en haut."),
