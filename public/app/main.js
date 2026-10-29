@@ -16,7 +16,7 @@ export const VUES = [
   { id: "aujourdhui", titre: "Aujourd'hui", icone: "aujourdhui", charger: () => import("./vues/aujourdhui.js") },
   { id: "remy", titre: "Rémy", icone: "remy", charger: () => import("./vues/remy.js"), plein: true },
   { id: "projets", titre: "Projets", icone: "projets", charger: () => import("./vues/projets.js") },
-  { id: "conversations", titre: "Conversations", icone: "conversations", charger: () => import("./vues/conversations-externes.js"), si: () => sait("conversations-externes-v1") || sait("conversations-externes") },
+  { id: "conversations", titre: "Conversations", icone: "conversations", charger: () => import("./vues/conversations-externes.js"), si: () => sait("conversations-externes-v1") },
   { id: "reglages", titre: "Réglages", icone: "reglages", charger: () => import("./vues/reglages.js") },
 ];
 const vuesVisibles = () => VUES.filter((v) => !v.si || v.si());

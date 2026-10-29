@@ -184,8 +184,9 @@ tag) avant l'échéance.
   ont leur propre réglage (coupé par défaut).
 - Chercher dans les réglages (29/10) : le champ en haut de Réglages trouve
   chaque réglage et chaque écran (Diagnostic, Rendez-vous quotidien,
-  Localisation, Activité du PC…) par son titre, son sous-titre et des
-  synonymes (« notif », « jauge », « privé », « Siri »), sans IA. Toucher un
+  Localisation, Activité du PC, Sources des conversations…) par son titre, son
+  sous-titre et des synonymes (« notif », « jauge », « privé », « Siri »,
+  « ChatGPT », « T3 », « import »), sans IA. Toucher un
   résultat ouvre son écran, la ligne mise en évidence. L'index est dans le
   cœur (`RechercheReglages.swift`) ; une ligne se déclare avec `.repere(…)`.
   **Une nouvelle ligne de Réglages = une entrée dans `RechercheReglages.index`**

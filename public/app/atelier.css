@@ -463,6 +463,8 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .fil-messages .colonne { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 .msg-sam { align-self: flex-end; max-width: 78%; background: var(--fond-2); border-radius: 18px 18px 6px 18px; padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg-remy { max-width: 100%; }
+/* Conversations d'ailleurs : le message trouvé par la recherche, ouvert à sa place. */
+.msg-cible { outline: 2px solid color-mix(in srgb, var(--signal) 60%, transparent); outline-offset: 6px; border-radius: 14px; scroll-margin: 96px; }
 .msg-remy .auteur { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-weight: 600; font-size: 14px; }
 .msg-remy .auteur .marque-r { width: 22px; height: 22px; border-radius: 7px; font-size: 13px; }
 .msg-remy .md { font: 400 16px/1.6 var(--serif); overflow-wrap: anywhere; }

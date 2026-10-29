@@ -282,5 +282,15 @@ conversation déjà là n'est réécrite que si ChatGPT l'a modifiée depuis.
 - **Le matin** : une ligne dans le briefing de l'app, lue au moment de
   l'afficher, jamais écrite dans le briefing de la nuit.
 
-Interrupteurs : `PUT …/usage` (app : Réglages › Sources des conversations) ;
+Interrupteurs : `PUT …/usage` (app : Réglages › Sources des conversations ;
+site : Conversations › Sources, ou Réglages › Sources des conversations) ;
 `REMY_CONVERSATIONS_USAGE=off` sur la tour.
+
+## Sur le site
+
+`#/conversations` (et `#/conversations/<source>/<id>[/<message>]` pour ouvrir
+une conversation au message trouvé) : la même chose que l'écran de l'iPhone,
+avec les mêmes phrases. Les chemins de ce contrat et ces phrases vivent dans
+`public/app/analyse/conversations.js` ; `test/site-conversations.test.mjs` les
+joue contre les vraies routes, sur les conversations fictives des trois
+sources. L'export ChatGPT part en corps brut (XHR, pour suivre l'envoi).

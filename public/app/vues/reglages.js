@@ -1,7 +1,8 @@
 // Réglages, avec une recherche dans les réglages (filtre en direct, aussi
 // dans Ctrl+K). Ordinateur (app Windows), Apparence, Noter, Rémy (circuits,
 // recherche web, secours Claude…), Modèle local, Mémoire, Coûts, Appareils,
-// jeton de capture, Agenda Google, Activité du PC, Règles, Envoi en attente,
+// jeton de capture, Agenda Google, Activité du PC, Sources des conversations
+// (Claude Code, T3, ChatGPT ; si la tour les lit), Règles, Envoi en attente,
 // Diagnostic, Avancé (interface classique, se déconnecter).
 import { api, ecrire, remplacer, supprimer, seg, sait, versionTour } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, confirmer, quand, occupe, appliquerTheme, themeChoisi, local, ctrl } from "../ui.js";
@@ -39,6 +40,8 @@ export const INDEX = [
   ["jeton", "Jeton de capture (raccourci iPhone)", "jeton capture raccourci partage siri"],
   ["agenda", "Agenda Google", "agenda google calendrier connexion"],
   ["activite", "Activité du PC", "activité pc activitywatch temps écran"],
+  ["conversations", "Sources des conversations", "conversations sources chatgpt openai claude code t3 import importer export zip historique effacer"],
+  ["conversations", "Importer un export ChatGPT", "chatgpt openai import importer export zip conversations.json"],
   ["regles", "Règles de Rémy", "règles avant tâches conditionnelles"],
   ["file", "Envoi en attente", "file attente hors ligne envoi captures"],
   ["diagnostic", "Diagnostic et incidents", "diagnostic incidents version erreurs copier"],
@@ -58,17 +61,26 @@ const SECTIONS = [
   ["jeton", "Jeton de capture", "copier"],
   ["agenda", "Agenda Google", "horloge"],
   ["activite", "Activité du PC", "ecran"],
+  ["conversations", "Sources des conversations", "conversations"],
   ["regles", "Règles", "liste"],
   ["file", "Envoi en attente", "envoyer"],
   ["diagnostic", "Diagnostic", "alerte"],
   ["avance", "Avancé", "curseurs"],
 ];
 
+// Une section dont la tour ne connaît pas encore la fonction est cachée
+// (comme sur l'iPhone) : les sources des conversations, sans conversations-externes-v1.
+const CAPACITE_SECTION = { conversations: "conversations-externes-v1" };
+const sectionVisible = (id) => !CAPACITE_SECTION[id] || sait(CAPACITE_SECTION[id]);
+const sectionsVisibles = () => SECTIONS.filter(([id]) => sectionVisible(id));
+/** L'index sans ce que la tour ne propose pas (la recherche, et Ctrl+K). */
+export const indexVisible = () => INDEX.filter(([s]) => sectionVisible(s));
+
 export default {
   async monter(el, args, contexte) {
     racine = el;
     ctx = contexte;
-    section = SECTIONS.some(([id]) => id === args[0]) ? args[0] : null;
+    section = sectionsVisibles().some(([id]) => id === args[0]) ? args[0] : null;
     refs.recherche = h("input", { class: "champ", type: "search", placeholder: "Chercher un réglage", "aria-label": "Chercher dans les réglages", oninput: (e) => { recherche = e.target.value; dessinerMaitre(); } });
     refs.maitre = h("nav", { class: "maitre", "aria-label": "Sections des réglages" });
     refs.detail = h("section", { class: "detail" });
@@ -79,7 +91,7 @@ export default {
     await dessinerSection();
   },
   suivre(args) {
-    section = SECTIONS.some(([id]) => id === args[0]) ? args[0] : null;
+    section = sectionsVisibles().some(([id]) => id === args[0]) ? args[0] : null;
     dessinerMaitre();
     dessinerSection();
   },
@@ -92,13 +104,13 @@ function dessinerMaitre() {
   const q = recherche.trim().toLowerCase();
   refs.grille.classList.toggle("detail-ouvert", Boolean(section) && !q);
   if (q) {
-    const trouves = INDEX.filter(([, lib, mots]) => `${lib} ${mots}`.toLowerCase().includes(q));
+    const trouves = indexVisible().filter(([, lib, mots]) => `${lib} ${mots}`.toLowerCase().includes(q));
     vider(refs.maitre, h("div", { class: "resultats-recherche" },
       trouves.length ? h("ul", { class: "liste" }, trouves.map(([s, lib]) => h("li", { class: "ligne cliquable", onclick: () => { recherche = ""; refs.recherche.value = ""; ctx.aller(`reglages/${s}`); } },
         h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, lib), h("div", { class: "meta" }, SECTIONS.find(([id]) => id === s)?.[1]))))) : vide(null, `Aucun réglage pour « ${recherche} ».`)));
     return;
   }
-  vider(refs.maitre, SECTIONS.map(([id, lib, ic]) => h("a", { class: "element-maitre", href: `#/reglages/${id}`, "aria-current": section === id ? "page" : null }, icone(ic), h("span", { class: "t" }, lib),
+  vider(refs.maitre, sectionsVisibles().map(([id, lib, ic]) => h("a", { class: "element-maitre", href: `#/reglages/${id}`, "aria-current": section === id ? "page" : null }, icone(ic), h("span", { class: "t" }, lib),
     id === "file" && fileEnvoi.compte() ? h("span", { class: "pastille-compte" }, String(fileEnvoi.compte())) : null)));
 }
 
@@ -355,6 +367,15 @@ const SECTIONS_RENDU = {
         if (!(await confirmer("Effacer tout l'historique d'activité ?", { libelle: "Effacer", danger: true }))) return;
         await occupe(e.currentTarget, async () => { try { await supprimer("/api/activite-pc"); dire("Effacé.", { genre: "succes" }); dessinerSection(); } catch (err) { direErreur(err); } });
       } })));
+  },
+
+  async conversations() {
+    // La même vue que « Sources » de l'écran Conversations (Claude Code, T3, ChatGPT).
+    const { dessinerSources } = await import("./conversations-externes.js");
+    const zone = h("div", null, squelette([0.6, 0.8]));
+    dessinerSources(zone);
+    return carte("Sources des conversations", "Claude Code, T3 Code et ChatGPT, lus et chiffrés par la tour. Rien ne repart vers Claude ni OpenAI.",
+      zone, h("div", { class: "rangee", style: { marginTop: "12px" } }, h("a", { class: "btn papier", href: "#/conversations" }, icone("conversations"), "Voir les conversations")));
   },
 
   async regles() {

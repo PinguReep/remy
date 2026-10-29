@@ -129,6 +129,6 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   }
   if (listes.status === "fulfilled") elements.push(...(listes.value.listes || []).map((l) => ({ groupe: "Listes", titre: l.nom, icone: "liste", mots: "liste", faire: aller(`projets/liste/${encodeURIComponent(l.id)}`) })));
   if (dossiers.status === "fulfilled") elements.push(...(dossiers.value.dossiers || []).map((x) => ({ groupe: "Dossiers", titre: x.nom, icone: "dossier", mots: "dossier projet", faire: aller(`projets/dossier/${encodeURIComponent(x.id)}`) })));
-  if (reglages.status === "fulfilled") elements.push(...reglages.value.INDEX.map(([s, lib, mots]) => ({ groupe: "Réglages", titre: lib, icone: "reglages", mots: `réglage ${mots}`, faire: aller(`reglages/${s}`) })));
+  if (reglages.status === "fulfilled") elements.push(...(reglages.value.indexVisible?.() ?? reglages.value.INDEX).map(([s, lib, mots]) => ({ groupe: "Réglages", titre: lib, icone: "reglages", mots: `réglage ${mots}`, faire: aller(`reglages/${s}`) })));
   dessiner();
 }

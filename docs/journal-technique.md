@@ -4,6 +4,30 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
+
+- **Le planificateur demande chaque job à part** (`lib/planif.js`,
+  `demander`). Les conversations d'ailleurs sont allumées par défaut : chaque
+  passage demande `connaissances-sync`. Un type non enregistré (un test qui
+  n'en enregistre qu'une partie) levait « Type de job inconnu » et le `catch`
+  commun sautait tout le reste du passage — la mise à jour des commerces (#22)
+  ne partait plus. Désormais un type absent n'est pas demandé, les autres
+  suivent ; l'ancien `catch` reste pour ce qui n'est pas une demande.
+- **Les messages « matière privée » nomment le modèle** (#22) : les tests de
+  #26 vérifient la nature de l'erreur (`code: "prive"`) et sa promesse
+  (« Rien n'est parti chez Claude »), plus sa formulation exacte.
+- **Réglages (iPhone)** : la ligne « Sources des conversations » de #26 entre
+  dans l'index de la recherche de #24 (un écran `EcranReglages`, quatre lignes
+  repérées dedans). Nouveautés : la série 5 réunit les trois entrées des deux
+  branches (5 pages, une feuille) ; le parcours des conversations devient P26.
+- **Site** : la vue Conversations (#25) est branchée sur les routes de #26.
+  Les chemins et les phrases vivent dans un module pur
+  (`public/app/analyse/conversations.js`) testé contre les vraies routes ;
+  l'identifiant d'une conversation est encodé deux fois dans l'adresse
+  (`main.js` décode tout le fragment avant de le couper aux « / »). La
+  section Réglages › Sources des conversations et Ctrl+K se cachent sur une
+  tour sans la capacité (`indexVisible`).
+
 ## 2026-10-29 — Sparks et nuit : « reflexion-nuit abandonné · Sparks 0/2 », la vraie cause
 
 Constat sur la tour après la mise à jour : `/api/health` disait « reflexion-nuit
