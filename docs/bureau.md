@@ -57,6 +57,25 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   toutes les 30 s), **Changer l'adresse**. Une fois le site chargé une fois,
   son service worker sert la page même tour éteinte, et c'est le site qui dit
   « hors ligne » (bandeau + Réessayer).
+- **Tour jointe, Rémy arrêté** (Tailscale Serve répond **502** tant que
+  `server.js` n'écoute pas, par exemple à l'ouverture de session, quand la
+  tâche « Rémy » et l'app démarrent ensemble) : la sonde `no-cors` ne voit pas
+  le statut, donc la coquille contrôle la page elle-même. Un petit script
+  (`src-tauri/src/controle.js`), injecté dans chaque page des deux fenêtres,
+  dit à la coquille (`bureau_page_chargee`) le statut HTTP de la navigation
+  (WebView2 le donne ; WebKit non, alors « page vide » sert de repli). Réponse
+  5xx ou page vide → la fenêtre revient sur sa page embarquée **sans changer
+  de visibilité** : la principale affiche « Rémy ne répond pas encore »
+  (`demarrage.html?injoignable=502`, Réessayer et nouvel essai seul toutes
+  les 30 s, sans aller-retour immédiat), Noter reprend sa page de secours
+  (`noter.html?retour=502`, nouvel essai à la minute). **Garde-fou** : une
+  page de la tour qui ne s'est pas signalée **20 s** après la navigation
+  (chargement bloqué, page d'erreur du navigateur) est traitée pareil
+  (`?injoignable=muette`). Une page qui répond 2xx n'est jamais renvoyée,
+  même si c'est un site trop ancien pour parler à la coquille.
+  Pas de sonde CORS sur `/api/version` : le 502 vient de Tailscale, sans
+  en-tête CORS, il serait illisible lui aussi, et une tour pas encore mise à
+  jour bloquerait l'app sur « ne répond pas ».
 - **Une seule instance** (`tauri-plugin-single-instance`) : relancer l'app
   ramène la fenêtre existante au premier plan.
 - **Taille et position mémorisées** (`tauri-plugin-window-state`), fenêtre
@@ -154,6 +173,11 @@ Adresses chargées par la coquille :
 - fenêtre principale : `<adresse>/` (routes du site en `#/…`) ;
 - fenêtre Noter : `<adresse>/?fenetre=noter` (une requête, pas un chemin :
   le service worker sert `/` hors ligne avec `ignoreSearch`).
+
+Commande interne (ni à appeler ni à imiter par le site) :
+`bureau_page_chargee { statut, vide }`, envoyée par le script de contrôle
+que la coquille injecte dans chaque page (1.2, « Tour jointe, Rémy
+arrêté »). Le site n'a rien à faire pour en profiter.
 
 Commandes locales (pages embarquées seulement) : `bureau_adresse_lire`,
 `bureau_adresse_enregistrer { adresse }` (normalise, refuse, ou rend
@@ -454,7 +478,10 @@ les retenir : Paramètres › Système › Notifications › Rémy.
 
 **La tour ne répond pas** : la fenêtre affiche « La tour ne répond pas »,
 l'adresse, **Réessayer** (et un nouvel essai seul toutes les 30 s, ou dès que
-le réseau revient) et **Changer l'adresse**. Une fois le site chargé une fois,
+le réseau revient) et **Changer l'adresse**. Si la tour répond mais pas Rémy
+(erreur 502, le temps qu'il démarre à l'ouverture de session), la fenêtre
+dit « Rémy ne répond pas encore » et réessaie seule de la même façon : rien à
+faire, sauf si ça dure (relancer alors la tâche « Rémy » sur la tour). Une fois le site chargé une fois,
 il sait aussi s'afficher hors ligne. **Noter marche quand même** : la note est
 gardée sur ce PC (`notes-en-attente.json`) et part vers Rémy dès que le site
 répond, puis elle est effacée du PC.
@@ -524,9 +551,11 @@ s'ouvre sur la page de démarrage ; pour une tour de développement, l'adresse
 ils tournent aussi sous Linux avec les bibliothèques WebKitGTK). Essai de
 fumée du vrai binaire contre une fausse tour, sous Linux (Xvfb) :
 `node desktop/essais/fumee.mjs desktop/src-tauri/target/debug/remy-bureau`
-(sonde, départ sur le site, commandes permises et refusées, notes de secours,
-Noter, navigation vers une autre origine) ; pages embarquées dans Chromium
-avec un faux pont : `node desktop/essais/pages.cjs` (Playwright). Icônes :
+(tour en 502 puis page bloquée : retour sur la page embarquée et nouvel
+essai seul ; sonde, départ sur le site, commandes permises et refusées, notes
+de secours, Noter, navigation vers une autre origine ; ~1 min 30) ; pages
+embarquées et script de contrôle dans Chromium avec un faux pont :
+`node desktop/essais/pages.cjs` (Playwright). Icônes :
 `npm run icones` (depuis `src-tauri/icons/icon.png`). L'installateur se
 construit en CI (`.github/workflows/bureau-windows.yml`) à chaque envoi qui
 touche `desktop/` ; lancé à la main avec « publier », il crée la Release

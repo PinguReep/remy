@@ -93,6 +93,7 @@ pub fn etat_bureau(app: &AppHandle, etat: &Etat, fenetre: &str) -> EtatBureau {
 pub fn bureau_etat(app: AppHandle, webview: Webview, etat: State<'_, Etat>) -> Result<EtatBureau, String> {
     verifier_tour(&webview, &etat)?;
     let fenetre = webview.window().label().to_string();
+    fenetres::page_signalee(&etat, &fenetre);
     if fenetre == fenetres::PRINCIPALE && !etat.site_charge.swap(true, Ordering::SeqCst) {
         fenetres::noter_vers_tour_si_secours(&app);
     }
@@ -286,6 +287,26 @@ pub fn bureau_ouvrir_lien(app: AppHandle, webview: Webview, etat: State<'_, Etat
 pub fn bureau_changer_adresse(app: AppHandle, webview: Webview, etat: State<'_, Etat>) -> Result<(), String> {
     verifier_tour(&webview, &etat)?;
     fenetres::vers_demarrage(&app, true);
+    Ok(())
+}
+
+/// Appelée par le script de contrôle que la coquille injecte (pas par le
+/// site) : comment la page de la tour s'est chargée. Une réponse 5xx ou une
+/// page vide ramène la fenêtre sur sa page embarquée.
+#[tauri::command]
+pub fn bureau_page_chargee(
+    app: AppHandle,
+    webview: Webview,
+    etat: State<'_, Etat>,
+    statut: Option<u16>,
+    vide: Option<bool>,
+) -> Result<(), String> {
+    verifier_tour(&webview, &etat)?;
+    let fenetre = webview.window().label().to_string();
+    match fenetres::panne_de_page(statut.unwrap_or(0), vide.unwrap_or(false)) {
+        Some(panne) => fenetres::vers_secours(&app, &fenetre, panne),
+        None => fenetres::page_signalee(&etat, &fenetre),
+    }
     Ok(())
 }
 

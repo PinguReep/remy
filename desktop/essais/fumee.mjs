@@ -9,7 +9,12 @@
 // embarquées et celles hors contrat sont refusées à la tour ; les notes de
 // secours se lisent puis s'effacent ; la fenêtre Noter passe sur le site ;
 // une navigation ou un window.open vers une autre origine n'ouvre rien dans
-// l'app. Il faut xvfb-run et dbus-run-session.
+// l'app. Avant tout ça, la tour est « en panne » comme à l'ouverture de
+// session (Tailscale Serve répond 502 tant que Rémy ne tourne pas) : la
+// fenêtre principale doit revenir sur sa page embarquée et réessayer seule,
+// puis, sur une page qui ne se charge jamais, le garde-fou de 20 s doit l'y
+// ramener aussi ; Noter revient sur sa page de secours sans boucler.
+// Compter ~1 min 30. Il faut xvfb-run et dbus-run-session.
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
@@ -17,7 +22,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 const binaire = path.resolve(process.argv[2] || "desktop/src-tauri/target/debug/remy-bureau");
-const DELAI_MS = Number(process.env.FUMEE_DELAI_MS || 90_000);
+const DELAI_MS = Number(process.env.FUMEE_DELAI_MS || 180_000);
 
 const resultats = [];
 const autreOrigine = [];
@@ -65,11 +70,27 @@ function ecouter(gestion) {
 
 const autre = await ecouter((req, res) => { autreOrigine.push(req.url); res.end("autre"); });
 const AUTRE = `http://127.0.0.1:${autre.address().port}`;
+// Les pannes servies, dans l'ordre, aux premières pages demandées par chaque
+// fenêtre : « 502 » (corps vide, comme Tailscale Serve), « bloque » (jamais de
+// réponse). Ensuite, la vraie page.
+const pannes = { main: ["502", "bloque"], noter: ["502"] };
+const pages = { main: [], noter: [] };
+const bloquees = [];
+const t0 = Date.now();
 const tour = await ecouter((req, res) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname === "/api/version") {
+    // Tailscale Serve répond 502 à tout tant que Rémy ne tourne pas.
+    if (pannes.main[0] === "502") { res.writeHead(502); return res.end(); }
     res.writeHead(200, { "content-type": "application/json" });
     return res.end('{"api":1,"appMin":null}');
+  }
+  if (u.pathname === "/" && req.method === "GET") {
+    const fenetre = u.searchParams.get("fenetre") === "noter" ? "noter" : "main";
+    const panne = pannes[fenetre].shift() || "page";
+    pages[fenetre].push({ t: Date.now() - t0, panne });
+    if (panne === "502") { res.writeHead(502); return res.end(); }
+    if (panne === "bloque") { bloquees.push(res); return; }
   }
   if (u.pathname === "/resultat" && req.method === "POST") {
     let corps = "";
@@ -77,7 +98,7 @@ const tour = await ecouter((req, res) => {
     req.on("end", () => { resultats.push(JSON.parse(corps)); res.writeHead(204); res.end(); });
     return;
   }
-  if (u.pathname === "/") {
+  if (u.pathname === "/" && req.method === "GET") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return res.end(page.replaceAll("AUTRE +", JSON.stringify(AUTRE) + " +"));
   }
@@ -108,7 +129,9 @@ while (Date.now() - debut < DELAI_MS && !(trouve("main") && trouve("noter") && t
   await new Promise((r) => setTimeout(r, 500));
 }
 try { process.kill(-app.pid, "SIGTERM"); } catch { /* déjà fini */ }
-tour.close(); autre.close();
+for (const r of bloquees) r.destroy();
+tour.closeAllConnections?.(); tour.close(); autre.close();
+console.log("pages servies (ms depuis le début) :", JSON.stringify(pages));
 
 const verifs = [];
 const verifier = (nom, cond) => { verifs.push(!!cond); console.log(`${cond ? "OK   " : "ÉCHEC"} ${nom}`); };
@@ -116,6 +139,13 @@ const m = trouve("main") || {};
 const n = trouve("noter") || {};
 const refusParRegles = (x) => x && !x.ok && /not allowed/.test(x.erreur);
 
+const [p502, pBloquee, pBonne] = pages.main;
+verifier("502 : la fenêtre principale est revenue sur sa page et a réessayé seule (~30 s)",
+  p502?.panne === "502" && pBloquee && pBloquee.t - p502.t >= 25_000);
+verifier("page bloquée : le garde-fou de 20 s l'a ramenée, puis nouvel essai (~50 s)",
+  pBloquee?.panne === "bloque" && pBonne && pBonne.t - pBloquee.t >= 45_000);
+verifier("Noter : 502, retour sur sa page de secours, sans boucler",
+  pages.noter[0]?.panne === "502" && pages.noter.length <= 3);
 verifier("la page de démarrage a sondé la tour et la fenêtre y est partie", !!trouve("main"));
 verifier("le site reçoit window.__TAURI__", m.tauri === true);
 verifier("bureau_etat : adresse et fenêtre", m.etat?.ok && m.etat.valeur.adresse === TOUR && m.etat.valeur.fenetre === "main");

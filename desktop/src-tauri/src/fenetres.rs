@@ -25,6 +25,81 @@ pub const NOTER: &str = "noter";
 pub const EVT_NOTER_OUVERT: &str = "bureau://noter-ouvert";
 pub const EVT_ALLER: &str = "bureau://aller";
 
+/// Injecté dans chaque page des deux fenêtres : une page de la tour dit comment
+/// elle s'est chargée (`bureau_page_chargee`). Voir `controle.js`.
+pub const SCRIPT_CONTROLE: &str = include_str!("controle.js");
+
+/// Une page de la tour qui ne s'est pas signalée dans ce délai (chargement
+/// bloqué, page d'erreur du navigateur) ramène la fenêtre sur sa page embarquée.
+pub const GARDE_CHARGEMENT: Duration = Duration::from_secs(20);
+
+/// La dernière navigation d'une fenêtre vers la tour.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Navigation {
+    /// Augmente à chaque navigation (vers la tour ou vers une page embarquée) :
+    /// un garde-fou en retard ne touche pas à une navigation plus récente.
+    pub numero: u64,
+    /// La page de la tour s'est signalée (script de contrôle ou `bureau_etat`).
+    pub signalee: bool,
+}
+
+/// Pourquoi la page de la tour n'est pas utilisable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Panne {
+    /// Réponse 5xx : la tour répond, Rémy non (Tailscale Serve : 502).
+    Statut(u16),
+    /// Page vide, statut inconnu (WebKit ne donne pas le statut).
+    Vide,
+    /// La page ne s'est pas signalée en 20 s.
+    Muette,
+}
+
+impl Panne {
+    /// Pour l'adresse de la page embarquée (`?injoignable=502`).
+    pub fn code(&self) -> String {
+        match self {
+            Panne::Statut(s) => s.to_string(),
+            Panne::Vide => "vide".into(),
+            Panne::Muette => "muette".into(),
+        }
+    }
+}
+
+/// Ce que dit le script de contrôle → panne ou non. `statut` 0 : inconnu.
+/// Une page vide avec un statut 2xx connu reste acceptée (le site décide).
+pub fn panne_de_page(statut: u16, vide: bool) -> Option<Panne> {
+    if statut >= 500 {
+        Some(Panne::Statut(statut))
+    } else if statut == 0 && vide {
+        Some(Panne::Vide)
+    } else {
+        None
+    }
+}
+
+/// Nouvelle navigation de la fenêtre `label` : rend son numéro.
+pub fn nouvelle_navigation(etat: &Etat, label: &str) -> u64 {
+    let mut n = etat.navigations.lock().unwrap();
+    let e = n.entry(label.to_string()).or_default();
+    e.numero += 1;
+    e.signalee = false;
+    e.numero
+}
+
+/// La page de la tour de la fenêtre `label` s'est signalée.
+pub fn page_signalee(etat: &Etat, label: &str) {
+    etat.navigations.lock().unwrap().entry(label.to_string()).or_default().signalee = true;
+}
+
+/// La navigation `numero` de `label` est-elle toujours la dernière, et muette ?
+pub fn navigation_muette(etat: &Etat, label: &str, numero: u64) -> bool {
+    etat.navigations
+        .lock()
+        .unwrap()
+        .get(label)
+        .is_some_and(|e| e.numero == numero && !e.signalee)
+}
+
 /// L'adresse d'une page embarquée, telle que la WebView la voit.
 pub fn url_locale(page: &str) -> Url {
     let base = if cfg!(any(windows, target_os = "android")) {
@@ -70,6 +145,7 @@ pub fn creer_principale(app: &AppHandle, etat: &Etat, cachee: bool) -> tauri::Re
         .visible(!cachee)
         .focused(!cachee)
         .zoom_hotkeys_enabled(true)
+        .initialization_script(SCRIPT_CONTROLE)
         .on_navigation(politique_navigation(app.clone(), etat.adresse_partagee.clone()))
         .on_new_window(nouvelle_fenetre_refusee(app.clone()))
         .build()?;
@@ -95,6 +171,7 @@ pub fn creer_noter(app: &AppHandle, etat: &Etat) -> tauri::Result<WebviewWindow>
         .visible(false)
         .focused(false)
         .zoom_hotkeys_enabled(false)
+        .initialization_script(SCRIPT_CONTROLE)
         .on_navigation(politique_navigation(app.clone(), etat.adresse_partagee.clone()))
         .on_new_window(nouvelle_fenetre_refusee(app.clone()))
         .build()
@@ -188,14 +265,55 @@ pub fn vers_tour(app: &AppHandle, label: &str) -> Result<(), String> {
     let w = app
         .get_webview_window(label)
         .ok_or("Fenêtre introuvable.".to_string())?;
-    w.navigate(url).map_err(|e| format!("Navigation impossible : {e}"))
+    let numero = nouvelle_navigation(&etat, label);
+    w.navigate(url).map_err(|e| format!("Navigation impossible : {e}"))?;
+    // Garde-fou : une page qui ne s'est pas signalée en 20 s (chargement
+    // bloqué, page d'erreur) ramène la fenêtre sur sa page embarquée, qui
+    // réessaie seule. Un fil à part : les minuteries d'une fenêtre cachée sont
+    // ralenties, pas celui-ci.
+    let app = app.clone();
+    let label = label.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(GARDE_CHARGEMENT);
+        if navigation_muette(&app.state::<Etat>(), &label, numero) {
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if navigation_muette(&a.state::<Etat>(), &label, numero) {
+                    vers_secours(&a, &label, Panne::Muette);
+                }
+            });
+        }
+    });
+    Ok(())
+}
+
+/// La page de la tour est en panne (5xx, vide, muette) : la fenêtre revient
+/// sur sa page embarquée, sans changer de visibilité (au démarrage de
+/// Windows, elle reste cachée). La principale y montre « Rémy ne répond pas
+/// encore » et réessaie seule toutes les 30 s ; Noter reprend sa page de
+/// secours (la note reste possible, gardée sur ce PC).
+pub fn vers_secours(app: &AppHandle, label: &str, panne: Panne) {
+    let etat = app.state::<Etat>();
+    nouvelle_navigation(&etat, label);
+    let page = if label == NOTER {
+        format!("noter.html?retour={}", panne.code())
+    } else {
+        etat.site_charge.store(false, Ordering::SeqCst);
+        format!("demarrage.html?injoignable={}", panne.code())
+    };
+    eprintln!("page de la tour en panne ({label}) : {}", panne.code());
+    if let Some(w) = app.get_webview_window(label) {
+        let _ = w.navigate(url_locale(&page));
+    }
 }
 
 /// La fenêtre principale revient sur la page de démarrage (pour changer
 /// l'adresse, ou réessayer).
 pub fn vers_demarrage(app: &AppHandle, changer: bool) {
     let page = if changer { "demarrage.html?changer=1" } else { "demarrage.html" };
-    app.state::<Etat>().site_charge.store(false, Ordering::SeqCst);
+    let etat = app.state::<Etat>();
+    etat.site_charge.store(false, Ordering::SeqCst);
+    nouvelle_navigation(&etat, PRINCIPALE);
     if let Some(w) = app.get_webview_window(PRINCIPALE) {
         let _ = w.navigate(url_locale(page));
     }
@@ -203,6 +321,7 @@ pub fn vers_demarrage(app: &AppHandle, changer: bool) {
     // Changer de tour : la Noter de la tour d'avant n'a plus lieu d'être,
     // retour à la page de secours (elle repassera sur le site de la nouvelle).
     if changer {
+        nouvelle_navigation(&etat, NOTER);
         if let Some(n) = app.get_webview_window(NOTER) {
             let _ = n.navigate(url_locale("noter.html"));
         }
@@ -277,9 +396,45 @@ mod tests {
     }
 
     #[test]
+    fn une_page_5xx_ou_vide_est_en_panne() {
+        assert_eq!(panne_de_page(502, false), Some(Panne::Statut(502)));
+        assert_eq!(panne_de_page(503, true), Some(Panne::Statut(503)));
+        assert_eq!(panne_de_page(0, true), Some(Panne::Vide), "WebKit : statut inconnu, page vide");
+        assert_eq!(panne_de_page(0, false), None, "WebKit : statut inconnu, page pleine");
+        assert_eq!(panne_de_page(200, true), None, "statut 2xx connu : le site décide");
+        assert_eq!(panne_de_page(200, false), None);
+        assert_eq!(panne_de_page(404, false), None);
+        assert_eq!(Panne::Statut(502).code(), "502");
+        assert_eq!(Panne::Muette.code(), "muette");
+    }
+
+    #[test]
+    fn le_garde_fou_ne_touche_qu_a_la_derniere_navigation_muette() {
+        let etat = Etat::nouveau(std::path::PathBuf::from("inutilise"), Default::default());
+        assert!(!navigation_muette(&etat, PRINCIPALE, 1), "aucune navigation encore");
+        let n1 = nouvelle_navigation(&etat, PRINCIPALE);
+        assert!(navigation_muette(&etat, PRINCIPALE, n1));
+        page_signalee(&etat, PRINCIPALE);
+        assert!(!navigation_muette(&etat, PRINCIPALE, n1), "la page s'est signalée");
+        let n2 = nouvelle_navigation(&etat, PRINCIPALE);
+        assert!(!navigation_muette(&etat, PRINCIPALE, n1), "une navigation plus récente existe");
+        assert!(navigation_muette(&etat, PRINCIPALE, n2));
+        assert!(!navigation_muette(&etat, NOTER, n2), "chaque fenêtre a ses navigations");
+    }
+
+    #[test]
+    fn le_script_de_controle_ne_vise_que_les_pages_de_la_tour() {
+        assert!(SCRIPT_CONTROLE.contains("bureau_page_chargee"));
+        assert!(SCRIPT_CONTROLE.contains("tauri.localhost"), "pages embarquées ignorées");
+        assert!(SCRIPT_CONTROLE.contains("window.top !== window"), "cadres ignorés");
+    }
+
+    #[test]
     fn les_pages_embarquees_sont_bien_locales() {
         assert!(adresse::est_page_locale(&url_locale("demarrage.html")));
         assert!(adresse::est_page_locale(&url_locale("demarrage.html?changer=1")));
         assert!(adresse::est_page_locale(&url_locale("noter.html")));
+        assert!(adresse::est_page_locale(&url_locale("demarrage.html?injoignable=502")));
+        assert!(adresse::est_page_locale(&url_locale("noter.html?retour=muette")));
     }
 }

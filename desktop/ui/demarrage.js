@@ -62,8 +62,35 @@ async function connecter(adresse) {
   montrerHorsLigne(adresse);
 }
 
-function montrerHorsLigne(adresse, texte) {
+const EXPLICATION_HORS_LIGNE = "Rémy vit sur ta tour. Vérifie qu'elle est allumée et que Tailscale est connecté sur ce PC.";
+
+/** `?injoignable=` posé par la coquille : la page de la tour n'a pas tenu. */
+function panneDeLaTour() {
+  const code = new URLSearchParams(location.search).get("injoignable");
+  if (!code) return null;
+  if (/^5\d\d$/.test(code)) {
+    return {
+      titre: "Rémy ne répond pas encore",
+      explication: `La tour répond, mais pas Rémy (erreur ${code}). À l'ouverture de session, il lui faut parfois une minute pour démarrer. S'il ne revient pas, relance la tâche « Rémy » sur la tour.`,
+    };
+  }
+  if (code === "muette") {
+    return {
+      titre: "La page de Rémy ne s'est pas chargée",
+      explication: "La tour a été jointe, mais la page n'est pas arrivée en 20 s. La connexion Tailscale est peut-être lente ou coupée.",
+    };
+  }
+  return {
+    titre: "Rémy ne répond pas encore",
+    explication: "La tour a renvoyé une page vide : Rémy démarre peut-être. S'il ne revient pas, relance la tâche « Rémy » sur la tour.",
+  };
+}
+
+function montrerHorsLigne(adresse, texte, panne) {
   $("hors-ligne-adresse").textContent = adresse;
+  $("hors-ligne-sur-titre").textContent = panne ? "Tour jointe" : "Hors ligne";
+  $("hors-ligne-titre").textContent = panne ? panne.titre : "La tour ne répond pas";
+  $("hors-ligne-explication").textContent = panne ? panne.explication : EXPLICATION_HORS_LIGNE;
   montrer("vue-hors-ligne");
   arreterCompte();
   let reste = REESSAI_AUTO_S;
@@ -173,7 +200,11 @@ async function demarrer() {
   if (lu.raccourciLibelle) $("raccourci").textContent = lu.raccourciLibelle;
   adresseCourante = lu.adresse;
   const changer = new URLSearchParams(location.search).has("changer");
+  const panne = panneDeLaTour();
   if (changer || !lu.adresse) montrerAdresse({ changer });
+  // Revenue de la tour en panne : pas de nouvel essai tout de suite (sinon
+  // aller-retour en boucle), le compte à rebours de 30 s s'en charge.
+  else if (panne) montrerHorsLigne(lu.adresse, null, panne);
   else connecter(lu.adresse);
 }
 

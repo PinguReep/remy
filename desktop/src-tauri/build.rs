@@ -10,6 +10,7 @@ const COMMANDES: &[&str] = &[
     "bureau_changer_adresse",
     "bureau_notes_attente",
     "bureau_notes_acquitter",
+    "bureau_page_chargee",
     "bureau_adresse_lire",
     "bureau_adresse_normaliser",
     "bureau_adresse_enregistrer",

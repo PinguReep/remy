@@ -6,6 +6,7 @@
 //! global « Noter », le démarrage avec Windows, des notifications natives.
 //! Conception et contrat avec le site : `docs/bureau.md`.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
@@ -34,6 +35,9 @@ pub struct Etat {
     pub raccourci_erreur: Mutex<Option<String>>,
     /// Le site a répondu au moins une fois dans la fenêtre principale.
     pub site_charge: AtomicBool,
+    /// Par fenêtre : la dernière navigation vers la tour, et si sa page s'est
+    /// signalée (voir `fenetres::vers_tour`, garde-fou de 20 s).
+    pub navigations: Mutex<HashMap<String, fenetres::Navigation>>,
     pub notifs: Mutex<commandes::Notifs>,
     pub menu: Mutex<Option<zone::MenuZone>>,
     /// Quand la fenêtre principale a perdu le focus : un clic sur l'icône le
@@ -50,6 +54,7 @@ impl Etat {
             raccourci_actif: Mutex::new(None),
             raccourci_erreur: Mutex::new(None),
             site_charge: AtomicBool::new(false),
+            navigations: Mutex::new(HashMap::new()),
             notifs: Mutex::new(commandes::Notifs::default()),
             menu: Mutex::new(None),
             principale_quittee_a: Mutex::new(None),
@@ -194,6 +199,7 @@ pub fn run() {
             commandes::bureau_changer_adresse,
             commandes::bureau_notes_attente,
             commandes::bureau_notes_acquitter,
+            commandes::bureau_page_chargee,
             commandes::bureau_adresse_lire,
             commandes::bureau_adresse_normaliser,
             commandes::bureau_adresse_enregistrer,

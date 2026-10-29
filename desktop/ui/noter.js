@@ -16,8 +16,12 @@ const AIDE = $("message").innerHTML;
 let adresse = null;
 let enCours = false;
 // La fenêtre est créée cachée ; la coquille la montre (bureau://noter-ouvert)
-// et la cache dès qu'elle perd le focus.
-let visible = false;
+// et la cache dès qu'elle perd le focus. Revenue ici pendant qu'on la
+// regardait (page de la tour en panne), elle a déjà le focus.
+let visible = document.hasFocus();
+// `?retour=502` : la coquille vient de nous ramener de la tour en panne. Pas de
+// nouvel essai tout de suite (sinon aller-retour en boucle) : celui de la minute.
+const retour = new URLSearchParams(location.search).get("retour");
 
 function message(texte, genre) {
   const el = $("message");
@@ -32,9 +36,10 @@ function aide() {
 }
 
 function etat(enAttente) {
+  const quoi = retour ? "Rémy ne répond pas" : "Hors ligne";
   $("etat").textContent = enAttente > 0
-    ? `Hors ligne · ${enAttente} en attente`
-    : "Hors ligne · gardée sur ce PC";
+    ? `${quoi} · ${enAttente} en attente`
+    : `${quoi} · gardée sur ce PC`;
 }
 
 async function sonder() {
@@ -111,7 +116,8 @@ async function demarrer() {
       etat(await invoke("bureau_notes_locales_compte"));
     } catch { /* rien */ }
   });
-  passerSurLeSiteSiPossible();
+  if (visible) $("champ").focus();
+  if (!retour) passerSurLeSiteSiPossible();
   setInterval(passerSurLeSiteSiPossible, RESONDE_MS);
 }
 

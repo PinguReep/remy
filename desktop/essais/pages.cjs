@@ -2,6 +2,10 @@
 // faux window.__TAURI__ qui enregistre les invoke et une fausse tour locale :
 // premier lancement, adresse invalide, tour injoignable, « Garder quand
 // même », Réessayer, Changer l'adresse, Noter de secours ; à 1280 et 420 px.
+// Puis le retour d'une page de la tour en panne (?injoignable=502,
+// ?retour=502 : pas de nouvel essai immédiat) et le script de contrôle
+// injecté par la coquille (src-tauri/src/controle.js) : statut HTTP lu par
+// Chromium, page vide, cadres ignorés.
 //
 //   node desktop/essais/pages.cjs [dossier-des-captures]
 //
@@ -186,6 +190,84 @@ const commandes = (page) => page.evaluate(() => window.__journal.map((j) => j[0]
   verifier("Noter : cachée et tour revenue → passe sur le site", true);
   verifier("Noter : aucune erreur JS", erreursJS.length === 0);
   await ctx.close();
+
+  // 5. Revenue de la tour en panne : message clair, pas d'aller-retour immédiat.
+  for (const [l, h] of [[1280, 800], [420, 560]]) {
+    tourAllumee = true;
+    ctx = await navigateur.newContext({ viewport: { width: l, height: h } });
+    await ctx.addInitScript(fauxTauri({ adresse: adresseTour }));
+    page = await ctx.newPage();
+    const erreurs = [];
+    page.on("pageerror", (e) => erreurs.push(e.message));
+    await page.goto(`${baseUI}/demarrage.html?injoignable=502`);
+    await page.waitForSelector("#vue-hors-ligne:not([hidden])");
+    verifier(`${l}px 502 : « Rémy ne répond pas encore »`, (await page.textContent("#hors-ligne-titre")) === "Rémy ne répond pas encore");
+    verifier(`${l}px 502 : l'erreur et quoi faire`, /erreur 502.*relance la tâche « Rémy »/.test(await page.textContent("#hors-ligne-explication")));
+    verifier(`${l}px 502 : compte à rebours`, /dans \d+ s/.test(await page.textContent("#reessai-message")));
+    await page.waitForTimeout(1500);
+    verifier(`${l}px 502 : pas de nouvel essai immédiat (pas de boucle)`, !(await commandes(page)).includes("bureau_aller_tour"));
+    await page.screenshot({ path: path.join(SORTIE, `demarrage-502-${l}.png`) });
+    await page.click("#bouton-reessayer");
+    await page.waitForFunction(() => window.__journal.some((j) => j[0] === "bureau_aller_tour"));
+    verifier(`${l}px 502 : Réessayer → bureau_aller_tour`, true);
+    await page.goto(`${baseUI}/demarrage.html?injoignable=muette`);
+    await page.waitForSelector("#vue-hors-ligne:not([hidden])");
+    verifier(`${l}px page muette : son propre message`, (await page.textContent("#hors-ligne-titre")).includes("ne s'est pas chargée"));
+    // Puis la tour coupée pour de bon : retour au message « hors ligne ».
+    tourAllumee = false;
+    await page.click("#bouton-reessayer");
+    await page.waitForFunction(() => /toujours pas de réponse/.test(document.getElementById("reessai-message").textContent), null, { timeout: 8000 });
+    verifier(`${l}px puis tour coupée : « La tour ne répond pas »`, (await page.textContent("#hors-ligne-titre")) === "La tour ne répond pas");
+    verifier(`${l}px 502 : aucune erreur JS`, erreurs.length === 0);
+    await ctx.close();
+  }
+  tourAllumee = true;
+  ctx = await navigateur.newContext({ viewport: { width: 560, height: 300 } });
+  await ctx.addInitScript(fauxTauri({ adresse: adresseTour }));
+  page = await ctx.newPage();
+  await page.goto(`${baseUI}/noter.html?retour=502`);
+  await page.waitForFunction(() => window.__journal.some((j) => j[0] === "bureau_notes_locales_compte"));
+  await page.waitForTimeout(1500);
+  verifier("Noter ?retour=502 : pas de nouvel essai immédiat", !(await commandes(page)).includes("bureau_aller_tour"));
+  verifier("Noter ?retour=502 : « Rémy ne répond pas »", (await page.textContent("#etat")).startsWith("Rémy ne répond pas"));
+  await ctx.close();
+
+  // 6. Le script de contrôle de la coquille, dans Chromium (comme WebView2).
+  const controle = fs.readFileSync(path.resolve(__dirname, "..", "src-tauri", "src", "controle.js"), "utf8");
+  const tourControle = await new Promise((ok) => {
+    const s = http.createServer((req, res) => {
+      const u = new URL(req.url, "http://x").pathname;
+      if (u === "/panne") { res.writeHead(502, { "content-type": "text/plain" }); return res.end("Bad Gateway"); }
+      if (u === "/vide") { res.writeHead(200, { "content-type": "text/html" }); return res.end(""); }
+      if (u === "/cadre") { res.writeHead(200, { "content-type": "text/html" }); return res.end('<p>avec un cadre</p><iframe src="/ok"></iframe>'); }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<!doctype html><title>Rémy</title><div id=app>R</div>");
+    }).listen(0, "127.0.0.1", () => ok(s));
+  });
+  const baseControle = `http://127.0.0.1:${tourControle.address().port}`;
+  ctx = await navigateur.newContext();
+  await ctx.addInitScript(() => {
+    window.__signaux = [];
+    window.__TAURI_INTERNALS__ = { invoke: async (cmd, args) => { window.__signaux.push([cmd, args]); return null; } };
+  });
+  await ctx.addInitScript(controle);
+  page = await ctx.newPage();
+  const signaux = async (chemin) => {
+    await page.goto(baseControle + chemin);
+    await page.waitForLoadState("load");
+    await page.waitForTimeout(300);
+    return page.evaluate(() => window.__signaux);
+  };
+  let sx = await signaux("/ok");
+  verifier("contrôle : page normale → statut 200, pas vide", sx.length === 1 && sx[0][0] === "bureau_page_chargee" && sx[0][1].statut === 200 && sx[0][1].vide === false);
+  sx = await signaux("/panne");
+  verifier("contrôle : réponse 502 (même avec un corps) → statut 502", sx.length === 1 && sx[0][1].statut === 502);
+  sx = await signaux("/vide");
+  verifier("contrôle : page vide signalée vide", sx.length === 1 && sx[0][1].vide === true);
+  sx = await signaux("/cadre");
+  verifier("contrôle : un seul signal, les cadres sont ignorés", sx.length === 1 && sx[0][1].statut === 200);
+  await ctx.close();
+  tourControle.close();
 
   await navigateur.close();
   ui.close(); tour.close();

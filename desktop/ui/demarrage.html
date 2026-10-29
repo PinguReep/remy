@@ -41,12 +41,13 @@
       </form>
     </section>
 
-    <!-- Tour injoignable : l'adresse, quoi vérifier, Réessayer. -->
+    <!-- Tour injoignable, ou Rémy arrêté derrière (?injoignable=502 : la
+         coquille y revient d'elle-même) : l'adresse, quoi vérifier, Réessayer. -->
     <section id="vue-hors-ligne" class="carte" hidden>
-      <p class="sur-titre alerte">Hors ligne</p>
-      <h1>La tour ne répond pas</h1>
+      <p class="sur-titre alerte" id="hors-ligne-sur-titre">Hors ligne</p>
+      <h1 id="hors-ligne-titre">La tour ne répond pas</h1>
       <p class="adresse mono" id="hors-ligne-adresse"></p>
-      <p>Rémy vit sur ta tour. Vérifie qu'elle est allumée et que Tailscale est connecté sur ce PC.</p>
+      <p id="hors-ligne-explication">Rémy vit sur ta tour. Vérifie qu'elle est allumée et que Tailscale est connecté sur ce PC.</p>
       <div class="actions">
         <button type="button" class="bouton signal" id="bouton-reessayer">Réessayer</button>
         <button type="button" class="bouton" id="bouton-changer">Changer l'adresse</button>
