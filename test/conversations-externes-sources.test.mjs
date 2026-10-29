@@ -432,6 +432,9 @@ test("Téléchargements : coupable dans l'app, REMY_TELECHARGEMENTS (plusieurs d
 });
 
 test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus de 30 jours ; coupable ; un export qui attend la fait taire", async () => {
+  // L'iPhone montre ces réglages et leur tutoriel seulement sur une tour qui les annonce.
+  const { CAPACITES } = await import("../lib/version.js");
+  assert.ok(CAPACITES.includes("conversations-externes-v2"));
   let e = await etat();
   assert.equal(e.chatgpt.rappel.aMontrer, false, "importé aujourd'hui");
   assert.equal(e.chatgpt.rappel.lien, "https://chatgpt.com/#settings/DataControls");

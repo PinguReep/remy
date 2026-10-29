@@ -43,10 +43,24 @@ public struct SourceConversations: Codable, Equatable, Identifiable, Sendable {
     public var derniereConversation: Millis?
     public var erreur: ProblemeSource?
     public var aide: ProblemeSource?
+    /// Ce que la dernière lecture a vu (soir du 29/10) : « 312 sessions : 280
+    /// lues, 30 d'un seul échange… ». Une tour plus ancienne ne le dit pas.
+    public var recensement: Recensement?
+
+    /// La phrase vient de la tour (la même pour le site) ; le reste, des compteurs.
+    public struct Recensement: Codable, Equatable, Sendable {
+        public var phrase: String?
+        public init(phrase: String? = nil) { self.phrase = phrase }
+        enum CodingKeys: String, CodingKey { case phrase }
+        public init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            phrase = try? c.decodeIfPresent(String.self, forKey: .phrase)
+        }
+    }
 
     public init(id: String, nom: String, actif: Bool = true, forceParLaTour: Bool = false, disponible: Bool = true, emplacements: [Emplacement] = [],
                 derniereLecture: Millis? = nil, derniereReussie: Millis? = nil, conversations: Int = 0, messages: Int = 0,
-                derniereConversation: Millis? = nil, erreur: ProblemeSource? = nil, aide: ProblemeSource? = nil) {
+                derniereConversation: Millis? = nil, erreur: ProblemeSource? = nil, aide: ProblemeSource? = nil, recensement: Recensement? = nil) {
         self.id = id
         self.nom = nom
         self.actif = actif
@@ -60,10 +74,11 @@ public struct SourceConversations: Codable, Equatable, Identifiable, Sendable {
         self.derniereConversation = derniereConversation
         self.erreur = erreur
         self.aide = aide
+        self.recensement = recensement
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, nom, actif, forceParLaTour, disponible, emplacements, derniereLecture, derniereReussie, conversations, messages, derniereConversation, erreur, aide
+        case id, nom, actif, forceParLaTour, disponible, emplacements, derniereLecture, derniereReussie, conversations, messages, derniereConversation, erreur, aide, recensement
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -80,6 +95,14 @@ public struct SourceConversations: Codable, Equatable, Identifiable, Sendable {
         derniereConversation = try? c.decodeIfPresent(Millis.self, forKey: .derniereConversation)
         erreur = try? c.decodeIfPresent(ProblemeSource.self, forKey: .erreur)
         aide = try? c.decodeIfPresent(ProblemeSource.self, forKey: .aide)
+        recensement = try? c.decodeIfPresent(Recensement.self, forKey: .recensement)
+    }
+
+    /// « 312 sessions : 280 lues, 30 d'un seul échange… », s'il dit autre chose
+    /// que la ligne d'état.
+    public var phraseRecensement: String? {
+        guard let p = recensement?.phrase, !p.isEmpty, p != phrase() else { return nil }
+        return p
     }
 
     /// Une ligne d'état : « Lue à 14:20 · 42 conversations », ou ce qui ne va pas.
@@ -162,20 +185,85 @@ public struct EtatConversations: Codable, Equatable, Sendable {
     public var sources: [SourceConversations]
     public var usage: UsageConversations
     public var chiffre: Bool
+    /// L'export ChatGPT automatique (soir du 29/10) : Téléchargements surveillé,
+    /// et la carte « Exporter ChatGPT ». nil : la tour ne le connaît pas encore.
+    public struct ExportChatGPT: Codable, Equatable, Sendable {
+        public struct Telechargements: Codable, Equatable, Sendable {
+            public struct Dossier: Codable, Equatable, Sendable {
+                public var chemin: String
+                public var trouve: Bool
+                public init(chemin: String, trouve: Bool = true) {
+                    self.chemin = chemin
+                    self.trouve = trouve
+                }
+            }
+            public var actif: Bool
+            public var forceParLaTour: Bool
+            public var dossiers: [Dossier]
+            public var joursMax: Int
+            public init(actif: Bool = true, forceParLaTour: Bool = false, dossiers: [Dossier] = [], joursMax: Int = 90) {
+                self.actif = actif
+                self.forceParLaTour = forceParLaTour
+                self.dossiers = dossiers
+                self.joursMax = joursMax
+            }
+            enum CodingKeys: String, CodingKey { case actif, forceParLaTour, dossiers, joursMax }
+            public init(from d: Decoder) throws {
+                let c = try d.container(keyedBy: CodingKeys.self)
+                actif = (try? c.decodeIfPresent(Bool.self, forKey: .actif)) ?? false
+                forceParLaTour = (try? c.decodeIfPresent(Bool.self, forKey: .forceParLaTour)) ?? false
+                dossiers = (try? c.decodeIfPresent([Dossier].self, forKey: .dossiers)) ?? []
+                joursMax = (try? c.decodeIfPresent(Int.self, forKey: .joursMax)) ?? 90
+            }
+        }
+        public struct Rappel: Codable, Equatable, Sendable {
+            public var actif: Bool
+            public var aMontrer: Bool
+            public var dernierImport: Millis?
+            public var depuisJours: Int?
+            public var lien: String?
+            public init(actif: Bool = true, aMontrer: Bool = false, dernierImport: Millis? = nil, depuisJours: Int? = nil, lien: String? = nil) {
+                self.actif = actif
+                self.aMontrer = aMontrer
+                self.dernierImport = dernierImport
+                self.depuisJours = depuisJours
+                self.lien = lien
+            }
+            enum CodingKeys: String, CodingKey { case actif, aMontrer, dernierImport, depuisJours, lien }
+            public init(from d: Decoder) throws {
+                let c = try d.container(keyedBy: CodingKeys.self)
+                actif = (try? c.decodeIfPresent(Bool.self, forKey: .actif)) ?? false
+                aMontrer = (try? c.decodeIfPresent(Bool.self, forKey: .aMontrer)) ?? false
+                dernierImport = try? c.decodeIfPresent(Millis.self, forKey: .dernierImport)
+                depuisJours = try? c.decodeIfPresent(Int.self, forKey: .depuisJours)
+                lien = try? c.decodeIfPresent(String.self, forKey: .lien)
+            }
+        }
+        public var telechargements: Telechargements?
+        public var rappel: Rappel?
+        public init(telechargements: Telechargements? = nil, rappel: Rappel? = nil) {
+            self.telechargements = telechargements
+            self.rappel = rappel
+        }
+    }
+
     public var cle: Cle?
     public var imports: Imports?
     public var total: Total
+    public var chatgpt: ExportChatGPT?
 
-    public init(sources: [SourceConversations], usage: UsageConversations = UsageConversations(), chiffre: Bool = true, cle: Cle? = nil, imports: Imports? = nil, total: Total? = nil) {
+    public init(sources: [SourceConversations], usage: UsageConversations = UsageConversations(), chiffre: Bool = true, cle: Cle? = nil, imports: Imports? = nil, total: Total? = nil,
+                chatgpt: ExportChatGPT? = nil) {
         self.sources = sources
         self.usage = usage
         self.chiffre = chiffre
         self.cle = cle
         self.imports = imports
         self.total = total ?? Total(conversations: sources.reduce(0) { $0 + $1.conversations }, messages: sources.reduce(0) { $0 + $1.messages })
+        self.chatgpt = chatgpt
     }
 
-    enum CodingKeys: String, CodingKey { case sources, usage, chiffre, cle, imports, total }
+    enum CodingKeys: String, CodingKey { case sources, usage, chiffre, cle, imports, total, chatgpt }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         sources = (try? c.decodeIfPresent([SourceConversations].self, forKey: .sources)) ?? []
@@ -185,6 +273,7 @@ public struct EtatConversations: Codable, Equatable, Sendable {
         imports = try? c.decodeIfPresent(Imports.self, forKey: .imports)
         total = (try? c.decodeIfPresent(Total.self, forKey: .total))
             ?? Total(conversations: sources.reduce(0) { $0 + $1.conversations }, messages: sources.reduce(0) { $0 + $1.messages })
+        chatgpt = try? c.decodeIfPresent(ExportChatGPT.self, forKey: .chatgpt)
     }
 
     public func source(_ id: String) -> SourceConversations? { sources.first { $0.id == id } }
@@ -446,9 +535,56 @@ public struct LigneConversations: Codable, Equatable, Sendable {
     }
 }
 
+/// La carte « Exporter ChatGPT » (soir du 29/10).
+public struct CarteExportChatGPT: Equatable, Sendable {
+    public var titre: String
+    public var texte: String
+    public var detail: String
+    public var lien: URL
+    public var bouton: String
+    public var apresOuverture: String
+}
+
 public enum ConversationsExternes {
     public static let capacite = "conversations-externes-v1"
+    /// Téléchargements surveillé, la carte « Exporter ChatGPT », le recensement.
+    public static let capaciteExport = "conversations-externes-v2"
     public static let sources = ["claude-code", "t3", "chatgpt"]
+    public static let lienExportChatGPT = URL(string: "https://chatgpt.com/#settings/DataControls")!
+
+    /// Ce que l'interrupteur « Téléchargements » dit sous son titre.
+    public static func phraseTelechargements(_ t: EtatConversations.ExportChatGPT.Telechargements?) -> String? {
+        guard let t else { return nil }
+        if t.forceParLaTour { return "Coupé sur la tour (REMY_TELECHARGEMENTS=off)." }
+        let ou = t.dossiers.map(\.chemin).filter { !$0.isEmpty }.joined(separator: ", ")
+        return "Rémy regarde \(ou.isEmpty ? "Téléchargements" : ou) en lecture seule : il n'y prend que les exports ChatGPT de moins de \(t.joursMax) jours, sans jamais rien y déplacer ni effacer."
+    }
+
+    /// La carte, ou nil : la tour dit quand la montrer (dernier import de plus
+    /// de 30 jours, ou jamais, la source allumée).
+    public static func carteExportChatGPT(_ e: EtatConversations?) -> CarteExportChatGPT? {
+        guard let r = e?.chatgpt?.rappel, r.aMontrer else { return nil }
+        let t = e?.chatgpt?.telechargements
+        let dansTelechargements = (t?.actif ?? false) && !(t?.dossiers.isEmpty ?? true)
+        let detail: String
+        if r.dernierImport == nil || r.depuisJours == nil {
+            detail = "Aucun export importé pour l'instant."
+        } else {
+            let j = r.depuisJours ?? 0
+            detail = "Dernier import il y a \(j) jour\(j > 1 ? "s" : "")."
+        }
+        var lien = lienExportChatGPT
+        if let l = r.lien, l.hasPrefix("https://chatgpt.com/"), let u = URL(string: l) { lien = u }
+        return CarteExportChatGPT(
+            titre: "Exporter ChatGPT",
+            texte: dansTelechargements
+                ? "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements."
+                : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
+            detail: detail,
+            lien: lien,
+            bouton: "Ouvrir ChatGPT",
+            apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.")
+    }
 
     public static func nomSource(_ id: String) -> String {
         switch id {
@@ -571,6 +707,14 @@ extension ClientAPI {
 
     public func reglerSourceConversations(_ id: String, actif: Bool) async throws -> EtatConversations {
         try await json(EtatConversations.self, "api/conversations-externes/sources/\(id)", methode: "PUT", corps: ["actif": actif])
+    }
+
+    /// Les deux réglages de l'import ChatGPT : surveiller Téléchargements, rappeler d'exporter.
+    public func reglerExportChatGPT(telechargements: Bool? = nil, rappel: Bool? = nil) async throws -> EtatConversations {
+        var corps: [String: Any] = [:]
+        if let telechargements { corps["telechargements"] = telechargements }
+        if let rappel { corps["rappel"] = rappel }
+        return try await json(EtatConversations.self, "api/conversations-externes/sources/chatgpt", methode: "PUT", corps: corps)
     }
 
     public func effacerSourceConversations(_ id: String) async throws -> (message: String?, etat: EtatConversations?) {
@@ -820,6 +964,22 @@ public final class ConversationsExternesModel {
             return r.message ?? "Tout est effacé de la tour."
         }
     }
+
+    /// Surveiller Téléchargements, rappeler d'exporter : ce que le geste a fait, dit.
+    @discardableResult
+    public func reglerExportChatGPT(telechargements: Bool? = nil, rappel: Bool? = nil) async -> Bool {
+        await geste {
+            self.etat = try await self.api.reglerExportChatGPT(telechargements: telechargements, rappel: rappel)
+            if let telechargements {
+                return telechargements ? "Rémy prend de nouveau l'export ChatGPT dans Téléchargements." : "Téléchargements n'est plus surveillé : envoie l'export depuis « Importer »."
+            }
+            if let rappel { return rappel ? "Rappel d'export allumé : une carte quand ton dernier export a plus de 30 jours." : "Plus de rappel d'export. Il se rallume dans Sources." }
+            return "Réglé."
+        }
+    }
+
+    /// La carte « Exporter ChatGPT » de l'écran Conversations, ou nil.
+    public var carteExport: CarteExportChatGPT? { ConversationsExternes.carteExportChatGPT(etat) }
 
     @discardableResult
     public func reglerUsage(chat: Bool? = nil, nuit: Bool? = nil) async -> Bool {

@@ -84,6 +84,7 @@ struct ConversationsExternesVue: View {
                         resultats(r)
                     } else {
                         if let p = m.etat?.probleme { probleme(p) }
+                        if m.filtre == nil || m.filtre == "chatgpt", let c = m.carteExport { CarteExportChatGPTVue(carte: c) }
                         if m.filtre == nil, let d = m.digest, !d.vide { CarteNuitConversations(digest: d) }
                         liste
                     }
@@ -756,6 +757,7 @@ struct ChoixJourConversations: View {
 struct SourcesConversationsVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
+    @Environment(\.openURL) private var ouvrirURL
     /// Ouverte depuis Réglages : sa propre pile et un bouton « OK ».
     var dansFeuille = false
     @State private var aEffacer: SourceConversations?
@@ -844,6 +846,11 @@ struct SourcesConversationsVue: View {
             .frame(minHeight: 60)
             .disabled(s.forceParLaTour || m.enCours)
             .accessibilityIdentifier("sources.\(s.id)")
+            // Ce que la dernière lecture a vu (« 312 sessions : 280 lues… »).
+            if let r = s.phraseRecensement {
+                Text(r).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sources.recensement.\(s.id)")
+            }
             if let q = (s.erreur ?? s.aide)?.quoiFaire {
                 Text(q).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
             }
@@ -886,6 +893,7 @@ struct SourcesConversationsVue: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("sources.originaux")
                 }
+                reglagesExport(m.etat?.chatgpt)
             }
             if s.actif {
                 Button {
@@ -908,6 +916,57 @@ struct SourcesConversationsVue: View {
             }
         } header: {
             Text(s.nom)
+        }
+    }
+
+    /// Les deux réglages de l'import ChatGPT (soir du 29/10), et la page
+    /// d'export. Une tour plus ancienne ne les connaît pas : rien.
+    @ViewBuilder
+    private func reglagesExport(_ e: EtatConversations.ExportChatGPT?) -> some View {
+        let m = app.conversationsExternes
+        if let t = e?.telechargements {
+            Toggle(isOn: Binding(get: { t.actif }, set: { oui in
+                Haptique.leger()
+                Task { await m.reglerExportChatGPT(telechargements: oui) }
+            })) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Prendre l'export dans Téléchargements").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    if let p = ConversationsExternes.phraseTelechargements(t) {
+                        Text(p).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .tint(Palette.signal)
+            .frame(minHeight: 60)
+            .disabled(t.forceParLaTour || m.enCours)
+            .accessibilityIdentifier("sources.telechargements")
+            .repere("Prendre l'export dans Téléchargements", dans: .sourcesConversations)
+        }
+        if let r = e?.rappel {
+            Toggle(isOn: Binding(get: { r.actif }, set: { oui in
+                Haptique.leger()
+                Task { await m.reglerExportChatGPT(rappel: oui) }
+            })) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Me rappeler d'exporter ChatGPT").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    Text("Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail, Rémy fait le reste.")
+                        .font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.signal)
+            .frame(minHeight: 60)
+            .disabled(m.enCours)
+            .accessibilityIdentifier("sources.rappel-export")
+            .repere("Me rappeler d'exporter ChatGPT", dans: .sourcesConversations)
+        }
+        if e != nil {
+            Button {
+                ouvrirURL(ConversationsExternes.lienExportChatGPT)
+                app.dire("Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.")
+            } label: {
+                Label("Demander un export à ChatGPT", systemImage: "arrow.up.right.square").frame(minHeight: 44)
+            }
+            .accessibilityIdentifier("sources.demander-export")
         }
     }
 
@@ -961,6 +1020,51 @@ struct SourcesConversationsVue: View {
         } header: {
             Text("Vie privée")
         }
+    }
+}
+
+/// La carte « Exporter ChatGPT » (soir du 29/10) : la tour dit quand la
+/// montrer (dernier import de plus de 30 jours, ou jamais). Le bouton ouvre
+/// la page d'export de ChatGPT ; Rémy ne s'y connecte jamais : le mail
+/// arrive, tu cliques son lien sur l'ordinateur, Rémy prend le .zip dans
+/// Téléchargements.
+struct CarteExportChatGPTVue: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.openURL) private var ouvrirURL
+    let carte: CarteExportChatGPT
+
+    var body: some View {
+        let m = app.conversationsExternes
+        VStack(alignment: .leading, spacing: 10) {
+            Label("ChatGPT", systemImage: ConversationsExternes.symbole("chatgpt"))
+                .font(Police.mono(12, .medium))
+                .foregroundStyle(Palette.encre2)
+            Text(carte.titre)
+                .font(Police.titre(20))
+                .foregroundStyle(Palette.encre)
+            Text(carte.texte)
+                .font(Police.texte(15))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(carte.detail)
+                .font(Police.texte(13))
+                .foregroundStyle(Palette.encre3)
+            BoutonA(titre: carte.bouton, symbole: "arrow.up.right.square") {
+                Haptique.leger()
+                ouvrirURL(carte.lien)
+                app.dire(carte.apresOuverture)
+            }
+            .accessibilityIdentifier("conversations.exporter")
+            LienTexte(titre: "Ne plus me le rappeler") {
+                Task { await m.reglerExportChatGPT(rappel: false) }
+            }
+            .disabled(m.enCours)
+            .accessibilityIdentifier("conversations.exporter.couper")
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .carte(rayon: 18)
+        .padding(.horizontal, 16)
     }
 }
 
