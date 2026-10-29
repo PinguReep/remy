@@ -13,7 +13,7 @@
 // /api/dashboard : aujourdhui.js le lui passe. Aucun appel IA ici : « En
 // parler à Rémy » prépare la question sans l'envoyer ; « Organiser ma
 // journée » l'envoie, le clic étant le geste (contrat C).
-import { api, ecrire, remplacer, nouvelId, sait } from "../api.js";
+import { api, ecrire, remplacer, nouvelId, sait, evenements } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, texteErreur, squelette, blocErreur, vide, occupe, local, feuille, isoLocal, markdown } from "../ui.js";
 import * as R from "../analyse/rituel.js";
 import { nomSource } from "../analyse/conversations.js";
@@ -30,6 +30,13 @@ const lu = { rituel: null, luA: null, essaiA: -Infinity, erreur: null, chargemen
 const surcharges = new Map(); // id du sujet → { etat, a }
 const enVol = new Set(); // sujets dont l'écriture est en route
 const bilan = { jour: null, poussees: new Set(), pousse: false, envoi: false, brouillon: "" };
+
+// Session perdue : l'écran de connexion prend la place ; une feuille restée
+// ouverte le masquerait (main.js ne connaît pas les feuilles des modules).
+const feuillesOuvertes = new Set();
+evenements.addEventListener("session-perdue", () => {
+  for (const f of [...feuillesOuvertes]) f.fermer();
+});
 
 const CLE_BILAN = "remy-bilan";
 const CLE_PROPOSITION = "remy-proposition-rituel";
@@ -319,11 +326,13 @@ export function creerBoite(ctx, { relire } = {}) {
       classe: "boite-dialog",
       contenu: corps,
       surFermeture: () => {
+        feuillesOuvertes.delete(f);
         ouverte = null;
         // Le focus revient d'où on venait (redessiné entre-temps : le bouton de la boîte).
         if (document.activeElement === document.body || !document.activeElement) (retour?.isConnected ? retour : btn).focus();
       },
     });
+    feuillesOuvertes.add(f);
     ouverte = { f, corps };
     dessinerFeuille();
     corps.focus();
@@ -522,7 +531,8 @@ export function creerBoite(ctx, { relire } = {}) {
   // --- « Cette nuit, je creuse aussi ? » (notification d'une proposition de nuit) ---
   function ouvrirNuit(id) {
     const corps = h("div", { class: "boite-nuit", tabindex: "-1", autofocus: true }, squelette([0.8, 0.5]));
-    const f = feuille({ titre: "Cette nuit, je creuse aussi ?", contenu: corps });
+    const f = feuille({ titre: "Cette nuit, je creuse aussi ?", contenu: corps, surFermeture: () => feuillesOuvertes.delete(f) });
+    feuillesOuvertes.add(f);
     let restantes = [];
     let regles = [];
     const plusTard = (p) => {

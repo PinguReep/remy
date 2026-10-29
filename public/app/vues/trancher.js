@@ -6,7 +6,7 @@
 // Rafraîchir), /api/revue à l'ouverture de la revue ; jamais /api/dashboard.
 // Un geste par ligne, par les chemins qui existent déjà, et chacun s'annule
 // depuis son bandeau. Aucun appel IA.
-import { api, ecrire, remplacer, nouvelId, seg, sait } from "../api.js";
+import { api, ecrire, remplacer, nouvelId, seg, sait, evenements } from "../api.js";
 import { h, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, local, feuille } from "../ui.js";
 import * as R from "../analyse/rituel.js";
 import { couleurProjet } from "../couleurs.js";
@@ -28,6 +28,11 @@ const masquees = new Set(); // lignes réglées ici (elles reviennent si « Annu
 const enCours = new Set(); // lignes dont le geste est en route
 const enSuppression = new Set(); // fils qui attendent leur suppression
 const revue = { donnees: null, chargement: false, erreur: null };
+// Session perdue : l'écran de connexion prend la place, la feuille ouverte se ferme.
+const feuillesOuvertes = new Set();
+evenements.addEventListener("session-perdue", () => {
+  for (const f of [...feuillesOuvertes]) f.fermer();
+});
 
 function lireTour() {
   if (lu.lecture) return lu.lecture;
@@ -173,6 +178,7 @@ export function creerTrancher(ctx, { relire } = {}) {
     const f = feuille({
       titre, sousTitre, large: true, classe: "trancher-dialog", contenu: corps, pied, avantFermeture,
       surFermeture: () => {
+        feuillesOuvertes.delete(f);
         if (ouverte?.f === f) ouverte = null;
         // Le focus revient d'où on venait ; redessiné entre-temps, sur la carte.
         if (document.activeElement === document.body || !document.activeElement) (retour?.isConnected ? retour : carte.querySelector("button"))?.focus();
@@ -198,6 +204,7 @@ export function creerTrancher(ctx, { relire } = {}) {
         (b || corps).focus({ preventScroll: false });
       },
     };
+    feuillesOuvertes.add(f);
     ouverte = o;
     o.dessiner();
     corps.focus();
