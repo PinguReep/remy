@@ -90,7 +90,9 @@ envoi. Chaque source se coupe dans l'app, ou sur la tour.
 `remy.env`, **hors du coffre** (qui peut être copié ou synchronisé). Perdue ou
 changée : la base devient illisible — l'état le dit (`cle.erreur`),
 « Tout effacer » puis « Lire maintenant » relit Claude Code et T3 ; un export
-ChatGPT se réenvoie. Garde-en une copie avec celle des sauvegardes si tu veux
+ChatGPT se réenvoie. Les conversations de Rémy scellées avec elle (celles qui citaient ces
+passages, ou importées) restent alors « illisibles » — jamais réécrites :
+la bonne clé remise, elles reviennent. Garde-en une copie avec celle des sauvegardes si tu veux
 pouvoir restaurer la base telle quelle.
 
 ## Le contrat de l'API

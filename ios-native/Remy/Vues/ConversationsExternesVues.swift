@@ -66,7 +66,20 @@ struct ConversationsExternesVue: View {
                 } else {
                     champRecherche
                     filtres
-                    if m.resultats == nil, let j = m.jour { jourChoisi(j) }
+                    if m.resultats == nil {
+                        if let j = m.jour {
+                            jourChoisi(j)
+                        } else {
+                            // Aller à une date sans dérouler des pages (contre-relecture du 29/10).
+                            LienTexte(titre: "Aller à un jour") {
+                                Haptique.leger()
+                                joursOuverts = true
+                            }
+                            .accessibilityIdentifier("conversations.jour")
+                            .padding(.horizontal, 22)
+                            .padding(.top, -8)
+                        }
+                    }
                     if let r = m.resultats {
                         resultats(r)
                     } else {
@@ -101,14 +114,21 @@ struct ConversationsExternesVue: View {
         .onDisappear { recherche?.cancel() }
     }
 
-    /// Le jour choisi, et comment revenir à tous.
+    /// Le jour choisi, en changer, ou revenir à tous.
     private func jourChoisi(_ j: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "calendar").foregroundStyle(Palette.signal)
+        HStack(spacing: 6) {
+            Image(systemName: "calendar").foregroundStyle(Palette.signal).accessibilityHidden(true)
             Text(ConversationsExternes.titreJour(iso: j))
                 .font(Police.texte(16, .semibold))
                 .foregroundStyle(Palette.encre)
-            Spacer(minLength: 4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 2)
+            BoutonTexte("Changer") {
+                Haptique.leger()
+                joursOuverts = true
+            }
+            .accessibilityIdentifier("conversations.jour.changer")
             BoutonTexte("Tous les jours") {
                 Haptique.leger()
                 Task { await app.conversationsExternes.choisirJour(nil) }
@@ -167,20 +187,6 @@ struct ConversationsExternesVue: View {
                 ForEach(ConversationsExternes.sources, id: \.self) { s in
                     puce(ConversationsExternes.nomSource(s), s, actif: m.filtre == s, compte: m.etat?.source(s)?.conversations)
                 }
-                // Aller à une date sans dérouler des pages (contre-relecture du 29/10).
-                Button {
-                    Haptique.leger()
-                    joursOuverts = true
-                } label: {
-                    Label(m.jour == nil ? "Un jour…" : "Autre jour…", systemImage: "calendar")
-                        .font(Police.texte(15, .semibold))
-                        .foregroundStyle(Palette.encre)
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 44)
-                        .background(Palette.fond2, in: Capsule())
-                }
-                .buttonStyle(Appui())
-                .accessibilityIdentifier("conversations.jour")
             }
             .padding(.horizontal, 16)
         }

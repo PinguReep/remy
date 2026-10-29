@@ -653,7 +653,7 @@ final class ParcoursQuotidien: ParcoursBase {
             cal.timeZone = TimeZone(identifier: "Europe/Paris")!
             let c = cal.dateComponents([.year, .month, .day], from: cal.date(byAdding: .day, value: -1, to: Date())!)
             let hier = String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
-            try toucher(ident("conversations.jour"), "Un jour…")
+            try toucher(ident("conversations.jour"), "Aller à un jour")
             let ligneHier = ident("conversations.jour.\(hier)")
             try etape("jours", attendu: [texte("Aller à un jour"), ligneHier], delai: 20)
             auditerCibles("aller à un jour")

@@ -184,7 +184,7 @@ tag) avant l'échéance.
   ont leur propre réglage (coupé par défaut).
 - Conversations d'ailleurs (29/10, `conversations-externes-v1`) : Projets ›
   Conversations (Claude Code, T3 Code, ChatGPT lus par la tour ; puces par
-  source, « Un jour… » pour aller à une date (`/jours`, `jour=`), recherche
+  source, « Aller à un jour » pour une date (`/jours`, `jour=`), recherche
   sur la tour dont un résultat ouvre la conversation AU message trouvé
   (`autour=`, mis en avant, « Depuis le début »), lecture paginée, ce que la
   nuit en a tiré) et Réglages › Sources des conversations (état et quoi faire

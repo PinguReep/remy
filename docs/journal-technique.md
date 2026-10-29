@@ -68,7 +68,7 @@ d'avant, passent après).
   « [Request interrupted by user] » et reprend après des octets nuls ;
   écritures par lots de 400 (la tour ne se fige plus) ; noms de projets avec
   leurs majuscules ; pages sur `(date, identifiant)` ; `autour=` pour ouvrir
-  au message trouvé ; « Un jour… » sur l'iPhone.
+  au message trouvé ; « Aller à un jour » sur l'iPhone.
 - **Écartés, et pourquoi** : « Me le rappeler » et une tâche Motion proposée
   dans une conversation privée restent possibles — c'est ton geste, sur un
   texte que tu vois ; worktrees T3 rattachés à leur dépôt (il faudrait lire
