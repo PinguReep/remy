@@ -7,6 +7,7 @@
 const CACHE = "remy-v5";
 const STATIC_ASSETS = [
   "/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png",
+  "/app/analyse/rituel.js",
   "/fonts/inter-latin.woff2", "/fonts/jbmono-latin.woff2", "/fonts/source-serif-4-latin-400.woff2", "/fonts/source-serif-4-latin-600.woff2",
   "/app/atelier.css", "/app/main.js", "/app/api.js", "/app/ui.js", "/app/bureau.js", "/app/file-envoi.js", "/app/palette.js", "/app/couleurs.js",
   "/app/analyse/dates.js", "/app/analyse/genre.js", "/app/analyse/motion.js", "/app/analyse/privee.js", "/app/analyse/conversations.js",
