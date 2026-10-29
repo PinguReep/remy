@@ -18,6 +18,8 @@ let pages = null; // { conversations, suite, total }
 let resultats = null; // recherche
 let selection = null; // { source, id }
 let refs = {};
+// Une erreur ou une aide de la tour : { message, quoiFaire } (ou un texte).
+const phrase = (x) => (typeof x === "string" ? x : `${x?.message || ""}${x?.quoiFaire ? ` ${x.quoiFaire}` : ""}`.trim());
 let minuterieRecherche = null;
 
 export default {
@@ -25,7 +27,7 @@ export default {
     racine = el;
     ctx = contexte;
     selection = args.length >= 2 ? { source: args[0], id: decodeURIComponent(args[1]) } : null;
-    refs.recherche = h("input", { class: "champ", type: "search", placeholder: "Chercher des mots (sans IA)", "aria-label": "Chercher dans les conversations externes" });
+    refs.recherche = h("input", { class: "champ", type: "search", placeholder: "Chercher des mots", title: "Recherche par mots, sans IA", "aria-label": "Chercher dans les conversations externes" });
     refs.recherche.addEventListener("input", () => {
       clearTimeout(minuterieRecherche);
       minuterieRecherche = setTimeout(chercher, 300);
@@ -82,7 +84,7 @@ async function chargerEtat() {
     const erreurs = (etat.sources || []).filter((s) => s.erreur);
     vider(refs.etat,
       `${t.conversations ?? 0} conversation${t.conversations > 1 ? "s" : ""}`, derniere ? ` · lues ${quand(derniere)}` : "",
-      etat.cle?.erreur ? h("span", { class: "risque", style: { display: "block" } }, icone("alerte"), etat.cle.erreur) : null,
+      etat.cle?.erreur ? h("span", { class: "risque", style: { display: "block" } }, icone("alerte"), phrase(etat.cle.erreur)) : null,
       erreurs.map((s) => h("span", { class: "risque", style: { display: "block" } }, icone("alerte"), `${s.nom} : ${s.erreur.message}`)));
   } catch (err) {
     vider(refs.etat, h("span", { class: "risque" }, icone("alerte"), err.message));
@@ -137,7 +139,7 @@ function dessinerListe() {
   const convs = pages.conversations || [];
   if (!convs.length) {
     const aide = (etat?.sources || []).map((s) => s.aide).filter(Boolean)[0];
-    vider(refs.liste, vide("Rien pour l'instant", aide?.message || "« Lire maintenant » relit Claude Code et T3 sur la tour ; un export ChatGPT s'envoie depuis « Sources ».", bouton("Sources", { classe: "papier", onclick: panneauSources })));
+    vider(refs.liste, vide("Rien pour l'instant", aide ? phrase(aide) : "« Lire maintenant » relit Claude Code et T3 sur la tour ; un export ChatGPT s'envoie depuis « Sources ».", bouton("Sources", { classe: "papier", onclick: panneauSources })));
     return;
   }
   vider(refs.liste, convs.map((c) => lienConv(c.source, c.id, c.titre, `${NOM[c.source] || c.source} · ${quand(c.fin || c.debut)} · ${c.messages} message${c.messages > 1 ? "s" : ""}${c.projet ? ` · ${c.projet.nom}` : ""}`)),
@@ -238,9 +240,9 @@ async function panneauSources() {
           try { etat = await remplacer(`/api/conversations-externes/sources/${seg(s.id)}`, { actif: i.checked }); dire(`${s.nom} : ${i.checked ? "allumée" : "coupée"}.`); } catch (err) { i.checked = !i.checked; direErreur(err); }
         });
         return h("div", { class: "reglage" },
-          h("label", { class: "bascule" }, h("span", { class: "textes" }, h("strong", null, s.nom), h("span", null, s.forceParLaTour ? "Réglée sur la tour (remy.env)." : `${s.conversations ?? 0} conversations${s.derniereReussie ? ` · lue ${quand(s.derniereReussie)}` : ""}`)), i),
-          s.erreur ? h("p", { class: "risque" }, icone("alerte"), `${s.erreur.message}${s.erreur.quoiFaire ? ` ${s.erreur.quoiFaire}` : ""}`) : null,
-          s.aide ? h("p", { class: "aide" }, s.aide.message || "") : null,
+          h("label", { class: "bascule" }, h("span", { class: "textes" }, h("strong", null, s.nom), h("span", null, s.forceParLaTour ? "Réglée sur la tour (remy.env)." : `${s.conversations ?? 0} conversation${s.conversations > 1 ? "s" : ""}${s.derniereReussie ? ` · lue ${quand(s.derniereReussie)}` : ""}`)), i),
+          s.erreur ? h("p", { class: "risque" }, icone("alerte"), phrase(s.erreur)) : null,
+          s.aide ? h("p", { class: "aide" }, phrase(s.aide)) : null,
           h("div", { class: "rangee serree" },
             s.id === "chatgpt" ? [h("label", { class: "btn papier petit", for: "fichier-chatgpt", tabindex: "0", onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fichier.click(); } } }, icone("envoyer"), "Envoyer l'export ChatGPT (.zip)"), fichier] : null,
             (s.conversations ?? 0) > 0 ? bouton("Oublier", { classe: "texte petit", onclick: async (e) => {
@@ -251,7 +253,7 @@ async function panneauSources() {
       h("h3", { class: "titre-section", style: { marginTop: "16px" } }, "Ce que Rémy en fait"),
       basculeUsage("chat", "Dans ses réponses", "Des passages proches de ta question, au modèle local seulement ; la conversation devient privée."),
       basculeUsage("nuit", "La nuit", "Relire les conversations de la veille : thèmes, décisions, choses à faire (propositions)."),
-      etat.cle?.erreur ? h("div", { class: "reglage" }, h("p", { class: "risque" }, icone("alerte"), etat.cle.erreur), bouton("Tout effacer", { classe: "danger", onclick: async () => {
+      etat.cle?.erreur ? h("div", { class: "reglage" }, h("p", { class: "risque" }, icone("alerte"), phrase(etat.cle.erreur)), bouton("Tout effacer", { classe: "danger", onclick: async () => {
         if (!(await confirmer("Tout effacer ?", { detail: "La base des conversations externes est vidée ; « Lire maintenant » relit tes sources.", libelle: "Tout effacer", danger: true }))) return;
         try { const r = await supprimer("/api/conversations-externes/tout"); dire(r?.message || "Effacé.", { genre: "succes" }); dessiner(); } catch (err) { direErreur(err); }
       } })) : null);

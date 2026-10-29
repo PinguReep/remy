@@ -39,6 +39,14 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
     { groupe: "Actions", titre: "Raccourcis clavier", icone: "clavier", detail: "?", faire: () => import("./main.js").then((m) => m.aideRaccourcis()) },
     { groupe: "Actions", titre: "Interface classique", icone: "externe", faire: () => { location.href = "/classique.html"; } },
   ];
+  // Une souris immobile ne vole pas le choix du clavier : le navigateur
+  // envoie un mousemove quand la liste se redessine sous le pointeur.
+  let pointeur = null;
+  const vraiMouvement = (ev) => {
+    const avant = pointeur;
+    pointeur = `${ev.screenX},${ev.screenY}`;
+    return avant !== null && avant !== pointeur;
+  };
   let elements = [...base];
   let choisi = 0;
   let affiches = [];
@@ -71,7 +79,7 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
         groupe = e.groupe;
         lignes.push(h("li", { class: "palette-groupe", role: "presentation" }, groupe));
       }
-      lignes.push(h("li", { class: "palette-item", role: "option", id: `palette-${i}`, "aria-selected": String(i === choisi), onclick: () => lancer(i), onmousemove: () => { if (choisi !== i) { choisi = i; majChoix(); } } },
+      lignes.push(h("li", { class: "palette-item", role: "option", id: `palette-${i}`, "aria-selected": String(i === choisi), onclick: () => lancer(i), onmousemove: (ev) => { if (vraiMouvement(ev) && choisi !== i) { choisi = i; majChoix(); } } },
         icone(e.icone || "fleche"), h("span", null, e.titre), e.detail ? h("span", { class: "detail" }, e.detail) : null));
       return lignes;
     }));

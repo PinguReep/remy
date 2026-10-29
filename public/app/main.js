@@ -5,6 +5,8 @@ import { api, evenements, chargerVersion, versionTour, sait, sonder, tourJoignab
 import { h, vider, icone, bouton, dire, feuille, kbd, ctrl, squelette, appliquerTheme, themeChoisi, occupe } from "./ui.js";
 import * as bureau from "./bureau.js";
 import * as fileEnvoi from "./file-envoi.js";
+import * as noter from "./vues/noter.js";
+import * as palette from "./palette.js";
 
 const params = new URLSearchParams(location.search);
 export const modeNoter = params.get("fenetre") === "noter";
@@ -163,13 +165,14 @@ async function verifierTour() {
 }
 
 // --- Noter et palette (chargés à la demande) ---
-export async function ouvrirNoter(texte = "") {
-  const m = await import("./vues/noter.js");
-  m.ouvrirNoter({ texte, contexte });
+// Noter et la palette sont chargés avec la page : ils s'ouvrent dans la même
+// tâche que la touche, sans qu'une lettre tapée vite se perde ou déclenche un
+// autre raccourci (Ctrl+K puis « conversations » ouvrait Noter au « n »).
+export function ouvrirNoter(texte = "") {
+  noter.ouvrirNoter({ texte, contexte });
 }
-export async function ouvrirPalette() {
-  const m = await import("./palette.js");
-  m.ouvrir({ contexte, vues: vuesVisibles(), vueCourante: () => vueCourante });
+export function ouvrirPalette() {
+  palette.ouvrir({ contexte, vues: vuesVisibles(), vueCourante: () => vueCourante });
 }
 
 function aideRaccourcis() {

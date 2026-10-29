@@ -140,7 +140,7 @@ svg.ic { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none
 
 .ecran { padding: 28px 36px 64px; max-width: 1480px; width: 100%; margin: 0 auto; flex: 1; }
 .entete-ecran { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.entete-ecran .titres { min-width: 0; flex: 1; }
+.entete-ecran .titres { min-width: 0; flex: 1 1 260px; }
 .sur-titre { font: 500 12px/1.2 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--signal); margin-bottom: 6px; }
 .titre-ecran { font: 600 34px/1.1 var(--serif); letter-spacing: -.01em; }
 .actions-entete { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

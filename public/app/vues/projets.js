@@ -103,7 +103,10 @@ function dessinerMaitre() {
   groupes.push(h("div", { class: "groupe" }, h("h2", { class: "titre-section" }, "Carnet"),
     ok("Rappels") ? element("rappels", null, "Rappels", rappelsActifs || null, { icone: "cloche" }) : null,
     ok("Catégories") ? element("categories", null, "Catégories", donnees.etiquettes?.length || null, { icone: "curseurs" }) : null,
-    ok("Historique") ? element("historique", null, "Historique", null, { icone: "horloge" }) : null));
+    ok("Historique") ? element("historique", null, "Historique", null, { icone: "horloge" }) : null,
+    // Comme sur l'iPhone (Projets › Conversations) ; sur le téléphone, les
+    // onglets du bas n'ont pas la place d'une sixième entrée.
+    sait("conversations-externes-v1") && ok("Conversations") ? h("a", { class: "element-maitre", href: "#/conversations" }, icone("conversations"), h("span", { class: "t" }, "Conversations"), h("span", { class: "n" }, "Claude, T3, ChatGPT")) : null));
   vider(refs.maitre, groupes);
   refs.grille.classList.toggle("detail-ouvert", Boolean(selection));
 }
