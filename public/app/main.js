@@ -237,8 +237,11 @@ async function demarrerSession() {
     if (err.nature === "reseau" || err.nature === "delai") return ecranTourInjoignable(err);
     throw err;
   }
+  // La petite fenêtre « Noter » de l'app Windows ne montre jamais l'écran de
+  // connexion (560×300) : sans session, la note attend ici et part après la
+  // reconnexion dans la fenêtre principale.
+  if (modeNoter) return demarrerNoter({ sansSession: !v?.serveur });
   if (!v?.serveur) return ecranConnexion();
-  if (modeNoter) return demarrerNoter();
   construire();
   window.addEventListener("hashchange", afficher);
   if (!location.hash) history.replaceState(null, "", "#/aujourdhui");
@@ -274,10 +277,10 @@ function ecranTourInjoignable(err) {
   }, 30000);
 }
 
-async function demarrerNoter() {
+async function demarrerNoter({ sansSession = false } = {}) {
   document.body.classList.add("mode-noter");
   const m = await import("./vues/noter.js");
-  await m.monterFenetre(document.getElementById("app"), { contexte });
+  await m.monterFenetre(document.getElementById("app"), { contexte, sansSession });
   bureau.demarrer({ aller, ouvrirNoter, contexte, fenetre: "noter" }).catch((err) => console.warn("Pont bureau :", err));
 }
 
@@ -287,6 +290,11 @@ function lancer() {
   evenements.addEventListener("hors-ligne", horsLigne);
   evenements.addEventListener("en-ligne", enLigne);
   evenements.addEventListener("session-perdue", () => {
+    // Dans la fenêtre Noter : rien ne s'efface, la note attend (voir noter.js).
+    if (modeNoter) {
+      noter.sessionPerdue?.();
+      return;
+    }
     if (document.querySelector(".connexion")) return;
     vueCourante?.module?.demonter?.();
     vueCourante = null;

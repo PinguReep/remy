@@ -95,6 +95,29 @@ const memeJour = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() =
 const plusSecondes = (d, s) => new Date(d.getTime() + s * 1000);
 const max = (a, b) => (a >= b ? a : b);
 
+const F_JOUR_LONG = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+const F_HEURE = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+/**
+ * Une échéance dite en entier, comme `Format.echeanceLongue` : « jeudi 29
+ * octobre », « vendredi 30 octobre, 14:00 » (heure entre 5 h et 20 h),
+ * « mardi 31 août 2027 » (autre année).
+ */
+export function echeanceLongue(d, maintenant = new Date()) {
+  const jour = F_JOUR_LONG.format(d) + (d.getFullYear() === maintenant.getFullYear() ? "" : ` ${d.getFullYear()}`);
+  const h = d.getHours();
+  return h >= 20 || h < 5 ? jour : `${jour}, ${F_HEURE.format(d)}`;
+}
+/**
+ * « avant ce soir » (le jour même), « avant 14:00 » (aujourd'hui, à une
+ * heure), sinon « avant l'échéance : vendredi 30 octobre » (CaptureView).
+ */
+export function avantEcheance(d, maintenant = new Date()) {
+  const memeJour = d.getFullYear() === maintenant.getFullYear() && d.getMonth() === maintenant.getMonth() && d.getDate() === maintenant.getDate();
+  const h = d.getHours();
+  if (memeJour) return h >= 20 || h < 5 ? "avant ce soir" : `avant ${F_HEURE.format(d)}`;
+  return `avant l'échéance : ${echeanceLongue(d, maintenant)}`;
+}
+
 /** La fin du jour pour une tâche : 23 h (comme `Format.echeanceDans`). */
 export function echeanceDans(jours, depuis = new Date()) {
   const j = plusJours(debutDuJour(depuis), jours);

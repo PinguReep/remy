@@ -18,6 +18,7 @@ export class ErreurAPI extends Error {
 
 const MESSAGES = {
   reseau: "La tour ne répond pas. Vérifie que le PC est allumé et que Tailscale est connecté, puis réessaie.",
+  arretee: "La tour est joignable mais Rémy n'y répond pas (redémarrage ou mise à jour en cours ?). Réessaie dans un instant.",
   delai: "La tour met trop de temps à répondre. Réessaie dans un instant.",
   illisible: "La tour a répondu quelque chose d'illisible. Recharge la page ; si ça continue, mets la tour à jour.",
 };
@@ -84,7 +85,6 @@ async function appel(chemin, { methode, corps, delai, signal }) {
   }
   clearTimeout(minuteur);
   signal?.removeEventListener("abort", relais);
-  marquer(true);
   const texte = await r.text().catch(() => "");
   let donnees = null;
   let illisible = false;
@@ -95,6 +95,13 @@ async function appel(chemin, { methode, corps, delai, signal }) {
       illisible = true;
     }
   }
+  // Un 502 ou 504 sans JSON vient de Tailscale Serve : Rémy est arrêté
+  // derrière (mise à jour, redémarrage). Pour le site, la tour ne répond pas.
+  if (arretDerriereLeRelais(r.status, donnees)) {
+    marquer(false);
+    throw new ErreurAPI(MESSAGES.arretee, { nature: "reseau", statut: r.status });
+  }
+  marquer(true);
   if (r.status === 401 && donnees?.error !== "bad_password") {
     signaler("session-perdue");
     throw new ErreurAPI("Ta session a expiré : reconnecte-toi.", { nature: "auth", statut: 401 });
@@ -106,6 +113,29 @@ async function appel(chemin, { methode, corps, delai, signal }) {
   if (!r.ok) throw new ErreurAPI(illisible ? `Erreur ${r.status} : réessaie.` : messageDe(r.status, donnees), { nature: "serveur", statut: r.status, code: donnees?.code ?? null });
   if (illisible) throw new ErreurAPI(MESSAGES.illisible, { nature: "illisible", statut: r.status });
   return donnees;
+}
+
+/** 502/504 sans corps JSON : la réponse du relais (Tailscale Serve), pas de Rémy. */
+export const arretDerriereLeRelais = (statut, donnees) => (statut === 502 || statut === 504) && (donnees == null || typeof donnees !== "object");
+
+/**
+ * Ce qu'un échec d'envoi dit d'une écriture (port de NatureEchec,
+ * EnvoiCaptures.swift) :
+ * - « incertain » : pas de réponse nette (réseau, délai, 500, 504, réponse
+ *   illisible) : la tour l'a peut-être écrite → renvoyer avec le même id ;
+ * - « passager » : une réponse nette, rien d'écrit, et ça passera (408, 425,
+ *   429, 502 Rémy arrêté derrière Tailscale, 503 base indisponible) ;
+ * - « refus » : la tour dit non (400, 404, 409, 422…) : ça attend Sam.
+ * Une session perdue n'est rien de tout ça : `auth` (on attend la reconnexion).
+ */
+export function natureEchec(err) {
+  if (!err) return "refus";
+  if (err.nature === "auth") return "auth";
+  if (err.nature === "reseau" || err.nature === "delai" || err.nature === "illisible") return "incertain";
+  const statut = Number(err.statut) || 0;
+  if (statut === 500 || statut === 504) return "incertain";
+  if ([408, 425, 429, 502, 503].includes(statut)) return "passager";
+  return "refus";
 }
 
 export const lire = (chemin, options) => api(chemin, options);
@@ -120,24 +150,43 @@ export const seg = (s) => encodeURIComponent(String(s));
 /** Un identifiant neuf (écritures idempotentes : la tour reconnaît un renvoi). */
 export const nouvelId = () => (crypto.randomUUID ? crypto.randomUUID() : `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
 
-/** La tour répond-elle ? (sonde légère, sans session) */
+/** La tour répond-elle ? (sonde légère, sans session) Un 502 ou 503 : non. */
 export async function sonder(delai = 5000) {
   try {
     await api("/api/health", { delai });
     return true;
   } catch (err) {
+    if (err.statut === 502 || err.statut === 503 || err.statut === 504) {
+      marquer(false);
+      return false;
+    }
     return err.nature !== "reseau" && err.nature !== "delai";
   }
 }
 
+/** Silence maximal d'un flux avant de le couper (comme l'iPhone, API.swift : 180 s d'inactivité). */
+export const INACTIVITE_FLUX = 180000;
+/** Plafond total d'une réponse en flux (une recherche plus une longue réponse locale tient dedans). */
+export const PLAFOND_FLUX = 30 * 60000;
+
 /**
  * Envoie une requête qui répond en flux (SSE) et appelle `surEvenement(nom,
  * donnees)` pour chacun. Rend quand le flux se ferme. Les erreurs avant le
- * flux sont des ErreurAPI comme pour `api`.
+ * flux sont des ErreurAPI comme pour `api`. Le flux n'est coupé que s'il se
+ * tait `inactivite` ms (réarmé à chaque morceau reçu), ou au-delà de `plafond`.
  */
-export async function flux(chemin, corps, surEvenement, { signal, delai = 300000 } = {}) {
+export async function flux(chemin, corps, surEvenement, { signal, inactivite = INACTIVITE_FLUX, plafond = PLAFOND_FLUX } = {}) {
   const ctrl = new AbortController();
-  const minuteur = setTimeout(() => ctrl.abort("delai"), delai);
+  let silence = setTimeout(() => ctrl.abort("silence"), inactivite);
+  const reveil = () => {
+    clearTimeout(silence);
+    silence = setTimeout(() => ctrl.abort("silence"), inactivite);
+  };
+  const butoir = setTimeout(() => ctrl.abort("plafond"), plafond);
+  const arreter = () => {
+    clearTimeout(silence);
+    clearTimeout(butoir);
+  };
   signal?.addEventListener("abort", () => ctrl.abort("annule"), { once: true });
   let r;
   try {
@@ -149,21 +198,28 @@ export async function flux(chemin, corps, surEvenement, { signal, delai = 300000
       credentials: "same-origin",
     });
   } catch {
-    clearTimeout(minuteur);
+    arreter();
     if (ctrl.signal.reason === "annule") throw new ErreurAPI("Annulé.", { nature: "annule" });
+    if (ctrl.signal.reason === "silence") throw new ErreurAPI("La tour n'a pas commencé à répondre en 3 minutes. Réessaie dans un instant.", { nature: "delai" });
     marquer(false);
     throw new ErreurAPI(MESSAGES.reseau, { nature: "reseau" });
   }
-  marquer(true);
   if (!r.ok || !r.body) {
-    clearTimeout(minuteur);
+    arreter();
     const d = await r.json().catch(() => null);
+    if (arretDerriereLeRelais(r.status, d)) {
+      marquer(false);
+      throw new ErreurAPI(MESSAGES.arretee, { nature: "reseau", statut: r.status });
+    }
+    marquer(true);
     if (r.status === 401 && d?.error !== "bad_password") {
       signaler("session-perdue");
       throw new ErreurAPI("Ta session a expiré : reconnecte-toi.", { nature: "auth", statut: 401 });
     }
     throw new ErreurAPI(messageDe(r.status, d), { nature: "serveur", statut: r.status, code: d?.code ?? null });
   }
+  marquer(true);
+  reveil();
   const lecteur = r.body.getReader();
   const decodeur = new TextDecoder();
   let tampon = "";
@@ -183,6 +239,7 @@ export async function flux(chemin, corps, surEvenement, { signal, delai = 300000
     while (true) {
       const { done, value } = await lecteur.read();
       if (done) break;
+      reveil();
       tampon += decodeur.decode(value, { stream: true }).replace(/\r\n/g, "\n");
       let i;
       while ((i = tampon.indexOf("\n\n")) !== -1) {
@@ -192,10 +249,13 @@ export async function flux(chemin, corps, surEvenement, { signal, delai = 300000
     }
     if (tampon.trim()) traiter(tampon);
   } catch (err) {
-    if (ctrl.signal.reason === "annule") throw new ErreurAPI("Interrompu.", { nature: "annule" });
+    const raison = ctrl.signal.reason;
+    if (raison === "annule") throw new ErreurAPI("Interrompu.", { nature: "annule" });
+    if (raison === "silence") throw new ErreurAPI(`La tour ne dit plus rien depuis ${Math.round(inactivite / 60000) || 1} min : la réponse a été arrêtée ici. Elle continue peut-être sur la tour : rouvre la conversation dans un moment.`, { nature: "delai" });
+    if (raison === "plafond") throw new ErreurAPI("La réponse dure depuis plus de 30 min : elle a été arrêtée ici. Elle continue peut-être sur la tour : rouvre la conversation dans un moment.", { nature: "delai" });
     throw new ErreurAPI("La connexion à la tour a été coupée pendant la réponse.", { nature: "reseau" });
   } finally {
-    clearTimeout(minuteur);
+    arreter();
   }
 }
 

@@ -4,11 +4,17 @@
 // id d'élément) : renvoyé après une coupure, la tour ne le fait pas deux fois.
 // Une capture refusée par la tour (4xx) n'est pas renvoyée en boucle : elle
 // attend Sam (Réessayer ou Retirer, dans Réglages › Envoi en attente).
-import { api } from "./api.js";
+// Un échec passager (502 : Rémy arrêté derrière Tailscale, 503, 429, 408…)
+// ou incertain (réseau, délai, 500, 504) repart tout seul, plus tard, avec le
+// même identifiant (NatureEchec de l'iPhone) ; un incertain qui se répète
+// (la tour répond 500 à chaque essai) finit par attendre Sam.
+import { api, natureEchec } from "./api.js";
 import { local } from "./ui.js";
 
 const CLE = "remy-file-envoi";
 const ATTENTES = [0, 15e3, 60e3, 5 * 60e3, 15 * 60e3];
+/** Au-delà, une capture qui reçoit toujours une réponse incertaine de la tour (500, 504) attend Sam. */
+export const ESSAIS_INCERTAINS = 6;
 
 const lireFile = () => local.lire(CLE, []) || [];
 const ecrireFile = (f) => local.ecrire(CLE, f);
@@ -79,17 +85,25 @@ export function vider({ force = false } = {}) {
       if (!force && (e.refus || e.prochain > Date.now())) continue;
       try {
         const r = await envoyerElement(e);
-        if (r && r.ok === false && Array.isArray(r.results)) throw Object.assign(new Error(r.results.find((x) => !x.ok)?.erreur || "Refusé par Motion."), { nature: "serveur" });
+        if (r && r.ok === false && Array.isArray(r.results)) {
+          // Motion n'a pas pu cette fois (quota, panne) : passager ; sinon un refus.
+          const res = r.results.find((x) => !x.ok);
+          const passagere = res?.nature === "passager" || /quota|indisponible|429/i.test(res?.erreur || "");
+          throw Object.assign(new Error(res?.erreur || "Refusé par Motion."), { nature: "serveur", statut: passagere ? 429 : 422 });
+        }
         retirer(e.id);
         envoyes.push(e.resume);
       } catch (err) {
-        if (err.nature === "reseau" || err.nature === "delai") {
-          const t = e.tentatives + 1;
-          maj(e.id, { tentatives: t, prochain: Date.now() + ATTENTES[Math.min(t, ATTENTES.length - 1)] });
-          break;
+        const nature = natureEchec(err);
+        if (nature === "auth") break;
+        const t = e.tentatives + 1;
+        // La tour répond, mais mal, à chaque essai : on arrête d'insister.
+        const repondMal = nature === "incertain" && err.nature !== "reseau" && err.nature !== "delai";
+        if (nature === "passager" || (nature === "incertain" && !(repondMal && t >= ESSAIS_INCERTAINS))) {
+          maj(e.id, { tentatives: t, prochain: Date.now() + ATTENTES[Math.min(t, ATTENTES.length - 1)], dernierEchec: err.message || null });
+          break; // dans l'ordre : la suite attend que celle-ci passe
         }
-        if (err.nature === "auth") break;
-        maj(e.id, { refus: err.message, tentatives: e.tentatives + 1 });
+        maj(e.id, { refus: err.message || "Refusé par la tour.", tentatives: t });
       }
     }
     return { envoyes, restants: compte() };

@@ -6,8 +6,9 @@
 //   Tâche → Motion · Idée → dossier « Idées » · Liste → une liste du carnet
 //   Rappel → rappels · Retenir → mémoire de Rémy (sur ton geste : le modèle)
 //   Question → Rémy, la question préparée · Projet → un dossier de Remy
-import { api, nouvelId, seg } from "../api.js";
+import { api, nouvelId, seg, natureEchec } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, quand, isoLocal, local, occupe, kbd } from "../ui.js";
+import { avantEcheance } from "../analyse/dates.js";
 import { apercu, GENRES, LIBELLES, MINIMUM_RETENIR, projet as lireProjet, plusieursIntentions } from "../analyse/genre.js";
 import * as fileEnvoi from "../file-envoi.js";
 import * as bureau from "../bureau.js";
@@ -16,6 +17,8 @@ export const CLE_PAR_DEFAUT = "remy-capture-par-defaut";
 export const parDefaut = () => (local.lire(CLE_PAR_DEFAUT, "idee") === "tache" ? "tache" : "idee");
 const CLE_LISTE = "remy-capture-liste";
 const CLE_QUESTION = "remy-question";
+/** Ce qui est tapé dans « Noter » et pas envoyé : Échap ou un clic à côté ne le perdent plus. */
+export const CLE_BROUILLON = "remy-noter-brouillon";
 
 // Ce que la tour sait déjà (listes, dossiers, projets), lu une fois par ouverture.
 let connu = { listes: null, dossiers: null, projets: null };
@@ -38,12 +41,15 @@ function idParent(nom) {
   return p ? `motion:${p.id}` : null;
 }
 
-const decrireDate = (a) => {
+const decrireDate = (a, maintenant = new Date()) => {
   const d = a.date;
   if (!d) return null;
   if (a.genre === "tache") {
     if (d.dejaPassee) return d.dejaPassee;
-    return d.heureDite && !d.limite ? `à ${quand(d.quand.getTime())}` : `d'ici ${quand(d.echeance.getTime(), { avecHeure: d.heureDite })}`;
+    if (d.heureDite && !d.limite) return `à ${quand(d.quand.getTime())}`;
+    // Comme l'iPhone (Format.echeanceLongue) : « avant l'échéance : jeudi
+    // 29 octobre », et « avant ce soir » le jour même (plus de « d'ici aujourd'hui »).
+    return avantEcheance(d.echeance, maintenant);
   }
   if (a.genre === "rappel") return d.dejaPassee || quand(d.quand.getTime());
   return null;
@@ -104,21 +110,35 @@ const court = (t) => (t.length > 60 ? t.slice(0, 57) + "…" : t);
 
 const envoyer = (prep) => fileEnvoi.envoyerElement(prep);
 
-async function defaire(prep, ledgerId) {
+/** Défait une capture. `direIci(texte, genre)` : la ligne de la feuille (sinon un bandeau). */
+async function defaire(prep, ledgerId, direIci) {
   try {
     if (ledgerId) await api("/api/motion/undo", { methode: "POST", corps: { id: ledgerId } });
     else for (const r of [].concat(prep.defaire || [])) await api(r.chemin, { methode: r.methode });
-    dire("Annulé : rien n'a été gardé.", { genre: "succes" });
+    if (direIci) direIci("Annulé : rien n'a été gardé.", "info");
+    else dire("Annulé : rien n'a été gardé.", { genre: "succes" });
+    return true;
   } catch (err) {
-    direErreur(err, null, "Pas annulé");
+    direErreur(err, () => defaire(prep, ledgerId, direIci), "Pas annulé");
+    return false;
   }
+}
+
+/** Ce qu'on dit quand la capture attend dans la file, selon pourquoi. */
+function phraseEnFile(err) {
+  if (err?.nature === "auth") return "Tu n'es plus connecté à la tour : c'est gardé ici et ça partira quand tu te reconnecteras.";
+  if (err?.statut === 502 || err?.statut === 503) return `La tour est indisponible pour l'instant (erreur ${err.statut}) : c'est gardé ici et ça repartira tout seul.`;
+  if (natureEchec(err) === "incertain" && err?.nature !== "reseau" && err?.nature !== "delai") return "La tour a mal répondu : c'est gardé ici et ça repartira tout seul, sans doublon.";
+  return "La tour ne répond pas : c'est gardé ici et ça partira tout seul.";
 }
 
 /**
  * Le formulaire de capture. `surEnvoye(genre)` après un envoi réussi (ou mis
  * en file). `compact` : sans l'aide du clavier. `id` : imposé (notes de secours).
+ * `confirmation` : « ligne » (dans le formulaire, qui reste ouvert pour
+ * enchaîner) ou « bandeau ». `brouillon` : la clé où garder le texte pas envoyé.
  */
-export function formulaireNoter({ texte = "", id: idImpose, compact = false, surEnvoye, extra, contexte, fenetre = false } = {}) {
+export function formulaireNoter({ texte = "", id: idImpose, compact = false, surEnvoye, extra, contexte, fenetre = false, confirmation = "bandeau", brouillon = null } = {}) {
   let id = idImpose || nouvelId();
   let genreChoisi = null;
   let listeChoisie = local.lire(CLE_LISTE, null);
@@ -127,11 +147,29 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     placeholder: "Appeler le garage demain à 9h · tomates, lait, œufs · idée : …",
     autocomplete: "off", spellcheck: "true",
   });
-  zone.value = texte;
+  zone.value = texte || (brouillon ? local.lire(brouillon, "") || "" : "");
+  const garderBrouillon = () => {
+    if (!brouillon) return;
+    if (zone.value.trim()) local.ecrire(brouillon, zone.value);
+    else local.effacer(brouillon);
+  };
   const vueApercu = h("div", { class: "apercu", "aria-live": "polite" });
+  // La confirmation dans la feuille : « Noté : … · Annuler », lisible pendant
+  // qu'on enchaîne au clavier (les bandeaux, eux, passent par-dessus).
+  const ligneFaite = h("div", { class: "noter-fait", role: "status", "aria-live": "polite", hidden: true });
+  const direIci = (texteLigne, genre = "succes", action = null) => {
+    vider(ligneFaite, icone(genre === "succes" ? "coche" : genre === "info" ? "horloge" : "alerte"), h("span", { class: "msg" }, texteLigne),
+      action ? bouton(action.libelle, { classe: "texte petit", onclick: (e) => occupe(e.currentTarget, action.faire) }) : null);
+    ligneFaite.className = `noter-fait ${genre}`;
+    ligneFaite.hidden = false;
+  };
+  const annoncer = (texteLigne, { genre = "succes", action = null, detail = null } = {}) => {
+    if (confirmation === "ligne") direIci(detail ? `${texteLigne} ${detail}` : texteLigne, genre, action);
+    else dire(texteLigne, { genre, action, detail });
+  };
   const envoyerBtn = bouton("Envoyer", { classe: "plein", icone: "envoyer", kbd: "Entrée", type: "submit" });
   const form = h("form", { class: "noter", onsubmit: (e) => { e.preventDefault(); soumettre(); } },
-    zone, vueApercu,
+    zone, vueApercu, ligneFaite,
     h("div", { class: "noter-pied" },
       compact ? h("span", { class: "aide" }) : h("span", { class: "aide" }, kbd("Entrée"), " envoie · ", kbd("Maj"), " ", kbd("Entrée"), " passe à la ligne · ", kbd("Échap"), " ferme"),
       extra || null, envoyerBtn));
@@ -178,7 +216,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     if (plusieursIntentions(brut) && a.genre !== "retenir") {
       ajouterA(vueApercu, h("div", { class: "rangee" },
         h("span", { class: "aide" }, "Plusieurs choses d'un coup ?"),
-        bouton("Rémy les range une à une", { classe: "papier petit", icone: "liste", onclick: () => rangerPlusieurs(brut, { contexte, surFini: () => { zone.value = ""; genreChoisi = null; dessiner(); surEnvoye?.("plusieurs"); } }) })));
+        bouton("Rémy les range une à une", { classe: "papier petit", icone: "liste", onclick: () => rangerPlusieurs(brut, { contexte, surFini: () => { zone.value = ""; genreChoisi = null; garderBrouillon(); dessiner(); surEnvoye?.("plusieurs"); } }) })));
     }
   };
   const longueurOk = (t) => t.trim().length >= MINIMUM_RETENIR;
@@ -190,13 +228,14 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     if (a.genre === "question") {
       local.ecrire(CLE_QUESTION, { texte: brut, a: Date.now() });
       zone.value = "";
+      garderBrouillon();
       surEnvoye?.("question");
       if (fenetre && bureau.estBureau()) await bureau.invoke("bureau_ouvrir", { vue: "remy/nouvelle" }).catch(() => {});
       else contexte?.aller("remy/nouvelle");
       return;
     }
     if (a.genre === "retenir" && !longueurOk(brut)) {
-      dire(`Trop court pour Retenir (${MINIMUM_RETENIR} caractères au moins) : choisis Idée ou Tâche.`, { genre: "erreur" });
+      annoncer(`Trop court pour Retenir (${MINIMUM_RETENIR} caractères au moins) : choisis Idée ou Tâche.`, { genre: "erreur" });
       return;
     }
     const liste = (connu.listes || []).find((l) => l.id === listeChoisie) || (connu.listes || [])[0] || null;
@@ -207,24 +246,29 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
         if (r && r.ok === false && Array.isArray(r.results)) {
           const res = r.results.find((x) => !x.ok);
           if (res?.nature === "passager" || /quota|indisponible|429/i.test(res?.erreur || "")) throw Object.assign(new Error(res.erreur), { nature: "reseau" });
-          dire(`Motion a refusé : ${res?.erreur || "raison inconnue"}. Ton texte est toujours là.`, { genre: "erreur" });
+          annoncer(`Motion a refusé : ${res?.erreur || "raison inconnue"}. Ton texte est toujours là.`, { genre: "erreur" });
           return;
         }
         const phrase = a.genre === "retenir" ? (r?.phrase || "Rémy l'a lu et retenu l'essentiel.") : phraseFaite(a, prep);
-        dire(phrase, { genre: "succes", action: prep.defaire || r?.ledgerId ? { libelle: "Annuler", faire: () => defaire(prep, r?.ledgerId) } : null });
+        const ici = confirmation === "ligne" ? direIci : null;
+        annoncer(confirmation === "ligne" ? `Noté : ${phrase}` : phrase, { action: prep.defaire || r?.ledgerId ? { libelle: "Annuler", faire: () => defaire(prep, r?.ledgerId, ici) } : null });
         id = nouvelId();
         zone.value = "";
         genreChoisi = null;
+        garderBrouillon();
         dessiner();
         surEnvoye?.(a.genre);
       } catch (err) {
-        if (err.nature === "reseau" || err.nature === "delai") {
-          // Les identifiants sont déjà fixés : la file renverra sans doubler.
+        // Pas de réponse nette, ou une tour momentanément indisponible (502,
+        // 503, 429…) : la capture attend ici. Les identifiants sont fixés à la
+        // capture : la file renverra sans doubler (NatureEchec de l'iPhone).
+        if (natureEchec(err) !== "refus") {
           fileEnvoi.ajouter({ id, resume: prep.resume, genre: a.genre, requetes: prep.requetes });
-          dire("La tour ne répond pas : c'est gardé ici et ça partira tout seul.", { genre: "info", detail: prep.resume });
+          annoncer(phraseEnFile(err), { genre: "info", detail: prep.resume });
           id = nouvelId();
           zone.value = "";
           genreChoisi = null;
+          garderBrouillon();
           dessiner();
           contexte?.majCompteurs?.();
           surEnvoye?.(a.genre);
@@ -237,6 +281,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
 
   zone.addEventListener("input", () => {
     if (!zone.value.trim()) genreChoisi = null;
+    garderBrouillon();
     dessiner();
   });
   zone.addEventListener("keydown", (e) => {
@@ -255,8 +300,11 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     zone.value = "";
     genreChoisi = null;
     id = nouvelId();
+    ligneFaite.hidden = true;
+    garderBrouillon();
     dessiner();
   };
+  form.texte = () => zone.value;
   return form;
 }
 
@@ -271,34 +319,62 @@ function phraseFaite(a, prep) {
   }
 }
 
-/** La feuille « Noter » (N, le bouton du rail, le ＋ des onglets). */
+/**
+ * La feuille « Noter » (N, le bouton du rail, le ＋ des onglets). Le texte pas
+ * envoyé est gardé (CLE_BROUILLON) et revient à la réouverture ; un clic à
+ * côté ne ferme pas la feuille tant qu'il y a quelque chose dans le champ.
+ */
 export function ouvrirNoter({ texte = "", contexte } = {}) {
   if (document.querySelector("dialog.feuille-noter")) {
     document.querySelector("dialog.feuille-noter textarea")?.focus();
     return;
   }
   let f;
-  const form = formulaireNoter({ texte, contexte, surEnvoye: (g) => { if (g === "question" || g === "plusieurs") f?.fermer(); else form.focusChamp(); } });
-  f = feuille({ titre: "Noter", sousTitre: "Une tâche, une idée, une liste, un rappel… Rémy range.", contenu: form, classe: "feuille-noter", large: true });
+  // Un texte imposé (« Noter » depuis une conversation) ne touche pas au brouillon.
+  const form = formulaireNoter({ texte, contexte, confirmation: "ligne", brouillon: texte ? null : CLE_BROUILLON,
+    surEnvoye: (g) => { if (g === "question" || g === "plusieurs") f?.fermer(); else form.focusChamp(); } });
+  f = feuille({
+    titre: "Noter", sousTitre: "Une tâche, une idée, une liste, un rappel… Rémy range.", contenu: form, classe: "feuille-noter", large: true,
+    avantFermeture: (cause) => {
+      if (cause === "fond" && form.texte().trim()) {
+        form.focusChamp();
+        return false;
+      }
+      return true;
+    },
+    surFermeture: () => {
+      if (!texte && form.texte().trim()) dire("Brouillon gardé : N pour le reprendre.", { duree: 3000 });
+    },
+  });
   form.focusChamp();
 }
 
+// La fenêtre Noter sans session : un avis, et la note attend dans la file.
+let avisSession = null;
+export function sessionPerdue() {
+  if (avisSession) avisSession.hidden = false;
+}
+
 /** La petite fenêtre « Noter » de l'app Windows (`?fenetre=noter`). */
-export async function monterFenetre(racine, { contexte }) {
+export async function monterFenetre(racine, { contexte, sansSession = false }) {
   racine.className = "";
   racine.removeAttribute("aria-busy");
   let dernierEnvoye = false;
+  avisSession = h("div", { class: "avis-session", role: "status", hidden: !sansSession },
+    icone("cadenas"), h("span", null, "Tu n'es pas connecté à la tour : ce que tu notes attend ici et part après ta reconnexion dans la fenêtre principale."),
+    bureau.estBureau() ? bouton("Ouvrir Rémy", { classe: "papier petit", onclick: () => bureau.invoke("bureau_ouvrir", {}).catch(() => {}) }) : null);
   const form = formulaireNoter({
-    compact: true, fenetre: true, contexte,
+    compact: true, fenetre: true, contexte, confirmation: "ligne",
     surEnvoye: () => {
       dernierEnvoye = true;
-      setTimeout(() => bureau.fermerNoter(), 700);
+      // Le temps de lire « Noté : … » avant que la petite fenêtre se cache.
+      setTimeout(() => bureau.fermerNoter(), 1400);
     },
   });
   vider(racine, h("div", { class: "fenetre-noter" },
     h("div", { class: "tete-noter" }, h("span", { class: "marque-r", "aria-hidden": "true", style: { width: "26px", height: "26px", fontSize: "15px", borderRadius: "8px" } }, "R"), h("h1", null, "Noter"),
       h("span", { class: "aide" }, kbd("Entrée"), " envoie · ", kbd("Échap"), " ferme")),
-    form));
+    avisSession, form));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
       e.preventDefault();

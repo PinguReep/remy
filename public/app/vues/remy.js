@@ -8,6 +8,7 @@
 import { api, ecrire, flux, nouvelId, seg, sait } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, feuille, confirmer, demanderTexte, quand, duree, isoLocal, versChampDate, depuisChampDate, markdown, sansMarqueurs, occupe, local, kbd } from "../ui.js";
 import { questionEnAttente } from "./noter.js";
+import { etatRecherchePrivee, sousTitrePrivee, ceQueCaChange, confirmationPrivee } from "../analyse/privee.js";
 
 let racine;
 let ctx;
@@ -19,6 +20,27 @@ let fileApres = []; // « Envoyer après » : messages tapés pendant une répon
 let etapes = []; // les étapes de la dernière réponse (panneau)
 let refs = {};
 const brouillons = new Map(); // ce qui est tapé et pas envoyé, par conversation
+// Ce que la conversation privée peut promettre (Privee.swift) : lu sur la tour
+// (/api/reglages) à l'ouverture de la vue et à son retour au premier plan.
+let etatPrivee = "inconnu";
+let suiviComposeur = null;
+let placerBandeauxRemy = () => {};
+async function lireRecherchePrivee() {
+  if (!sait("recherche-privee-v1")) etatPrivee = "sansReglage";
+  else {
+    try {
+      etatPrivee = etatRecherchePrivee(await api("/api/reglages", { delai: 10000 }));
+    } catch {
+      return; // on garde ce qu'on savait (« inconnu » : aucune promesse de trop)
+    }
+  }
+  if (!refs.racine?.isConnected) return;
+  dessinerEnTete();
+  if (courante?.prive) {
+    if (!courante.messages?.length) dessinerFil();
+    dessinerPanneau();
+  }
+}
 
 const CLE_LUS = "remy-conversations-lues";
 const lus = () => local.lire(CLE_LUS, null);
@@ -39,6 +61,7 @@ export default {
     ctx = contexte;
     courante = null;
     construire();
+    lireRecherchePrivee();
     await chargerListe();
     await ouvrir(args[0]);
   },
@@ -52,12 +75,17 @@ export default {
     envoi?.ctrl.abort();
     envoi = null;
     fileApres = [];
+    suiviComposeur?.disconnect();
+    suiviComposeur = null;
+    window.removeEventListener("resize", placerBandeauxRemy);
+    document.documentElement.style.removeProperty("--bas-bandeaux");
   },
   chercher() {
     refs.recherche?.focus();
   },
   actualiser() {
     chargerListe();
+    lireRecherchePrivee();
     if (courante?.id && !envoi) recharger(courante.id);
   },
 };
@@ -69,7 +97,7 @@ function construire() {
   refs.liste = h("nav", { class: "defile", "aria-label": "Conversations" }, squelette([0.8, 0.6, 0.7, 0.5]));
   refs.titre = h("h1", { class: "titre-fil" }, "Rémy");
   refs.marque = h("span", { class: "marque-r", "aria-hidden": "true", style: { width: "32px", height: "32px", fontSize: "17px", flex: "none" } }, "R");
-  refs.cadenas = h("span", { class: "puce", hidden: true, title: "Conversation privée : elle reste sur tes machines" }, icone("cadenas"), h("span", null, "Privée"));
+  refs.cadenas = h("span", { class: "puce", hidden: true }, icone("cadenas"), h("span", null, "Privée"));
   refs.actionsFil = h("div", { class: "rangee serree" });
   refs.messages = h("div", { class: "fil-messages", tabindex: "-1" });
   refs.champ = h("textarea", { rows: 1, placeholder: "Écris à Rémy…", "aria-label": "Message à Rémy" });
@@ -78,7 +106,7 @@ function construire() {
   refs.stop = bouton("Interrompre", { classe: "papier petit", icone: "stop", titre: "Interrompre la réponse (Échap)" });
   refs.stop.hidden = true;
   refs.attente = h("span", { class: "aide", hidden: true });
-  refs.pucePrivee = h("button", { type: "button", class: "puce", "aria-pressed": "false", title: "Privée : jamais envoyée à Claude, même en secours" }, icone("cadenas"), h("span", null, "Privée"));
+  refs.pucePrivee = h("button", { type: "button", class: "puce", "aria-pressed": "false" }, icone("cadenas"), h("span", null, "Privée"));
   refs.panneau = h("aside", { class: "remy-panneau", "aria-label": "Contexte et étapes" });
   const composeur = h("div", { class: "composeur" }, h("div", { class: "colonne" },
     h("div", { class: "rangee serree", style: { marginBottom: "8px" } }, refs.pucePrivee, refs.stop, refs.attente),
@@ -98,6 +126,16 @@ function construire() {
       refs.messages, composeur),
     refs.panneau);
   vider(racine, refs.racine);
+  // Les bandeaux se posent au-dessus du composeur, jamais sur le champ.
+  placerBandeauxRemy = () => {
+    const r = composeur.getBoundingClientRect();
+    if (r.height) document.documentElement.style.setProperty("--bas-bandeaux", `${Math.round(window.innerHeight - r.top + 12)}px`);
+  };
+  suiviComposeur?.disconnect();
+  suiviComposeur = typeof ResizeObserver === "function" ? new ResizeObserver(() => placerBandeauxRemy()) : null;
+  suiviComposeur?.observe(composeur);
+  window.addEventListener("resize", placerBandeauxRemy);
+  placerBandeauxRemy();
 
   refs.champ.addEventListener("input", ajusterChamp);
   refs.champ.addEventListener("keydown", (e) => {
@@ -252,6 +290,8 @@ function dessinerEnTete() {
   refs.titre.textContent = !c ? "Rémy" : c.nouvelle ? (c.prive ? "Conversation privée" : "Nouvelle conversation") : c.title || "Conversation";
   const prive = Boolean(c?.prive);
   refs.cadenas.hidden = !prive;
+  refs.cadenas.title = `Conversation privée : ${sousTitrePrivee(etatPrivee).toLowerCase()}.`;
+  refs.pucePrivee.title = `Privée : ${sousTitrePrivee(etatPrivee).toLowerCase()}, même en secours.`;
   refs.marque.replaceChildren(prive ? icone("cadenas") : "R");
   refs.marque.title = prive ? "Conversation privée" : "";
   refs.pucePrivee.hidden = !(c?.nouvelle || !c);
@@ -288,10 +328,10 @@ async function renommer() {
 }
 async function rendrePrivee() {
   const ok = await confirmer("Rendre cette conversation privée ?", {
-    detail: "Elle ne partira plus jamais vers Claude, même en secours. C'est définitif : pour revenir au cloud, il faudra une nouvelle conversation.",
+    detail: confirmationPrivee(etatPrivee),
     libelle: "Rendre privée",
   });
-  if (ok) await patch({ prive: true }, "Conversation privée : elle reste sur tes machines.");
+  if (ok) await patch({ prive: true }, `Conversation privée : ${sousTitrePrivee(etatPrivee).toLowerCase()}.`);
 }
 async function supprimerConv() {
   const c = courante;
@@ -319,10 +359,10 @@ function dessinerFil() {
   } else if (!c.messages?.length) {
     ajouterA(col, c.prive
       ? h("div", { class: "carte-privee" }, h("strong", null, icone("cadenas"), "Conversation privée"),
-        h("p", null, "Elle reste sur tes machines : jamais envoyée à Claude, même si le modèle local est en panne. La dictée y passe par la tour seulement."))
+        h("p", null, ceQueCaChange(etatPrivee)), h("p", { class: "aide", style: { marginTop: "6px" } }, "La dictée y passe par la tour seulement."))
       : h("div", { class: "bienvenue-remy" }, h("h2", null, "Qu'est-ce qu'on fait ?"),
         h("p", { class: "aide" }, "Une question, une semaine à organiser, une idée à creuser. Rémy voit ton planning et peut proposer des changements : rien ne part sans ton « Oui »."),
-        c.nouvelle ? h("p", { class: "aide", style: { marginTop: "8px" } }, "Pour qu'elle reste sur tes machines : « Privée », au-dessus du champ, avant le premier message.") : null));
+        c.nouvelle ? h("p", { class: "aide", style: { marginTop: "8px" } }, "Pour que rien ne parte chez Claude : « Privée », au-dessus du champ, avant le premier message.") : null));
   }
   (c?.messages || []).forEach((m, i) => col.append(blocMessage(m, i, c)));
   vider(refs.messages, col);
@@ -741,6 +781,14 @@ async function lancerFlux(chemin, corps, { texteSam }) {
     } else if (err.nature === "reseau") {
       vider(md, h("p", { class: "aide" }, "La connexion s'est coupée pendant la réponse : je relis la conversation…"));
       setTimeout(() => visible() && recharger(c.id), 2000);
+    } else if (err.nature === "delai") {
+      // Silence de 3 min (ou réponse de plus de 30 min) : la tour écrit
+      // peut-être encore. Le message de Sam reste ; on relit sur un geste.
+      const note = h("div", { class: "note-flux" }, h("p", { class: "aide" }, err.message),
+        h("div", { class: "rangee", style: { marginTop: "8px" } }, bouton("Relire la conversation", { classe: "papier petit", icone: "rafraichir", onclick: () => { if (visible()) recharger(c.id); } })));
+      if (texte) md.append(note);
+      else vider(md, note);
+      dessinerEtapes(true);
     } else {
       if (texteSam) c.messages.pop();
       vider(md, h("p", { class: "msg-erreur" }, err.message), texteSam ? h("div", { class: "rangee", style: { marginTop: "8px" } }, bouton("Renvoyer", { classe: "papier petit", onclick: () => { bloc.remove(); bulleSam?.remove(); envoyerMessage(texteSam); } })) : null);
@@ -785,7 +833,8 @@ function dessinerPanneau() {
   if (!p) return;
   const c = courante;
   const blocs = [];
-  if (c?.prive) blocs.push(h("div", { class: "carte-privee" }, h("strong", null, icone("cadenas"), "Privée"), h("p", null, "Sur tes machines seulement.")));
+  if (c?.prive) blocs.push(h("div", { class: "carte-privee" }, h("strong", null, icone("cadenas"), "Privée"), h("p", null, `${sousTitrePrivee(etatPrivee)}.`),
+    etatPrivee === "permise" ? h("p", { class: "aide", style: { marginTop: "4px" } }, "Recherche web permise : des questions générales, filtrées, peuvent sortir vers le moteur.") : null));
   const m = dernieresMesures(c);
   if (m && sait("jauge-v1")) {
     const me = m.mesures;

@@ -119,13 +119,42 @@ export async function occupe(btn, faire) {
 }
 
 // --- Bandeaux ---
+// Une feuille ouverte (showModal) passe dans la couche du dessus et rend tout
+// le reste inerte : des bandeaux restés dans le body y seraient floutés et
+// sourds aux clics (« Annuler » fermait la feuille au lieu d'annuler). La pile
+// suit donc la modale du dessus, et revient au body quand elle se ferme.
 let pile;
 function pileBandeaux() {
-  if (!pile) {
-    pile = h("div", { class: "bandeaux", role: "status", "aria-live": "polite" });
-    document.body.append(pile);
-  }
+  if (!pile) pile = h("div", { class: "bandeaux", role: "status", "aria-live": "polite" });
+  placerBandeaux();
   return pile;
+}
+const modaleDuDessus = () => {
+  const ouvertes = [...document.querySelectorAll("dialog[open]")].filter((d) => {
+    try {
+      return d.matches(":modal");
+    } catch {
+      return true;
+    }
+  });
+  return ouvertes[ouvertes.length - 1] || null;
+};
+/** Met la pile des bandeaux là où on peut la voir et la cliquer. */
+export function placerBandeaux({ attendre = true } = {}) {
+  if (!pile) return;
+  const modale = modaleDuDessus();
+  const parent = modale || document.body;
+  if (pile.parentElement === parent) return;
+  // Pendant l'entrée d'une feuille, sa transformation ferait d'elle le repère
+  // de la pile (position: fixed) : on attend la fin de l'animation (180 ms).
+  const animations = attendre ? modale?.getAnimations?.() || [] : [];
+  if (animations.length) {
+    if (!pile.isConnected) document.body.append(pile);
+    Promise.allSettled(animations.map((a) => a.finished)).then(() => placerBandeaux({ attendre: false }));
+    return;
+  }
+  parent.append(pile);
+  modale?.addEventListener("close", () => placerBandeaux({ attendre: false }), { once: true });
 }
 /**
  * Dit quelque chose en bas de l'écran. `action` : { libelle, faire } (Annuler,
@@ -148,12 +177,22 @@ export function dire(message, { action, genre = "info", duree, detail } = {}) {
   if (ms > 0) setTimeout(fermer, ms);
   return fermer;
 }
-/** Une erreur : son message, et « Réessayer » si on sait refaire. */
-export function direErreur(err, reessayer, prefixe) {
+/** Le texte d'une erreur, quelle que soit sa forme (l'app Windows rejette avec une chaîne). */
+export const texteErreur = (err) => (typeof err === "string" ? err : err?.message) || "Erreur inattendue.";
+/**
+ * Une erreur : son message, et « Réessayer » si on sait refaire. Une chose
+ * introuvable (404) ne se réessaie pas : « Rafraîchir » relit l'écran si on
+ * sait le faire (`rafraichir`).
+ */
+export function direErreur(err, reessayer, prefixe, { rafraichir } = {}) {
   if (err?.nature === "annule") return () => {};
   if (err?.nature === "auth") return () => {};
-  const msg = (prefixe ? `${prefixe} : ` : "") + (err?.message || "Erreur inattendue.");
-  return dire(msg, { genre: "erreur", action: reessayer ? { libelle: "Réessayer", faire: reessayer } : null });
+  const msg = (prefixe ? `${prefixe} : ` : "") + texteErreur(err);
+  const introuvable = err?.statut === 404;
+  const action = introuvable
+    ? (rafraichir ? { libelle: "Rafraîchir", faire: rafraichir } : null)
+    : reessayer ? { libelle: "Réessayer", faire: reessayer } : null;
+  return dire(msg, { genre: "erreur", action });
 }
 
 // --- Squelettes et états ---
@@ -168,15 +207,16 @@ export function vide(titre, texte, action) {
 /** Un bloc d'erreur à la place d'un contenu : le message et « Réessayer ». */
 export function blocErreur(err, reessayer) {
   const titre = err?.nature === "reseau" ? "Tour injoignable" : err?.nature === "version" ? "Tour à mettre à jour" : "Pas pu charger";
-  return vide(titre, err?.message || "Erreur inattendue.", reessayer ? bouton("Réessayer", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, reessayer) }) : null);
+  return vide(titre, texteErreur(err), reessayer ? bouton("Réessayer", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, reessayer) }) : null);
 }
 
 // --- Feuilles ---
 /**
  * Ouvre une feuille (dialog modale) : Échap ou la croix la ferment, le focus
  * y reste. `contenu` : élément(s) ; `pied` : boutons. Rend { el, fermer, fini }.
+ * `avantFermeture(cause)` (« echap », « fond ») : rendre false garde la feuille.
  */
-export function feuille({ titre, sousTitre, contenu, pied, large = false, classe = "", surFermeture } = {}) {
+export function feuille({ titre, sousTitre, contenu, pied, large = false, classe = "", surFermeture, avantFermeture } = {}) {
   const corps = h("div", { class: "feuille-corps" }, contenu);
   const d = h("dialog", { class: `feuille ${large ? "large" : ""} ${classe}`.trim(), "aria-label": titre },
     h("div", { class: "feuille-tete" },
@@ -188,19 +228,25 @@ export function feuille({ titre, sousTitre, contenu, pied, large = false, classe
   const fini = new Promise((r) => (resoudre = r));
   const fermer = (valeur) => {
     if (d.open) d.close();
+    placerBandeaux({ attendre: false }); // avant de retirer la feuille : la pile y est peut-être
     d.remove();
     surFermeture?.(valeur);
     resoudre(valeur);
   };
   d.addEventListener("cancel", (e) => {
     e.preventDefault();
+    if (avantFermeture?.("echap") === false) return;
     fermer();
   });
   d.addEventListener("click", (e) => {
-    if (e.target === d) fermer();
+    if (e.target !== d) return;
+    // Un clic à côté ne ferme pas une feuille qui a quelque chose à perdre.
+    if (avantFermeture?.("fond") === false) return;
+    fermer();
   });
   document.body.append(d);
   d.showModal();
+  placerBandeaux();
   const premier = d.querySelector("[autofocus]") || d.querySelector(".feuille-corps input, .feuille-corps textarea, .feuille-corps button, .feuille-pied button");
   premier?.focus();
   return { el: d, corps, fermer, fini };

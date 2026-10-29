@@ -1,19 +1,29 @@
-// Aujourd'hui : la carte Maintenant (Terminer · Décaler · +15 · Gérer), la
-// journée à l'échelle, À trancher, les menacées, briefing et bilan, Demain et
-// 7 jours, le conseil du moment. Sur un grand écran, deux colonnes.
+// Aujourd'hui, dans l'ordre de l'iPhone (AujourdhuiView) : ce qui ne va pas
+// avec Motion (bandeau), le conseil du moment, la carte Maintenant (Terminer ·
+// Commencer · Décaler · +15 · Gérer), les rappels du jour, la menacée, le
+// briefing le matin ou le bilan le soir, la journée à l'échelle (de maintenant
+// − 1 h à + 6 h, « Toute la journée » sur un geste), Demain et 7 jours, et
+// « À trancher » en carte compacte (les lignes dans une feuille).
+// Sur un grand écran, deux colonnes : à gauche faire (Maintenant, rappels,
+// journée), à droite décider (conseil, menacées, rituel, semaine, à trancher).
 // Lectures : /api/dashboard à l'affichage, au retour au premier plan et
 // toutes les 5 min quand la fenêtre est visible (jamais en boucle serrée : il
 // peut relancer le conseil réfléchi du modèle local).
-import { api, ecrire, nouvelId, seg } from "../api.js";
-import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, isoLocal, markdown, occupe, confirmer, local } from "../ui.js";
+import { api, ecrire, nouvelId, seg, sait } from "../api.js";
+import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, isoLocal, markdown, occupe, confirmer, local, feuille } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
-import { gerer, terminer, decaler, prolonger, choixTache, choixActivite, resteSur, finEffective, estActivite } from "./gerer.js";
+import { gerer, terminer, decaler, prolonger, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite } from "./gerer.js";
+import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
+import { rappelsDuJour, ligneRappel } from "./rappels.js";
 
 let racine;
 let donnees = null; // dashboard
 let semaine = null;
 let trancher = null;
 let rituel = null;
+let rappels = null; // GET /api/rappels (la carte « Rappels du jour »)
+let journeeEntiere = false; // « Toute la journée » déplié
+let menaceesTout = false;
 let erreur = null;
 let masquees = new Set(); // lignes retirées tout de suite (Terminer, trancher)
 let minuteurHorloge = null;
@@ -34,15 +44,17 @@ export default {
       h("h1", { class: "titre-ecran" }, salutation(maintenant)));
     const rafraichir = bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", titre: "Relire Motion et l'agenda", onclick: (e) => occupe(e.currentTarget, () => charger({ frais: true })) });
     const noter = bouton("Noter", { classe: "plein", icone: "plus", kbd: "N", onclick: () => ctx.noter() });
-    for (const k of ["maintenant", "journee", "trancher", "menacees", "rituel", "semaine", "conseil", "retards"]) zones[k] = h("div");
+    // Chaque zone a sa place (classe zone-…) : deux colonnes sur grand écran,
+    // une seule dans l'ordre de l'iPhone en dessous de 1024 px (atelier.css).
+    for (const k of ["motion", "conseil", "maintenant", "rappels", "menacees", "rituel", "journee", "retards", "semaine", "trancher"]) zones[k] = h("div", { class: `auj-zone zone-${k}` });
     vider(el,
       h("header", { class: "entete-ecran" }, titre, h("div", { class: "actions-entete" }, rafraichir, noter)),
+      zones.motion,
       h("div", { class: "auj-grille" },
-        h("div", { class: "auj-colonne" }, zones.maintenant, zones.journee, zones.retards),
-        h("div", { class: "auj-colonne" }, zones.trancher, zones.menacees, zones.rituel, zones.semaine, zones.conseil)));
+        h("div", { class: "auj-colonne principale" }, zones.maintenant, zones.rappels, zones.journee, zones.retards),
+        h("div", { class: "auj-colonne laterale" }, zones.conseil, zones.menacees, zones.rituel, zones.semaine, zones.trancher)));
     ajouterA(zones.maintenant, h("section", { class: "carte maintenant" }, squelette([0.3, 0.8, 0.5], true)));
     ajouterA(zones.journee, h("section", { class: "carte" }, squelette([0.5, 0.9, 0.9, 0.7])));
-    ajouterA(zones.trancher, h("section", { class: "carte" }, squelette([0.4, 0.8, 0.6])));
     await charger();
     clearInterval(minuteurHorloge);
     minuteurHorloge = setInterval(() => {
@@ -73,11 +85,12 @@ function salutation(d) {
 async function charger({ frais = false, discret = false } = {}) {
   if (enLecture) return enLecture;
   enLecture = (async () => {
-    const [d, s, t, r] = await Promise.allSettled([
+    const [d, s, t, r, rp] = await Promise.allSettled([
       api(`/api/dashboard${frais ? "?frais=1" : ""}`, { delai: 45000 }),
       api("/api/semaine?jours=7", { delai: 45000 }),
       api("/api/a-trancher", { delai: 30000 }),
       api("/api/rituel", { delai: 45000 }),
+      api("/api/rappels", { delai: 20000 }),
     ]);
     if (d.status === "fulfilled") {
       donnees = d.value;
@@ -89,9 +102,17 @@ async function charger({ frais = false, discret = false } = {}) {
     if (s.status === "fulfilled") semaine = s.value;
     if (t.status === "fulfilled") trancher = t.value;
     if (r.status === "fulfilled") rituel = r.value;
+    if (rp.status === "fulfilled") rappels = rp.value?.rappels || [];
     masquees = new Set([...masquees].filter((c) => c.startsWith("tri:")));
-    toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null, trancher: t.status === "rejected" ? t.reason : null, rituel: r.status === "rejected" ? r.reason : null } });
-    if (frais && d.status === "fulfilled") dire("À jour.", { duree: 1500 });
+    toutDessiner({ erreursSecondaires: { semaine: s.status === "rejected" ? s.reason : null, trancher: t.status === "rejected" ? t.reason : null, rituel: r.status === "rejected" ? r.reason : null, rappels: rp.status === "rejected" ? rp.reason : null } });
+    if (frais && d.status === "fulfilled") {
+      // « À jour. » seulement si Motion a vraiment été relu ; sinon, pourquoi.
+      const m = donnees?.journee?.motion;
+      if (motionFrais(m)) dire("À jour.", { duree: 1500 });
+      else dire(phraseMotion(m) || m?.raison || "Motion n'a pas pu être relu : la journée affichée date d'avant.", { genre: ALERTES_MOTION.has(m?.etat) ? "erreur" : "info" });
+    } else if (frais && d.status === "rejected") {
+      direErreur(d.reason, () => charger({ frais: true }), "Pas rafraîchi");
+    }
   })().finally(() => {
     enLecture = null;
   });
@@ -111,11 +132,26 @@ function toutDessiner({ erreursSecondaires = {} } = {}) {
     dessinerJournee();
     dessinerRetards();
   }
+  dessinerMotion();
+  dessinerRappels(erreursSecondaires.rappels);
   dessinerTrancher(erreursSecondaires.trancher);
   dessinerMenacees();
   dessinerRituel(erreursSecondaires.rituel);
   dessinerSemaine(erreursSecondaires.semaine);
   dessinerConseil();
+}
+
+// --- Motion : le bandeau quand quelque chose ne va pas (Bandeau de l'iPhone) ---
+function dessinerMotion() {
+  const m = donnees?.journee?.motion;
+  const src = donnees?.journee?.sources || {};
+  // Les deux sources en panne : la carte Maintenant le dit déjà.
+  const phrase = src.motion !== "ok" && src.agenda !== "ok" ? null : phraseMotion(m);
+  if (!phrase) return vider(zones.motion);
+  const alerte = ALERTES_MOTION.has(m.etat);
+  vider(zones.motion, h("div", { class: `bandeau-motion${alerte ? " alerte" : ""}`, role: alerte ? "alert" : "status" },
+    icone(alerte ? "alerte" : "horloge"), h("span", { class: "msg" }, phrase),
+    REESSAI_MOTION.has(m.etat) ? bouton("Réessayer", { classe: "papier petit", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, () => charger({ frais: true })) }) : null));
 }
 
 // --- La journée : état de chaque élément selon l'heure ---
@@ -196,10 +232,13 @@ function dessinerMaintenant() {
   } else if (p.cas === "suivant") {
     const e = p.e;
     const decalerBtn = e.type === "tache" || estActivite(e) ? bouton("Décaler", { classe: "papier", icone: "horloge", onclick: () => menuDecaler(e, decalerBtn) }) : null;
+    // Une tâche à venir : « Commencer » d'abord, comme sur l'iPhone (1 geste au lieu de 2).
+    const peutCommencer = e.type === "tache" && sait("taches-etat-v2");
     ajouterA(carte, h("div", { class: "tete" }, pucesProjet(e.projet), h("span", { class: "etat-mono" }, "À VENIR")), h("h2", null, e.titre),
       h("p", { class: "detail-maintenant" }, [heure(e.debut), relatifCourt(e.debut - m), e.lieu].filter(Boolean).join(" · ")),
       h("div", { class: "rangee gestes-maintenant" },
-        e.type === "tache" ? bouton("Terminer", { classe: "plein", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }) : null,
+        peutCommencer ? bouton("Commencer", { classe: "plein", icone: "lecture", onclick: (ev) => occupe(ev.currentTarget, () => commencer(e, { apres })) }) : null,
+        e.type === "tache" ? bouton("Terminer", { classe: peutCommencer ? "papier" : "plein", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }) : null,
         decalerBtn,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(e, gestesDe(e)) }),
         bouton("En parler", { classe: "papier", icone: "remy", onclick: () => demanderARemy(e.type === "rdv" ? `Pour « ${e.titre} » à ${heure(e.debut)} : ` : `Pour « ${e.titre} » : `) })));
@@ -209,7 +248,9 @@ function dessinerMaintenant() {
     ajouterA(carte, h("div", { class: "tete" }, pucesProjet(t.projet), h("span", { class: "etat-mono" }, "À FAIRE AUJOURD'HUI")), h("h2", null, t.titre),
       p.total > 1 ? h("p", { class: "detail-maintenant" }, `et ${p.total - 1} autre${p.total > 2 ? "s" : ""} tâche${p.total > 2 ? "s" : ""} aujourd'hui`) : null,
       h("div", { class: "rangee gestes-maintenant" },
-        bouton("Terminer", { classe: "plein", icone: "coche", onclick: () => terminer(t, gestesDe(t)) }), decalerBtn,
+        bouton("Terminer", { classe: "plein", icone: "coche", onclick: () => terminer(t, gestesDe(t)) }),
+        sait("taches-etat-v2") ? bouton("Commencer", { classe: "papier", icone: "lecture", onclick: (ev) => occupe(ev.currentTarget, () => commencer(t, { apres })) }) : null,
+        decalerBtn,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(t, gestesDe(t)) })));
   } else if (p.cas === "rien") {
     ajouterA(carte, h("h2", { class: "titre-section" }, "Temps libre"), h("h2", null, "Plus rien de prévu"),
@@ -247,7 +288,7 @@ function menuDecaler(e, ancre) {
     if (existant.dataset.id === e.id) return;
   }
   const menu = h("div", { class: "menu-decaler rangee serree", dataset: { id: e.id }, role: "group", "aria-label": "Décaler", style: { marginTop: "10px" } },
-    choix.map((c) => h("button", { type: "button", class: "puce", onclick: (ev) => occupe(ev.currentTarget, async () => { if (await decaler(e, c.date, { apres })) menu.remove(); }) }, c.libelle)),
+    choix.map((c) => h("button", { type: "button", class: "puce", onclick: (ev) => occupe(ev.currentTarget, async () => { await decaler(e, c.date, { apres }); menu.remove(); }) }, c.libelle)),
     h("button", { type: "button", class: "puce", onclick: () => { menu.remove(); gerer(e, gestesDe(e)); } }, "Autre…"));
   ancre.closest(".gestes-maintenant").after(menu);
   menu.querySelector("button")?.focus();
@@ -269,8 +310,27 @@ function dessinerJournee() {
   }
   const debutJ = new Date(); debutJ.setHours(0, 0, 0, 0);
   const minDe = (ms) => (ms - debutJ.getTime()) / 60e3;
-  const h0 = Math.max(0, Math.min(8 * 60, Math.floor(Math.min(...items.map((e) => minDe(e.debut))) / 60) * 60));
-  const h1 = Math.min(24 * 60, Math.max(20 * 60, Math.ceil(Math.max(...items.map((e) => minDe(finEffective(e)))) / 60) * 60));
+  // Toute la journée : de la première à la dernière chose (8 h – 20 h au moins).
+  const h0Jour = Math.max(0, Math.min(8 * 60, Math.floor(Math.min(...items.map((e) => minDe(e.debut))) / 60) * 60));
+  const h1Jour = Math.min(24 * 60, Math.max(20 * 60, Math.ceil(Math.max(...items.map((e) => minDe(finEffective(e)))) / 60) * 60));
+  // Par défaut, ce qui compte maintenant : d'une heure avant à six heures après.
+  const mn0 = minDe(m);
+  const h0Fen = Math.max(0, Math.floor((mn0 - 60) / 60) * 60);
+  const h1Fen = Math.min(24 * 60, Math.ceil((mn0 + 6 * 60) / 60) * 60);
+  const borne = !journeeEntiere && (h0Fen > h0Jour || h1Fen < h1Jour);
+  const h0 = borne ? Math.max(h0Fen, Math.min(h0Jour, h1Fen - 60)) : h0Jour;
+  const h1 = borne ? Math.min(h1Fen, h1Jour) : h1Jour;
+  const avant = items.filter((e) => minDe(finEffective(e)) <= h0).length;
+  const apresFen = items.filter((e) => minDe(e.debut) >= h1).length;
+  const visibles = items.filter((e) => minDe(finEffective(e)) > h0 && minDe(e.debut) < h1);
+  const basculeJournee = (borne || journeeEntiere) && (avant || apresFen || journeeEntiere)
+    ? bouton(journeeEntiere ? "Autour de maintenant" : `Toute la journée${avant + apresFen ? ` (${[avant ? `${avant} plus tôt` : null, apresFen ? `${apresFen} plus tard` : null].filter(Boolean).join(", ")})` : ""}`,
+      { classe: "texte petit", icone: journeeEntiere ? "compresser" : "bas", onclick: () => { journeeEntiere = !journeeEntiere; dessinerJournee(); } })
+    : null;
+  if (!visibles.length) {
+    ajouterA(carte, vide(null, mn0 >= h1Jour ? "Plus rien à heure fixe aujourd'hui." : "Rien à heure fixe dans les prochaines heures."), basculeJournee ? h("div", { class: "rangee" }, basculeJournee) : null);
+    return vider(zones.journee, carte);
+  }
   const PX = 1.3; // pixels par minute (30 min ≈ 40 px : une cible au doigt)
   const echelle = h("div", { class: "echelle", style: { height: `${(h1 - h0) * PX}px` } });
   for (let t = h0; t <= h1; t += 60) {
@@ -278,7 +338,7 @@ function dessinerJournee() {
     ajouterA(echelle, h("div", { class: "trait-heure", style: { top: `${y}px` } }), h("span", { class: "heure-repere" , style: { top: `${y}px` } }, `${String(t / 60).padStart(2, "0")}:00`));
   }
   // Les chevauchements : chaque élément prend une colonne libre de son groupe.
-  const tries = [...items].sort((a, b) => a.debut - b.debut);
+  const tries = [...visibles].sort((a, b) => a.debut - b.debut);
   const places = new Map();
   let groupe = [];
   let finGroupe = -Infinity;
@@ -303,8 +363,11 @@ function dessinerJournee() {
   }
   clore();
   for (const e of tries) {
-    const top = (minDe(e.debut) - h0) * PX;
-    const haut = Math.max(40, (minDe(finEffective(e)) - minDe(e.debut)) * PX - 2);
+    // Coupé aux bords de la fenêtre (un bloc commencé avant h0 part du haut).
+    const debutVu = Math.max(minDe(e.debut), h0);
+    const finVue = Math.min(minDe(finEffective(e)), h1);
+    const top = (debutVu - h0) * PX;
+    const haut = Math.max(40, (finVue - debutVu) * PX - 2);
     const { col, n } = places.get(e);
     const st = etat(e, m);
     const bloc = h("button", {
@@ -320,8 +383,35 @@ function dessinerJournee() {
   }
   const mn = minDe(m);
   if (mn >= h0 && mn <= h1) ajouterA(echelle, h("div", { class: "maintenant-trait", style: { top: `${(mn - h0) * PX}px` }, title: `Maintenant · ${heure(m)}` }));
-  ajouterA(carte, echelle);
+  ajouterA(carte, echelle, basculeJournee ? h("div", { class: "rangee bascule-journee" }, basculeJournee) : null);
   vider(zones.journee, carte);
+}
+
+// --- Rappels du jour (ATraiter de l'iPhone) : cocher, reporter, supprimer ---
+function dessinerRappels(err) {
+  if (!rappels) {
+    if (err && err.nature !== "auth") vider(zones.rappels, h("section", { class: "carte", "aria-label": "Rappels du jour" }, h("h2", { class: "titre-section" }, "Rappels du jour"), blocErreur(err, () => charger())));
+    else vider(zones.rappels);
+    return;
+  }
+  const liste = rappelsDuJour(rappels).filter((r) => !masquees.has(`rap:${r.id}`));
+  if (!liste.length) return vider(zones.rappels);
+  const relire = () => setTimeout(() => relireRappels(), 400);
+  vider(zones.rappels, h("section", { class: "carte", "aria-label": "Rappels du jour" },
+    h("h2", { class: "titre-section" }, "Rappels du jour", h("span", { class: "compte" }, String(liste.length)),
+      h("a", { class: "btn texte petit lien-titre", href: "#/projets/rappels" }, "Tous les rappels")),
+    h("ul", { class: "liste" }, liste.map((r) => ligneRappel(r, {
+      apres: relire,
+      retirer: () => { masquees.add(`rap:${r.id}`); dessinerRappels(); },
+      remettre: () => { masquees.delete(`rap:${r.id}`); dessinerRappels(); },
+    })))));
+}
+async function relireRappels() {
+  try {
+    rappels = (await api("/api/rappels", { delai: 20000 }))?.rappels || [];
+    masquees = new Set([...masquees].filter((c) => !c.startsWith("rap:")));
+  } catch {}
+  dessinerRappels();
 }
 
 // --- À faire aujourd'hui (sans créneau) et en retard ---
@@ -361,7 +451,6 @@ const GESTES = {
   retard: [["fait", "Fait"], ["demain", "Demain"], ["abandonner", "Abandonner"]],
 };
 const PRINCIPAUX = new Set(["oui", "fusionner", "retirer", "fait"]);
-let trancherTout = false;
 
 function lignesTrancher() {
   if (!trancher) return [];
@@ -373,24 +462,51 @@ function lignesTrancher() {
 
 function dessinerTrancher(err) {
   const lignes = lignesTrancher();
-  const carte = h("section", { class: "carte", "aria-label": "À trancher" });
-  ajouterA(carte, h("h2", { class: "titre-section" }, "À trancher", lignes.length ? h("span", { class: "compte" }, String(lignes.length)) : null,
-    trancher?.reportes ? h("span", { class: "fin aide" }, `${trancher.reportes} reporté${trancher.reportes > 1 ? "s" : ""}`) : null));
-  if (!trancher && err) ajouterA(carte, blocErreur(err, () => charger()));
-  else if (!trancher) ajouterA(carte, squelette([0.6, 0.8]));
-  else if (!lignes.length) ajouterA(carte, vide("Rien à trancher", "Les cartes en attente, doublons et vieux rappels s'afficheront ici."));
-  else {
-    const montrees = trancherTout ? lignes : lignes.slice(0, 5);
-    ajouterA(carte, h("ul", { class: "liste" }, montrees.map((l) => h("li", { class: "sujet" },
-      h("div", { class: "corps" },
-        h("div", { class: "titre-ligne" }, l.texte),
-        h("div", { class: "meta aide" }, [l.groupe, l.detail].filter(Boolean).join(" · ")),
-        h("div", { class: "rangee serree", style: { marginTop: "6px" } },
-          (GESTES[l.type] || [["plusTard", "Plus tard"]]).map(([g, lib]) => h("button", { type: "button", class: `btn petit ${PRINCIPAUX.has(g) ? "plein" : "papier"}`, onclick: (ev) => occupe(ev.currentTarget, () => agirTri(g, l)) }, lib)),
-          l.convId ? h("a", { class: "btn texte petit", href: `#/remy/${seg(l.convId)}` }, "Voir") : null))))));
-    if (lignes.length > 5) ajouterA(carte, bouton(trancherTout ? "Moins" : `Tout voir (${lignes.length})`, { classe: "texte petit", onclick: () => { trancherTout = !trancherTout; dessinerTrancher(); } }));
+  // Une carte compacte en bas (CarteATrancher de l'iPhone) : le compte et
+  // « Trancher » ; les lignes et leurs gestes vivent dans une feuille.
+  if (!trancher && err) {
+    if (err.nature === "auth") return vider(zones.trancher);
+    return vider(zones.trancher, h("section", { class: "carte", "aria-label": "À trancher" }, h("h2", { class: "titre-section" }, "À trancher"), blocErreur(err, () => charger())));
   }
-  vider(zones.trancher, carte);
+  if (!trancher || !lignes.length) {
+    vider(zones.trancher);
+    if (feuilleTri) dessinerFeuilleTri();
+    return;
+  }
+  const n = lignes.length;
+  vider(zones.trancher, h("section", { class: "carte a-trancher", "aria-label": "À trancher" },
+    h("h2", { class: "titre-section" }, "À trancher", h("span", { class: "compte" }, String(n)),
+      trancher?.reportes ? h("span", { class: "fin aide" }, `${trancher.reportes} reporté${trancher.reportes > 1 ? "s" : ""}`) : null),
+    h("p", { class: "aide-carte" }, `${n} chose${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} un geste : cartes, rappels, articles, vieux fils, idées.`),
+    h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton("Trancher", { classe: "papier", icone: "liste", onclick: ouvrirTrancher }))));
+  if (feuilleTri) dessinerFeuilleTri();
+}
+
+let feuilleTri = null;
+function ouvrirTrancher() {
+  if (feuilleTri) return;
+  feuilleTri = feuille({
+    titre: "À trancher", sousTitre: "Un geste par ligne. Plus tard : elle revient dans une semaine.", large: true,
+    contenu: h("div", { class: "lignes-tri" }),
+    surFermeture: () => { feuilleTri = null; },
+  });
+  dessinerFeuilleTri();
+}
+function dessinerFeuilleTri() {
+  const zone = feuilleTri?.corps.querySelector(".lignes-tri");
+  if (!zone) return;
+  const lignes = lignesTrancher();
+  if (!lignes.length) {
+    vider(zone, vide("Tout est tranché", "Les cartes en attente, doublons et vieux rappels s'afficheront ici."));
+    return;
+  }
+  vider(zone, h("ul", { class: "liste" }, lignes.map((l) => h("li", { class: "sujet" },
+    h("div", { class: "corps" },
+      h("div", { class: "titre-ligne" }, l.texte),
+      h("div", { class: "meta aide" }, [l.groupe, l.detail].filter(Boolean).join(" · ")),
+      h("div", { class: "rangee serree", style: { marginTop: "6px" } },
+        (GESTES[l.type] || [["plusTard", "Plus tard"]]).map(([g, lib]) => h("button", { type: "button", class: `btn petit ${PRINCIPAUX.has(g) ? "plein" : "papier"}`, onclick: (ev) => occupe(ev.currentTarget, () => agirTri(g, l)) }, lib)),
+        l.convId ? h("a", { class: "btn texte petit", href: `#/remy/${seg(l.convId)}`, onclick: () => feuilleTri?.fermer() }, "Voir") : null))))));
 }
 
 function masquerTri(l) {
@@ -480,26 +596,36 @@ const echeanceDemain = () => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 23, 0);
 };
 
-// --- Menacées ---
+// --- Menacées : la première, puis « Voir tout » (CarteMenacee de l'iPhone) ---
+function ligneMenacee(t) {
+  return h("li", { class: "sujet menacee" },
+    h("span", { class: "risque", style: { marginTop: "3px" } }, icone("alerte")),
+    h("div", { class: "corps" },
+      h("div", { class: "titre-ligne" }, t.titre),
+      h("p", { class: "phrase" }, t.phrase),
+      t.action ? h("div", { class: "rangee serree", style: { marginTop: "6px" } },
+        t.action.type === "repousser" && t.action.echeance
+          ? bouton(t.action.libelle, { classe: "papier petit", onclick: (ev) => occupe(ev.currentTarget, () => decaler({ type: "tache", id: t.id, titre: t.titre }, new Date(t.action.echeance), { apres })) })
+          : bouton(t.action.libelle || "En parler à Rémy", { classe: "papier petit", icone: "remy", onclick: () => demanderARemy(`Peux-tu caser « ${t.titre} » aujourd'hui ? ${t.phrase}`) })) : null));
+}
 function dessinerMenacees() {
   const liste = (donnees?.menacees || []).filter((t) => !masquees.has(t.id));
   if (!liste.length) return vider(zones.menacees);
+  const montrees = menaceesTout ? liste : liste.slice(0, 1);
   vider(zones.menacees, h("section", { class: "carte", "aria-label": "Menacées" },
-    h("h2", { class: "titre-section" }, "Menacées", h("span", { class: "compte" }, String(liste.length))),
-    h("ul", { class: "liste" }, liste.map((t) => h("li", { class: "sujet menacee" },
-      h("span", { class: "risque", style: { marginTop: "3px" } }, icone("alerte")),
-      h("div", { class: "corps" },
-        h("div", { class: "titre-ligne" }, t.titre),
-        h("p", { class: "phrase" }, t.phrase),
-        t.action ? h("div", { class: "rangee serree", style: { marginTop: "6px" } },
-          t.action.type === "repousser" && t.action.echeance
-            ? bouton(t.action.libelle, { classe: "papier petit", onclick: (ev) => occupe(ev.currentTarget, () => decaler({ type: "tache", id: t.id, titre: t.titre }, new Date(t.action.echeance), { apres })) })
-            : bouton(t.action.libelle || "En parler à Rémy", { classe: "papier petit", icone: "remy", onclick: () => demanderARemy(`Peux-tu caser « ${t.titre} » aujourd'hui ? ${t.phrase}`) })) : null))))));
+    h("h2", { class: "titre-section", style: { color: "var(--danger)" } }, liste.length > 1 ? "Échéances menacées" : "Échéance menacée", h("span", { class: "compte" }, String(liste.length))),
+    h("ul", { class: "liste" }, montrees.map(ligneMenacee)),
+    liste.length > 1 ? bouton(menaceesTout ? "Seulement la première" : `Voir tout (${liste.length})`, { classe: "texte petit", onclick: () => { menaceesTout = !menaceesTout; dessinerMenacees(); } }) : null));
 }
 
 // --- Briefing du matin et bilan du soir ---
 function dessinerRituel(err) {
+  const hh = new Date().getHours();
   const blocs = [];
+  const soir = rituel?.soir;
+  // Le soir (dès 18 h, comme l'iPhone), le bilan passe devant.
+  if (soir && hh >= 18) blocs.push(carteBilan(soir));
+  else if (!rituel && err && hh >= 18 && err.nature !== "auth") blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section" }, "Bilan du soir"), blocErreur(err, () => charger())));
   const b = donnees?.briefing;
   const items = (b?.items || []).filter((x) => x.etat === "ouvert");
   if (b?.text) {
@@ -510,12 +636,12 @@ function dessinerRituel(err) {
           bouton("", { classe: "texte petit", icone: "coche", etiquette: "Traité", titre: "Traité", onclick: (ev) => occupe(ev.currentTarget, () => etatSujet(s, "traite")) }),
           bouton("", { classe: "texte petit", icone: "fermer", etiquette: "Ignorer", titre: "Ignorer", onclick: (ev) => occupe(ev.currentTarget, () => etatSujet(s, "ignore")) })))))
       : h("p", { class: "aide" }, "Tous les sujets de la nuit sont traités.");
-    blocs.push(h("section", { class: "carte", "aria-label": "Briefing du matin" },
-      h("h2", { class: "titre-section" }, "Briefing du matin", b.generatedAt ? h("span", { class: "fin aide" }, `cette nuit, ${heure(b.generatedAt)}`) : null), corps));
+    const titre = h("h2", { class: "titre-section" }, "Briefing du matin", items.length ? h("span", { class: "compte" }, String(items.length)) : null,
+      b.generatedAt ? h("span", { class: "fin aide" }, `cette nuit, ${heure(b.generatedAt)}`) : null);
+    // Le matin, ouvert ; l'après-midi et le soir, replié (un clic l'ouvre).
+    if (hh < 12) blocs.push(h("section", { class: "carte", "aria-label": "Briefing du matin" }, titre, corps));
+    else blocs.push(h("details", { class: "carte briefing-replie", "aria-label": "Briefing du matin" }, h("summary", null, titre, icone("bas", "chevron-replie")), corps));
   }
-  const soir = rituel?.soir;
-  if (soir && new Date().getHours() >= 16) blocs.push(carteBilan(soir));
-  else if (!rituel && err) blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section" }, "Bilan du soir"), blocErreur(err, () => charger())));
   vider(zones.rituel, blocs);
 }
 

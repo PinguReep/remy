@@ -53,6 +53,8 @@ export function choixActivite(e, maintenant = new Date()) {
 }
 
 const finEffective = (e) => e.fin ?? (e.debut != null ? e.debut + 30 * 60e3 : null);
+/** « d'ici demain », « d'ici lundi », et « avant ce soir » le jour même (pas « d'ici aujourd'hui »). */
+const dici = (date, maintenant = new Date()) => (debutJour(date).getTime() === debutJour(maintenant).getTime() ? "avant ce soir" : `d'ici ${quand(date.getTime(), { avecHeure: false })}`);
 const estActivite = (e) => e.type === "rdv" && e.avecAutres !== true;
 const estTache = (e) => e.type === "tache" || e.type === "sans-creneau";
 
@@ -61,7 +63,12 @@ async function appliquer(source, action, resume) {
   const chemin = source === "agenda" ? "/api/google/apply" : "/api/motion/apply";
   const r = await ecrire(chemin, { actions: [action], resume, idCommande: nouvelId() }, { delai: 150000 });
   const res = r?.results?.[0];
-  if ((r?.echecs ?? 0) > 0 || res?.ok === false) throw Object.assign(new Error(res?.erreur || "raison inconnue"), { nature: "refus" });
+  if ((r?.echecs ?? 0) > 0 || res?.ok === false) {
+    const erreur = res?.erreur || "raison inconnue";
+    // « n'existe plus » (404, 410) : réessayer ne peut pas marcher ; on relira l'écran.
+    const introuvable = /\((404|410)\)|n'existe plus|introuvable/i.test(erreur);
+    throw Object.assign(new Error(erreur), { nature: "refus", statut: introuvable ? 404 : 0 });
+  }
   return r;
 }
 async function defaire(source, ledgerId, titre, apres) {
@@ -96,7 +103,7 @@ export function terminer(e, { retirer, remettre, apres } = {}) {
     } catch (err) {
       remettre?.();
       if (err.nature === "reseau") dire(`Pas de réseau : « ${e.titre} » n'est pas marqué fait. Il est de retour.`, { genre: "erreur", action: { libelle: "Réessayer", faire: () => terminer(e, { retirer, remettre, apres }) } });
-      else direErreur(err, () => terminer(e, { retirer, remettre, apres }), `Motion n'a pas pu marquer « ${e.titre} » comme fait`);
+      else direErreur(err, () => terminer(e, { retirer, remettre, apres }), `Motion n'a pas pu marquer « ${e.titre} » comme fait`, { rafraichir: apres });
     }
   }, DELAI_ANNULATION);
 }
@@ -105,7 +112,7 @@ export async function decaler(e, date, { apres } = {}) {
   try {
     if (estTache(e)) {
       const r = await appliquer("motion", { type: "modifier", nom: e.titre, echeance: isoLocal(date), id: e.id }, "Replanifié depuis le site");
-      dire(`« ${e.titre} » : à faire d'ici ${quand(date.getTime(), { avecHeure: false })}. Motion recalcule.`, { genre: "succes", action: annulable("motion", r, e.titre, apres) });
+      dire(`« ${e.titre} » : à faire ${dici(date)}. Motion recalcule.`, { genre: "succes", action: annulable("motion", r, e.titre, apres) });
     } else if (estActivite(e)) {
       const r = await appliquer("agenda", { type: "modifier", titre: e.titre, debut: isoLocal(date), id: e.id }, "Décalée depuis le site");
       dire(`« ${e.titre} » : à ${heure(date.getTime())}${date.getDate() !== new Date().getDate() ? ` (${quand(date.getTime(), { avecHeure: false })})` : ""}.`, { genre: "succes", action: annulable("agenda", r, e.titre, apres) });
@@ -116,7 +123,7 @@ export async function decaler(e, date, { apres } = {}) {
     apres?.();
     return true;
   } catch (err) {
-    direErreur(err, () => decaler(e, date, { apres }), `« ${e.titre} » n'a pas été décalé`);
+    direErreur(err, () => decaler(e, date, { apres }), `« ${e.titre} » n'a pas été décalé`, { rafraichir: apres });
     return false;
   }
 }
@@ -138,7 +145,7 @@ export async function prolonger(e, minutes, { apres } = {}) {
     apres?.();
     return true;
   } catch (err) {
-    direErreur(err, () => prolonger(e, minutes, { apres }), `« ${e.titre} » n'a pas été prolongée`);
+    direErreur(err, () => prolonger(e, minutes, { apres }), `« ${e.titre} » n'a pas été prolongée`, { rafraichir: apres });
     return false;
   }
 }
@@ -158,7 +165,7 @@ export async function commencer(e, { apres } = {}) {
     });
     apres?.();
   } catch (err) {
-    direErreur(err, () => commencer(e, { apres }), `« ${e.titre} » n'a pas pu être commencée`);
+    direErreur(err, () => commencer(e, { apres }), `« ${e.titre} » n'a pas pu être commencée`, { rafraichir: apres });
   }
 }
 

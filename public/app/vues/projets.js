@@ -6,6 +6,7 @@ import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErr
 import { couleurProjet } from "../couleurs.js";
 import { extraire } from "../analyse/dates.js";
 import { gerer, terminer } from "./gerer.js";
+import { ligneRappel as ligneRappelPartagee } from "./rappels.js";
 
 let racine;
 let ctx;
@@ -358,18 +359,7 @@ async function nouvelleListe() {
 }
 
 // Rappels : à venir, sans date, faits. Ajouter avec la date lue dans la phrase.
-const CHOIX_REPORT = () => {
-  const m = new Date();
-  const a = (hh, mm, j) => new Date(m.getFullYear(), m.getMonth(), m.getDate() + j, hh, mm);
-  const choix = [];
-  const heure = new Date(Math.ceil((m.getTime() + 3600e3) / 900e3) * 900e3);
-  choix.push(["Dans 1 h", heure]);
-  if (m.getHours() < 18) choix.push(["Ce soir 19:00", a(19, 0, 0)]);
-  choix.push(["Demain 9:00", a(9, 0, 1)]);
-  const lundi = (1 - m.getDay() + 7) % 7 || 7;
-  if (lundi > 1) choix.push(["Lundi 9:00", a(9, 0, lundi)]);
-  return choix;
-};
+// Les gestes d'une ligne (cocher, reporter, supprimer) : vues/rappels.js.
 
 function detailRappels() {
   if (!donnees.rappels) return vider(refs.detail, h("section", { class: "carte" }, squelette()));
@@ -408,48 +398,7 @@ function detailRappels() {
     faits.length ? section("Faits", faits, "") : null));
 }
 
-function ligneRappel(r) {
-  const passe = r.quand && r.quand < Date.now() && !r.fait;
-  const caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": String(Boolean(r.fait)), "aria-label": r.fait ? `« ${r.texte} » : fait` : `Marquer « ${r.texte} » comme fait` });
-  caseB.addEventListener("click", () => ecrireRappel({ ...r, fait: !r.fait }, r.fait ? "Rouvert." : `« ${r.texte} » : fait.`, r));
-  return h("li", { class: `ligne${r.fait ? " faite" : ""}` }, caseB,
-    h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, r.texte),
-      h("div", { class: "meta" }, r.quand ? h("span", { class: passe ? "risque" : "mono" }, passe ? icone("alerte") : null, quand(r.quand)) : null,
-        (r.etiquettes || []).map((id) => h("span", { class: "puce" }, donnees.etiquettes?.find((e) => e.id === id)?.nom || id)))),
-    !r.fait ? bouton("", { classe: "texte icone", icone: "horloge", etiquette: `Reporter « ${r.texte} »`, titre: "Reporter", onclick: () => reporter(r) }) : null,
-    bouton("", { classe: "texte icone", icone: "corbeille", etiquette: `Supprimer « ${r.texte} »`, onclick: (e) => occupe(e.currentTarget, async () => {
-      try {
-        await supprimer(`/api/rappels/${seg(r.id)}`);
-        dire("Rappel supprimé.", { action: { libelle: "Annuler", faire: () => ecrireRappel(r, "Rappel remis.") } });
-        recharger();
-      } catch (err) { direErreur(err, null, "Pas supprimé"); }
-    }) }));
-}
-
-async function ecrireRappel(r, message, avant) {
-  try {
-    await ecrire("/api/rappels", { rappels: [{ id: r.id, texte: r.texte, quand: r.quand ?? null, fait: Boolean(r.fait), etiquettes: r.etiquettes || [] }] });
-    dire(message, { genre: "succes", action: avant ? { libelle: "Annuler", faire: () => ecrireRappel(avant, "Annulé.") } : null });
-    recharger();
-  } catch (err) {
-    direErreur(err, null, "Rappel pas enregistré");
-  }
-}
-
-function reporter(r) {
-  const champ = h("input", { class: "champ", type: "datetime-local", "aria-label": "Autre moment" });
-  champ.value = versChampDate(new Date(r.quand && r.quand > Date.now() ? r.quand : Date.now() + 3600e3));
-  let f;
-  const choisir = (d) => {
-    f.fermer();
-    ecrireRappel({ ...r, quand: d.getTime() }, `« ${r.texte} » : ${quand(d.getTime())}.`, r);
-  };
-  f = feuille({
-    titre: "Reporter", sousTitre: r.texte,
-    contenu: h("div", null, h("div", { class: "rangee serree" }, CHOIX_REPORT().map(([lib, d]) => h("button", { type: "button", class: "puce", onclick: () => choisir(d) }, lib))),
-      h("div", { class: "ajout-ligne" }, champ, bouton("OK", { classe: "plein", onclick: () => { const d = depuisChampDate(champ.value); if (d) choisir(d); } }))),
-  });
-}
+const ligneRappel = (r) => ligneRappelPartagee(r, { apres: recharger, nomEtiquette: (id) => donnees.etiquettes?.find((e) => e.id === id)?.nom || id });
 
 // Catégories (étiquettes des tâches et des rappels).
 function detailCategories() {

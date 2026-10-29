@@ -15,7 +15,20 @@ import { h, ajouterA, dire, feuille, bouton, local, heure } from "./ui.js";
 
 const T = () => (typeof window !== "undefined" ? window.__TAURI__ : undefined);
 export const estBureau = () => Boolean(T()?.core?.invoke);
-export const invoke = (nom, args) => T().core.invoke(nom, args);
+/**
+ * Une commande de la coquille. Tauri rejette avec une CHAÎNE (le `Err(String)`
+ * de Rust) : elle devient une Error dont le message est l'explication de la
+ * coquille (« Windows a refusé… »), au lieu d'un « Erreur inattendue » muet.
+ */
+export function invoke(nom, args) {
+  const t = T();
+  if (!t?.core?.invoke) return Promise.reject(Object.assign(new Error("L'app Windows ne répond pas : relance-la."), { nature: "bureau" }));
+  return Promise.resolve()
+    .then(() => t.core.invoke(nom, args))
+    .catch((e) => {
+      throw Object.assign(new Error(typeof e === "string" ? e : e?.message || String(e)), { nature: "bureau" });
+    });
+}
 export const ecouter = (nom, f) => T()?.event?.listen?.(nom, f);
 
 // --- Réglages des notifications (gardés dans ce profil WebView2) ---
@@ -40,9 +53,11 @@ const borner = (s, n) => {
 
 /**
  * Ce qu'il faut dire des rappels. `deja` : les clés déjà notifiées.
- * Rend `{ notifications: [{ titre, corps, cle }], cles: [...] }` : un rappel
- * dû depuis moins de 2 h a sa notification (3 au plus, le reste regroupé) ;
- * plus vieux (tour éteinte, PC en veille), ils sont regroupés en une seule.
+ * Rend `{ notifications: [{ titre, corps, cle, cles }], cles: [...] }` : un
+ * rappel dû depuis moins de 2 h a sa notification (3 au plus, le reste
+ * regroupé) ; plus vieux (tour éteinte, PC en veille), ils sont regroupés en
+ * une seule. `cles` d'une notification : les rappels qu'elle couvre (marqués
+ * dits seulement quand Windows l'a prise).
  */
 export function rappelsADire(rappels, { maintenant = Date.now(), deja = new Set() } = {}) {
   const dus = (rappels || [])
@@ -52,15 +67,16 @@ export function rappelsADire(rappels, { maintenant = Date.now(), deja = new Set(
   const anciens = dus.filter((r) => maintenant - r.quand > DEUX_HEURES);
   const seuls = recents.slice(-3);
   const regroupes = [...anciens, ...recents.slice(0, Math.max(0, recents.length - 3))];
-  const notifications = seuls.map((r) => ({ titre: borner(r.texte, 80) || "Rappel", corps: `Rappel de ${heure(r.quand)}`, cle: cleRappel(r) }));
+  const notifications = seuls.map((r) => ({ titre: borner(r.texte, 80) || "Rappel", corps: `Rappel de ${heure(r.quand)}`, cle: cleRappel(r), cles: [cleRappel(r)] }));
   if (regroupes.length === 1) {
     const r = regroupes[0];
-    notifications.unshift({ titre: borner(r.texte, 80) || "Rappel", corps: `Rappel passé (${heure(r.quand)}) pendant ton absence.`, cle: cleRappel(r) });
+    notifications.unshift({ titre: borner(r.texte, 80) || "Rappel", corps: `Rappel passé (${heure(r.quand)}) pendant ton absence.`, cle: cleRappel(r), cles: [cleRappel(r)] });
   } else if (regroupes.length > 1) {
     notifications.unshift({
       titre: `${regroupes.length} rappels passés pendant ton absence`,
       corps: borner(regroupes.map((r) => r.texte).join(" · "), 240),
       cle: `rappels-groupes@${regroupes.map(cleRappel).join(",")}`.slice(0, 200),
+      cles: regroupes.map(cleRappel),
     });
   }
   return { notifications, cles: dus.map(cleRappel) };
@@ -131,34 +147,76 @@ export const changerAdresse = () => invoke("bureau_changer_adresse");
 export const ouvrirLien = (url) => invoke("bureau_ouvrir_lien", { url });
 
 // --- La boucle des notifications (fenêtre principale seulement) ---
-let boucle = null;
-let derniereLecture = 0;
-async function tic() {
-  const r = reglagesNotifs();
-  const deja = ensembleDeja();
-  if (r.rappels && Date.now() - derniereLecture >= 59e3) {
-    derniereLecture = Date.now();
+/** Un rituel pas dit (tour pas encore joignable au réveil du PC, refus de Windows) se retente au plus toutes les 5 min. */
+export const REESSAI_RITUEL = 5 * 60e3;
+export const cleSession = (maintenant = Date.now()) => `session@${jourISO(new Date(maintenant))}`;
+
+/**
+ * La boucle d'une minute, ses dépendances injectables (tests). Une clé n'est
+ * marquée « dite » qu'une fois la notification prise par Windows : un refus
+ * (limite de la coquille, erreur de Windows) repartira au tour suivant. Une
+ * session perdue se dit une fois par jour : sans elle, plus aucun rappel ne
+ * part, et la fenêtre est peut-être cachée près de l'horloge.
+ */
+export function creerTic({
+  lire = (chemin, options) => api(chemin, options),
+  notif = notifier,
+  horloge = () => Date.now(),
+  reglages = reglagesNotifs,
+  memoire = { deja: ensembleDeja, noter: noterDeja },
+} = {}) {
+  let derniereLecture = -Infinity;
+  const essais = new Map(); // clé de rituel → dernier essai
+  const direDeconnecte = async (maintenant) => {
+    const cle = cleSession(maintenant);
+    if (memoire.deja().has(cle)) return;
     try {
-      const { rappels } = await api("/api/rappels", { delai: 15000 });
-      const { notifications, cles } = rappelsADire(rappels, { deja });
-      for (const n of notifications) await notifier(n.titre, n.corps, n.cle, "projets/rappels").catch(() => {});
-      if (cles.length) noterDeja(cles);
-    } catch {
-      // Tour injoignable ou session perdue : le site le dit déjà ; on réessaiera.
-    }
-  }
-  const du = rituelDu(r, { deja });
-  if (du) {
-    noterDeja([du.cle]);
-    try {
-      const rituel = await api("/api/rituel", { delai: 30000 });
-      const t = texteRituel(du.nom, rituel);
-      await notifier(t.titre, t.corps, du.cle, "aujourdhui");
+      await notif("Rémy est déconnecté", "Ouvre-le pour te reconnecter : sinon, plus de rappels ni de briefing.", cle, "aujourdhui");
+      memoire.noter([cle]);
     } catch {}
-  }
+  };
+  return async function tic() {
+    const maintenant = horloge();
+    const r = reglages();
+    if (r.rappels && maintenant - derniereLecture >= 59e3) {
+      derniereLecture = maintenant;
+      try {
+        const { rappels } = await lire("/api/rappels", { delai: 15000 });
+        const { notifications } = rappelsADire(rappels, { maintenant, deja: memoire.deja() });
+        for (const n of notifications) {
+          try {
+            await notif(n.titre, n.corps, n.cle, "projets/rappels");
+            memoire.noter(n.cles || [n.cle]);
+          } catch {
+            // Refusée : pas marquée, elle repartira à la prochaine minute.
+          }
+        }
+      } catch (err) {
+        if (err?.nature === "auth") await direDeconnecte(maintenant);
+        // Tour injoignable : on réessaiera à la prochaine minute.
+      }
+    }
+    const du = rituelDu(r, { maintenant, deja: memoire.deja() });
+    if (du && maintenant - (essais.get(du.cle) ?? -Infinity) >= REESSAI_RITUEL) {
+      essais.set(du.cle, maintenant);
+      try {
+        const rituel = await lire("/api/rituel", { delai: 30000 });
+        const t = texteRituel(du.nom, rituel);
+        await notif(t.titre, t.corps, du.cle, "aujourdhui");
+        memoire.noter([du.cle]);
+        essais.delete(du.cle);
+      } catch (err) {
+        if (err?.nature === "auth") await direDeconnecte(maintenant);
+        // Sinon : retenté dans 5 min, tant qu'on est dans la fenêtre de 4 h.
+      }
+    }
+  };
 }
+
+let boucle = null;
 export function demarrerNotifications() {
   clearInterval(boucle);
+  const tic = creerTic();
   tic();
   // WebView2 ralentit les minuteries d'une fenêtre cachée à une par minute : ça suffit.
   boucle = setInterval(tic, 60e3);
