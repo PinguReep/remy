@@ -158,6 +158,7 @@ test("le constat : une réflexion abandonnée par une version d'avant ne reste p
   // Et le compteur de la garde ne se fait plus passer pour les Sparks.
   assert.doesNotMatch(h.travail_de_fond, /Sparks \d+\/\d+/);
   assert.match(h.travail_de_fond, /inférences en cours : 0 \(fond : 2 à la fois au plus\)/);
+  assert.match(h.cerveau, /^local d'abord — DeepSeek-V4\.1-Flash-1017 sur les Sparks ;/, "le modèle servi, pas l'ancien REMY_GLM_MODEL");
 
   // Une alerte récente se lit, datée…
   inserer("reflexion-nuit", { etat: "abandonne", erreur: "panne de cette nuit", maj: Date.now() - H });
