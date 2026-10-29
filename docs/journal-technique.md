@@ -334,6 +334,43 @@ que le chat répondait. Rejoué contre de faux serveurs compatibles OpenAI
   question de plus de 200 caractères n'est pas cherchée telle quelle
   (testé).
 
+## 2026-10-29 — Chercher dans les réglages, bilan à 22 h 45, prototypes retirés
+
+- **Un index déclaratif dans le cœur** (`RemyCore/RechercheReglages.swift`),
+  pas une recherche dans l'arbre des vues : SwiftUI n'expose pas ses lignes,
+  et l'index se teste sous Linux. Chaque entrée : titre, sous-titre, mots-clés
+  (synonymes : « notif », « privé », « Siri », « GPS », « tok/s »…), l'écran à
+  ouvrir, la ligne à mettre en évidence (son libellé), les conditions de sa
+  présence (capacité de la tour, réglage qu'elle a dit, interrupteur allumé)
+  et un repli quand la ligne n'est pas affichée (« Heure du bilan », bilan
+  coupé : on montre « Bilan du soir » et on le dit).
+- **Sans IA ni réseau** : mots sans accents ni majuscules, chacun doit trouver
+  le début d'un mot (titre > mots-clés > sous-titre et chemin), mots vides
+  ignorés (« l'heure du bilan »). Rien d'exact : une faute de frappe tolérée
+  (1 lettre jusqu'à 7, 2 au-delà, 4 lettres minimum), et c'est dit.
+- **Ce que la tour ne propose pas n'est pas proposé** ; si c'est tout ce qui
+  correspond, l'état vide le dit (« dépend de ta tour »), au lieu d'un
+  « rien » trompeur. Sinon : « Rien ne correspond à « … » » et trois mots à
+  essayer (boutons de 48 pt).
+- **Arriver au réglage** : `.repere("Titre")` (ou `dans: .diagnostic`, `.lieux`…)
+  sur la ligne, `.allerAuRepere(.ecran)` sur sa liste. Un état partagé
+  (`RepereReglages`) traverse feuilles et pages poussées ; la ligne visée a un
+  fond orange pâle et un filet quelques secondes, VoiceOver s'y pose et dit
+  « Réglage trouvé ». La saisie reste : le retour rend les résultats.
+- **Les vues et l'index ne divergent pas** : `RechercheReglagesTests` relit les
+  sources des vues. Une ligne repérée absente de l'index, une ligne de
+  Réglages (`ligne(`, `circuit(`, rendez-vous quotidien) sans entrée, ou une
+  ancre renommée font échouer. Une nouvelle ligne de Réglages = une entrée.
+- **ReglagesView ne change que par ajouts** (état, `.repere`, une extension) :
+  d'autres branches y ajoutent leurs lignes.
+- **Bilan du soir à 22 h 45 par défaut** (21 h 30 avant), le matin reste à
+  7 h 30. `@AppStorage` n'écrit l'heure qu'au choix de Sam : une heure absente
+  prend le nouveau défaut, une heure choisie (même 21 h 30) reste. Les
+  notifications se reprogramment au lancement suivant (`planifierRituel`).
+- **Prototypes de design retirés** (`Remy/Prototypes`, `REMY_PROTO`,
+  `ios-prototypes.yml`) : la direction A est en place depuis le Lot 1, ils ne
+  servaient plus qu'à leurs propres captures.
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil

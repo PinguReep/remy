@@ -401,6 +401,55 @@ final class ParcoursQuotidien: ParcoursBase {
         }
     }
 
+    /// Chercher dans les réglages (29/10) : « jauge » mène à Diagnostic, la
+    /// ligne en évidence ; le retour rend les résultats ; une saisie sans
+    /// résultat le dit et propose de quoi rebondir.
+    @MainActor
+    func test25_chercherUnReglage() {
+        jouer("P25", "Réglages : chercher « jauge » et arriver au bon réglage") {
+            lancer()
+            try attendreAccueil()
+            try toucher(bouton("Réglages"), "Réglages")
+            let champ = nomme(app.searchFields.firstMatch, "champ « Chercher un réglage »")
+            try etape("reglages", attendu: [champ, texte("Apparence")])
+            try toucher(champ, "champ de recherche")
+            try saisir("jauge", dans: champ)
+            let resultat = ident("recherche.diagnostic.jauge")
+            try etape("resultats", attendu: [resultat])
+            let premier = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "recherche.")).firstMatch
+            noter("premier résultat : \(premier.identifier)")
+            verifier("« Jauge du contexte » est le premier résultat de « jauge ».", premier.identifier == "recherche.diagnostic.jauge")
+            auditerCibles("Résultats de la recherche")
+            try toucher(resultat, "Jauge du contexte")
+            let interrupteur = nomme(app.switches.matching(NSPredicate(format: "label CONTAINS %@", "Jauge du contexte")).firstMatch,
+                                     "interrupteur « Jauge du contexte »")
+            try etape("reglage-atteint", attendu: [app.navigationBars["Diagnostic"], interrupteur])
+            verifier("Le réglage trouvé est à l'écran, touchable sans défiler.", interrupteur.isHittable)
+            // Retour : la recherche et ses résultats sont toujours là.
+            try toucher(app.navigationBars["Diagnostic"].buttons.firstMatch, "retour")
+            try etape("retour-aux-resultats", attendu: [resultat])
+            // Rien ne correspond : c'est dit, avec des mots à essayer.
+            try toucher(champ, "champ de recherche")
+            try saisir(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "trampoline", dans: champ)
+            let suggestion = bouton("Notifications")
+            try etape("rien-ne-correspond", attendu: [texte("Rien ne correspond à « trampoline »."), suggestion])
+            try toucher(suggestion, "suggestion « Notifications »")
+            try etape("suggestion", attendu: [ident("recherche.iphone")])
+            // Une ligne de Réglages même, tout en bas : la recherche se ferme
+            // et l'écran défile jusqu'à elle.
+            try toucher(champ, "champ de recherche")
+            try saisir(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 16) + "dimanche", dans: champ)
+            let dimanche = ident("recherche.revue.dimanche")
+            try etape("resultat-dimanche", attendu: [dimanche])
+            try toucher(dimanche, "Revue du dimanche")
+            let revue = nomme(app.switches.matching(NSPredicate(format: "label CONTAINS %@", "Revue du dimanche")).firstMatch,
+                              "interrupteur « Revue du dimanche »")
+            try etape("ligne-de-reglages-atteinte", attendu: [revue], absent: [dimanche])
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            verifier("La ligne trouvée dans Réglages est amenée à l'écran.", revue.isHittable)
+        }
+    }
+
     // MARK: - Cas difficiles
 
     @MainActor

@@ -43,6 +43,14 @@ public enum Nouveautes {
             .init(symbole: "rectangle.compress.vertical", titre: "Le résumé à 70 %",
                   texte: "Touche le cadran : il dit quand Rémy résumera le début du fil (dès 70 %), s'il l'a fait, et « Compacter maintenant » le fait tout de suite. Rien n'est effacé."),
         ]),
+        Nouveaute(id: "reglages-recherche", serie: 5, date: "29 oct.", titre: "Chercher dans les réglages", capacite: nil, pages: [
+            .init(symbole: "magnifyingglass", titre: "Va droit au réglage",
+                  texte: "En haut de Réglages, tape ce que tu cherches : « notif », « jauge », « privé », « Siri »… Touche un résultat : son écran s'ouvre, le réglage mis en évidence."),
+        ]),
+        Nouveaute(id: "bilan-coucher", serie: 5, date: "29 oct.", titre: "Le bilan, avant de te coucher", capacite: "rituel-v1", pages: [
+            .init(symbole: "moon.stars", titre: "22 h 45 par défaut",
+                  texte: "Allumé sans heure choisie, le bilan du soir arrive désormais à 22 h 45 (21 h 30 avant). Une heure que tu avais choisie reste la tienne : Réglages › Rendez-vous quotidien."),
+        ]),
         Nouveaute(id: "partage", serie: 3, date: "24 oct.", titre: "Partager vers Rémy", capacite: nil, pages: [
             .init(symbole: "square.and.arrow.up", titre: "Depuis n'importe quelle app",
                   texte: "Un texte, un lien, une capture d'écran : Partager › Rémy. Ajoute un mot si tu veux, puis « Envoyer à Rémy » : il le lit, le classe et te dit ce qu'il en a retenu."),
@@ -94,7 +102,7 @@ public enum Nouveautes {
             .init(symbole: "exclamationmark.triangle", titre: "Les échéances menacées",
                   texte: "En haut d'Aujourd'hui : une tâche qui ne tiendra plus son échéance, avant qu'elle soit en retard, avec l'action utile (repousser, ou demander à Rémy)."),
             .init(symbole: "moon.stars", titre: "Le soir, 30 secondes",
-                  texte: "Fait, glissé, et tout ce qui reste vers demain d'un geste (annulable). Une ligne sur ta journée si tu veux : Rémy la relit la nuit. Réglages › Rendez-vous quotidien."),
+                  texte: "Vers 22 h 45, avant de te coucher : fait, glissé, et tout ce qui reste vers demain d'un geste (annulable). Une ligne sur ta journée si tu veux : Rémy la relit la nuit. Réglages › Rendez-vous quotidien."),
         ]),
         Nouveaute(id: "idees", serie: 3, date: "24 oct.", titre: "Tes idées restent des idées", capacite: "dossiers-v1", pages: [
             .init(symbole: "tray.and.arrow.down", titre: "Plus de tâche par erreur",

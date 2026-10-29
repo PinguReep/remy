@@ -41,6 +41,7 @@ struct ActivitePCVue: View {
                             Label("Tout effacer", systemImage: "trash").frame(minHeight: 44)
                         }
                         .disabled(m.enCours)
+                        .repere("Tout effacer", dans: .activitePC)
                     }
                 } else if let e = m.erreur {
                     Section {
@@ -53,6 +54,7 @@ struct ActivitePCVue: View {
                     Section { Squelette(largeurs: [0.8, 0.7, 0.4]) }
                 }
             }
+            .allerAuRepere(.activitePC)
             .navigationTitle("Activité du PC")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { fermer() } } }
@@ -107,6 +109,7 @@ struct ActivitePCVue: View {
             .tint(Palette.signal)
             .frame(minHeight: 60)
             .disabled(v.coupeParLaTour || m.enCours)
+            .repere("Activité du PC", dans: .activitePC)
             if v.coupeParLaTour {
                 Text("Coupée sur la tour (REMY_ACTIVITE_PC=off) : retire ce réglage de remy.env pour pouvoir l'allumer ici.")
                     .font(Police.texte(13))
@@ -304,6 +307,7 @@ struct ActivitePCVue: View {
                 Label("Ne plus compter une appli…", systemImage: "plus.circle").frame(minHeight: 44)
             }
             .disabled(app.activitePC.enCours || v.coupeParLaTour)
+            .repere("Ne plus compter une appli…", dans: .activitePC)
         } header: {
             Text("Jamais comptées")
         }

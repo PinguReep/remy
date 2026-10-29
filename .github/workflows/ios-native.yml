@@ -244,6 +244,13 @@ jobs:
           capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
           capture 6f-priorites-clair light priorites
           capture 6-reglages-sombre dark reglages
+          # Chercher dans les réglages (29/10) : « notif », une saisie sans
+          # résultat, puis « jauge » touché (Diagnostic, la ligne en évidence).
+          capture 6h-reglages-recherche-clair light reglages-recherche
+          capture 6i-reglages-recherche-vide-sombre dark reglages-recherche-vide
+          capture 6j-reglages-repere-clair light reglages-repere
+          capture 6k-reglages-repere-sombre dark reglages-repere
+          capture 6l-reglages-repere-ici-clair light reglages-repere-ici
           capture 6f-usage-clair light usage
           capture 7-appel-sombre dark appel
           capture 8-dictee-clair light dictee
@@ -261,6 +268,8 @@ jobs:
           capture 11b-grand-texte-gerer-clair light gerer
           capture 11c-grand-texte-capture-clair light capture
           capture 11d-grand-texte-remy-prive-clair light remy-fil c15
+          capture 11e-grand-texte-reglages-recherche-clair light reglages-recherche
+          capture 11f-grand-texte-reglages-vide-sombre dark reglages-recherche-vide
           xcrun simctl ui "$UDID" content_size large || true
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.
@@ -325,6 +334,7 @@ jobs:
             capture 10q-petit-bilan-sombre dark bilan
             capture 10r-petit-remy-prive-clair light remy-fil c15
             capture 10s-petit-remy-prive-vide-sombre dark remy-prive-vide
+            capture 10t-petit-reglages-recherche-clair light reglages-recherche
             UDID=$GRAND
             xcrun simctl shutdown "$PETIT" || true
           else
