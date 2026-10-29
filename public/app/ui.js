@@ -118,6 +118,25 @@ export async function occupe(btn, faire) {
   }
 }
 
+// --- lot boite : icônes de la boîte, du briefing et d'« À trancher » ---
+Object.assign(CHEMINS, {
+  plateau: "M3 13h5l1.5 3h5l1.5-3h5M3 13l3-8h12l3 8v6H3z",
+  plateauPlein: "M3 13h5l1.5 3h5l1.5-3h5M3 13l3-8h12l3 8v6H3zM8.5 8h7M7.5 10.5h9",
+  cible: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zM12 11.5v1",
+  question: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01",
+  bouclier: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6zM9 12l2 2 4-4",
+  baguette: "M4 20 16 8M15 3v3M18 6h3M19.5 3.5l-2 2M10 4l1 1M20 13l-1-1",
+  leverSoleil: "M3 18h18M6.5 18a5.5 5.5 0 0 1 11 0M12 5v3M5 9.5l1.5 1.5M19 9.5 17.5 11M8 21h8",
+  fusion: "M7 4v4c0 3 2 5 5 5s5 2 5 5v2M17 4v4c0 3-2 5-5 5",
+  chariot: "M3 4h2l2.5 11h10L20 7H6.2M9 20h.01M17 20h.01",
+  proposition: "M4 5h16v14H4zM8 10h8M8 14h5",
+  retard: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V13M12 16.5h.01",
+  revue: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M9 15l2 2 4-4",
+  moins: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8",
+  ranger: "M3 14h5l1.5 3h5l1.5-3h5M3 14v6h18v-6M12 3v8M8.5 7.5 12 11l3.5-3.5",
+});
+// --- fin lot boite ---
+
 // --- Bandeaux ---
 // Une feuille ouverte (showModal) passe dans la couche du dessus et rend tout
 // le reste inerte : des bandeaux restés dans le body y seraient floutés et
