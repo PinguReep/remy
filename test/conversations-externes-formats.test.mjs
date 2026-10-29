@@ -127,6 +127,28 @@ test("T3 : un message daté dans le futur ne bloque plus la lecture ; une répon
   assert.equal(r2.sources.t3.messages + r2.sources.t3.majs, 0);
 });
 
+test("T3 : une table de messages sans rowid (WITHOUT ROWID) se lit aussi, nouvelles lignes et modifications comprises", async () => {
+  const t3 = await import("../lib/connaissances/t3.js");
+  const fichier = path.join(dossier, "t3-sans-rowid", "statev2.sqlite");
+  fx.creerBaseT3(fichier, {
+    projets: [{ id: "p9", titre: "Atelier", racine: "C:\\Users\\sam\\code\\atelier" }],
+    fils: [{ id: "fil-z", projet: "p9", titre: "Sans rowid", cree: iso(MAINTENANT - H) }],
+  });
+  // La même table, refaite WITHOUT ROWID.
+  const b = fx.ouvrirBaseT3(fichier);
+  b.exec(`DROP TABLE orchestration_v2_projection_messages;
+    CREATE TABLE orchestration_v2_projection_messages (message_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, run_id TEXT, node_id TEXT, role TEXT NOT NULL, streaming INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, payload_json TEXT NOT NULL) WITHOUT ROWID;`);
+  fx.ajouterT3(b, { messages: [{ id: "z1", fil: "fil-z", role: "user", texte: "Première ligne sans rowid.", cree: iso(MAINTENANT - H) }] });
+  b.close();
+  const r1 = await t3.lireBase(fichier, null);
+  assert.deepEqual(r1.messages.map((m) => m.texte), ["Première ligne sans rowid."]);
+  const b2 = fx.ouvrirBaseT3(fichier);
+  fx.ajouterT3(b2, { messages: [{ id: "z2", fil: "fil-z", role: "assistant", texte: "Réponse ajoutée ensuite.", cree: iso(Date.now()) }] });
+  b2.close();
+  const r2 = await t3.lireBase(fichier, r1.curseur, { connus: new Set(["fil-z"]) });
+  assert.ok(r2.messages.some((m) => m.texte === "Réponse ajoutée ensuite."));
+});
+
 // =============================================================================================
 // Rémy : quand puiser, et quoi
 // =============================================================================================
