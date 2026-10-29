@@ -121,9 +121,39 @@ public struct EtatConversations: Codable, Equatable, Sendable {
         public var erreur: ProblemeSource?
     }
     public struct Imports: Codable, Equatable, Sendable {
+        /// Les exports déjà importés, gardés en clair HORS du coffre jusqu'à
+        /// leur effacement (contre-relecture du 29/10).
+        public struct Originaux: Codable, Equatable, Sendable {
+            public var dossier: String?
+            public var fichiers: Int
+            public var octets: Int?
+            public var gardeJours: Int?
+
+            public init(dossier: String? = nil, fichiers: Int = 0, octets: Int? = nil, gardeJours: Int? = nil) {
+                self.dossier = dossier
+                self.fichiers = fichiers
+                self.octets = octets
+                self.gardeJours = gardeJours
+            }
+
+            /// « 1 export importé reste en clair hors du coffre (~\.remy\imports-importes) : effacé 7 jours après l'import. »
+            public var phrase: String? {
+                guard fichiers > 0 else { return nil }
+                let n = fichiers == 1 ? "1 export importé reste" : "\(fichiers) exports importés restent"
+                let ou = dossier.map { " (\($0))" } ?? ""
+                let quand: String
+                switch gardeJours {
+                case .some(0): quand = "effacé à la prochaine lecture"
+                case .some(let j): quand = "effacé \(j) jour\(j > 1 ? "s" : "") après l'import"
+                case .none: quand = "effacé après quelques jours"
+                }
+                return "\(n) en clair hors du coffre\(ou) : \(quand)."
+            }
+        }
         public var dossier: String?
         public var enAttente: Int?
         public var importes: Int?
+        public var originaux: Originaux?
     }
     public struct Total: Codable, Equatable, Sendable {
         public var conversations: Int
@@ -272,6 +302,10 @@ public struct LectureConversation: Codable, Equatable, Sendable {
     public var conversation: ConversationExterne
     public var messages: [MessageExterne]
     public var suite: Int?
+    /// Ouverte « autour » d'un message (un résultat de recherche) : lequel, et
+    /// s'il y a des messages plus anciens avant cette page.
+    public var cible: Int?
+    public var avant: Bool?
 }
 
 public struct ResultatRecherche: Codable, Equatable, Identifiable, Sendable {
@@ -344,17 +378,20 @@ public struct BilanImport: Codable, Equatable, Sendable {
     public var misesAJour: Int
     public var ignorees: Int
     public var masques: Int
+    /// Très longues : seule la fin a été gardée (2 000 messages).
+    public var tronquees: Int
 
-    public init(deja: Bool = false, conversations: Int = 0, nouvelles: Int = 0, misesAJour: Int = 0, ignorees: Int = 0, masques: Int = 0) {
+    public init(deja: Bool = false, conversations: Int = 0, nouvelles: Int = 0, misesAJour: Int = 0, ignorees: Int = 0, masques: Int = 0, tronquees: Int = 0) {
         self.deja = deja
         self.conversations = conversations
         self.nouvelles = nouvelles
         self.misesAJour = misesAJour
         self.ignorees = ignorees
         self.masques = masques
+        self.tronquees = tronquees
     }
 
-    enum CodingKeys: String, CodingKey { case deja, conversations, nouvelles, misesAJour, ignorees, masques }
+    enum CodingKeys: String, CodingKey { case deja, conversations, nouvelles, misesAJour, ignorees, masques, tronquees }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         deja = (try? c.decodeIfPresent(Bool.self, forKey: .deja)) ?? false
@@ -363,9 +400,12 @@ public struct BilanImport: Codable, Equatable, Sendable {
         misesAJour = (try? c.decodeIfPresent(Int.self, forKey: .misesAJour)) ?? 0
         ignorees = (try? c.decodeIfPresent(Int.self, forKey: .ignorees)) ?? 0
         masques = (try? c.decodeIfPresent(Int.self, forKey: .masques)) ?? 0
+        tronquees = (try? c.decodeIfPresent(Int.self, forKey: .tronquees)) ?? 0
     }
 
-    /// « 12 conversations importées, 3 mises à jour. » / « Déjà importé : rien de nouveau. »
+    /// « 12 conversations importées, 3 mises à jour. 2 ignorées (sans texte
+    /// lisible). » / « Déjà importé : rien de nouveau. » — ce qui n'est pas
+    /// gardé est dit (contre-relecture du 29/10).
     public var phrase: String {
         if deja { return "Cet export était déjà importé : rien de nouveau." }
         var p: [String] = []
@@ -373,8 +413,20 @@ public struct BilanImport: Codable, Equatable, Sendable {
         if misesAJour > 0 { p.append(misesAJour == 1 ? "1 mise à jour" : "\(misesAJour) mises à jour") }
         if p.isEmpty { p.append("Rien de nouveau dans cet export") }
         var s = p.joined(separator: ", ") + "."
+        if ignorees > 0 { s += ignorees == 1 ? " 1 ignorée (sans texte lisible)." : " \(ignorees) ignorées (sans texte lisible)." }
+        if tronquees > 0 { s += tronquees == 1 ? " 1 très longue : seule la fin est gardée." : " \(tronquees) très longues : seule la fin est gardée." }
         if masques > 0 { s += masques == 1 ? " 1 secret masqué." : " \(masques) secrets masqués." }
         return s
+    }
+}
+
+/// Suit un envoi de fichier (la part envoyée), pour l'afficher.
+final class SuiviEnvoi: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let progression: @Sendable (Double) -> Void
+    init(_ p: @escaping @Sendable (Double) -> Void) { progression = p }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        progression(min(1, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
     }
 }
 
@@ -449,6 +501,20 @@ public enum ConversationsExternes {
         return Format.jourTitre(d) + Format.anneeSiAutre(d, maintenant: maintenant)
     }
 
+    /// « 2026-10-28 » → le même titre que la liste (« Hier », « Lundi 26 octobre »).
+    public static func titreJour(iso: String, maintenant: Date = Date(), calendrier: Calendar = Format.calendrier) -> String {
+        let p = iso.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3, let d = calendrier.date(from: DateComponents(year: p[0], month: p[1], day: p[2], hour: 12)) else { return iso }
+        return titreJour(d.timeIntervalSince1970 * 1000, maintenant: maintenant, calendrier: calendrier)
+    }
+
+    /// « hier », « aujourd'hui », « le lundi 26 octobre » : pour une phrase.
+    public static func ceJour(iso: String, maintenant: Date = Date(), calendrier: Calendar = Format.calendrier) -> String {
+        let t = titreJour(iso: iso, maintenant: maintenant, calendrier: calendrier)
+        if t == "Aujourd'hui" || t == "Hier" { return t.lowercased() }
+        return t == iso ? "le \(iso)" : "le " + t.prefix(1).lowercased() + t.dropFirst()
+    }
+
     /// Un fichier que la tour sait importer (le .zip de l'export, ou conversations.json).
     public static func importable(_ nom: String) -> Bool {
         let n = nom.lowercased()
@@ -474,13 +540,18 @@ extension ClientAPI {
         return try await json(PageConversations.self, "api/conversations-externes/liste?" + q.joined(separator: "&"))
     }
 
-    public func joursConversations(source: String? = nil) async throws -> [JourConversations] {
-        try await json(RetourJours.self, "api/conversations-externes/jours" + (source.map { "?source=\($0)" } ?? "")).jours
+    /// Les jours qui ont des conversations (jusqu'à `nombre` jours en arrière).
+    public func joursConversations(source: String? = nil, nombre: Int = 400) async throws -> [JourConversations] {
+        try await json(RetourJours.self, "api/conversations-externes/jours?nombre=\(nombre)" + (source.map { "&source=\($0)" } ?? "")).jours
     }
 
-    public func conversationExterne(source: String, id: String, apres: Int? = nil) async throws -> LectureConversation {
+    /// `autour` : ouvrir la conversation à ce message (un résultat de recherche).
+    public func conversationExterne(source: String, id: String, apres: Int? = nil, autour: Int? = nil) async throws -> LectureConversation {
         let ident = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_."))) ?? id
-        return try await json(LectureConversation.self, "api/conversations-externes/conversations/\(source)/\(ident)" + (apres.map { "?apres=\($0)" } ?? ""), delai: 30)
+        var q: [String] = []
+        if let apres { q.append("apres=\(apres)") }
+        if let autour { q.append("autour=\(autour)") }
+        return try await json(LectureConversation.self, "api/conversations-externes/conversations/\(source)/\(ident)" + (q.isEmpty ? "" : "?" + q.joined(separator: "&")), delai: 30)
     }
 
     public func chercherConversations(_ q: String, source: String? = nil) async throws -> [ResultatRecherche] {
@@ -521,8 +592,9 @@ extension ClientAPI {
 
     /// Envoie l'export ChatGPT (le .zip reçu par mail, ou conversations.json)
     /// depuis le disque, sans le charger en entier sur l'iPhone.
-    func importerChatGPT(fichier: URL) async throws -> RetourImport {
-        let d = try await envoyerFichier("api/conversations-externes/chatgpt", fichier: fichier, type: ConversationsExternes.typeFichier(fichier.lastPathComponent))
+    func importerChatGPT(fichier: URL, progression: (@Sendable (Double) -> Void)? = nil) async throws -> RetourImport {
+        let d = try await envoyerFichier("api/conversations-externes/chatgpt", fichier: fichier, type: ConversationsExternes.typeFichier(fichier.lastPathComponent),
+                                         progression: progression)
         do {
             return try JSONDecoder().decode(RetourImport.self, from: d)
         } catch {
@@ -552,9 +624,16 @@ public final class ConversationsExternesModel {
     public private(set) var digest: DigestNuit?
     /// Un geste en cours (lire maintenant, interrupteur, effacer).
     public private(set) var enCours = false
-    /// L'envoi d'un export ChatGPT en cours.
+    /// L'envoi d'un export ChatGPT en cours, et la part déjà envoyée (0…1).
     public private(set) var importEnCours = false
+    public private(set) var progressionImport: Double?
     public private(set) var dernierImport: BilanImport?
+    /// Un jour choisi (AAAA-MM-JJ) : seulement les conversations de ce jour-là.
+    public private(set) var jour: String?
+    /// Les jours qui ont des conversations (pour aller à une date) ; nil tant
+    /// qu'ils n'ont pas été demandés.
+    public private(set) var jours: [JourConversations]?
+    public private(set) var erreurJours: String?
 
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let api: ClientAPI
@@ -603,7 +682,7 @@ public final class ConversationsExternesModel {
     func chargerListe(depuisDebut: Bool) async {
         let decalage = depuisDebut ? 0 : (suite ?? liste.count)
         do {
-            let p = try await api.conversationsExternes(source: filtre, decalage: decalage)
+            let p = try await api.conversationsExternes(source: filtre, jour: jour, decalage: decalage)
             liste = depuisDebut ? p.conversations : liste + p.conversations.filter { c in !liste.contains { $0.id == c.id && $0.source == c.source } }
             total = p.total
             suite = p.suite
@@ -620,7 +699,29 @@ public final class ConversationsExternesModel {
         filtre = source
         liste = []
         suite = nil
+        jours = nil
         if !recherche.isEmpty { await chercher(recherche) }
+        await chargerListe(depuisDebut: true)
+    }
+
+    /// Les jours qui ont des conversations (de la source choisie), du plus
+    /// récent au plus ancien : on va à une date sans dérouler des pages.
+    public func chargerJours() async {
+        do {
+            jours = try await api.joursConversations(source: filtre)
+            erreurJours = nil
+        } catch {
+            if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return }
+            erreurJours = (error as? LocalizedError)?.errorDescription ?? "Les jours n'ont pas pu être lus."
+        }
+    }
+
+    /// Un jour (AAAA-MM-JJ), ou tous (nil).
+    public func choisirJour(_ j: String?) async {
+        guard j != jour else { return }
+        jour = j
+        liste = []
+        suite = nil
         await chargerListe(depuisDebut: true)
     }
 
@@ -742,9 +843,18 @@ public final class ConversationsExternesModel {
             return false
         }
         importEnCours = true
-        defer { importEnCours = false }
+        progressionImport = 0
+        defer {
+            importEnCours = false
+            progressionImport = nil
+        }
         do {
-            let r = try await api.importerChatGPT(fichier: fichier)
+            let r = try await api.importerChatGPT(fichier: fichier) { [weak self] p in
+                Task { @MainActor in
+                    guard let self, self.importEnCours else { return }
+                    self.progressionImport = p
+                }
+            }
             dernierImport = r.bilan
             if let e = r.etat { etat = e }
             await chargerListe(depuisDebut: true)
@@ -754,6 +864,13 @@ public final class ConversationsExternesModel {
             app?.signaler(error)
             return false
         }
+    }
+
+    /// « Envoi de l'export… 42 % » pendant l'envoi.
+    public var libelleImport: String {
+        guard importEnCours else { return "Importer un export ChatGPT" }
+        guard let p = progressionImport, p > 0 else { return "Envoi de l'export à la tour…" }
+        return p >= 0.999 ? "Lecture de l'export sur la tour…" : "Envoi de l'export… \(Int((p * 100).rounded(.down))) %"
     }
 
     /// « Me le rappeler » : une chose à faire tirée la nuit devient un rappel

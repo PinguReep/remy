@@ -124,8 +124,12 @@ ChatGPT, et rien ne repart vers Anthropic ou OpenAI. Détail et contrat :
 2. **ChatGPT** : ChatGPT › Réglages › Contrôle des données › Exporter ; le
    .zip arrive par mail (lien valable 24 h). Envoie-le depuis l'app
    (Réglages › Sources des conversations › Importer un export ChatGPT), ou
-   dépose-le dans `<coffre>\Imports` : lu au passage suivant (30 min au plus),
-   puis rangé dans `Imports\Importés`. Le même export deux fois ne crée rien.
+   dépose-le dans `<coffre>\Imports` (le .zip, ou le dossier que crée
+   « Extraire tout ») : lu au passage suivant (30 min au plus), puis il
+   **quitte le coffre** pour `%USERPROFILE%\.remy\imports-importes`, effacé
+   7 jours après. Le même export deux fois ne crée rien. Trop gros pour
+   l'envoi depuis l'iPhone : dans Fichiers, touche le .zip pour le
+   décompresser et envoie seulement `conversations.json`.
 3. **La clé** : `%USERPROFILE%\.remy\conversations.cle`, créée au premier
    usage, hors du coffre. Garde-en une copie avec la clé des sauvegardes : sans
    elle, une base restaurée est illisible (Claude Code et T3 se relisent, un
@@ -142,14 +146,17 @@ ChatGPT, et rien ne repart vers Anthropic ou OpenAI. Détail et contrat :
 | `REMY_CLAUDE_DIRS`, `REMY_T3_DIRS` | des dossiers en plus, séparés par `;` |
 | `REMY_IMPORTS_DIR` | le dossier surveillé des exports (défaut `<coffre>\Imports`) |
 | `REMY_IMPORT_MAX_MO` | taille maximale d'un envoi depuis l'app (défaut 2048) |
+| `REMY_IMPORTS_GARDE_JOURS` | jours pendant lesquels un export importé est gardé hors du coffre (défaut 7 ; 0 : effacé tout de suite) |
 | `REMY_CONNAISSANCES_PROJETS` | ne garder que les projets dont le dossier contient l'un de ces mots |
+| `REMY_GLM_LOCAL=oui` | à poser seulement si `REMY_GLM_URL` désigne un modèle chez toi sous un nom public : sinon passages et nuit sont refusés hors de la machine, du réseau privé et du tailnet |
 
-La base (`<coffre>\.remy\connaissances.db`) est chiffrée ; le dossier
+La base (`<coffre>\.remy\connaissances.db`) est chiffrée. Une conversation
+de Rémy qui cite ces conversations, ou importée d'un autre assistant, est
+**scellée** dans `conversations.json` (chiffrée avec la même clé) et le coffre
+Obsidian n'en garde qu'un renvoi (« Conversation privée (…).md »). Le dossier
 `Imports` n'entre pas dans les sauvegardes (lourd, en clair, déjà dans la
-base). L'export déposé reste dans `Imports\Importés` : efface-le une fois tes
-conversations vues dans l'app si ton coffre est synchronisé ailleurs.
-« Tout effacer » (app) vide la base et ce que la nuit en a tiré, sans toucher
-aux originaux.
+base), et un export importé n'y reste pas. « Tout effacer » (app) vide la base
+et ce que la nuit en a tiré, sans toucher aux originaux.
 
 ## Recherche web (modèle local)
 

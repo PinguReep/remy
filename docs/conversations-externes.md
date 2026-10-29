@@ -6,34 +6,52 @@ le range **chiffré** dans ton coffre, te le montre (app iPhone, site) et s'en
 inspire (modèle local seulement). Capacité : `conversations-externes-v1`
 (`GET /api/version`).
 
-## Ce qui est garanti (et prouvé par `test/conversations-externes.test.mjs`)
+## Ce qui est garanti
+
+Prouvé par `test/conversations-externes.test.mjs`,
+`test/conversations-externes-vie-privee.test.mjs` et, rejouées contre un faux
+GLM, un faux Claude et un faux DuckDuckGo, les attaques de la contre-relecture
+du 29/10 (`test/attaque-fuites-conversations.test.mjs`,
+`test/conversations-externes-formats.test.mjs`).
 
 - **À sens unique** : la tour lit les sources, n'y écrit jamais, et rien ne
   repart vers OpenAI ou Anthropic. Les modules `lib/connaissances/` ne font
   aucune requête réseau.
 - **Matière privée** : jamais envoyée à Claude ni à aucun service. Les passages
-  ne vont qu'au modèle local ; une conversation de Rémy qui les cite devient
-  **privée** (plus de secours Claude, titre et mémoire en local, hors de la
-  réflexion de nuit envoyable). La nuit, la relecture des conversations de la
-  veille part avec `prive` : modèle local ou rien. Leurs mots entrent au filtre
-  des requêtes sortantes (salle blanche) : un nom ou un numéro qu'ils citent ne
-  part jamais dans une recherche web.
+  ne vont qu'au modèle local — et seulement s'il est **chez toi**
+  (`REMY_GLM_URL` sur la machine, le réseau privé ou le tailnet ; sinon
+  `REMY_GLM_LOCAL=oui` à déclarer) ; une conversation de Rémy qui les cite
+  devient **privée** (plus de secours Claude, titre et mémoire en local, hors
+  de la réflexion de nuit envoyable : son titre peut reconnaître une priorité,
+  il n'est jamais dit). La nuit, la relecture des conversations de la veille
+  part avec `prive` : modèle local ou rien. Leurs mots — nom du projet compris
+  — entrent au filtre des requêtes sortantes (salle blanche) : un nom ou un
+  numéro qu'ils citent ne part jamais dans une recherche web.
 - **Chiffrée au repos** : textes, titres, aperçus, noms et dossiers de projets
   en AES-256-GCM ; l'index de recherche ne contient que des empreintes de mots
   (HMAC), sans positions. La clé n'est pas dans le coffre (voir « La clé »).
+  Une conversation de Rémy qui cite cette matière (`matiereExterne`), ou
+  importée d'un autre assistant (`origine`), est **scellée** dans
+  `conversations.json` avec la même clé (seuls l'identifiant, les dates,
+  « épinglée » et « privée » restent lisibles) ; le coffre Obsidian n'en garde
+  qu'un renvoi, « Conversation privée (…).md ». Aucun message d'erreur ne cite
+  le contenu (une erreur JSON ne garde que sa nature).
 - **Secrets masqués** avant tout stockage (clés d'API, jetons, mots de passe,
+  lignes `.env`/YAML comme `AWS_SECRET_ACCESS_KEY=…` ou `client_secret: …`,
   valeurs de `remy.env`).
 - **Effaçable par source**, sans toucher aux originaux.
-- **Pas dans les sauvegardes en double** : le dossier `Imports` (exports
-  ChatGPT déposés, en clair, souvent des centaines de Mo) et les envois en
-  cours ne partent jamais dans les sauvegardes de la tour ; la base, elle, y
-  part (chiffrée), et sa clé n'y est pas.
+- **Les exports ne restent pas dans le coffre** : un export ChatGPT déposé
+  dans `Imports` en part dès qu'il est importé, pour
+  `%USERPROFILE%\.remy\imports-importes` (à côté de la clé, hors du coffre et
+  de Documents), effacé `REMY_IMPORTS_GARDE_JOURS` jours après (7 par défaut ;
+  l'état dit combien il en reste). Un export envoyé depuis l'iPhone n'est gardé
+  que le temps de l'import. Ni `Imports` ni ces originaux ni les envois en
+  cours n'entrent dans les sauvegardes ; la base, elle, y part (chiffrée), et
+  sa clé n'y est pas.
 
-Ce que la tour ne chiffre pas : l'export ChatGPT que **tu** déposes dans
-`Imports` reste tel quel dans `Imports\Importés` (il contient aussi tes images,
-que Rémy ne garde pas). Efface-le quand tu as vu tes conversations dans l'app
-si le coffre est synchronisé ailleurs. Un export envoyé depuis l'iPhone, lui,
-n'est gardé que le temps de l'import.
+Ce qui reste en clair, et où : un export ChatGPT pendant le temps où il
+attend dans `Imports` (quelques minutes, jusqu'au passage suivant), puis hors
+du coffre jusqu'à son effacement.
 
 Ce qui reste visible sans la clé : le nombre de conversations et de messages,
 leurs dates et tailles, des identifiants techniques (UUID), et quels messages
@@ -44,8 +62,8 @@ partagent une même empreinte de mot.
 | Source (`id`) | Où la tour lit | Comment |
 | --- | --- | --- |
 | `claude-code` | `%USERPROFILE%\.claude\projects\**\*.jsonl` (trouvé seul), `CLAUDE_CONFIG_DIR`, `REMY_CLAUDE_DIRS` | relecture incrémentale toutes les 30 min, la nuit et à la demande ; ton texte et celui de Claude, jamais les outils ni la réflexion ; sous-agents et `claude -p` (Rémy, titres de T3) écartés |
-| `t3` | `%USERPROFILE%\.t3\userdata\statev2.sqlite` (trouvé seul ; aussi `dev\`, et l'ancien `state.sqlite`), `T3CODE_HOME`, `REMY_T3_DIRS` | même rythme ; base ouverte en lecture seule (T3 lancé) ou « immutable » (T3 fermé : aucun fichier créé à côté) ; fils supprimés et sous-agents écartés ; une session Claude menée depuis T3 n'apparaît qu'une fois, sous T3 |
-| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` (relu toutes les 30 min, puis rangé dans `Imports\Importés`, jamais effacé) ; idempotent |
+| `t3` | `%USERPROFILE%\.t3\userdata\statev2.sqlite` (trouvé seul ; aussi `dev\`, et l'ancien `state.sqlite`), `T3CODE_HOME`, `REMY_T3_DIRS` | même rythme ; base ouverte en lecture seule (T3 lancé) ou « immutable » (T3 fermé : aucun fichier créé à côté) ; lue dans l'ordre d'insertion (une session importée dans T3 avec ses dates d'origine, un message daté dans le futur ne perdent rien), modifications reprises sur une fenêtre de 2 h, fil inconnu relu en entier ; fils supprimés et sous-agents écartés ; une session Claude menée depuis T3 n'apparaît qu'une fois, sous T3 (cachée côté Claude Code seulement si le fil T3 a des messages, ou si tu l'as effacé dans T3) |
+| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` — le .zip, `conversations.json`, ou le dossier d'« Extraire tout » ; les autres fichiers de l'export sont ignorés — (relu toutes les 30 min, puis sorti du coffre) ; idempotent ; conversations vocales (transcriptions) et documents Canvas gardés ; un .zip abîmé (somme de contrôle) est refusé et n'est pas relu tant qu'il ne change pas |
 
 Allumées par défaut (Claude Code, T3) ; l'import ChatGPT s'allume au premier
 envoi. Chaque source se coupe dans l'app, ou sur la tour.
@@ -59,6 +77,8 @@ envoi. Chaque source se coupe dans l'app, ou sur la tour.
 | `REMY_T3_DIRS` | des dossiers de T3 en plus (un fork rangé ailleurs), séparés par `;` ; un dossier peut être directement celui de la base |
 | `REMY_IMPORTS_DIR` | le dossier surveillé des exports (défaut : `<coffre>\Imports`) |
 | `REMY_IMPORT_MAX_MO` | taille maximale d'un envoi (défaut 2048) |
+| `REMY_IMPORTS_GARDE_JOURS` | jours de garde d'un export importé, hors du coffre (défaut 7 ; 0 : effacé tout de suite) |
+| `REMY_GLM_LOCAL=oui` | déclare local un `REMY_GLM_URL` qui ne l'a pas l'air (nom public) ; sans lui, ni passages ni nuit hors de la machine, du réseau privé (RFC 1918, `.local`, `.lan`, un nom sans point) et du tailnet (100.64/10, `.ts.net`) |
 | `REMY_CONNAISSANCES_PROJETS` | ne garder que les projets dont le dossier contient l'un de ces mots (`essai,autre`) |
 | `REMY_CONVERSATIONS_USAGE=off` | Rémy ne s'en sert plus (ni réponses, ni nuit) ; la consultation reste |
 | `REMY_CONVERSATIONS_CLE` | la clé (64 caractères hexadécimaux), si tu préfères la tenir dans `remy.env` |
@@ -104,7 +124,10 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
   "usage": { "chat": true, "nuit": true, "forceParLaTour": false },
   "chiffre": true,
   "cle": { "origine": "fichier", "emplacement": "~\\.remy\\conversations.cle", "erreur": null },
-  "imports": { "dossier": "~\\Documents\\Rémy\\Imports", "enAttente": 0, "importes": 1 },
+  "imports": {
+    "dossier": "~\\Documents\\Rémy\\Imports", "enAttente": 0, "importes": 1,
+    "originaux": { "dossier": "~\\.remy\\imports-importes", "fichiers": 1, "octets": 48213, "gardeJours": 7 }
+  },
   "total": { "conversations": 57, "messages": 1702 },
   "lectureToutesLesMin": 30
 }
@@ -117,6 +140,11 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
   sur la tour ; `rien-importe` : aucun export ChatGPT).
 - `bilan` : les compteurs de la dernière lecture (jamais de contenu).
 - `cle.origine` : `fichier`, `remy.env` ou `a-creer` (rien lu encore).
+- `imports.enAttente` : les exports déposés pas encore importés (un .zip, un
+  `conversations*.json`, un dossier qui en contient) ; `imports.originaux` :
+  ceux déjà importés, en clair hors du coffre jusqu'à leur effacement.
+- Un import interrompu (archive abîmée en cours de route) garde ce qui a été
+  lu avant l'accroc ; `bilan.partiel: true` le dit.
 
 ### `GET /api/conversations-externes/liste`
 
@@ -155,8 +183,12 @@ plus récent au plus ancien.
 
 ### `GET /api/conversations-externes/conversations/:source/:id`
 
-Paramètres : `apres` (identifiant du dernier message reçu), `limite` (1–1000,
-défaut 300). L'`id` est encodé (`encodeURIComponent`).
+Paramètres : `apres` (identifiant du dernier message reçu : la page suivante
+part de sa date puis de son identifiant, aucun message n'est sauté même quand
+deux dates se croisent), `autour` (identifiant d'un message, celui d'un
+résultat de recherche : la page qui y mène, 15 messages avant lui ; la réponse
+ajoute `cible` et `avant`, vrai s'il reste des messages plus anciens), `limite`
+(1–1000, défaut 300). L'`id` est encodé (`encodeURIComponent`).
 
 ```json
 {
@@ -177,9 +209,10 @@ suivante. 404 si la conversation n'existe pas (ou plus).
 ### `GET /api/conversations-externes/chercher?q=…`
 
 Paramètres : `q` (obligatoire, 200 caractères au plus), `source`, `limite`
-(1–50, défaut 20). Sans IA : les messages qui contiennent le plus de mots
-cherchés (un début de mot de 4 lettres suffit, sans accents), puis les plus
-récents.
+(1–50, défaut 20). Sans IA : les messages classés par le poids des mots
+cherchés qu'ils contiennent (un mot rare pèse plus qu'un mot partout ; un
+début de mot de 4 lettres suffit, sans accents), puis les plus récents.
+`score` : le nombre de mots trouvés.
 
 ```json
 {
@@ -221,21 +254,28 @@ des 7 derniers jours) : des **propositions**, rien n'est fait seul.
 | `DELETE /api/conversations-externes/sources/:id` | — | `{ ok, message, etat }` : tout ce qui vient de la source est effacé (et les résumés de nuit qui s'en servaient), la source coupée ; l'original n'est pas touché |
 | `DELETE /api/conversations-externes/tout` | — | `{ ok, message, etat }` : tout effacé (clé changée) |
 | `PUT /api/conversations-externes/usage` | `{ "chat": false }`, `{ "nuit": true }` | l'état |
-| `POST /api/conversations-externes/chatgpt` | **le fichier** (.zip de l'export ou `conversations.json`), en corps brut (`Content-Type: application/zip` ou `application/octet-stream`) | `{ bilan: { deja, conversations, nouvelles, misesAJour, inchangees, ignorees, messages, masques, tronquees }, etat }` ; 413 `trop-gros` ; 422 `zip-invalide`, `json-invalide`, `sans-conversations` |
+| `POST /api/conversations-externes/chatgpt` | **le fichier** (.zip de l'export ou `conversations.json`), en corps brut (`Content-Type: application/zip` ou `application/octet-stream`) | `{ bilan: { deja, conversations, nouvelles, misesAJour, inchangees, ignorees, messages, masques, tronquees }, etat }` ; 413 `trop-gros` (avec `quoiFaire` : n'envoyer que `conversations.json`) ; 422 `zip-invalide`, `json-invalide`, `sans-conversations` ; 400 `envoi-interrompu` (rien reçu pendant 2 min). Un envoi lent (4G) peut durer plus de 5 min : la tour allonge son délai de réception le temps des envois authentifiés |
 
 Un export déjà envoyé rend `bilan.deja: true` (reconnu à son empreinte) ; une
 conversation déjà là n'est réécrite que si ChatGPT l'a modifiée depuis.
 
 ## Dans Rémy
 
-- **Les réponses** : quand ta question s'y rapporte (« dans ma session Claude
-  Code… », « avec ChatGPT hier… », le nom d'un de tes projets, « on avait
-  décidé… » avec des passages vraiment proches), la tour cherche dans l'index
-  et donne au modèle local quelques passages encadrés (6 au plus). La barre du
-  chat le montre (« Rémy relit tes conversations Claude Code… ») et la
-  conversation passe en privée (`done.prive: true`).
-- **La nuit** (circuit « nuit », après la réflexion) : les conversations de la
-  veille, relues par le modèle local seul → thèmes, décisions, choses à faire
+- **Les réponses** : quand ta question s'y rapporte — une source nommée
+  (« dans ma session Claude Code… », « avec ChatGPT hier… »), un de tes
+  projets **désigné** (« le projet X », « dans X » ; un nom de plusieurs mots
+  suffit seul ; jamais un nom générique : Rémy, Bureau, Documents, code…), ou
+  « on avait décidé… » avec des passages vraiment proches (« où j'en suis »
+  seul ne suffit pas) —, la tour cherche dans l'index et donne au modèle local
+  quelques passages encadrés (6 au plus) : les mots rares d'abord, tes messages
+  avant les réponses, les décisions quand tu demandes ce qui a été décidé, les
+  choses à faire quand tu demandes ce qu'il fallait faire. La barre du chat le
+  montre (« Rémy relit tes conversations Claude Code… ») et la conversation
+  passe en privée (`done.prive: true`).
+- **La nuit** (circuit « nuit », après la réflexion) : TOUTES les conversations
+  de la veille, le budget réparti entre elles (dans chacune : décisions et
+  choses à faire où qu'elles soient, tes messages, les dernières réponses),
+  relues par le modèle local seul → thèmes, décisions, choses à faire
   (`GET …/nuit`). Coût journalisé (`kind` : `conversations-nuit`).
 - **Le matin** : une ligne dans le briefing de l'app, lue au moment de
   l'afficher, jamais écrite dans le briefing de la nuit.

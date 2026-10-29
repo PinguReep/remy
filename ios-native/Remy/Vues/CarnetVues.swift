@@ -14,7 +14,8 @@ enum RouteProjets: Hashable {
     case noeud(String)
     /// Tes conversations d'ailleurs (Claude Code, T3, ChatGPT), une d'elles, leurs sources (29/10).
     case conversations
-    case conversationExterne(source: String, id: String)
+    /// `autour` : ouverte au message trouvé par une recherche.
+    case conversationExterne(source: String, id: String, autour: Int? = nil)
     case sourcesConversations
 }
 

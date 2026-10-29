@@ -609,8 +609,9 @@ final class ParcoursQuotidien: ParcoursBase {
     }
 
     /// Tes conversations d'ailleurs (29/10) : Projets › Conversations, la
-    /// première lecture, les sources, une conversation T3 relue, une recherche,
-    /// puis un export ChatGPT déposé dans le dossier Imports qui apparaît.
+    /// première lecture, les sources, une conversation T3 relue, une recherche
+    /// qui ouvre au message trouvé, un jour choisi, puis un export ChatGPT
+    /// déposé dans le dossier Imports qui apparaît.
     @MainActor
     func test25_conversationsDAilleurs() {
         jouer("P25", "Conversations Claude Code, T3, ChatGPT : lire, chercher, importer") {
@@ -642,7 +643,24 @@ final class ParcoursQuotidien: ParcoursBase {
             try toucher(champ, "recherche")
             try saisir("livraison", dans: champ)
             try etape("recherche", attendu: [texteI("Trouvé"), texte("Livraison offerte")], delai: 20)
+            // Un résultat ouvre la conversation AU message trouvé, mis en avant.
+            try toucher(texte("Livraison offerte"), "résultat « Livraison offerte »")
+            try etape("au-message", attendu: [ident("conversation.titre"), texte("Frais de livraison"), texte("Trouvé · ")], delai: 20)
+            try toucher(nomme(app.navigationBars.buttons.element(boundBy: 0), "retour"), "Retour")
             viderChamp(champ)
+            // Aller à un jour (hier, à Paris) sans dérouler « Plus ancien ».
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "Europe/Paris")!
+            let c = cal.dateComponents([.year, .month, .day], from: cal.date(byAdding: .day, value: -1, to: Date())!)
+            let hier = String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+            try toucher(ident("conversations.jour"), "Un jour…")
+            let ligneHier = ident("conversations.jour.\(hier)")
+            try etape("jours", attendu: [texte("Aller à un jour"), ligneHier], delai: 20)
+            auditerCibles("aller à un jour")
+            try toucher(ligneHier, "hier")
+            try etape("un-jour", attendu: [ident("conversations.jour.tous"), fiches], delai: 20)
+            try toucher(ident("conversations.jour.tous"), "Tous les jours")
+            try etape("tous-les-jours", attendu: [paiement], absent: [ident("conversations.jour.tous")], delai: 20)
             // Un export ChatGPT déposé dans le dossier Imports du coffre.
             Pilote.demander("/deposer-export")
             try toucher(ident("conversations.sources"), "Sources")

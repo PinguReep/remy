@@ -4,6 +4,78 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 (suite) — Conversations externes : deux contre-relectures (fuites, formats)
+
+Deux relectures adverses ont trouvé 4 bloquants et 8 importants ; tous
+corrigés, chacun rejoué en test (les tests d'attaque échouent sur le code
+d'avant, passent après).
+
+- **Rien en clair hors de la base** : une réponse de Rémy qui cite ces
+  passages était recopiée en clair dans le coffre Obsidian (nom de fichier
+  compris) et dans `conversations.json`. Plutôt que chiffrer toute la base
+  JSON (changement de format pour tout Rémy, risque de migration), seules les
+  conversations « matière d'ailleurs » (`matiereExterne`, ou `origine` pour
+  les imports du site) sont **scellées** : un en-tête lisible (id, dates,
+  épinglée, privée) et le reste chiffré avec la clé des conversations
+  (AES-256-GCM, l'identifiant en données associées). En mémoire rien ne
+  change (`fileLoad` déscelle) ; une clé changée rend la conversation
+  « illisible » sans jamais réécrire son texte chiffré. Les imports d'avant
+  sont scellés à la première lecture, et le coffre ne garde qu'un renvoi.
+- **Réflexion de nuit** : `priorites.traces()` lisait le titre de toutes les
+  conversations, privées comprises, et la réflexion peut partir chez Claude.
+  Le titre d'une privée sert encore à reconnaître la priorité, jamais à la
+  dire (« une conversation privée, le … »).
+- **Modèle « local »** : `REMY_GLM_URL` acceptait n'importe quel hôte ;
+  passages et nuit exigent maintenant un hôte de la machine, du réseau privé
+  ou du tailnet (`modeleLocalChezToi`), sinon `REMY_GLM_LOCAL=oui`.
+- **Exports hors du coffre** : un export importé quitte `Imports` pour
+  `%USERPROFILE%\.remy\imports-importes` (copie puis effacement s'il change de
+  disque), effacé après 7 jours ; un export abîmé n'est plus relu toutes les
+  30 min (signature nom/taille/date mémorisée) ; la somme de contrôle CRC-32
+  du .zip est vérifiée (le lecteur JSON draine l'entrée jusqu'au bout pour
+  que la vérification ait lieu).
+- **T3, curseur sur l'ordre d'insertion** : le curseur `(updated_at, id)`
+  perdait les sessions que T3 importe avec leurs dates d'origine, et un
+  message daté dans le futur bloquait tout. Maintenant : `rowid >` dernier vu
+  (les nouvelles lignes), une fenêtre de 2 h sur `julianday(updated_at)` à
+  partir de l'heure de la dernière lecture (les modifications), un fil
+  inconnu relu en entier ; une réponse « en cours » de moins d'1 h retient le
+  curseur. Une colonne `version` (migration v3) évite de rechiffrer un message
+  inchangé. La copie Claude Code d'une session menée dans T3 n'est cachée que
+  si le fil T3 a des messages, ou s'il a été effacé dans T3 (`liens.efface`).
+- **Quand Rémy puise** : « où j'en suis » seul, le dossier OneDrive\Bureau ou
+  le dépôt de l'assistant lui-même rendaient privées des conversations
+  ordinaires. Un nom de projet générique ne compte plus ; un nom d'un seul mot
+  doit être désigné (« le projet X », « dans X »). Classement par rareté des
+  mots (idf calculé à partir des résultats de l'index), tes messages avant
+  les réponses, et seulement les décisions (ou les choses à faire) quand la
+  question en demande ; couverture minimale de la question et seuil relatif au
+  meilleur passage.
+- **La nuit lit tout le jour** : toutes les conversations, le budget réparti,
+  et dans chacune les lignes marquées (« il faut », « avant vendredi »,
+  « on part sur »…) où qu'elles soient, tes messages, les deux dernières
+  réponses.
+- **Envoi de 5 min et plus** : `requestTimeout` de Node (300 s) coupait un
+  gros export en 4G. Sans toucher à `server.js`, la route allonge le délai du
+  serveur (3 h) tant qu'un envoi authentifié est en cours, puis le rend ; un
+  envoi qui ne reçoit plus rien pendant 2 min est coupé. L'iPhone affiche le
+  pourcentage envoyé (pas de session d'arrière-plan : elle exige un délégué
+  d'app et un fichier recopié, à faire si les envois longs deviennent courants).
+- **Formats** : lignes `.env`/YAML masquées (le `\b` ne coupait pas après
+  « _ ») ; transcriptions des conversations vocales et documents Canvas de
+  ChatGPT gardés ; Claude Code garde le texte tapé avec une capture de
+  plusieurs Mo (les `"data"` base64 sont retirés au fil de l'eau), écarte
+  « [Request interrupted by user] » et reprend après des octets nuls ;
+  écritures par lots de 400 (la tour ne se fige plus) ; noms de projets avec
+  leurs majuscules ; pages sur `(date, identifiant)` ; `autour=` pour ouvrir
+  au message trouvé ; « Un jour… » sur l'iPhone.
+- **Écartés, et pourquoi** : « Me le rappeler » et une tâche Motion proposée
+  dans une conversation privée restent possibles — c'est ton geste, sur un
+  texte que tu vois ; worktrees T3 rattachés à leur dépôt (il faudrait lire
+  git) ; T3 servi depuis WSL (`\\wsl.localhost\…`, non testé :
+  `REMY_T3_DIRS`) ; recherche de phrase exacte (index sans positions, par
+  choix).
+
 ## 2026-10-29 — Conversations externes : Claude Code, T3 Code, ChatGPT (`conversations-externes-v1`)
 
 Le lot B (19/10) lisait les sessions Claude Code, mais rien n'en sortait :

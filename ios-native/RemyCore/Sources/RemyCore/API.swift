@@ -135,6 +135,9 @@ public final class ClientAPI: @unchecked Sendable {
         // Un mot de passe refusé n'est pas une session expirée.
         if http.statusCode == 401 && (obj?["error"] as? String) != "bad_password" { throw ErreurAPI.nonConnecte }
         var message = (obj?["message"] as? String) ?? (obj?["error"] as? String) ?? "Erreur \(http.statusCode) — réessaie."
+        // Quoi faire, quand la tour le dit (conversations externes : 413, 422,
+        // 409) : sans lui, l'erreur ne dit pas comment s'en sortir.
+        if let q = obj?["quoiFaire"] as? String, !q.isEmpty, !message.contains(q) { message += " " + q }
         // Le code d'incident de la tour : Sam peut le transmettre tel quel.
         if let code = obj?["code"] as? String, code.hasPrefix("R-") { message += " (code \(code))" }
         throw ErreurAPI.serveur(http.statusCode, message)
@@ -162,7 +165,9 @@ public final class ClientAPI: @unchecked Sendable {
 
     /// Un fichier entier en corps (l'export ChatGPT, jusqu'à des centaines de
     /// Mo), envoyé depuis le disque sans être chargé en mémoire (conversations-externes-v1).
-    func envoyerFichier(_ chemin: String, fichier: URL, type: String, delai: TimeInterval = 900) async throws -> Data {
+    /// `progression` : la part envoyée (0…1), au fil de l'envoi.
+    func envoyerFichier(_ chemin: String, fichier: URL, type: String, delai: TimeInterval = 900,
+                        progression: (@Sendable (Double) -> Void)? = nil) async throws -> Data {
         var r = requete(chemin, methode: "POST", delai: delai)
         r.setValue(type, forHTTPHeaderField: "Content-Type")
         let (donnees, reponse): (Data, URLResponse)
@@ -170,8 +175,9 @@ public final class ClientAPI: @unchecked Sendable {
             #if canImport(FoundationNetworking)
             r.httpBody = try Data(contentsOf: fichier)
             (donnees, reponse) = try await session.data(for: r)
+            progression?(1)
             #else
-            (donnees, reponse) = try await session.upload(for: r, fromFile: fichier)
+            (donnees, reponse) = try await session.upload(for: r, fromFile: fichier, delegate: progression.map { SuiviEnvoi($0) })
             #endif
         } catch {
             throw ErreurAPI.reseau(error.localizedDescription)

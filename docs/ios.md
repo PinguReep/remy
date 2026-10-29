@@ -184,14 +184,18 @@ tag) avant l'échéance.
   ont leur propre réglage (coupé par défaut).
 - Conversations d'ailleurs (29/10, `conversations-externes-v1`) : Projets ›
   Conversations (Claude Code, T3 Code, ChatGPT lus par la tour ; puces par
-  source, jours, recherche sur la tour, lecture paginée, ce que la nuit en a
-  tiré) et Réglages › Sources des conversations (état et quoi faire par
-  source, lire maintenant, effacer, import d'un export ChatGPT par le
-  sélecteur de fichiers). Le cœur (`ConversationsExternes.swift`) est testé
-  sous Linux ; l'export part du disque (`envoyerFichier`, `upload(fromFile:)`),
-  jamais chargé en mémoire. Une réponse de Rémy qui cite ces conversations
-  rend le fil privé (`done.prive`). Parcours P25 contre la tour de démo
-  (données fictives). Contrat : `docs/conversations-externes.md`.
+  source, « Un jour… » pour aller à une date (`/jours`, `jour=`), recherche
+  sur la tour dont un résultat ouvre la conversation AU message trouvé
+  (`autour=`, mis en avant, « Depuis le début »), lecture paginée, ce que la
+  nuit en a tiré) et Réglages › Sources des conversations (état et quoi faire
+  par source, lire maintenant, effacer, import d'un export ChatGPT par le
+  sélecteur de fichiers, avec le pourcentage envoyé ; ce qui reste des
+  exports hors du coffre). Une erreur de la tour dit aussi `quoiFaire`. Le
+  cœur (`ConversationsExternes.swift`) est testé sous Linux ; l'export part
+  du disque (`envoyerFichier`, `upload(fromFile:delegate:)`), jamais chargé en
+  mémoire. Une réponse de Rémy qui cite ces conversations rend le fil privé
+  (`done.prive`). Parcours P25 contre la tour de démo (données fictives).
+  Contrat : `docs/conversations-externes.md`.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

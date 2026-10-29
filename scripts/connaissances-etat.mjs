@@ -45,3 +45,5 @@ for (const s of e.sources) {
   if (p) console.log(`  ${s.erreur ? "ERREUR" : "Rien encore"} : ${p.message}${p.quoiFaire ? `\n  À faire : ${p.quoiFaire}` : ""}`);
 }
 console.log(`\nExports ChatGPT à déposer dans : ${e.imports.dossier} (${e.imports.enAttente} en attente, ${e.imports.importes} déjà importé(s))`);
+const o = e.imports.originaux;
+if (o?.fichiers) console.log(`  ${o.fichiers} export(s) importé(s) encore en clair hors du coffre : ${o.dossier} (effacé(s) ${o.gardeJours} jour(s) après l'import)`);

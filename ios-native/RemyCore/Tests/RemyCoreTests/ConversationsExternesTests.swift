@@ -145,6 +145,82 @@ final class ConversationsExternesTests: XCTestCase {
         XCTAssertEqual(BilanImport().phrase, "Rien de nouveau dans cet export.")
     }
 
+    func testLeBilanDitAussiCeQuiNEstPasGarde() async {
+        XCTAssertEqual(BilanImport(nouvelles: 3, ignorees: 2, tronquees: 1).phrase,
+                       "3 conversations importées. 2 ignorées (sans texte lisible). 1 très longue : seule la fin est gardée.")
+        let b = try? JSONDecoder().decode(BilanImport.self, from: Data(#"{"nouvelles":1,"ignorees":1,"tronquees":0}"#.utf8))
+        XCTAssertEqual(b?.phrase, "1 conversation importée. 1 ignorée (sans texte lisible).")
+    }
+
+    func testUneErreurDeLaTourDitQuoiFaire() async {
+        FauxServeur.reponses = ["POST /api/conversations-externes/chatgpt": [(413, #"{"error":"trop-gros","message":"Fichier trop gros pour la tour (2048 Mo au plus).","quoiFaire":"Dans Fichiers, touche le .zip pour le décompresser et envoie seulement conversations.json."}"#)]]
+        let a = app()
+        let f = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString).zip")
+        try? Data("PK fictif".utf8).write(to: f)
+        defer { try? FileManager.default.removeItem(at: f) }
+        let ok = await a.conversationsExternes.importer(f)
+        XCTAssertFalse(ok)
+        XCTAssertEqual(a.toast, "Fichier trop gros pour la tour (2048 Mo au plus). Dans Fichiers, touche le .zip pour le décompresser et envoie seulement conversations.json.")
+        XCTAssertNil(a.conversationsExternes.progressionImport, "plus rien en cours")
+        XCTAssertEqual(a.conversationsExternes.libelleImport, "Importer un export ChatGPT")
+    }
+
+    func testLesExportsImportesHorsDuCoffreSeDisent() async throws {
+        let j = Self.etat.replacingOccurrences(of: #""imports":{"dossier":"~\\Documents\\Imports","enAttente":0,"importes":1}"#,
+                                                with: #""imports":{"dossier":"~\\Documents\\Imports","enAttente":0,"importes":1,"originaux":{"dossier":"~\\.remy\\imports-importes","fichiers":1,"octets":2048,"gardeJours":7}}"#)
+        XCTAssertNotEqual(j, Self.etat)
+        let e = try JSONDecoder().decode(EtatConversations.self, from: Data(j.utf8))
+        XCTAssertEqual(e.imports?.originaux?.fichiers, 1)
+        XCTAssertEqual(e.imports?.originaux?.phrase, "1 export importé reste en clair hors du coffre (~\\.remy\\imports-importes) : effacé 7 jours après l'import.")
+        XCTAssertNil(EtatConversations.Imports.Originaux(fichiers: 0).phrase, "rien à dire quand il n'en reste pas")
+        XCTAssertNil(try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etat.utf8)).imports?.originaux, "une tour d'avant : rien")
+    }
+
+    func testAllerAUnJourSansDeroulerDesPages() async {
+        FauxServeur.reponses = [
+            "GET /api/conversations-externes/jours": [(200, #"{"jours":[{"jour":"2026-10-28","conversations":4},{"jour":"2026-07-14","conversations":1}]}"#)],
+            "GET /api/conversations-externes/liste": [(200, Self.liste)],
+        ]
+        let a = app()
+        let m = a.conversationsExternes
+        await m.filtrer("chatgpt")
+        await m.chargerJours()
+        XCTAssertEqual(m.jours?.map(\.jour), ["2026-10-28", "2026-07-14"])
+        let q = FauxServeur.requetes["GET /api/conversations-externes/jours"] ?? ""
+        XCTAssertTrue(q.contains("nombre=400") && q.contains("source=chatgpt"), q)
+        await m.choisirJour("2026-07-14")
+        XCTAssertEqual(m.jour, "2026-07-14")
+        XCTAssertTrue(FauxServeur.requetes["GET /api/conversations-externes/liste"]?.contains("jour=2026-07-14") == true)
+        XCTAssertTrue(FauxServeur.requetes["GET /api/conversations-externes/liste"]?.contains("source=chatgpt") == true, "le jour et la source se combinent")
+        await m.choisirJour(nil)
+        XCTAssertNil(m.jour)
+        XCTAssertFalse(FauxServeur.requetes["GET /api/conversations-externes/liste"]?.contains("jour=") == true)
+        // Changer de source oublie les jours (ils dépendent de la source).
+        await m.filtrer(nil)
+        XCTAssertNil(m.jours)
+        // Le titre d'un jour est celui de la liste.
+        let midi = Format.calendrier.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: 12))!
+        XCTAssertEqual(ConversationsExternes.titreJour(iso: "2026-10-28", maintenant: midi), "Hier")
+        XCTAssertEqual(ConversationsExternes.titreJour(iso: "2026-10-29", maintenant: midi), "Aujourd'hui")
+        XCTAssertEqual(ConversationsExternes.titreJour(iso: "pas-une-date", maintenant: midi), "pas-une-date")
+        XCTAssertEqual(ConversationsExternes.ceJour(iso: "2026-10-28", maintenant: midi), "hier")
+        XCTAssertTrue(ConversationsExternes.ceJour(iso: "2026-07-14", maintenant: midi).hasPrefix("le mardi 14"), ConversationsExternes.ceJour(iso: "2026-07-14", maintenant: midi))
+    }
+
+    func testUnResultatOuvreLaConversationAuMessageTrouve() async throws {
+        FauxServeur.reponses = [
+            "GET /api/conversations-externes/conversations/t3/fil-paiement": [(200, #"{"conversation":{"source":"t3","id":"fil-paiement","titre":"Paiement","messages":40},"messages":[{"id":6,"auteur":"assistant","texte":"avant"},{"id":7,"auteur":"utilisateur","texte":"le paiement en trois fois"}],"suite":8,"cible":7,"avant":true}"#)],
+        ]
+        let a = app()
+        let l = try await a.api.conversationExterne(source: "t3", id: "fil-paiement", autour: 7)
+        XCTAssertEqual(FauxServeur.requetes["GET /api/conversations-externes/conversations/t3/fil-paiement"], "autour=7")
+        XCTAssertEqual(l.cible, 7)
+        XCTAssertEqual(l.avant, true)
+        XCTAssertEqual(l.messages.last?.texte, "le paiement en trois fois")
+        _ = try await a.api.conversationExterne(source: "t3", id: "fil-paiement", apres: 8)
+        XCTAssertEqual(FauxServeur.requetes["GET /api/conversations-externes/conversations/t3/fil-paiement"], "apres=8")
+    }
+
     func testCacheeTantQueLaTourNeLaConnaitPas() async {
         let a = app(capacites: [])
         XCTAssertFalse(a.conversationsExternes.disponible)

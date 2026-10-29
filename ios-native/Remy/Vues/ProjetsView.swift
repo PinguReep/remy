@@ -21,7 +21,7 @@ struct ProjetsView: View {
                     case .rappels: RappelsView()
                     case .noeud(let id): NoeudView(id: id)
                     case .conversations: ConversationsExternesVue()
-                    case .conversationExterne(let source, let id): ConversationExterneVue(source: source, id: id)
+                    case .conversationExterne(let source, let id, let autour): ConversationExterneVue(source: source, id: id, autour: autour)
                     case .sourcesConversations: SourcesConversationsVue()
                     }
                 }

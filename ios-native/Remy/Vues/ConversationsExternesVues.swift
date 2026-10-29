@@ -54,6 +54,7 @@ struct ConversationsExternesVue: View {
     @State private var texte = ""
     @State private var recherche: Task<Void, Never>?
     @State private var importOuvert = false
+    @State private var joursOuverts = false
 
     var body: some View {
         let m = app.conversationsExternes
@@ -65,6 +66,7 @@ struct ConversationsExternesVue: View {
                 } else {
                     champRecherche
                     filtres
+                    if m.resultats == nil, let j = m.jour { jourChoisi(j) }
                     if let r = m.resultats {
                         resultats(r)
                     } else {
@@ -95,7 +97,29 @@ struct ConversationsExternesVue: View {
         .fileImporter(isPresented: $importOuvert, allowedContentTypes: [.zip, .json], allowsMultipleSelection: false) { r in
             importerChoisi(r, m)
         }
+        .sheet(isPresented: $joursOuverts) { ChoixJourConversations() }
         .onDisappear { recherche?.cancel() }
+    }
+
+    /// Le jour choisi, et comment revenir à tous.
+    private func jourChoisi(_ j: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar").foregroundStyle(Palette.signal)
+            Text(ConversationsExternes.titreJour(iso: j))
+                .font(Police.texte(16, .semibold))
+                .foregroundStyle(Palette.encre)
+            Spacer(minLength: 4)
+            BoutonTexte("Tous les jours") {
+                Haptique.leger()
+                Task { await app.conversationsExternes.choisirJour(nil) }
+            }
+            .accessibilityIdentifier("conversations.jour.tous")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 6)
+        .frame(minHeight: 52)
+        .carte(rayon: 16)
+        .padding(.horizontal, 16)
     }
 
     // MARK: Recherche et filtres
@@ -143,6 +167,20 @@ struct ConversationsExternesVue: View {
                 ForEach(ConversationsExternes.sources, id: \.self) { s in
                     puce(ConversationsExternes.nomSource(s), s, actif: m.filtre == s, compte: m.etat?.source(s)?.conversations)
                 }
+                // Aller à une date sans dérouler des pages (contre-relecture du 29/10).
+                Button {
+                    Haptique.leger()
+                    joursOuverts = true
+                } label: {
+                    Label(m.jour == nil ? "Un jour…" : "Autre jour…", systemImage: "calendar")
+                        .font(Police.texte(15, .semibold))
+                        .foregroundStyle(Palette.encre)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 44)
+                        .background(Palette.fond2, in: Capsule())
+                }
+                .buttonStyle(Appui())
+                .accessibilityIdentifier("conversations.jour")
             }
             .padding(.horizontal, 16)
         }
@@ -253,7 +291,8 @@ struct ConversationsExternesVue: View {
         let m = app.conversationsExternes
         let sources = (m.etat?.sources ?? []).filter { m.filtre == nil || $0.id == m.filtre }
         return VStack(alignment: .leading, spacing: 14) {
-            Text(m.filtre.map { "Aucune conversation \(ConversationsExternes.nomSource($0)) pour l'instant." } ?? "Rien encore ici.")
+            Text(m.jour.map { "Aucune conversation \(ConversationsExternes.ceJour(iso: $0))." }
+                 ?? m.filtre.map { "Aucune conversation \(ConversationsExternes.nomSource($0)) pour l'instant." } ?? "Rien encore ici.")
                 .font(Police.titre(20))
                 .foregroundStyle(Palette.encre)
             ForEach(sources) { s in
@@ -273,7 +312,7 @@ struct ConversationsExternesVue: View {
             .disabled(m.enCours)
             .accessibilityIdentifier("conversations.lire")
             if m.filtre == nil || m.filtre == "chatgpt" {
-                BoutonA(titre: m.importEnCours ? "Envoi de l'export…" : "Importer ChatGPT", symbole: "square.and.arrow.down", principal: false) {
+                BoutonA(titre: m.importEnCours ? m.libelleImport : "Importer ChatGPT", symbole: "square.and.arrow.down", principal: false) {
                     importOuvert = true
                 }
                 .disabled(m.importEnCours)
@@ -306,7 +345,7 @@ struct ConversationsExternesVue: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(r.enumerated()), id: \.element.id) { i, x in
-                        NavigationLink(value: RouteProjets.conversationExterne(source: x.source, id: x.conversation)) {
+                        NavigationLink(value: RouteProjets.conversationExterne(source: x.source, id: x.conversation, autour: x.message)) {
                             LigneResultat(r: x)
                         }
                         .buttonStyle(.plain)
@@ -492,19 +531,54 @@ struct ConversationExterneVue: View {
     @Environment(AppModel.self) private var app
     let source: String
     let id: String
+    /// Ouverte depuis une recherche : au message trouvé (contre-relecture du 29/10).
+    var autour: Int? = nil
     @State private var lecture: LectureConversation?
     @State private var messages: [MessageExterne] = []
     @State private var suite: Int?
     @State private var erreur: String?
     @State private var chargement = false
     @State private var ouverts: Set<Int> = []
+    /// Le message trouvé, mis en avant ; et s'il y a plus ancien avant la page.
+    @State private var cible: Int?
+    @State private var avant = false
+    @State private var depuisLeDebut = false
 
     var body: some View {
-        ScrollView {
+        ScrollViewReader { defiler in
+            ScrollView {
+                contenu
+                    .padding(16)
+                    .padding(.bottom, 32)
+            }
+            .onChange(of: cible) { _, c in
+                guard let c else { return }
+                withAnimation(.easeOut(duration: 0.25)) { defiler.scrollTo(c, anchor: .center) }
+            }
+        }
+        .background(Palette.fond)
+        .navigationTitle(lecture.map { ConversationsExternes.nomSource($0.conversation.source) } ?? "Conversation")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { if lecture == nil { await charger(suite: false) } }
+        .refreshable { await charger(suite: false) }
+    }
+
+    private var contenu: some View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if let c = lecture?.conversation {
                     entete(c)
-                    ForEach(messages) { m in bulle(m, assistant: c.assistant) }
+                    if avant {
+                        BoutonA(titre: chargement ? "Chargement…" : "Depuis le début", symbole: "arrow.up", principal: false) {
+                            depuisLeDebut = true
+                            Task { await charger(suite: false) }
+                        }
+                        .disabled(chargement)
+                        .accessibilityIdentifier("conversation.debut")
+                    }
+                    ForEach(messages) { m in
+                        bulle(m, assistant: c.assistant)
+                            .id(m.id)
+                    }
                     if suite != nil {
                         BoutonA(titre: chargement ? "Chargement…" : "La suite", symbole: "arrow.down", principal: false) {
                             Task { await charger(suite: true) }
@@ -522,14 +596,6 @@ struct ConversationExterneVue: View {
                         .carte(rayon: 18)
                 }
             }
-            .padding(16)
-            .padding(.bottom, 32)
-        }
-        .background(Palette.fond)
-        .navigationTitle(lecture.map { ConversationsExternes.nomSource($0.conversation.source) } ?? "Conversation")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { if lecture == nil { await charger(suite: false) } }
-        .refreshable { await charger(suite: false) }
     }
 
     private func entete(_ c: ConversationExterne) -> some View {
@@ -569,10 +635,11 @@ struct ConversationExterneVue: View {
     private func bulle(_ m: MessageExterne, assistant: String?) -> some View {
         let long = m.texte.count > Self.replie && !ouverts.contains(m.id)
         let texte = long ? String(m.texte.prefix(Self.replie)) + "…" : m.texte
+        let trouve = m.id == cible
         return VStack(alignment: m.deToi ? .trailing : .leading, spacing: 4) {
-            Text([ConversationsExternes.auteur(m, assistant: assistant), m.ts.map { Format.heure($0) }].compactMap { $0 }.joined(separator: " · "))
+            Text([trouve ? "Trouvé" : nil, ConversationsExternes.auteur(m, assistant: assistant), m.ts.map { Format.heure($0) }].compactMap { $0 }.joined(separator: " · "))
                 .font(Police.mono(11))
-                .foregroundStyle(Palette.encre3)
+                .foregroundStyle(trouve ? Palette.signal : Palette.encre3)
             Text(texte)
                 .font(Police.texte(15))
                 .foregroundStyle(Palette.encre)
@@ -580,7 +647,8 @@ struct ConversationExterneVue: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(12)
                 .background(m.deToi ? Palette.fond2 : Palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(m.deToi ? Color.clear : Palette.filet, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(trouve ? Palette.signal : (m.deToi ? Color.clear : Palette.filet), lineWidth: trouve ? 2 : 1))
             if long {
                 BoutonTexte("Lire tout") { ouverts.insert(m.id) }
             }
@@ -594,10 +662,15 @@ struct ConversationExterneVue: View {
         chargement = true
         defer { chargement = false }
         do {
-            let l = try await app.api.conversationExterne(source: source, id: id, apres: plus ? suite : nil)
+            let pres = !plus && !depuisLeDebut ? autour : nil
+            let l = try await app.api.conversationExterne(source: source, id: id, apres: plus ? suite : nil, autour: pres)
             lecture = l
             messages = plus ? messages + l.messages : l.messages
             suite = l.suite
+            if !plus {
+                avant = pres != nil && l.avant == true
+                if pres != nil { cible = l.cible ?? pres }
+            }
             erreur = nil
         } catch {
             if let e = error as? ErreurAPI, e == .nonConnecte { app.signaler(e); return }
@@ -607,6 +680,68 @@ struct ConversationExterneVue: View {
                 erreur = (error as? LocalizedError)?.errorDescription ?? "La conversation n'a pas pu être lue."
             }
         }
+    }
+}
+
+// MARK: - Aller à un jour
+
+/// Les jours qui ont des conversations (de la source choisie), pour y aller
+/// d'un geste au lieu de dérouler « Plus ancien ».
+struct ChoixJourConversations: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var fermer
+
+    var body: some View {
+        let m = app.conversationsExternes
+        NavigationStack {
+            List {
+                if let j = m.jours {
+                    if j.isEmpty {
+                        Text("Aucun jour avec des conversations\(m.filtre.map { " \(ConversationsExternes.nomSource($0))" } ?? "") pour l'instant.")
+                            .font(Police.texte(15))
+                            .foregroundStyle(Palette.encre2)
+                    } else {
+                        if m.jour != nil {
+                            ligne("Tous les jours", compte: nil, jour: nil)
+                        }
+                        ForEach(j) { x in ligne(ConversationsExternes.titreJour(iso: x.jour), compte: x.conversations, jour: x.jour) }
+                    }
+                } else if let e = m.erreurJours {
+                    Text(e).font(Police.texte(15)).foregroundStyle(Palette.danger).fixedSize(horizontal: false, vertical: true)
+                    BoutonTexte("Réessayer") { Task { await m.chargerJours() } }
+                } else {
+                    Squelette(largeurs: [0.5, 0.7, 0.4, 0.6])
+                }
+            }
+            .listeAtelier()
+            .navigationTitle("Aller à un jour")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Fermer") { fermer() } } }
+            .task { await m.chargerJours() }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func ligne(_ titre: String, compte: Int?, jour: String?) -> some View {
+        let choisi = app.conversationsExternes.jour == jour
+        return Button {
+            Haptique.leger()
+            fermer()
+            Task { await app.conversationsExternes.choisirJour(jour) }
+        } label: {
+            HStack {
+                Text(titre).font(Police.texte(16, choisi ? .semibold : .regular)).foregroundStyle(Palette.encre)
+                Spacer()
+                if let compte {
+                    Text(compte == 1 ? "1 conversation" : "\(compte) conversations").font(Police.mono(12)).foregroundStyle(Palette.encre3)
+                }
+                if choisi { Image(systemName: "checkmark").foregroundStyle(Palette.signal) }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("conversations.jour.\(jour ?? "tous")")
     }
 }
 
@@ -721,8 +856,11 @@ struct SourcesConversationsVue: View {
                     importOuvert = true
                 } label: {
                     HStack {
-                        Label(m.importEnCours ? "Envoi de l'export à la tour…" : "Importer un export ChatGPT", systemImage: "square.and.arrow.down")
-                        if m.importEnCours { Spacer(); ProgressView() }
+                        Label(m.libelleImport, systemImage: "square.and.arrow.down")
+                        if m.importEnCours {
+                            Spacer()
+                            if let p = m.progressionImport, p > 0 { ProgressView(value: p).frame(width: 60) } else { ProgressView() }
+                        }
                     }
                     .frame(minHeight: 44)
                 }
@@ -732,6 +870,13 @@ struct SourcesConversationsVue: View {
                     .font(Police.texte(12))
                     .foregroundStyle(Palette.encre3)
                     .fixedSize(horizontal: false, vertical: true)
+                if let o = m.etat?.imports?.originaux?.phrase {
+                    Text(o)
+                        .font(Police.texte(12))
+                        .foregroundStyle(Palette.encre3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("sources.originaux")
+                }
             }
             if s.actif {
                 Button {
