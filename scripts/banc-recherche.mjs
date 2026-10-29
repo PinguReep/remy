@@ -7,7 +7,8 @@
 //   node --env-file=..\remy.env scripts\banc-recherche.mjs
 //
 //   --modes salle,direct,hybride,direct-vif   les stratégies (défaut : les quatre)
-//   --questions acre,smic                      un sous-ensemble (défaut : les 8 du banc)
+//   --questions acre,smic                      un sous-ensemble (défaut : les 9 du banc,
+//                                              dont une suite de conversation)
 //   --pause 3000                               entre deux essais (le moteur n'aime pas les rafales)
 //   --sans-memoire                             consigne sans la mémoire (sinon : relue, jamais écrite)
 //   --planning                                 ajoute l'instantané Motion à la consigne (LECTURE seule)
@@ -163,7 +164,8 @@ async function essai(q, mode) {
     tFlux = Date.now();
     resultat = await glmProvider.stream({
       system: systeme,
-      messages: rr.messagesAvecRecherche([{ role: "user", content: q.question }], directe ? prep : null),
+      // Une suite (`avant`) : les messages qui précèdent, comme dans une vraie conversation.
+      messages: rr.messagesAvecRecherche([...(q.avant || []), { role: "user", content: q.question }], directe ? prep : null),
       onText: (d) => {
         if (premierMot === null && String(d).trim()) premierMot = Date.now() - t0;
         texte += d;
@@ -203,6 +205,11 @@ async function essai(q, mode) {
     caracteresEnvoyes: appels.reduce((n, a) => n + a.cars, 0),
     jetonsEnvoyes: (usage.input_tokens || 0) + salles.reduce((n, e) => n + (e.usage?.input_tokens || 0), 0),
     jetonsEcrits: (usage.output_tokens || 0) + salles.reduce((n, e) => n + (e.usage?.output_tokens || 0), 0),
+    // Le débit d'écriture MESURÉ du modèle principal (lib/debit.js), et le temps
+    // passé à écrire : le reste (web, lecture de la consigne, attente) s'en déduit.
+    // C'est ce qui remplace les débits supposés de scripts/mesurer-recherche.mjs.
+    debitJetonsS: resultat?.mesures?.tps ?? null,
+    ecritureMs: resultat?.mesures?.decodeMs ?? null,
     recherches: evenements.filter((e) => e.type === "recherche").length,
     requetes: evenements.filter((e) => e.type === "recherche").map((e) => e.requete),
     // Recherches lancées pendant la réponse (rechercher) : une relance, en hybride.
@@ -261,8 +268,8 @@ const med = (xs) => {
   const v = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
   return v.length ? v[Math.floor((v.length - 1) / 2)] : null;
 };
-console.log("\n| Stratégie | Temps total (méd.) | 1er mot (méd.) | Appels modèle | Pages lues | Chiffres vérifiés / avancés | À vérifier | Sans page / erreurs |");
-console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
+console.log("\n| Stratégie | Temps total (méd.) | 1er mot (méd.) | Appels modèle | Pages lues | Chiffres vérifiés / avancés | À vérifier | Sans page / erreurs | Débit d'écriture (méd.) |");
+console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 const resume = {};
 for (const mode of modes) {
   const l = rapport.essais.filter((e) => e.mode === mode);
@@ -282,9 +289,10 @@ for (const mode of modes) {
     erreurs: l.filter((e) => e.erreur).length,
     sansPage: l.filter((e) => !e.erreur && !e.pagesLues).length,
     relances: mode === "hybride" ? ok.filter((e) => e.relance).length : undefined,
+    debitJetonsS: med(ok.map((e) => e.debitJetonsS)),
   };
   const x = resume[mode];
-  console.log(`| ${mode}${x.relances !== undefined ? ` (${x.relances} relance${x.relances > 1 ? "s" : ""})` : ""} | ${s(x.totalMs)} | ${s(x.premierMotMs)} | ${x.appels ?? "—"} | ${x.pages ?? "—"} | ${x.verifies} / ${x.avances} | ${x.aVerifier} | ${x.sansPage} / ${x.erreurs} |`);
+  console.log(`| ${mode}${x.relances !== undefined ? ` (${x.relances} relance${x.relances > 1 ? "s" : ""})` : ""} | ${s(x.totalMs)} | ${s(x.premierMotMs)} | ${x.appels ?? "—"} | ${x.pages ?? "—"} | ${x.verifies} / ${x.avances} | ${x.aVerifier} | ${x.sansPage} / ${x.erreurs} | ${x.debitJetonsS ?? "—"} j/s |`);
 }
 rapport.resume = resume;
 ecrire();

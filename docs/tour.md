@@ -121,13 +121,18 @@ en même temps (sites officiels d'abord), en garde les passages utiles, et le
 modèle répond en un seul appel, avec les liens et les dates. Avant, la salle
 blanche enchaînait quatre ou cinq appels au modèle (plus d'une minute pour
 l'ACRE). Ta question ne part ainsi que si elle ne contient aucun nom propre,
-sigle inconnu ni numéro, et rien de ta mémoire — même écrit par toi ; sinon
-(et pour une suite comme « et pour les commerçants ? »), Rémy écrit lui-même
-une question générale, et la tour la cherche de la même façon. Aucune
-requête, aucune adresse n'est écrite par un modèle qui aurait lu une page :
-une page piégée ne peut rien faire chercher ni ouvrir. En mode « hybride »
-(le défaut), Rémy peut relancer UNE recherche si les passages ne répondent
-pas ; cette relance, écrite par lui, passe le filtre comme avant.
+sigle inconnu ni numéro, rien de ta mémoire — même écrit par toi —, et aucun
+contexte personnel à la première personne (santé, famille, justice, un
+montant : « J'ai un cancer, l'ACRE est-elle cumulable avec l'AAH ? ») ; sinon,
+et pour une suite (« Et pour la vente ? »), Rémy écrit lui-même une question
+générale, et la tour la cherche de la même façon. Aucune adresse n'est écrite
+par un modèle : seules s'ouvrent les pages que le moteur rend (ou tes liens).
+En mode « hybride » (le défaut), Rémy peut relancer UNE recherche si les
+passages ne répondent pas ; comme il a lu des pages avant de l'écrire, cette
+relance passe le filtre SANS l'exemption de ce que tu viens d'écrire, et ne
+peut contenir aucun nom propre (une page piégée pourrait le lui souffler) — la
+même règle vaut, dans tous les modes, pour toute question écrite après une
+première lecture. Moteur bloqué : pas de relance (elle échouerait).
 
 **La salle blanche** (`REMY_RECHERCHE_MODE=salle`, le comportement du 25/10).
 Rémy, qui connaît ta mémoire et ton planning, ne cherche
@@ -197,7 +202,14 @@ il redémarre Rémy.
 
 ### Comparer les stratégies : le banc (une commande)
 
-Sur la tour, dans un PowerShell (pas besoin d'administrateur), Rémy de préférence
+Le banc tourne depuis la copie de production : il faut donc d'abord y
+installer le commit qui le contient (« Mettre à jour » ci-dessus, `-Ref
+<commit>`). Cette installation met la recherche rapide (`hybride`) en service
+tout de suite ; pour garder la salle blanche jusqu'au verdict, ajoute AVANT
+l'installation la ligne `REMY_RECHERCHE_MODE=salle` à `remy.env` — le banc
+impose sa stratégie à chaque essai, il compare quand même les quatre.
+
+Ensuite, dans un PowerShell (pas besoin d'administrateur), Rémy de préférence
 inutilisé pendant ce temps (les Sparks seraient partagées) :
 
 ```powershell
@@ -205,11 +217,15 @@ cd $env:USERPROFILE\.remy\app
 node --env-file=..\remy.env scripts\banc-recherche.mjs
 ```
 
-Huit questions (règles, montants, horaires, prix, météo, actualité, produit),
-chacune avec les quatre stratégies (`salle`, `direct`, `hybride`, `direct-vif` =
-direct sans réflexion), contre le vrai modèle local : un tableau (temps total,
-temps au premier mot, appels au modèle, pages lues, chiffres vérifiés / à
-vérifier) et un JSON avec les réponses complètes dans `<coffre>\.remy\bancs\`.
+Neuf questions (règles, montants, horaires, prix, météo, actualité, produit,
+et une suite de conversation : « Et pour la vente de marchandises, c'est
+combien ? »), chacune avec les quatre stratégies (`salle`, `direct`,
+`hybride`, `direct-vif` = direct sans réflexion), contre le vrai modèle local :
+un tableau (temps total, temps au premier mot, appels au modèle, pages lues,
+chiffres vérifiés / à vérifier, débit d'écriture MESURÉ du modèle) et un JSON
+avec les réponses complètes dans `<coffre>\.remy\bancs\` (elles peuvent
+reprendre des bribes de ta mémoire, qui reste dans le coffre ;
+`--sans-memoire` l'évite).
 Compte 20 à 40 minutes. Rien n'est écrit dans Motion, l'agenda, la mémoire ni
 les conversations ; aucune IA cloud (la clé Anthropic est retirée du processus).
 Options : `--modes direct,hybride`, `--questions acre,smic`, `--sans-memoire`,

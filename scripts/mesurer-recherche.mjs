@@ -27,7 +27,8 @@ const PAUSE = Number(val("--pause")) || 2500;
 const sortieJson = val("--json");
 const points = (val("--points") || "ddg-html,ddg-lite").split(",").map((s) => s.trim()).filter(Boolean);
 const formesVoulues = (val("--formes") || "question,mots").split(",").map((s) => s.trim()).filter(Boolean);
-const questions = choix.length ? QUESTIONS.filter((q) => choix.includes(q.id)) : QUESTIONS;
+// Une suite de conversation (`avant`) n'a pas de sens seule : le banc la joue.
+const questions = (choix.length ? QUESTIONS.filter((q) => choix.includes(q.id)) : QUESTIONS).filter((q) => !q.avant);
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const CARS_PAR_JETON = 3.2; // lib/debit.js, rapport de départ (français)
 const jetons = (cars) => Math.round(cars / CARS_PAR_JETON);
@@ -160,6 +161,8 @@ for (const [k, q] of questions.entries()) {
   const d = p.d;
   const matiere = matiereDirecte(d);
   const pagesAvecAttendu = d.pages.filter((x) => (x.passages || []).some((y) => q.attendu.test(y.texte))).length;
+  // La réponse sur une page de référence (site officiel ou de la ville), pas seulement sur un site tiers.
+  const officiellesAvecAttendu = d.pages.filter((x) => x.source !== "autre" && (x.passages || []).some((y) => q.attendu.test(y.texte))).length;
   const pleinAttendu = d.pages.filter((x) => q.attendu.test(x.texte)).length;
   // Ce que la salle blanche relirait : la liste de résultats de chercher_web (encadrée).
   const listeResultats = r.resultats.slice(0, 6).map((x, i) => `${i + 1}. ${x.titre}\n   ${x.url}${x.extrait ? `\n   ${x.extrait}` : ""}`).join("\n");
@@ -188,13 +191,14 @@ for (const [k, q] of questions.entries()) {
     matiereCars: matiere.length,
     pagesCompletesCars: d.pages.reduce((n, x) => n + Math.min(10_000, x.texte.length), 0),
     pagesAvecAttendu,
+    officiellesAvecAttendu,
     pleinAttendu,
     echecs: d.echecs.map((e) => `${hoteDe(e.url)} : ${e.erreur}`),
   };
   rapport.lectures.push(ligne);
   console.log(
     `${q.id.padEnd(12)} série ${String(s.ms).padStart(5)} ms | parallèle ${String(d.mesures.lecturesMs).padStart(5)} ms (avec grâce ${String(ligne.graceMs).padStart(5)}) | lues ${ligne.lues}/3 (officielles ${ligne.officielles}, datées ${ligne.datees}) | ` +
-      `matière ${ligne.matiereCars} car. (~${jetons(ligne.matiereCars)} jetons) contre ${ligne.pagesCompletesCars} en pages entières | réponse dans les passages : ${pagesAvecAttendu} page(s) (dans les pages : ${pleinAttendu})` +
+      `matière ${ligne.matiereCars} car. (~${jetons(ligne.matiereCars)} jetons) contre ${ligne.pagesCompletesCars} en pages entières | réponse dans les passages : ${pagesAvecAttendu} page(s), dont ${officiellesAvecAttendu} officielle(s) (dans les pages : ${pleinAttendu})` +
       (ligne.echecs.length ? ` | échecs : ${ligne.echecs.join(" ; ")}` : ""),
   );
   for (const x of s.pages) console.log(`    ${x.ok ? "ok " : "ÉCHEC"} ${String(x.ms).padStart(5)} ms ${hoteDe(x.url)} ${x.ok ? `${x.cars} car.${x.squelettique ? " (squelettique)" : ""}${x.date ? `, ${x.date}` : ""}` : x.erreur}`);
@@ -227,7 +231,8 @@ console.log(
 );
 console.log(
   `Matière jointe (recherche directe) : médiane ${q50(lec.map((l) => l.matiereCars))} car. (~${jetons(q50(lec.map((l) => l.matiereCars)))} jetons) ; pages entières lues par la salle blanche : médiane ${q50(lec.map((l) => l.pagesCompletesCars))} car. (~${jetons(q50(lec.map((l) => l.pagesCompletesCars)))} jetons). ` +
-    `Réponse attendue présente dans les passages pour ${lec.filter((l) => l.pagesAvecAttendu > 0).length}/${lec.length} questions (dans les pages entières : ${lec.filter((l) => l.pleinAttendu > 0).length}/${lec.length}).`,
+    `Réponse attendue présente dans les passages pour ${lec.filter((l) => l.pagesAvecAttendu > 0).length}/${lec.length} questions, dont ${lec.filter((l) => l.officiellesAvecAttendu > 0).length} sur une page officielle ` +
+    `(dans les pages entières : ${lec.filter((l) => l.pleinAttendu > 0).length}/${lec.length}).`,
 );
 // --- 4. Appels au modèle et jetons, par stratégie (des mesures ci-dessus) -------------------
 // Ce qui est MESURÉ : la taille de ce que chaque appel envoie (consigne de la
@@ -235,17 +240,19 @@ console.log(
 // SUPPOSÉ (à confirmer par scripts/banc-recherche.mjs sur la tour) : la taille
 // de la consigne du modèle principal (--systeme, 31 000 jetons par défaut :
 // l'ordre de grandeur de la jauge), les jetons écrits (réflexion selon
-// l'effort, réponse, synthèse), et les débits (--decode 40 jetons/s : la jauge ;
-// --prefill 2 000 jetons/s : non mesuré ici).
+// l'effort, réponse, synthèse), et les débits — --decode 20,40,80 jetons/s :
+// AUCUN n'est mesuré (la jauge et ses tests n'ont que des exemples
+// d'affichage, 30 à 100 jetons/s ; contre-relecture du 29/10), d'où trois
+// hypothèses ; --prefill 2 000 jetons/s : non mesuré non plus.
 const CONSIGNES = (val("--systeme") || "8000,31000").split(",").map(Number).filter((x) => x > 0);
-const DECODE = Number(val("--decode")) || 40;
+const DECODES = (val("--decode") || "20,40,80").split(",").map(Number).filter((x) => x > 0);
 const PREFILL = Number(val("--prefill")) || 2_000;
 const REFLEXION = { high: 400, medium: 250, low: 120, off: 0 };
 const REPONSE = 350;
 const SYNTHESE = 350;
 const OUTIL = 40;
 const PSB = jetons(promptSalleBlanche().length);
-const est = (l, S) => {
+const est = (l, S, DECODE) => {
   const Q = jetons(l.questionCars);
   const R = jetons(l.resultatsCars);
   const P1 = jetons(l.page1Cars);
@@ -294,11 +301,11 @@ const est = (l, S) => {
     "hybride (avec relance)": bilan(hybrideRelance, web.direct * 2),
   };
 };
-rapport.estimations = { hypotheses: { decodeJetonsS: DECODE, prefillJetonsS: PREFILL, reflexion: REFLEXION, reponse: REPONSE, synthese: SYNTHESE, promptSalleBlancheJetons: PSB }, parConsigne: {} };
-for (const S of CONSIGNES) {
-  const estimes = lec.map((l) => ({ id: l.id, ...est(l, S) }));
-  rapport.estimations.parConsigne[S] = estimes;
-  console.log(`\n## Appels au modèle et jetons par stratégie (médianes ; consigne principale ${S} jetons, décodage ${DECODE} j/s, lecture ${PREFILL} j/s)\n`);
+rapport.estimations = { hypotheses: { decodeJetonsS: DECODES, prefillJetonsS: PREFILL, reflexion: REFLEXION, reponse: REPONSE, synthese: SYNTHESE, promptSalleBlancheJetons: PSB }, parConsigne: {} };
+for (const DECODE of DECODES) for (const S of CONSIGNES) {
+  const estimes = lec.map((l) => ({ id: l.id, ...est(l, S, DECODE) }));
+  rapport.estimations.parConsigne[`${S}@${DECODE}`] = estimes;
+  console.log(`\n## Appels au modèle et jetons par stratégie (médianes ; consigne principale ${S} jetons, décodage ${DECODE} j/s SUPPOSÉ, lecture ${PREFILL} j/s)\n`);
   console.log("| Stratégie | Appels | Jetons envoyés | dont nouveaux (cache de préfixe) | Jetons écrits | Web mesuré | Estimé sans cache | cache, consigne froide | consigne en cache |");
   console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const nom of Object.keys(estimes[0] || {}).filter((k) => k !== "id")) {

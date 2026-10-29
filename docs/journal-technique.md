@@ -11,10 +11,11 @@ notes privées, sur la tour.
   nombre d'appels au modèle local, chacun avec sa réflexion : le modèle
   principal écrit la question (réflexion « high »), la salle blanche choisit
   une page, la lit, en choisit une autre, rédige sa synthèse, puis le modèle
-  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits (estimés)
-  à ~40 jetons/s (débit de la jauge), plus la lecture de ~7 000 jetons de
-  pages. Les mesures et l'estimation sont ci-dessous ; le banc de la tour
-  (vrai modèle) les confirme ou non.
+  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits (estimés),
+  plus la lecture de ~7 000 jetons de pages. Le débit du modèle n'est mesuré
+  nulle part dans le dépôt (la jauge et ses tests n'ont que des exemples
+  d'affichage) : l'estimation ci-dessous le suppose, et le banc de la tour
+  (vrai modèle) le mesure.
 - **Les stratégies** (`lib/recherche-rapide.js`, `REMY_RECHERCHE_MODE`) :
   `salle` (le 25/10, inchangé) ; `direct` — pour une question classée « web »
   (`indiceWeb`, sans routeur), la TOUR cherche avec la question de Sam, classe
@@ -38,9 +39,12 @@ notes privées, sur la tour.
   `rechercher` reste offert ; hors mode salle, la TOUR l'exécute de la même
   façon (chercher la question écrite par le modèle, lire, extraire) au lieu de
   la boucle de la salle blanche : 2 appels au lieu de 4 ou 5. Ce qui sort est
-  un sous-ensemble de ce que sortait la salle blanche (sa question, puis les
-  pages rendues par le moteur — plus aucune requête ni adresse écrite par un
-  modèle qui a lu une page).
+  un sous-ensemble de ce que sortait la salle blanche : la question du modèle,
+  puis les pages rendues par le moteur — aucune adresse écrite par un modèle,
+  ni les requêtes de la salle blanche. Une question écrite par le modèle
+  APRÈS une lecture (relance de l'hybride, deuxième recherche) est, elle,
+  bien écrite par un modèle qui a lu une page : voir « Contre-relecture »
+  plus bas (filtre sans exemption, aucun nom propre).
 - **Ce qui sort, en direct.** La question de Sam, nettoyée (salutations,
   « dis-moi », « stp » ; les phrases interrogatives seulement ; 200
   caractères), et SEULEMENT si : elle porte au moins deux mots utiles (« et
@@ -52,9 +56,14 @@ notes privées, sur la tour.
   un nom de sa mémoire écrit dans sa question ne part pas tel quel. Sinon,
   pas de recherche directe : le modèle écrit une question générale
   (`rechercher`), filtrée comme avant. C'est plus strict que la salle
-  blanche, où la question écrite par le modèle pouvait reprendre un nom que
-  Sam venait d'écrire. Les liens donnés par Sam (hors privé) sont lus tels
-  quels, sans moteur ; en privé, jamais.
+  blanche pour les noms (la question écrite par le modèle pouvait reprendre
+  un nom que Sam venait d'écrire) ; pour le CONTEXTE, la question partant
+  telle quelle, il a fallu deux règles de plus (contre-relecture) : une
+  question à la première personne qui porte un contexte de santé, de
+  famille, de justice ou un montant (« J'ai un cancer du sein, l'ACRE est-elle
+  cumulable avec l'AAH ? ») et une suite (« Et pour la vente ? ») reviennent
+  au modèle. Les liens donnés par Sam (hors privé) sont lus tels quels, sans
+  moteur ; en privé, jamais.
 - **Garde-fous inchangés.** Conversation privée : réglage `recherchePrivee`
   (coupé par défaut), filtre privé (la conversation au lexique) ; recherche
   web coupée ou réglages illisibles : rien ; moteur en panne : la note de la
