@@ -460,4 +460,11 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   e = (await json("PUT", "/api/conversations-externes/sources/chatgpt", { actif: true })).corps;
   assert.deepEqual([e.chatgpt.rappel.dernierImport, e.chatgpt.rappel.aMontrer], [null, true]);
   assert.match(source(e, "chatgpt").aide.quoiFaire, /Rémy prend le \.zip dans Téléchargements/);
+  // Effacée puis rallumée : l'export encore dans Téléchargements est repris
+  // (comme Claude Code et T3 se relisent), et la carte se tait.
+  const avant = empreinte(telechargements);
+  const r = await lire("chatgpt");
+  assert.ok(r.bilan.sources.chatgpt.telechargements.importes >= 1, JSON.stringify(r.bilan.sources.chatgpt.telechargements));
+  assert.equal(r.etat.chatgpt.rappel.aMontrer, false);
+  assert.equal(empreinte(telechargements), avant);
 });
