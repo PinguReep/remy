@@ -41,7 +41,7 @@ function servirTour() {
   });
 }
 
-function fauxTauri({ adresse, notes = 0 }) {
+function fauxTauri({ adresse, notes = 0, avertissement = null }) {
   return `
   (() => {
     const journal = [];
@@ -62,7 +62,7 @@ function fauxTauri({ adresse, notes = 0 }) {
           }
           case "bureau_adresse_enregistrer": adresse = args.adresse; return adresse;
           case "bureau_aller_tour": return null;
-          case "bureau_note_locale": notes += 1; return { id: "bureau-1", enAttente: notes };
+          case "bureau_note_locale": notes += 1; return { id: "bureau-1", enAttente: notes, avertissement: ${JSON.stringify(avertissement)} };
           case "bureau_notes_locales_compte": return notes;
           case "bureau_noter_fermer": return null;
           default: throw "commande inconnue " + cmd;
@@ -230,6 +230,19 @@ const commandes = (page) => page.evaluate(() => window.__journal.map((j) => j[0]
   await page.waitForTimeout(1500);
   verifier("Noter ?retour=502 : pas de nouvel essai immédiat", !(await commandes(page)).includes("bureau_aller_tour"));
   verifier("Noter ?retour=502 : « Rémy ne répond pas »", (await page.textContent("#etat")).startsWith("Rémy ne répond pas"));
+  await ctx.close();
+
+  // Notes d'avant illisibles (fichier mis de côté) : Noter le dit.
+  ctx = await navigateur.newContext({ viewport: { width: 560, height: 300 } });
+  await ctx.addInitScript(fauxTauri({ adresse: adresseTour, avertissement: "Les notes gardées avant n'ont pas pu être relues : fichier mis de côté (notes-en-attente.illisible)." }));
+  page = await ctx.newPage();
+  await page.goto(`${baseUI}/noter.html?retour=502`);
+  await page.waitForFunction(() => window.__journal.some((j) => j[0] === "bureau_notes_locales_compte"));
+  await page.fill("#champ", "Note du jour");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#message.erreur");
+  verifier("Noter : notes d'avant illisibles → le message le dit", (await page.textContent("#message")).includes("mis de côté"));
+  await page.screenshot({ path: path.join(SORTIE, "noter-illisible.png") });
   await ctx.close();
 
   // 6. Le script de contrôle de la coquille, dans Chromium (comme WebView2).

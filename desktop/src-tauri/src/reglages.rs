@@ -1,7 +1,8 @@
 //! Ce que l'app garde sur ce PC, dans `%APPDATA%\com.pingureep.remy.bureau\` :
 //! `bureau.json` (adresse de la tour et réglages de la coquille) et
-//! `notes-en-attente.json` (notes tapées dans « Noter » quand le site n'a pas pu
-//! se charger, effacées dès qu'il les a envoyées).
+//! `notes-en-attente.dat` (notes tapées dans « Noter » quand le site n'a pas pu
+//! se charger, **chiffrées** par Windows — voir `protection` — et effacées dès
+//! que le site les a envoyées).
 //!
 //! Écriture atomique (fichier temporaire puis renommage) : une coupure de
 //! courant ne laisse jamais un fichier à moitié écrit.
@@ -16,7 +17,13 @@ use serde::{Deserialize, Serialize};
 use crate::raccourci;
 
 pub const FICHIER_REGLAGES: &str = "bureau.json";
-pub const FICHIER_NOTES: &str = "notes-en-attente.json";
+pub const FICHIER_NOTES: &str = "notes-en-attente.dat";
+/// Le fichier en clair de la version 0.1.0 : relu s'il reste, effacé à la
+/// première écriture.
+pub const FICHIER_NOTES_ANCIEN: &str = "notes-en-attente.json";
+/// Un fichier de notes que Windows ne sait plus déchiffrer est mis de côté
+/// ici (jamais écrasé ni effacé sans le dire).
+pub const FICHIER_NOTES_ILLISIBLE: &str = "notes-en-attente.illisible";
 pub const NOTES_MAX: usize = 200;
 pub const NOTE_LONGUEUR_MAX: usize = 4000;
 
@@ -62,7 +69,9 @@ pub fn ecrire_atomique(chemin: &Path, contenu: &[u8]) -> std::io::Result<()> {
     if let Some(dossier) = chemin.parent() {
         fs::create_dir_all(dossier)?;
     }
-    let provisoire = chemin.with_extension("json.tmp");
+    let mut provisoire = chemin.as_os_str().to_owned();
+    provisoire.push(".tmp");
+    let provisoire = std::path::PathBuf::from(provisoire);
     {
         let mut f = fs::File::create(&provisoire)?;
         f.write_all(contenu)?;
@@ -92,27 +101,84 @@ pub fn enregistrer(dossier: &Path, r: &Reglages) -> std::io::Result<()> {
     ecrire_atomique(&dossier.join(FICHIER_REGLAGES), &json)
 }
 
+/// Les notes en attente, ou pourquoi le fichier ne se relit pas. Absent :
+/// aucune note.
+pub fn lire_notes_detail(dossier: &Path) -> Result<Vec<NoteLocale>, String> {
+    let octets = match fs::read(dossier.join(FICHIER_NOTES)) {
+        Ok(o) => o,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match fs::read(dossier.join(FICHIER_NOTES_ANCIEN)) {
+            Ok(o) => o,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.to_string()),
+        },
+        Err(e) => return Err(e.to_string()),
+    };
+    let clair = crate::protection::ouvrir(&octets)?;
+    serde_json::from_slice(&clair).map_err(|e| format!("contenu abîmé ({e})"))
+}
+
+/// Les notes en attente ; un fichier illisible compte pour une file vide (il
+/// n'est pas touché ici : la prochaine écriture le met de côté).
 pub fn lire_notes(dossier: &Path) -> Vec<NoteLocale> {
-    fs::read(dossier.join(FICHIER_NOTES))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    lire_notes_detail(dossier).unwrap_or_else(|e| {
+        eprintln!("notes en attente illisibles : {e}");
+        Vec::new()
+    })
+}
+
+/// Avant d'écrire : les notes actuelles. Un fichier illisible est renommé en
+/// `notes-en-attente.illisible` (rien n'est perdu sans le dire) et la file
+/// repart vide ; le texte rendu dit quoi.
+fn notes_pour_ecrire(dossier: &Path) -> (Vec<NoteLocale>, Option<String>) {
+    match lire_notes_detail(dossier) {
+        Ok(n) => (n, None),
+        Err(e) => {
+            let source = [FICHIER_NOTES, FICHIER_NOTES_ANCIEN]
+                .iter()
+                .map(|f| dossier.join(f))
+                .find(|p| p.exists());
+            if let Some(source) = source {
+                let _ = fs::rename(&source, dossier.join(FICHIER_NOTES_ILLISIBLE));
+            }
+            eprintln!("notes en attente illisibles, mises de côté : {e}");
+            (
+                Vec::new(),
+                Some(format!(
+                    "Les notes gardées avant n'ont pas pu être relues ({e}) : fichier mis de côté ({FICHIER_NOTES_ILLISIBLE})."
+                )),
+            )
+        }
+    }
 }
 
 fn enregistrer_notes(dossier: &Path, notes: &[NoteLocale]) -> std::io::Result<()> {
     let chemin = dossier.join(FICHIER_NOTES);
+    let effacer = |p: &Path| match fs::remove_file(p) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    };
     if notes.is_empty() {
-        return match fs::remove_file(&chemin) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        };
+        effacer(&chemin)?;
+    } else {
+        let json = serde_json::to_vec_pretty(notes).map_err(std::io::Error::other)?;
+        let scelle = crate::protection::sceller(&json).map_err(std::io::Error::other)?;
+        ecrire_atomique(&chemin, &scelle)?;
     }
-    let json = serde_json::to_vec_pretty(notes).map_err(std::io::Error::other)?;
-    ecrire_atomique(&chemin, &json)
+    // L'ancien fichier en clair (0.1.0) : repris ci-dessus, il disparaît.
+    effacer(&dossier.join(FICHIER_NOTES_ANCIEN))
 }
 
-/// Garde une note tapée hors ligne. Rend la note et le nombre en attente.
-pub fn ajouter_note(dossier: &Path, texte: &str) -> Result<(NoteLocale, usize), String> {
+/// Une note gardée : elle, le nombre en attente, et un avertissement si les
+/// notes d'avant n'ont pas pu être relues.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteAjoutee {
+    pub note: NoteLocale,
+    pub en_attente: usize,
+    pub avertissement: Option<String>,
+}
+
+/// Garde une note tapée hors ligne.
+pub fn ajouter_note(dossier: &Path, texte: &str) -> Result<NoteAjoutee, String> {
     let texte = texte.trim();
     if texte.is_empty() {
         return Err("La note est vide.".into());
@@ -120,7 +186,7 @@ pub fn ajouter_note(dossier: &Path, texte: &str) -> Result<(NoteLocale, usize), 
     if texte.chars().count() > NOTE_LONGUEUR_MAX {
         return Err(format!("La note est trop longue (plus de {NOTE_LONGUEUR_MAX} caractères)."));
     }
-    let mut notes = lire_notes(dossier);
+    let (mut notes, avertissement) = notes_pour_ecrire(dossier);
     if notes.len() >= NOTES_MAX {
         return Err(format!(
             "Déjà {NOTES_MAX} notes en attente sur ce PC : ouvre Rémy quand la tour répond pour les envoyer."
@@ -140,12 +206,12 @@ pub fn ajouter_note(dossier: &Path, texte: &str) -> Result<(NoteLocale, usize), 
     };
     notes.push(note.clone());
     enregistrer_notes(dossier, &notes).map_err(|e| format!("Impossible de garder la note sur ce PC : {e}"))?;
-    Ok((note, notes.len()))
+    Ok(NoteAjoutee { note, en_attente: notes.len(), avertissement })
 }
 
 /// Efface les notes que le site a bien envoyées.
 pub fn acquitter_notes(dossier: &Path, ids: &[String]) -> Result<usize, String> {
-    let mut notes = lire_notes(dossier);
+    let (mut notes, _) = notes_pour_ecrire(dossier);
     notes.retain(|n| !ids.contains(&n.id));
     enregistrer_notes(dossier, &notes).map_err(|e| format!("Impossible d'effacer les notes envoyées : {e}"))?;
     Ok(notes.len())
@@ -236,13 +302,16 @@ mod tests {
     fn les_notes_de_secours_sont_gardees_puis_effacees() {
         let d = dossier_de_test("notes");
         assert!(lire_notes(&d).is_empty());
-        let (n1, total) = ajouter_note(&d, "  Rappeler Léa pour le devis  ").unwrap();
-        assert_eq!(total, 1);
+        let a1 = ajouter_note(&d, "  Rappeler Léa pour le devis  ").unwrap();
+        let n1 = a1.note;
+        assert_eq!(a1.en_attente, 1);
+        assert_eq!(a1.avertissement, None);
         assert_eq!(n1.texte, "Rappeler Léa pour le devis");
         assert!(n1.id.starts_with("bureau-"));
         assert!(n1.a.ends_with('Z') && n1.a.len() == 20, "{}", n1.a);
-        let (n2, total) = ajouter_note(&d, "Commander des mèches pour les bougies").unwrap();
-        assert_eq!(total, 2);
+        let a2 = ajouter_note(&d, "Commander des mèches pour les bougies").unwrap();
+        let n2 = a2.note;
+        assert_eq!(a2.en_attente, 2);
         assert_ne!(n1.id, n2.id);
         assert!(ajouter_note(&d, "   ").is_err());
         assert!(ajouter_note(&d, &"a".repeat(NOTE_LONGUEUR_MAX + 1)).is_err());
@@ -250,6 +319,56 @@ mod tests {
         assert_eq!(lire_notes(&d), vec![n2.clone()]);
         assert_eq!(acquitter_notes(&d, &[n2.id]).unwrap(), 0);
         assert!(!d.join(FICHIER_NOTES).exists(), "plus rien en attente : plus de fichier");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sur_le_disque_les_notes_sont_scellees() {
+        let d = dossier_de_test("scellees");
+        ajouter_note(&d, "Rappeler Léa pour le devis").unwrap();
+        let brut = fs::read(d.join(FICHIER_NOTES)).unwrap();
+        let texte = "Rappeler Léa pour le devis".as_bytes();
+        let en_clair = brut.windows(texte.len()).any(|w| w == texte);
+        if cfg!(windows) {
+            assert!(brut.starts_with(crate::protection::ENTETE), "chiffré par DPAPI");
+            assert!(!en_clair, "le texte de la note ne doit pas être lisible sur le disque");
+        } else {
+            assert!(en_clair, "hors Windows (tests), en clair");
+        }
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn l_ancien_fichier_en_clair_est_repris_puis_efface() {
+        let d = dossier_de_test("ancien");
+        fs::create_dir_all(&d).unwrap();
+        fs::write(
+            d.join(FICHIER_NOTES_ANCIEN),
+            br#"[{"id":"bureau-1","texte":"Commander des meches","a":"2026-10-29T08:00:00Z"}]"#,
+        )
+        .unwrap();
+        assert_eq!(lire_notes(&d).len(), 1, "relu");
+        let a = ajouter_note(&d, "Une autre").unwrap();
+        assert_eq!(a.en_attente, 2);
+        assert!(!d.join(FICHIER_NOTES_ANCIEN).exists(), "ancien fichier en clair effacé");
+        assert_eq!(lire_notes(&d).len(), 2);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn un_fichier_de_notes_illisible_est_mis_de_cote_et_le_dit() {
+        let d = dossier_de_test("illisible");
+        fs::create_dir_all(&d).unwrap();
+        let mut faux = crate::protection::ENTETE.to_vec();
+        faux.extend_from_slice(b"\x00\x01 pas un bloc valable");
+        fs::write(d.join(FICHIER_NOTES), &faux).unwrap();
+        assert!(lire_notes(&d).is_empty(), "file vide, sans planter");
+        assert!(d.join(FICHIER_NOTES).exists(), "la lecture seule n'y touche pas");
+        let a = ajouter_note(&d, "Note du jour").unwrap();
+        assert_eq!(a.en_attente, 1);
+        assert!(a.avertissement.as_deref().unwrap_or("").contains("mis de côté"), "{:?}", a.avertissement);
+        assert_eq!(fs::read(d.join(FICHIER_NOTES_ILLISIBLE)).unwrap(), faux, "l'ancien est gardé tel quel");
+        assert_eq!(lire_notes(&d).len(), 1);
         let _ = fs::remove_dir_all(&d);
     }
 

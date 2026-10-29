@@ -23,7 +23,7 @@ SmartScreen, désinstaller), est écrite par le lot SHELL.
 | | Tauri v2 | Electron |
 | --- | --- | --- |
 | Moteur | WebView2, déjà dans Windows 11 (Chromium, à jour par Windows Update) | Chromium embarqué |
-| Installateur | ~5–10 Mo (NSIS `.exe` et `.msi`) | ~90–120 Mo |
+| Installateur | ~2 Mo (NSIS `.exe`) | ~90–120 Mo |
 | Mémoire au repos | une WebView2 partagée | un Chromium + Node par app |
 | API natives depuis une page distante | ACL par origine (`capabilities` avec `remote.urls`) : rien n'est exposé hors liste | `contextBridge` à la main ; tout ce qu'on oublie de fermer reste ouvert |
 | Ce qu'il faut sur la machine | rien (WebView2 présent) | rien |
@@ -95,8 +95,11 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   avec `--demarrage` : la fenêtre se charge **cachée** (les notifications
   tournent), l'icône seule apparaît.
 - **Raccourci global** (`tauri-plugin-global-shortcut`), `Ctrl+Alt+Space` par
-  défaut, réglable ; refusé s'il n'a pas de modificateur ou s'il est déjà pris
-  (le message le dit, l'ancien reste actif). Il ouvre la petite fenêtre
+  défaut, réglable ; refusé s'il n'a pas de modificateur, s'il est déjà pris
+  (le message le dit, l'ancien reste actif), ou s'il vaut AltGr + une touche
+  qui écrit (Ctrl+Alt+0 = AltGr+0 = « @ » sur un clavier français : il
+  volerait ce caractère partout ; permis avec Maj ou Win en plus, ou avec
+  Espace, Entrée, F1–F12). Il ouvre la petite fenêtre
   **Noter** (560×300, sans bordure, au-dessus de tout, hors barre des tâches,
   centrée sur l'écran de la souris). Échap ou perte du focus la cache ; elle
   est créée cachée au démarrage pour s'ouvrir sans délai.
@@ -139,9 +142,17 @@ d'adresse / hors ligne, une « Noter » de secours hors ligne, et le code natif.
   sans session) part sans cookie après la navigation depuis la page locale :
   sans effet, les appels `/api` qui suivent sont de même origine.
 - **Notes de secours** (tapées dans « Noter » quand le site n'a jamais pu se
-  charger) : gardées dans le profil Windows (`notes-en-attente.json`), effacées
-  dès que le site les a envoyées. Même protection que le coffre sur la tour
-  (session Windows, chiffrement du disque).
+  charger) : gardées dans le profil Windows (`notes-en-attente.dat`),
+  **chiffrées par DPAPI** (`CryptProtectData`, portée de l'utilisateur : seul
+  ce compte Windows, sur ce PC, les relit ; aucune clé à garder), effacées dès
+  que le site les a envoyées. Un fichier que Windows ne sait plus déchiffrer
+  (profil réinitialisé, copie sur un autre PC) est mis de côté
+  (`notes-en-attente.illisible`), jamais écrasé, et Noter le dit.
+- **File d'envoi du site** (ce qu'on note dans le site tour coupée) : dans le
+  `localStorage` du profil WebView2, **en clair**, comme dans un navigateur ;
+  seule la session Windows la protège (le disque n'est pas chiffré). Elle ne
+  garde que ce qui n'est pas encore parti. Choix noté dans
+  `docs/journal-technique.md` (29/10, suite).
 
 ### 1.4 Le contrat coquille ↔ site (à respecter par les deux lots)
 
@@ -317,7 +328,7 @@ Les deux lots avancent en parallèle ; ils ne se parlent que par le contrat
 | `desktop/ui/demarrage.html`, `desktop/ui/demarrage.js`, `desktop/ui/atelier.css` | adresse, sonde, hors ligne, Réessayer (Atelier, polices système) |
 | `desktop/ui/noter.html`, `desktop/ui/noter.js` | Noter de secours (site jamais chargé) → `bureau_note_locale` |
 | `desktop/src-tauri/Cargo.toml`, `Cargo.lock`, `build.rs` | `tauri` 2.12 (`tray-icon`), plugins single-instance, window-state, global-shortcut, notification, opener ; `auto-launch`, `serde`, `url`, `windows-sys` (identifiant d'app) ; `AppManifest` des commandes |
-| `desktop/src-tauri/tauri.conf.json` | identifiant `com.pingureep.remy.bureau`, `productName` « Rémy », fenêtres, CSP, `withGlobalTauri`, NSIS `currentUser` en français + MSI, icônes |
+| `desktop/src-tauri/tauri.conf.json` | identifiant `com.pingureep.remy.bureau`, `productName` « Rémy », fenêtres, CSP, `withGlobalTauri`, NSIS `currentUser` en français (pas de `.msi`), icônes |
 | `desktop/src-tauri/capabilities/locale.json`, `distante.json` | 1.3 |
 | `desktop/src-tauri/icons/*` | générées depuis `public/icons/icon-512.png` (`tauri icon`) |
 | `desktop/src-tauri/src/main.rs`, `lib.rs` | montage, plugins, fenêtres, `--demarrage` |
@@ -325,7 +336,7 @@ Les deux lots avancent en parallèle ; ils ne se parlent que par le contrat
 | `desktop/src-tauri/src/reglages.rs` | `bureau.json`, notes de secours |
 | `desktop/src-tauri/src/commandes.rs` | les commandes du contrat, chacune avec son verrou d'origine |
 | `desktop/src-tauri/src/zone.rs`, `raccourci.rs`, `fenetres.rs`, `demarrage.rs` | icône et menu, raccourci global, fenêtres main/noter, navigation externe, démarrage avec Windows |
-| `.github/workflows/bureau-windows.yml` | `windows-latest` : `cargo test`, `tauri build` → artefact (`.exe` NSIS, `.msi`, `SHA256SUMS.txt`) ; lancement manuel avec `publier` → Release `bureau-vX.Y.Z` (version lue dans `tauri.conf.json`, refus si le tag existe) |
+| `.github/workflows/bureau-windows.yml` | `windows-latest` : `cargo test`, `tauri build` → artefact (`.exe` NSIS, `SHA256SUMS.txt`) ; lancement manuel depuis `main` avec `publier` → Release `bureau-vX.Y.Z` (version lue dans `tauri.conf.json`, refus si le tag existe ou hors de `main`) |
 | `docs/bureau.md` | ce document : partie 2 (mode d'emploi) |
 | `docs/journal-technique.md` | l'entrée du 29/10 (coquille + décisions du site rapportées par le lot SITE) |
 
@@ -377,8 +388,10 @@ Réglages › Ordinateur, notifications déclenchées une seule fois.
 - Analyse de la capture portée en JS plutôt qu'une route : instantané, hors
   ligne, sans IA ; mêmes phrases de test que l'iPhone.
 - Serif embarquée (Source Serif 4) faute de New York sous Windows.
-- Installateur NSIS **par utilisateur** (pas d'admin) en français ; `.msi` en
-  plus tant qu'il se construit (le retirer s'il bloque la CI : l'`.exe` suffit).
+- Installateur NSIS **par utilisateur** (pas d'admin) en français, et lui
+  seul : le `.msi` de Tauri s'installe pour toute la machine et, à la
+  désinstallation, laisse la valeur « Rémy » de la clé `Run` (posée par
+  l'app) pointer vers un programme effacé ; le `.exe` NSIS l'efface.
 - Non signé : SmartScreen préviendra (partie 2, à écrire par le lot SHELL).
 
 ---
@@ -401,8 +414,8 @@ Réglages › Ordinateur, notifications déclenchées une seule fois.
    ton compte seulement, **sans droits d'administrateur**, dans
    `%LOCALAPPDATA%\Rémy` ; raccourci « Rémy » dans le menu Démarrer.
    WebView2 est déjà dans Windows 11 (sinon l'installateur le télécharge).
-   Le `.msi` fait la même chose pour toute la machine (droits
-   d'administrateur) : inutile sur la tour, l'`.exe` suffit.
+   Pas de `.msi` : il s'installerait pour toute la machine et laisserait le
+   démarrage avec Windows derrière lui à la désinstallation.
 
 ### 2.2 « Windows a protégé votre ordinateur » (SmartScreen)
 
@@ -466,7 +479,11 @@ interface) plutôt que de l'affaiblir.
 **Le raccourci Noter se change** dans Réglages › Ordinateur (par exemple
 `Ctrl+Maj+N`, `Win+Alt+R` ; les noms français marchent : Maj, Espace, Win).
 Il faut au moins Ctrl, Alt ou Win : une lettre seule volerait la frappe dans
-toutes les applications. S'il est déjà pris par une autre application,
+toutes les applications. **Ctrl+Alt + une lettre, un chiffre ou une
+ponctuation est refusé** : sous Windows, c'est AltGr, et AltGr+0 écrit « @ »,
+AltGr+E « € », AltGr+3 « # » sur un clavier français — le raccourci les
+volerait partout. Ajoute Maj ou Win (`Ctrl+Alt+Maj+N`), ou prends Espace,
+Entrée ou une touche F1 à F12. S'il est déjà pris par une autre application,
 Windows le refuse : le message le dit et l'ancien reste actif. Au
 démarrage, un raccourci devenu indisponible est signalé par une notification.
 
@@ -483,7 +500,7 @@ le réseau revient) et **Changer l'adresse**. Si la tour répond mais pas Rémy
 dit « Rémy ne répond pas encore » et réessaie seule de la même façon : rien à
 faire, sauf si ça dure (relancer alors la tâche « Rémy » sur la tour). Une fois le site chargé une fois,
 il sait aussi s'afficher hors ligne. **Noter marche quand même** : la note est
-gardée sur ce PC (`notes-en-attente.json`) et part vers Rémy dès que le site
+gardée sur ce PC, chiffrée (`notes-en-attente.dat`), et part vers Rémy dès que le site
 répond, puis elle est effacée du PC.
 
 ### 2.5 Ce que l'app garde sur ce PC
@@ -491,9 +508,9 @@ répond, puis elle est effacée du PC.
 | Où | Quoi |
 | --- | --- |
 | `%APPDATA%\com.pingureep.remy.bureau\bureau.json` | adresse de la tour, raccourci, démarrage, « fermer = ranger » |
-| `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.json` | notes tapées hors ligne, jusqu'à leur envoi (absent s'il n'y en a pas) |
+| `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.dat` | notes tapées hors ligne, **chiffrées par Windows** (DPAPI, ton compte seulement), jusqu'à leur envoi (absent s'il n'y en a pas) |
 | `%APPDATA%\com.pingureep.remy.bureau\.window-state.json` | taille et position de la fenêtre |
-| `%LOCALAPPDATA%\com.pingureep.remy.bureau\EBWebView` | profil WebView2 : cookie de session de la tour, cache du site |
+| `%LOCALAPPDATA%\com.pingureep.remy.bureau\EBWebView` | profil WebView2 : cookie de session de la tour, cache du site, et sa file d'envoi hors ligne (`localStorage`, comme un navigateur) |
 | `HKCU\…\CurrentVersion\Run`, valeur « Rémy » | démarrage avec Windows (si allumé) |
 
 Rien d'autre : pas de télémétrie, aucune requête de la coquille elle-même
@@ -558,6 +575,9 @@ embarquées et script de contrôle dans Chromium avec un faux pont :
 `node desktop/essais/pages.cjs` (Playwright). Icônes :
 `npm run icones` (depuis `src-tauri/icons/icon.png`). L'installateur se
 construit en CI (`.github/workflows/bureau-windows.yml`) à chaque envoi qui
-touche `desktop/` ; lancé à la main avec « publier », il crée la Release
-`bureau-vX.Y.Z` — monter alors la version dans `tauri.conf.json`,
-`Cargo.toml` et `package.json` (la CI refuse un tag existant).
+touche `desktop/` (ou à la main, sur n'importe quelle branche, pour
+l'artefact) ; lancé à la main **depuis `main`** avec « publier », il crée la
+Release `bureau-vX.Y.Z` — monter alors la version dans `tauri.conf.json`,
+`Cargo.toml` et `package.json` (la CI refuse un tag existant, et toute
+publication depuis une autre branche : le numéro serait pris par du code pas
+encore fusionné).

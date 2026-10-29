@@ -111,6 +111,7 @@ const maison = fs.mkdtempSync(path.join(os.tmpdir(), "remy-fumee-"));
 const config = path.join(maison, ".config", "com.pingureep.remy.bureau");
 fs.mkdirSync(config, { recursive: true });
 fs.writeFileSync(path.join(config, "bureau.json"), JSON.stringify({ adresse: TOUR, premierLancementFait: true, demarrage: false }));
+// L'ancien fichier en clair (0.1.0) : la coquille doit le reprendre.
 fs.writeFileSync(path.join(config, "notes-en-attente.json"),
   JSON.stringify([{ id: "bureau-1", texte: "Commander des mèches pour les bougies", a: "2026-10-29T08:00:00Z" }]));
 
@@ -159,7 +160,8 @@ verifier("réglage « fermer » appliqué puis rétabli", m.fermer_quitte?.valeu
 verifier("notification acceptée, doublon refusé", m.notifier?.ok && m.notifier_doublon && !m.notifier_doublon.ok);
 verifier("note de secours lue par le site", m.notes?.ok && m.notes.valeur.length === 1 && m.notes.valeur[0].id === "bureau-1");
 verifier("note acquittée : plus rien en attente", m.acquitter?.ok && m.notes_apres?.ok && m.notes_apres.valeur.length === 0);
-verifier("fichier des notes effacé", !fs.existsSync(path.join(config, "notes-en-attente.json")));
+verifier("fichier des notes effacé (et l'ancien en clair de la 0.1.0 repris puis effacé)",
+  !fs.existsSync(path.join(config, "notes-en-attente.json")) && !fs.existsSync(path.join(config, "notes-en-attente.dat")));
 const reglages = JSON.parse(fs.readFileSync(path.join(config, "bureau.json"), "utf8"));
 verifier("réglages gardés sur disque (adresse inchangée par la tour)", reglages.adresse === TOUR && reglages.fermerDansZone === true);
 verifier("Noter est passée de la page de secours au site", n.etat?.ok && n.etat.valeur.fenetre === "noter");

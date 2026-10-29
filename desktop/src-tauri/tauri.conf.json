@@ -27,7 +27,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "publisher": "Rémy",
     "copyright": "Licence MIT",
     "category": "Productivity",
@@ -46,9 +46,6 @@
         "installMode": "currentUser",
         "languages": ["French"],
         "displayLanguageSelector": false
-      },
-      "wix": {
-        "language": "fr-FR"
       }
     }
   }

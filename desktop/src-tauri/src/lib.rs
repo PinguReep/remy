@@ -19,6 +19,7 @@ pub mod adresse;
 pub mod commandes;
 pub mod demarrage;
 pub mod fenetres;
+pub mod protection;
 pub mod raccourci;
 pub mod reglages;
 pub mod zone;

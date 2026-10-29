@@ -1,7 +1,10 @@
 # Rémy sur Windows (desktop/, Tauri v2) : tests de la coquille, puis
-# l'installateur (.exe NSIS par utilisateur, et .msi) en artefact.
-# Lancé à la main avec « publier » coché : une Release GitHub bureau-vX.Y.Z
-# (version lue dans desktop/src-tauri/tauri.conf.json ; refusée si le tag existe).
+# l'installateur (.exe NSIS par utilisateur ; pas de .msi, voir docs/bureau.md
+# 1.9) en artefact.
+# Lancé à la main DEPUIS main avec « publier » coché : une Release GitHub
+# bureau-vX.Y.Z (version lue dans desktop/src-tauri/tauri.conf.json ; refusée
+# si le tag existe, ou depuis une autre branche : le numéro serait pris par un
+# code pas encore fusionné).
 #
 # Aucun secret : l'adresse de la tour n'est jamais dans l'app (demandée au
 # premier lancement). Non signé : voir docs/bureau.md (SmartScreen).
@@ -45,6 +48,12 @@ jobs:
         shell: pwsh
         working-directory: desktop
     steps:
+      - name: Publier seulement depuis main
+        if: github.event_name == 'workflow_dispatch' && inputs.publier && github.ref != 'refs/heads/main'
+        run: |
+          Write-Output "::error::Publier seulement depuis main (ici : $env:GITHUB_REF). Relance sans « publier » pour avoir l'installateur en artefact, ou depuis main une fois fusionné."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -86,6 +95,23 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo test --locked
 
+      - name: Aucune adresse de tour dans les sources embarquées
+        run: |
+          # Les pages de desktop/ui sont compressées (brotli) dans Remy.exe : le
+          # contrôle du binaire plus bas ne les voit pas. On regarde donc les
+          # sources avant de construire. Seuls les exemples neutres sont permis
+          # (*.mon-tailnet.ts.net, *.exemple.ts.net).
+          $fichiers = Get-ChildItem -Recurse -File -Path ui, src-tauri/src, src-tauri/capabilities, src-tauri/tauri.conf.json, src-tauri/Cargo.toml
+          $motif = '[a-z0-9-]+\.[a-z0-9-]+\.ts\.net|tail[0-9a-f]{4,}\.ts\.net|192\.168\.[0-9]+\.[0-9]+'
+          $trouve = $fichiers | Select-String -Pattern $motif -AllMatches |
+            ForEach-Object { foreach ($m in $_.Matches) { [pscustomobject]@{ Ou = "$($_.Path):$($_.LineNumber)"; Quoi = $m.Value } } } |
+            Where-Object { $_.Quoi -notmatch '\.(mon-tailnet|exemple)\.ts\.net$' }
+          if ($trouve) {
+            $trouve | Format-Table -AutoSize | Out-String | Write-Output
+            throw "Adresse de tour ou du réseau local dans les sources de l'app : à retirer (l'adresse est demandée au premier lancement)."
+          }
+          Write-Output "Sources embarquées : $($fichiers.Count) fichiers, aucune adresse de tour."
+
       - name: Construire l'installateur
         run: npx tauri build --ci
 
@@ -97,9 +123,7 @@ jobs:
           $exe = Get-ChildItem "$bundle/nsis" -Filter *-setup.exe | Select-Object -First 1
           if (-not $exe) { throw "Installateur NSIS introuvable dans $bundle/nsis" }
           Copy-Item $exe.FullName (Join-Path $sortie "Remy-Bureau_${v}_x64-setup.exe")
-          $msi = Get-ChildItem "$bundle/msi" -Filter *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($msi) { Copy-Item $msi.FullName (Join-Path $sortie "Remy-Bureau_${v}_x64_fr-FR.msi") }
-          else { Write-Warning "Pas de .msi : l'installateur .exe suffit." }
+          if (Test-Path "$bundle/msi") { throw "Un .msi a été construit : il ne doit pas l'être (tauri.conf.json, targets)." }
           $lignes = Get-ChildItem $sortie -File | Sort-Object Name | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
           }
@@ -115,11 +139,12 @@ jobs:
       - name: Aucune adresse de tour dans l'app construite
         run: |
           # L'adresse est demandée au premier lancement : aucun hôte du tailnet
-          # (*.ts.net) ne doit être écrit dans le binaire.
+          # (*.ts.net) ne doit être écrit dans le binaire (chaînes Rust ; les
+          # pages embarquées, compressées, sont vues à l'étape des sources).
           $octets = [System.IO.File]::ReadAllBytes((Resolve-Path "src-tauri/target/release/Remy.exe"))
           $texte = [System.Text.Encoding]::ASCII.GetString($octets)
           $trouve = [regex]::Matches($texte, '[a-z0-9-]+\.[a-z0-9-]+\.ts\.net') | ForEach-Object Value |
-            Where-Object { $_ -ne 'ma-tour.mon-tailnet.ts.net' } | Sort-Object -Unique
+            Where-Object { $_ -notmatch '\.(mon-tailnet|exemple)\.ts\.net$' } | Sort-Object -Unique
           if ($trouve) { throw "Adresse de tailnet trouvée dans le binaire : $($trouve -join ', ')" }
           Write-Output "Aucune adresse *.ts.net en dur dans Remy.exe."
 
@@ -171,7 +196,7 @@ jobs:
   publier:
     name: Release bureau-v${{ needs.windows.outputs.version }}
     needs: [windows, fumee]
-    if: github.event_name == 'workflow_dispatch' && inputs.publier
+    if: github.event_name == 'workflow_dispatch' && inputs.publier && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

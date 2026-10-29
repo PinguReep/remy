@@ -394,13 +394,15 @@ pub fn bureau_aller_tour(app: AppHandle, webview: Webview, etat: State<'_, Etat>
 pub struct NoteGardee {
     pub id: String,
     pub en_attente: usize,
+    /// Les notes d'avant n'ont pas pu être relues (fichier mis de côté).
+    pub avertissement: Option<String>,
 }
 
 #[tauri::command]
 pub fn bureau_note_locale(webview: Webview, etat: State<'_, Etat>, texte: String) -> Result<NoteGardee, String> {
     verifier_locale(&webview)?;
-    let (note, en_attente) = reglages::ajouter_note(&etat.dossier, &texte)?;
-    Ok(NoteGardee { id: note.id, en_attente })
+    let a = reglages::ajouter_note(&etat.dossier, &texte)?;
+    Ok(NoteGardee { id: a.note.id, en_attente: a.en_attente, avertissement: a.avertissement })
 }
 
 #[tauri::command]

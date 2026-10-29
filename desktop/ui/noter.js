@@ -84,9 +84,14 @@ async function garder(ev) {
   try {
     const r = await invoke("bureau_note_locale", { texte });
     etat(r.enAttente);
-    message(`Gardée sur ce PC (${r.enAttente} en attente). Elle partira vers Rémy dès que la tour répondra.`, "succes");
+    if (r.avertissement) {
+      // Les notes d'avant n'ont pas pu être relues : on le dit, plus longtemps.
+      message(`Gardée sur ce PC. ${r.avertissement}`, "erreur");
+    } else {
+      message(`Gardée sur ce PC (${r.enAttente} en attente). Elle partira vers Rémy dès que la tour répondra.`, "succes");
+    }
     champ.value = "";
-    setTimeout(() => { enCours = false; fermer(); }, 1400);
+    setTimeout(() => { enCours = false; fermer(); }, r.avertissement ? 6000 : 1400);
   } catch (e) {
     enCours = false;
     message("Pas gardée : " + e + " Copie ton texte avant de fermer.", "erreur");
