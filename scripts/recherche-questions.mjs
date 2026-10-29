@@ -66,7 +66,7 @@ export const QUESTIONS = [
     type: "prix",
     question: "Quel est le prix moyen du litre de gazole en France cette semaine ?",
     references: /(^|\.)(prix-carburants\.gouv\.fr|ecologie\.gouv\.fr|economie\.gouv\.fr|insee\.fr)$/,
-    attendu: /1[,.]\d{2,3}\s?(€|euros)/i,
+    attendu: /\d[,.]\d{2,3}\s?(€|euros)/i,
   },
   {
     id: "iphone",

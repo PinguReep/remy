@@ -139,6 +139,8 @@ for (const [k, q] of questions.entries()) {
       mots: rq.mots,
       n: 3,
       delaiMs: 15_000,
+      grace: 0, // tout attendre ; le délai de grâce est recalculé plus bas
+
       chercher: async () => ({ backend: "duckduckgo", pointDEntree: "html.duckduckgo.com", resultats: r.resultats }),
     });
     return { ms: Math.round(performance.now() - t), d };
@@ -171,6 +173,13 @@ for (const [k, q] of questions.entries()) {
     rechercheMs: r.ms,
     serieMs: s.ms,
     paralleleMs: d.mesures.lecturesMs,
+    // Avec le délai de grâce (REMY_RECHERCHE_GRACE_MS, 1 500 ms) : la réponse part
+    // 1,5 s après le premier site officiel lu (ou la deuxième page).
+    graceMs: (() => {
+      const fins = [...d.pages].sort((a, b) => a.finMs - b.finMs);
+      const k = fins.findIndex((p, i) => i >= 1 || p.source === "officiel");
+      return k === -1 ? d.mesures.lecturesMs : Math.min(d.mesures.lecturesMs, fins[k].finMs + 1500);
+    })(),
     pages: s.pages.map((x) => ({ hote: hoteDe(x.url), ms: x.ms, ok: x.ok, cars: x.cars ?? 0, squelettique: Boolean(x.squelettique), date: x.date || null, erreur: x.erreur || null })),
     lues: d.pages.length,
     officielles: d.pages.filter((x) => x.source !== "autre").length,
@@ -184,7 +193,7 @@ for (const [k, q] of questions.entries()) {
   };
   rapport.lectures.push(ligne);
   console.log(
-    `${q.id.padEnd(12)} série ${String(s.ms).padStart(5)} ms | parallèle ${String(d.mesures.lecturesMs).padStart(5)} ms | lues ${ligne.lues}/3 (officielles ${ligne.officielles}, datées ${ligne.datees}) | ` +
+    `${q.id.padEnd(12)} série ${String(s.ms).padStart(5)} ms | parallèle ${String(d.mesures.lecturesMs).padStart(5)} ms (avec grâce ${String(ligne.graceMs).padStart(5)}) | lues ${ligne.lues}/3 (officielles ${ligne.officielles}, datées ${ligne.datees}) | ` +
       `matière ${ligne.matiereCars} car. (~${jetons(ligne.matiereCars)} jetons) contre ${ligne.pagesCompletesCars} en pages entières | réponse dans les passages : ${pagesAvecAttendu} page(s) (dans les pages : ${pleinAttendu})` +
       (ligne.echecs.length ? ` | échecs : ${ligne.echecs.join(" ; ")}` : ""),
   );
@@ -208,7 +217,8 @@ for (const point of points) {
 }
 const lec = rapport.lectures.filter((l) => l.serieMs);
 console.log(
-  `Lectures de 3 pages : série médiane ${q50(lec.map((l) => l.serieMs))} ms (P90 ${q90(lec.map((l) => l.serieMs))}), parallèle médiane ${q50(lec.map((l) => l.paralleleMs))} ms (P90 ${q90(lec.map((l) => l.paralleleMs))})`,
+  `Lectures de 3 pages : série médiane ${q50(lec.map((l) => l.serieMs))} ms (P90 ${q90(lec.map((l) => l.serieMs))}), parallèle médiane ${q50(lec.map((l) => l.paralleleMs))} ms (P90 ${q90(lec.map((l) => l.paralleleMs))}), ` +
+    `parallèle avec grâce médiane ${q50(lec.map((l) => l.graceMs))} ms (P90 ${q90(lec.map((l) => l.graceMs))})`,
 );
 const pagesUnes = lec.flatMap((l) => l.pages);
 console.log(
@@ -227,7 +237,7 @@ console.log(
 // l'ordre de grandeur de la jauge), les jetons écrits (réflexion selon
 // l'effort, réponse, synthèse), et les débits (--decode 40 jetons/s : la jauge ;
 // --prefill 2 000 jetons/s : non mesuré ici).
-const S = Number(val("--systeme")) || 31_000;
+const CONSIGNES = (val("--systeme") || "8000,31000").split(",").map(Number).filter((x) => x > 0);
 const DECODE = Number(val("--decode")) || 40;
 const PREFILL = Number(val("--prefill")) || 2_000;
 const REFLEXION = { high: 400, medium: 250, low: 120, off: 0 };
@@ -235,7 +245,7 @@ const REPONSE = 350;
 const SYNTHESE = 350;
 const OUTIL = 40;
 const PSB = jetons(promptSalleBlanche().length);
-const est = (l) => {
+const est = (l, S) => {
   const Q = jetons(l.questionCars);
   const R = jetons(l.resultatsCars);
   const P1 = jetons(l.page1Cars);
@@ -253,20 +263,28 @@ const est = (l) => {
   const direct = [[S + Q + M, S + Q + M, REFLEXION.low + REPONSE]];
   const vif = [[S + Q + M, S + Q + M, REPONSE]];
   const hybrideRelance = [direct[0], [S + Q + M + OUTIL + M, OUTIL + M, REFLEXION.low + REPONSE]];
-  const web = { salle: l.rechercheMs + l.serieMs, direct: l.rechercheMs + l.paralleleMs };
+  // La salle blanche lit une page à la fois : ses deux premières pages lues, échecs compris.
+  const deuxPages = (() => {
+    let ms = 0;
+    let ok = 0;
+    for (const p of l.pages) {
+      if (ok >= 2) break;
+      ms += p.ms;
+      if (p.ok) ok++;
+    }
+    return ms;
+  })();
+  const web = { salle: l.rechercheMs + deuxPages, direct: l.rechercheMs + l.graceMs };
+  // Trois cas pour la lecture (prefill) : aucun cache ; cache de préfixe mais
+  // consigne froide (premier message) ; consigne déjà en cache (la suite d'une
+  // conversation : seul ce qui est nouveau est lu).
   const bilan = (appels, webMs) => {
     const envoyes = appels.reduce((n, a) => n + a[0], 0);
     const nouveaux = appels.reduce((n, a) => n + a[1], 0);
+    const chauds = nouveaux - (appels[0][1] >= S ? S : 0);
     const ecrits = appels.reduce((n, a) => n + a[2], 0);
-    // Premier mot : le web, puis tout sauf la réponse du dernier appel.
-    return {
-      appels: appels.length,
-      envoyes,
-      nouveaux,
-      ecrits,
-      sansCacheS: Math.round((webMs + (envoyes / PREFILL) * 1000 + (ecrits / DECODE) * 1000) / 100) / 10,
-      avecCacheS: Math.round((webMs + (nouveaux / PREFILL) * 1000 + (ecrits / DECODE) * 1000) / 100) / 10,
-    };
+    const t = (lus) => Math.round((webMs + (lus / PREFILL) * 1000 + (ecrits / DECODE) * 1000) / 100) / 10;
+    return { appels: appels.length, envoyes, nouveaux, ecrits, webS: Math.round(webMs / 100) / 10, sansCacheS: t(envoyes), avecCacheS: t(nouveaux), chaudS: t(chauds) };
   };
   return {
     salle: bilan(salle, web.salle),
@@ -276,14 +294,17 @@ const est = (l) => {
     "hybride (avec relance)": bilan(hybrideRelance, web.direct * 2),
   };
 };
-const estimes = lec.map((l) => ({ id: l.id, ...est(l) }));
-rapport.estimations = { hypotheses: { systemeJetons: S, decodeJetonsS: DECODE, prefillJetonsS: PREFILL, reflexion: REFLEXION, reponse: REPONSE, synthese: SYNTHESE, promptSalleBlancheJetons: PSB }, parQuestion: estimes };
-console.log(`\n## Appels au modèle et jetons par stratégie (médianes ; consigne principale ${S} jetons, décodage ${DECODE} j/s, lecture ${PREFILL} j/s)\n`);
-console.log("| Stratégie | Appels | Jetons envoyés | dont nouveaux (cache de préfixe) | Jetons écrits | Temps estimé sans cache | avec cache |");
-console.log("| --- | --- | --- | --- | --- | --- | --- |");
-for (const nom of Object.keys(estimes[0] || {}).filter((k) => k !== "id")) {
-  const m = (k) => q50(estimes.map((e) => e[nom][k]));
-  console.log(`| ${nom} | ${m("appels")} | ${m("envoyes")} | ${m("nouveaux")} | ${m("ecrits")} | ${m("sansCacheS")} s | ${m("avecCacheS")} s |`);
+rapport.estimations = { hypotheses: { decodeJetonsS: DECODE, prefillJetonsS: PREFILL, reflexion: REFLEXION, reponse: REPONSE, synthese: SYNTHESE, promptSalleBlancheJetons: PSB }, parConsigne: {} };
+for (const S of CONSIGNES) {
+  const estimes = lec.map((l) => ({ id: l.id, ...est(l, S) }));
+  rapport.estimations.parConsigne[S] = estimes;
+  console.log(`\n## Appels au modèle et jetons par stratégie (médianes ; consigne principale ${S} jetons, décodage ${DECODE} j/s, lecture ${PREFILL} j/s)\n`);
+  console.log("| Stratégie | Appels | Jetons envoyés | dont nouveaux (cache de préfixe) | Jetons écrits | Web mesuré | Estimé sans cache | cache, consigne froide | consigne en cache |");
+  console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  for (const nom of Object.keys(estimes[0] || {}).filter((k) => k !== "id")) {
+    const m = (k) => q50(estimes.map((e) => e[nom][k]));
+    console.log(`| ${nom} | ${m("appels")} | ${m("envoyes")} | ${m("nouveaux")} | ${m("ecrits")} | ${m("webS")} s | ${m("sansCacheS")} s | ${m("avecCacheS")} s | ${m("chaudS")} s |`);
+  }
 }
 
 if (sortieJson) {

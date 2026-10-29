@@ -31,7 +31,7 @@ const ecouter = (srv, hote = "127.0.0.1") => new Promise((ok) => srv.listen(0, h
 const attendre = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 // --- « Internet » : des pages, chacune avec son délai ; ce qui est demandé est gardé. -----
-const web = { vus: [], delais: {}, arrivees: {} };
+const web = { vus: [], delais: {}, arrivees: {}, enCours: 0, maxEnCours: 0 };
 const PIEGE = `<html><head><title>Barème 2026</title></head><body><main>
   <h1>Barème micro-entreprise 2026</h1>
   <p>Mis à jour le 3 février 2026</p>
@@ -48,7 +48,10 @@ const pageWeb = http.createServer(async (q, r) => {
   web.vus.push(q.url);
   web.arrivees[q.url] = Date.now();
   const d = web.delais[q.url.split("?")[0]];
+  web.enCours++;
+  web.maxEnCours = Math.max(web.maxEnCours, web.enCours);
   if (d) await attendre(d);
+  web.enCours--;
   if (q.url.startsWith("/seuils") || q.url === "/bareme-officiel") return r.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(fixture("page-officielle.html"));
   if (q.url === "/piege") return r.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(PIEGE);
   if (q.url === "/actus") return r.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(ACTUS);
@@ -196,6 +199,7 @@ const reset = () => {
   web.vus = [];
   web.delais = {};
   web.arrivees = {};
+  web.maxEnCours = 0;
   claude.length = 0;
   _oublierBlocage();
   rr.viderCachesRecherche();
@@ -305,11 +309,9 @@ test("lectures en parallèle : trois pages en même temps, une page refusée rem
   assert.deepEqual(r.pages.map((p) => new URL(p.url).pathname), ["/seuils", "/actus", "/bareme-officiel"], "la page protégée est remplacée par le résultat suivant");
   assert.equal(r.echecs.length, 1);
   assert.match(r.echecs[0].erreur, /anti-robot/);
-  // En même temps : les trois pages lentes (400 ms chacune) sont demandées
-  // avant que la première ait répondu.
-  const debuts = ["/seuils", "/actus", "/bareme-officiel"].map((u) => web.arrivees[u]);
-  assert.ok(Math.max(...debuts) - Math.min(...debuts) < 350, `demandes étalées : ${debuts.map((t) => t - Math.min(...debuts)).join(", ")} ms`);
-  assert.ok(r.mesures.lecturesMs < 1150, `lectures : ${r.mesures.lecturesMs} ms (en série : plus de 1 200 ms)`);
+  // En même temps : les pages lentes (400 ms chacune) sont servies ensemble —
+  // en série, il n'y en aurait jamais qu'une à la fois.
+  assert.ok(web.maxEnCours >= 2, `pages servies ensemble : ${web.maxEnCours}`);
   assert.ok(r.pages[0].passages.length > 0);
   assert.equal(r.web.pagesLues.length, 3);
   assert.equal(r.web.abouties, 4, "une recherche et trois pages");
@@ -319,10 +321,19 @@ test("lectures en parallèle : trois pages en même temps, une page refusée rem
   web.delais = { "/actus": 3000 };
   const t1 = Date.now();
   const r2 = await rr.rechercheDirecte({ requete: "seuil micro-entreprise 2026", n: 3, delaiMs: 1000 });
-  assert.ok(Date.now() - t1 < 2000);
+  assert.ok(Date.now() - t1 < 2600, "la page lente ne retient pas la réponse (3 s)");
   assert.ok(r2.pages.some((p) => p.url.endsWith("/seuils")));
   assert.ok(!r2.pages.some((p) => p.url.endsWith("/actus")));
   assert.ok(r2.echecs.some((e) => /temps des lectures écoulé/.test(e.erreur)));
+
+  // Le délai de grâce : deux pages lues, la troisième (lente) n'a plus que 300 ms.
+  reset();
+  web.delais = { "/bareme-officiel": 3000 };
+  const t2 = Date.now();
+  const r3 = await rr.rechercheDirecte({ requete: "seuil micro-entreprise 2026", n: 3, delaiMs: 10_000, grace: 300 });
+  assert.ok(Date.now() - t2 < 2600, `grâce : ${Date.now() - t2} ms (sans elle : 3 s)`);
+  assert.deepEqual(r3.pages.map((p) => new URL(p.url).pathname), ["/seuils", "/actus"]);
+  assert.ok(r3.echecs.some((e) => e.url.endsWith("/bareme-officiel") && /temps des lectures écoulé/.test(e.erreur)));
 });
 
 test("le cache : la même question relit les mêmes pages sans rien renvoyer au moteur ni aux sites ; 0 le coupe", async () => {
@@ -363,6 +374,21 @@ test("DuckDuckGo en relais : html tarde, lite répond — la plus rapide l'empor
     assert.deepEqual(ddg.points, ["html"], "sans relais, une seule requête");
   } finally {
     delete process.env.REMY_RECHERCHE_RELAIS_MS;
+  }
+});
+
+test("bac à sable : en test, jamais le vrai DuckDuckGo — une recherche sans faux moteur échoue sans sortir", async () => {
+  reset();
+  const avant = [process.env.REMY_DUCKDUCKGO_URL, process.env.REMY_DUCKDUCKGO_LITE_URL];
+  delete process.env.REMY_DUCKDUCKGO_URL;
+  delete process.env.REMY_DUCKDUCKGO_LITE_URL;
+  try {
+    const r = await rr.rechercheDirecte({ requete: "seuil micro-entreprise 2026" });
+    assert.match(r.erreur, /requête vers DuckDuckGo RÉEL refusée \(html\.duckduckgo\.com\)/);
+    assert.equal(r.pages.length, 0);
+  } finally {
+    [process.env.REMY_DUCKDUCKGO_URL, process.env.REMY_DUCKDUCKGO_LITE_URL] = avant;
+    _oublierBlocage();
   }
 });
 

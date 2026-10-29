@@ -69,7 +69,7 @@ const { buildSystem, pourModeleLocal } = await import("../lib/chat.js");
 const { getMemory } = await import("../lib/store.js");
 const { creerFiltre } = await import("../lib/filtre-sortie.js");
 const { PRENOM, VOCABULAIRE } = await import("../lib/profil.js");
-const { bilanChiffres, backendRecherche } = await import("../lib/recherche.js");
+const { bilanChiffres, backendRecherche, blocageRestantMs } = await import("../lib/recherche.js");
 const { palierSansRouteur } = await import("../lib/allegement.js");
 const rr = await import("../lib/recherche-rapide.js");
 const { salleBlancheActive } = await import("../lib/salle-blanche.js");
@@ -210,7 +210,9 @@ async function essai(q, mode) {
     relance: mode === "hybride" && Boolean(prep && prep.statut !== "non") && evenements.some((e) => e.type === "recherche" && e.t >= tFlux),
     pagesLues: (web.pagesLues || []).length,
     pages: (web.pagesLues || []).map((p) => p.url),
-    directe: prep ? { statut: prep.statut, raison: prep.raison || null, ms: prep.recherche?.mesures?.totalMs ?? null } : null,
+    directe: prep ? { statut: prep.statut, raison: prep.raison || null, ms: prep.recherche?.mesures?.totalMs ?? null, probleme: prep.recherche?.erreur || null } : null,
+    // Ce que le web a dit de travers (moteur bloqué, page refusée…), d'où qu'il vienne.
+    problemesWeb: evenements.filter((e) => (e.type === "recherche_faite" && e.echec) || (e.type === "lecture_faite" && (e.echec || e.refusee))).length,
     chiffres: reponse ? bilanChiffres(reponse, web, q.question) : null,
     erreur,
     reponse,
@@ -233,13 +235,22 @@ for (const [i, q] of questions.entries()) {
   const ordre = modes.map((_, k) => modes[(k + i) % modes.length]);
   for (const mode of ordre) {
     if (interrompu) break;
-    const r = await essai(q, mode);
+    let r = await essai(q, mode);
+    // DuckDuckGo a bloqué (vérification anti-robot) : l'essai ne mesure rien.
+    // On attend la fin du blocage (5 min) et on le rejoue une fois.
+    if (blocageRestantMs() > 0) {
+      console.log(`${q.id.padEnd(12)} ${mode.padEnd(11)} DuckDuckGo bloque : pause de ${Math.ceil(blocageRestantMs() / 60_000)} min, puis l'essai est rejoué.`);
+      await pause(blocageRestantMs() + 5_000);
+      r = await essai(q, mode);
+      if (blocageRestantMs() > 0) r.bloque = true;
+    }
     rapport.essais.push(r);
     ecrire();
     const c = r.chiffres;
     console.log(
       `${q.id.padEnd(12)} ${mode.padEnd(11)} ${s(r.totalMs).padStart(7)}  1er mot ${s(r.premierMotMs).padStart(7)}  ${String(r.appelsModele).padStart(2)} appels  ${String(r.pagesLues).padStart(2)} pages  ` +
-        `chiffres ${c ? `${c.verifies}/${c.avances} vérifiés, ${c.aVerifier} à vérifier` : "—"}${r.erreur ? `  ERREUR ${r.erreur}` : ""}`,
+        `chiffres ${c ? `${c.verifies}/${c.avances} vérifiés, ${c.aVerifier} à vérifier` : "—"}${r.relance ? "  (relance)" : ""}` +
+        `${r.directe?.probleme ? `  web : ${r.directe.probleme.slice(0, 90)}` : r.problemesWeb ? `  web : ${r.problemesWeb} échec(s)` : ""}${r.erreur ? `  ERREUR ${r.erreur}` : ""}`,
     );
     await pause(PAUSE);
   }
@@ -250,12 +261,14 @@ const med = (xs) => {
   const v = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
   return v.length ? v[Math.floor((v.length - 1) / 2)] : null;
 };
-console.log("\n| Stratégie | Temps total (méd.) | 1er mot (méd.) | Appels modèle | Pages lues | Chiffres vérifiés / avancés | À vérifier | Erreurs |");
+console.log("\n| Stratégie | Temps total (méd.) | 1er mot (méd.) | Appels modèle | Pages lues | Chiffres vérifiés / avancés | À vérifier | Sans page / erreurs |");
 console.log("| --- | --- | --- | --- | --- | --- | --- | --- |");
 const resume = {};
 for (const mode of modes) {
   const l = rapport.essais.filter((e) => e.mode === mode);
-  const ok = l.filter((e) => !e.erreur);
+  // Un essai sans aucune page lue (moteur bloqué, pages refusées) ne dit rien
+  // de la stratégie : compté à part, hors des médianes.
+  const ok = l.filter((e) => !e.erreur && e.pagesLues > 0);
   const somme = (k) => ok.reduce((n, e) => n + (e.chiffres?.[k] || 0), 0);
   resume[mode] = {
     essais: l.length,
@@ -266,11 +279,12 @@ for (const mode of modes) {
     verifies: somme("verifies"),
     avances: somme("avances"),
     aVerifier: somme("aVerifier"),
-    erreurs: l.length - ok.length,
+    erreurs: l.filter((e) => e.erreur).length,
+    sansPage: l.filter((e) => !e.erreur && !e.pagesLues).length,
     relances: mode === "hybride" ? ok.filter((e) => e.relance).length : undefined,
   };
   const x = resume[mode];
-  console.log(`| ${mode}${x.relances !== undefined ? ` (${x.relances} relance${x.relances > 1 ? "s" : ""})` : ""} | ${s(x.totalMs)} | ${s(x.premierMotMs)} | ${x.appels ?? "—"} | ${x.pages ?? "—"} | ${x.verifies} / ${x.avances} | ${x.aVerifier} | ${x.erreurs} |`);
+  console.log(`| ${mode}${x.relances !== undefined ? ` (${x.relances} relance${x.relances > 1 ? "s" : ""})` : ""} | ${s(x.totalMs)} | ${s(x.premierMotMs)} | ${x.appels ?? "—"} | ${x.pages ?? "—"} | ${x.verifies} / ${x.avances} | ${x.aVerifier} | ${x.sansPage} / ${x.erreurs} |`);
 }
 rapport.resume = resume;
 ecrire();
