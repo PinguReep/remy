@@ -335,8 +335,9 @@ test("Imports : un export décompressé dans un sous-dossier est lu ; à plat, l
   r = await sync.synchroniser({ sources: ["chatgpt"] });
   assert.equal(r.sources.chatgpt.ok, true, JSON.stringify(r.sources.chatgpt));
   assert.equal(sync.etat().sources.find((s) => s.id === "chatgpt").erreur, null);
-  assert.deepEqual(fs.readdirSync(imports).sort(), ["message_feedback.json", "shared_conversations.json", "user.json"], "les annexes sont laissées, sans erreur");
-  for (const n of fs.readdirSync(imports)) fs.rmSync(path.join(imports, n));
+  assert.deepEqual(fs.readdirSync(imports), [], "les fichiers de l'export partent avec lui (user.json a ton adresse)");
+  const parti = fs.readdirSync(sync.dossierOriginaux()).find((n) => n.endsWith("-conversations.json"));
+  assert.deepEqual(fs.readdirSync(path.join(sync.dossierOriginaux(), parti)).sort(), ["conversations.json", "message_feedback.json", "shared_conversations.json", "user.json"]);
 });
 
 test("Imports : un .zip abîmé est refusé (somme de contrôle), avec le bon conseil, et n'est pas relu tant qu'il ne change pas", async () => {
