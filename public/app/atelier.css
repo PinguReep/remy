@@ -520,6 +520,151 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .bienvenue-remy { text-align: left; padding: 24px 0; }
 .bienvenue-remy h2 { font: 600 26px/1.25 var(--serif); margin-bottom: 8px; }
 
+/* --- lot chat : Rémy (liste, écran vide, fil, composeur, jauge, pastille) --- */
+/* Liste : deux lignes de titre, l'heure à droite, ce qui est dit dessous. */
+.conv.remy-conv { align-items: flex-start; min-height: 52px; padding: 8px 10px; }
+.remy-conv .remy-conv-corps { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.remy-conv .t { flex: none; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.remy-conv.non-lue .t { font-weight: 700; color: var(--encre); }
+.remy-conv-sous { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--encre-3); }
+.remy-conv-sous.remy-sous-nl { color: var(--danger); font-weight: 600; }
+.remy-conv-sous.prive { color: var(--signal-texte); font-weight: 600; }
+.remy-conv .remy-conv-sous svg.ic { width: 12px; height: 12px; color: inherit; }
+.remy-conv-heure { flex: none; font-size: 11.5px; color: var(--encre-3); margin-top: 3px; }
+.remy-point { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 7px; background: transparent; }
+.remy-point.remy-point-nl { background: var(--danger); }
+.remy-point.courant { background: var(--signal); }
+.remy-epingle { flex: none; margin-top: 2px; }
+.conv-groupe .compte { margin-left: 6px; color: var(--encre-3); }
+.remy-groupe { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; padding: 0 10px; border: 0; border-radius: 12px; background: none; color: var(--encre-2); font-weight: 600; font-size: 14px; text-align: left; }
+.remy-groupe:hover { background: var(--fond-2); color: var(--encre); }
+.remy-groupe svg.ic { width: 14px; height: 14px; transition: transform 150ms ease-out; }
+.remy-groupe[aria-expanded="true"] svg.ic { transform: rotate(90deg); }
+.remy-groupe-fils { padding-left: 8px; }
+.remy-liste-vide { color: var(--encre-2); padding: 14px 10px; }
+/* L'écran vide : ce que Rémy sait faire, en boutons. */
+.remy-accueil { display: flex; flex-direction: column; gap: 20px; padding: 24px 0 12px; max-width: 580px; }
+.remy-accueil-tete h2 { font: 600 28px/1.2 var(--serif); margin: 12px 0 6px; }
+.remy-accueil-tete .aide { font-size: 15px; color: var(--encre-2); }
+.remy-carte-privee { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; border: 1px dashed var(--fond-3); border-radius: 16px; background: none; color: var(--encre); text-align: left; transition: background-color 120ms ease-out; }
+.remy-carte-privee:hover:not(:disabled) { background: var(--fond-2); }
+.remy-carte-privee strong { display: block; font-weight: 600; }
+.remy-carte-privee .aide { display: block; }
+.remy-carte-privee:disabled, .remy-suggestion:disabled { opacity: .45; cursor: default; }
+.remy-suggestions { display: flex; flex-direction: column; gap: 10px; }
+.remy-suggestion { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border: 1px solid var(--filet); border-radius: 16px; background: var(--surface); color: var(--encre); font-weight: 500; text-align: left; transition: background-color 120ms ease-out; }
+.remy-suggestion:hover:not(:disabled) { background: var(--fond-2); }
+.remy-suggestion > svg.ic:first-child { color: var(--signal-texte); }
+.remy-suggestion > span { flex: 1; }
+.remy-suggestion svg.remy-fleche { width: 14px; height: 14px; color: var(--encre-3); }
+.remy-reprise { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--encre-2); font-size: 14px; text-decoration: none; align-self: flex-start; }
+.remy-reprise:hover { color: var(--encre); text-decoration: underline; text-underline-offset: 3px; }
+.remy-reprise svg.ic { width: 15px; height: 15px; }
+/* Le fil : curseur, statut, barre d'étapes, erreur et son code, repère du résumé. */
+.msg-sam:focus-visible, .msg-remy:focus-visible, .md table:focus-visible, .msg-erreur:focus-visible { outline: 2px solid var(--signal); outline-offset: 4px; border-radius: 14px; }
+.remy-curseur { display: inline-block; width: 9px; height: 18px; background: var(--signal); vertical-align: middle; animation: remy-clignote 1s steps(1) infinite; }
+.remy-curseur.petit { width: 7px; height: 7px; flex: none; }
+@keyframes remy-clignote { 50% { opacity: 0; } }
+.remy-statut { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--encre-2); font-size: 14px; }
+.remy-statut:empty, .remy-secours:empty, .remy-barre-zone:empty, .remy-erreur-zone:empty, .puce-modele:empty, .remy-cartes:empty { display: none; }
+.remy-secours { margin-top: 6px; font-size: 13px; color: var(--encre-3); }
+.remy-barre-bloc { margin: 2px 0 8px; }
+.remy-barre { position: relative; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--fond-2); color: var(--encre-2); font-size: 14px; }
+.remy-barre::before { content: ""; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+.remy-barre .lib { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remy-barre svg.ic { width: 15px; height: 15px; }
+.remy-barre svg.remy-fait { color: var(--encre-3); }
+.remy-barre svg.remy-chevron { width: 13px; height: 13px; color: var(--encre-3); transition: transform 150ms ease-out; }
+.remy-barre[aria-expanded="true"] svg.remy-chevron { transform: rotate(180deg); }
+.remy-barre .mono { font-size: 12.5px; color: var(--encre-3); white-space: nowrap; }
+.remy-etapes { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--fond-2) 60%, transparent); }
+.remy-etape-ligne { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--encre-2); }
+.remy-etape .txt { flex: 1; min-width: 0; }
+.remy-etape .t { font-size: 12px; color: var(--encre-3); white-space: nowrap; }
+.remy-etape svg.ic { width: 14px; height: 14px; color: var(--encre-3); }
+.remy-extrait { margin-top: 2px; padding-left: 22px; font: italic 13px/1.4 var(--serif); color: var(--encre-3); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.remy-erreur-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.remy-code { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.remy-code-valeur { font-size: 13px; color: var(--encre-2); user-select: all; }
+.remy-absent { margin-top: 10px; font-size: 14px; }
+.autorisation.remy-autorisation { margin-top: 12px; border: 1px solid var(--filet); border-radius: 16px; padding: 12px 14px; background: var(--surface); }
+.autorisation.remy-autorisation.en-attente { border-color: color-mix(in srgb, var(--signal) 50%, transparent); }
+.remy-autorisation-tete { display: flex; align-items: center; gap: 8px; }
+.remy-autorisation .aide { margin-top: 6px; font-size: 14px; color: var(--encre-2); }
+.en-attente .remy-autorisation-tete svg.ic { color: var(--signal-texte); }
+.remy-repere { display: flex; align-items: center; gap: 10px; }
+.remy-repere::before, .remy-repere::after { content: ""; flex: 1; height: 1px; background: var(--filet); }
+.remy-repere-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 12px; background: none; color: var(--encre-2); font-size: 13px; font-weight: 500; }
+.remy-repere-btn:hover:not(:disabled) { background: var(--fond-2); color: var(--encre); }
+.remy-repere-btn svg.ic { width: 14px; height: 14px; }
+.remy-resume { white-space: pre-wrap; font: 400 16px/1.6 var(--serif); user-select: text; overflow-wrap: anywhere; }
+/* L'en-tête : « Privée · », la roue de « Mise en privé… », la jauge courte. */
+.remy-titre-prive { color: var(--signal-texte); font: 600 15px/1.2 var(--texte); }
+.remy-titre-point { color: var(--encre-3); font: 400 15px/1.2 var(--texte); }
+.remy-roue { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: tourne 700ms linear infinite; flex: none; }
+button.puce.remy-puce-privee-tete { color: var(--signal-texte); flex: none; min-width: 44px; justify-content: center; padding: 0 10px; }
+.remy-actions-fil { flex: none; }
+.remy-actions-fil .remy-action-plus { display: none; }
+.btn.remy-btn-jauge { width: auto; min-width: 44px; padding: 0 10px; gap: 6px; }
+.remy-jauge-court { font-size: 13px; font-weight: 600; color: var(--encre-2); }
+.remy-jauge-court.niveau-attention { color: var(--signal-texte); }
+.remy-jauge-court.niveau-plein { color: var(--danger); }
+.remy-session { margin: 10px 24px 0; padding: 10px 14px; border-radius: 14px; background: var(--fond-2); font-size: 14px; }
+.remy-session p { font-size: 13px; color: var(--encre-2); margin-top: 2px; }
+/* Le composeur : bandes (file, Noter une idée), puce Privée, Retenir, fil importé. */
+.remy-bandes:empty, .remy-vocaux:empty { display: none; }
+.remy-bandes, .remy-vocaux { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.remy-bande { display: flex; align-items: center; gap: 4px; padding: 2px 4px 2px 14px; border-radius: 14px; background: var(--fond-2); font-size: 13px; font-weight: 500; }
+.remy-bande > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.composeur .remy-rangee-composeur { margin-bottom: 8px; }
+.composeur .remy-rangee-composeur:not(:has(> :not([hidden]))) { display: none; }
+button.puce.remy-puce-privee[aria-pressed="true"] { background: var(--signal); color: var(--sur-signal); border-color: var(--signal); }
+.composeur .boite textarea { min-height: 44px; } /* la zone qu'on touche : 44 px */
+.composeur .boite .btn.remy-retenir { min-height: 40px; border-radius: 999px; padding: 0 16px; align-self: flex-end; }
+.remy-importee-corps { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px; border-radius: 18px; background: var(--fond-2); }
+.remy-importee-corps p { color: var(--encre-2); font-size: 14px; }
+/* Le panneau : cadran, niveaux, d'où vient la place, vitesse, compacter. */
+.remy-fermer-panneau { align-self: flex-end; margin: -12px -8px -14px 0; }
+@media (min-width: 1361px) { .remy-fermer-panneau { display: none; } }
+.remy-place { display: flex; align-items: center; gap: 14px; }
+.remy-cadran { width: 76px; height: 76px; flex: none; }
+.remy-cadran circle { fill: none; stroke-width: 3.2; stroke-linecap: round; }
+.remy-cadran .piste { stroke: var(--fond-3); }
+.remy-cadran .valeur { stroke: var(--encre-2); }
+.remy-cadran.niveau-attention .valeur { stroke: var(--signal); }
+.remy-cadran.niveau-plein .valeur { stroke: var(--danger); }
+.remy-cadran-texte { font: 600 7px var(--mono); fill: var(--encre); }
+.remy-gros { font: 600 20px/1.2 var(--serif); }
+.remy-niveau { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 14px; }
+.remy-niveau.niveau-plein p { color: var(--danger); }
+.remy-info { margin-bottom: 10px; }
+.remy-info-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; font-weight: 500; }
+.remy-info-ligne .mono { font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.remy-info-ligne .mono.vif { color: var(--signal-texte); }
+.remy-repartition .legende .mono { white-space: nowrap; }
+.jauge .legende i.libre { background: none; box-shadow: inset 0 0 0 1px var(--encre-3); }
+.remy-note { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--encre-3); }
+.remy-phrase-compactage { margin-bottom: 10px; font-size: 14px; font-weight: 500; }
+.remy-phrase-compactage.atteint { color: var(--signal-texte); }
+.remy-compacter .aide { margin-top: 8px; }
+/* La pastille des réponses non vues, sur Rémy dans le rail et les onglets. */
+.pastille-compte.remy-pastille { background: var(--danger); color: var(--surface); }
+.onglet { position: relative; }
+.onglet .remy-pastille { position: absolute; top: 6px; left: calc(50% + 6px); }
+@media (max-width: 1279px) {
+  .rail-lien { position: relative; }
+  .rail-lien .remy-pastille { position: absolute; top: 3px; right: 3px; margin: 0; }
+}
+/* Au pouce : l'en-tête garde le titre, les actions passent dans « Plus ». */
+@media (max-width: 720px) {
+  .remy-session { margin: 8px 12px 0; }
+  .remy-accueil { padding-top: 12px; }
+  .remy-accueil-tete h2 { font-size: 26px; }
+  .remy-actions-fil .remy-action-large { display: none; }
+  .remy-actions-fil .remy-action-plus { display: inline-flex; }
+}
+/* --- fin lot chat */
+
 /* ---------- Noter ---------- */
 .noter { display: flex; flex-direction: column; gap: 12px; }
 .noter textarea.champ { min-height: 110px; font-size: 17px; }
