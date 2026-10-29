@@ -662,6 +662,8 @@ button.puce.remy-puce-privee[aria-pressed="true"] { background: var(--signal); c
   .remy-accueil-tete h2 { font-size: 26px; }
   .remy-actions-fil .remy-action-large { display: none; }
   .remy-actions-fil .remy-action-plus { display: inline-flex; }
+  /* Le panneau en surimpression s'arrête au-dessus de la barre d'onglets. */
+  .remy.panneau-ouvert aside.remy-panneau { bottom: calc(var(--haut-onglets) + var(--sa-bas)); width: min(340px, 88vw); }
 }
 /* --- fin lot chat */
 
