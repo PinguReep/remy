@@ -435,6 +435,18 @@ final class ParcoursQuotidien: ParcoursBase {
             try etape("rien-ne-correspond", attendu: [texte("Rien ne correspond à « trampoline »."), suggestion])
             try toucher(suggestion, "suggestion « Notifications »")
             try etape("suggestion", attendu: [ident("recherche.iphone")])
+            // Une ligne de Réglages même, tout en bas : la recherche se ferme
+            // et l'écran défile jusqu'à elle.
+            try toucher(champ, "champ de recherche")
+            try saisir(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 16) + "dimanche", dans: champ)
+            let dimanche = ident("recherche.revue.dimanche")
+            try etape("resultat-dimanche", attendu: [dimanche])
+            try toucher(dimanche, "Revue du dimanche")
+            let revue = nomme(app.switches.matching(NSPredicate(format: "label CONTAINS %@", "Revue du dimanche")).firstMatch,
+                              "interrupteur « Revue du dimanche »")
+            try etape("ligne-de-reglages-atteinte", attendu: [revue], absent: [dimanche])
+            RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+            verifier("La ligne trouvée dans Réglages est amenée à l'écran.", revue.isHittable)
         }
     }
 

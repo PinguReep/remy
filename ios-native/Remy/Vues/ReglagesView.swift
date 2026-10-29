@@ -634,8 +634,9 @@ extension ReglagesView {
         switch ecran {
         case "reglages-recherche": recherche = "notif"
         case "reglages-recherche-vide": recherche = "trampoline"
-        case "reglages-repere":
-            recherche = "jauge"
+        case "reglages-repere", "reglages-repere-ici":
+            // Un sous-écran (Diagnostic), puis une ligne de Réglages même, en bas.
+            recherche = ecran == "reglages-repere" ? "jauge" : "dimanche"
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             if let e = RechercheReglages.premier(recherche, contexte: contexteRecherche) { aller(e, duree: 60) }
         default: break

@@ -240,7 +240,7 @@ enum Demo {
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand":
             app.onglet = .projets
-        case "reglages-recherche", "reglages-recherche-vide", "reglages-repere":
+        case "reglages-recherche", "reglages-recherche-vide", "reglages-repere", "reglages-repere-ici":
             // Chercher dans les réglages (29/10) : la saisie, l'état vide, le réglage atteint.
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
