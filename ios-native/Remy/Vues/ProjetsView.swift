@@ -20,6 +20,9 @@ struct ProjetsView: View {
                     case .liste(let id): ListeView(id: id)
                     case .rappels: RappelsView()
                     case .noeud(let id): NoeudView(id: id)
+                    case .conversations: ConversationsExternesVue()
+                    case .conversationExterne(let source, let id, let autour): ConversationExterneVue(source: source, id: id, autour: autour)
+                    case .sourcesConversations: SourcesConversationsVue()
                     }
                 }
         }
@@ -65,6 +68,10 @@ struct ProjetsView: View {
                     .padding(.horizontal, 16)
                 }
                 if app.organisation.dossiersDisponibles { SectionDossiers() }
+                // Tes conversations d'ailleurs : Claude Code, T3, ChatGPT (29/10).
+                if app.conversationsExternes.disponible {
+                    CarteConversationsExternes().padding(.horizontal, 16)
+                }
                 CarteMemoire { memoire = true }
                 if let le = p.misAJour {
                     Text("Liste datant \(Format.depuis(le)).")
@@ -80,7 +87,8 @@ struct ProjetsView: View {
             async let p: Void = app.projets.charger()
             async let c: Void = app.carnet.charger()
             async let o: Void = app.organisation.charger()
-            _ = await (p, c, o)
+            async let x: Void = app.conversationsExternes.charger()
+            _ = await (p, c, o, x)
         }
         .sheet(isPresented: $memoire) { MemoireView() }
     }

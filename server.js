@@ -61,9 +61,21 @@ function serveStatic(res, urlPath) {
       res.writeHead(404);
       return res.end("Introuvable");
     }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream" });
+    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream", ...enTetesCache(filePath) });
     res.end(content);
   });
+}
+
+// Le site est fait de modules séparés (public/app/) : après une mise à jour de
+// la tour, une page gardée en cache avec un module neuf (ou l'inverse) ne
+// marcherait plus. HTML, JS, CSS et JSON sont donc revalidés à chaque
+// chargement (« no-cache » : gardés, mais redemandés) ; le service worker
+// reste « réseau d'abord ». Polices et icônes ne changent pas : une journée.
+function enTetesCache(fichier) {
+  const ext = path.extname(fichier);
+  if ([".html", ".js", ".css", ".json"].includes(ext)) return { "Cache-Control": "no-cache" };
+  if ([".woff2", ".png", ".svg", ".ico"].includes(ext)) return { "Cache-Control": "public, max-age=86400" };
+  return {};
 }
 
 const server = http.createServer(async (req, res) => {

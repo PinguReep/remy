@@ -9,9 +9,6 @@ struct RemyApp: App {
     @UIApplicationDelegateAdaptor(DelegueApp.self) private var delegue
     /// Absent tant que l'app ne connaît pas l'adresse de la tour (saisie une fois).
     @State private var app: AppModel?
-    /// Prototypes de design (Lot 1, J1.1) : REMY_PROTO=A|B ouvre directement un
-    /// prototype sur données fictives, sans serveur (captures de la CI).
-    @State private var proto: ProtoEtat?
     private let reseau = SurveillanceReseau()
     /// « auto » suit l'iPhone ; « clair » ou « sombre » forcent l'apparence.
     @AppStorage("theme") private var theme = "auto"
@@ -27,7 +24,6 @@ struct RemyApp: App {
         Notifications.declarerActions()
         let modele = base.map(Self.modele)
         _app = State(initialValue: modele)
-        _proto = State(initialValue: ProtoEtat.depuisEnvironnement())
         if let modele { reseau.demarrer(modele) }
     }
 
@@ -59,9 +55,7 @@ struct RemyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if let proto {
-                ProtoRacine(etat: proto)
-            } else if let app {
+            if let app {
                 RacineView()
                     .environment(app)
                     .tint(Palette.encre)
@@ -246,6 +240,10 @@ enum Demo {
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand":
             app.onglet = .projets
+        case "reglages-recherche", "reglages-recherche-vide", "reglages-repere", "reglages-repere-ici":
+            // Chercher dans les réglages (29/10) : la saisie, l'état vide, le réglage atteint.
+            app.onglet = .aujourdhui
+            app.reglagesOuverts = true
         case "cocher":
             // J1.2, tour coupée : la coche reste sur l'iPhone et le dit.
             app.onglet = .aujourdhui

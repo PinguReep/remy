@@ -137,6 +137,9 @@ process.env.ANTHROPIC_API_KEY = "cle-de-test";
 process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${anthropic.address().port}`;
 process.env.MOTION_API_KEY = "faux";
 process.env.MOTION_BASE_URL = motion.url;
+// Ce fichier teste les chemins d'avant la recherche rapide (29/10) : le mode
+// « salle » ; les modes direct et hybride : test/recherche-rapide.test.mjs.
+process.env.REMY_RECHERCHE_MODE = "salle";
 process.env.REMY_BROWSE = "off";
 process.env.BROWSE_TEST_PUBLIQUES = "127.0.0.1";
 process.env.REMY_DUCKDUCKGO_URL = `http://127.0.0.1:${serveurDdg.address().port}/html/`;

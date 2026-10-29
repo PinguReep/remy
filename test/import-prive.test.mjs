@@ -13,6 +13,9 @@ console.log = () => {};
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), "remy-import-prive-"));
 for (const v of ["REMY_VAULT", "UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "APP_PASSWORD", "APP_PASSWORD_HASH", "VERCEL"]) delete process.env[v];
 process.env.REMY_DATA_DIR = dossier;
+// Les conversations importées sont scellées avec la clé des conversations
+// externes : la sienne, jamais celle du vrai profil.
+process.env.REMY_CLES_DIR = path.join(dossier, "cles");
 
 const { routeApi } = await import("../lib/routes.js");
 const store = await import("../lib/store.js");

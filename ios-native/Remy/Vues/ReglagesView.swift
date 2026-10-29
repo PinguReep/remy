@@ -13,6 +13,11 @@ struct ReglagesView: View {
     @AppStorage(ActiviteEnDirect.cleActive) private var activiteActive = true
     @AppStorage(ActiviteEnDirect.cleAuto) private var activiteAuto = true
     @AppStorage(ATrancherModel.cleRevue) private var revueDimanche = true
+    /// Chercher dans les réglages (29/10) : la saisie, le champ actif, le
+    /// tutoriel ouvert depuis un résultat (« Siri »).
+    @State private var recherche = ""
+    @State private var rechercheActive = false
+    @State private var tutoriel: LotNouveautes?
     @State private var memoire = false
     @State private var triOuvert = false
     @State private var revueOuverte = false
@@ -23,6 +28,7 @@ struct ReglagesView: View {
     @State private var activitePCOuverte = false
     @State private var nouveautesOuvertes = false
     @State private var prioritesOuvertes = false
+    @State private var sourcesConversationsOuvertes = false
     @State private var deconnexion = false
     /// Réglages gardés sur la tour (secours Claude). nil : pas encore lus, ou
     /// tour trop ancienne pour les connaître — la ligne ne s'affiche pas.
@@ -73,6 +79,7 @@ struct ReglagesView: View {
                     .foregroundStyle(Palette.encre)
                     .padding(.vertical, 12)
                     .overlay(alignment: .bottom) { Filet() }
+                    .repere("Apparence")
                     Toggle(isOn: $confirmerLiens) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Prévenir avant d'ouvrir un lien").font(Police.texte(16, .medium))
@@ -86,6 +93,7 @@ struct ReglagesView: View {
                     .padding(.vertical, 10)
                     .frame(minHeight: 60)
                     .overlay(alignment: .bottom) { Filet() }
+                    .repere("Prévenir avant d'ouvrir un lien")
                     activiteEnDirect
                     if let r = reglages, r.rechercheWeb != nil {
                         rechercheWeb(r)
@@ -132,6 +140,13 @@ struct ReglagesView: View {
                             activitePCOuverte = true
                         }
                     }
+                    // Tes conversations d'ailleurs (29/10) : leurs sources, l'import ChatGPT.
+                    if app.conversationsExternes.disponible {
+                        ligne("Sources des conversations", sous: app.conversationsExternes.resume ?? "Claude Code, T3 Code, ChatGPT : lues sur ta tour.",
+                              symbole: "bubble.left.and.bubble.right") {
+                            sourcesConversationsOuvertes = true
+                        }
+                    }
                     if app.serveur?.sait("priorites-v1") == true {
                         ligne("Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", symbole: "star") {
                             prioritesOuvertes = true
@@ -174,6 +189,7 @@ struct ReglagesView: View {
                         .padding(.vertical, 10)
                         .frame(minHeight: 60)
                         .overlay(alignment: .bottom) { Filet() }
+                        .repere("Revue du dimanche")
                     }
                     // Les outils du constructeur, à part (24/10) : temps de réponse,
                     // jauge du chat (visible par défaut depuis le 27/10), appui du planning.
@@ -192,13 +208,26 @@ struct ReglagesView: View {
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre3)
                     .padding(.top, 24)
+                    .repere("Version")
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 24)
             }
             .background(Palette.fond)
+            .allerAuRepere(.reglages)
+            .accessibilityHidden(enRecherche)
+            .overlay { if enRecherche { resultatsRecherche } }
             .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $recherche, isPresented: $rechercheActive,
+                        placement: .navigationBarDrawer(displayMode: .always), prompt: "Chercher un réglage")
+            .autocorrectionDisabled()
+            .onSubmit(of: .search) { allerAuPremier() }
+            .sheet(item: $tutoriel) { lot in
+                NouveautesFeuille(lot: lot) { tutoriel = nil }
+                    .onDisappear { app.nouveautes.marquerVues(lot) }
+            }
+            .task { await demoRecherche() }
             .navigationDestination(isPresented: $diagnostic) { DiagnosticVue() }
             .navigationDestination(isPresented: $usage) { UsageVue() }
             .toolbar {
@@ -219,6 +248,7 @@ struct ReglagesView: View {
         .sheet(isPresented: $triOuvert) { ATrancherFeuille() }
         .sheet(isPresented: $revueOuverte) { RevueDimanche() }
         .sheet(isPresented: $prioritesOuvertes) { PrioritesVue() }
+        .sheet(isPresented: $sourcesConversationsOuvertes) { SourcesConversationsVue(dansFeuille: true) }
         .task {
             guard app.serveur?.sait("reglages") ?? false else { return }
             reglages = try? await app.api.reglages()
@@ -298,6 +328,7 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Secours Claude si la tour ne répond pas")
     }
 
     /// Recherche web : avec la recherche locale (recherche-locale-v1, 25/10),
@@ -324,6 +355,7 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Recherche web")
     }
 
     /// Envoi de contexte au cloud (V8) : coupé, une recherche autorisée
@@ -350,6 +382,7 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Envoi de contexte au cloud")
     }
 
     /// Recherche dans les conversations privées : ce qui sort quand elle est
@@ -377,6 +410,7 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Recherche dans les conversations privées")
     }
 
     private func changerCloud(web: Bool? = nil, contexte: Bool? = nil, privee: Bool? = nil) {
@@ -435,6 +469,7 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere(titre)
     }
 
     private func changerCircuit(_ id: String, _ actif: Bool) {
@@ -525,6 +560,7 @@ struct ReglagesView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .repere(titre)
     }
 
     private func info(_ titre: String, valeur: String? = nil, symbole: String) -> some View {
@@ -538,6 +574,83 @@ struct ReglagesView: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere(titre)
+    }
+}
+
+// MARK: - Chercher dans les réglages (29/10)
+
+extension ReglagesView {
+    /// Une saisie qui cherche vraiment (des espaces seuls : l'écran reste tel quel).
+    fileprivate var enRecherche: Bool { !recherche.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Ce que l'écran montre en ce moment (capacités de la tour, ses réglages,
+    /// les interrupteurs dont d'autres lignes dépendent).
+    fileprivate var contexteRecherche: ContexteReglages {
+        ContexteReglages(app: app, reglages: reglages, activiteEnDirect: activiteActive)
+    }
+
+    fileprivate var resultatsRecherche: some View {
+        ResultatsReglagesVue(resultats: RechercheReglages.chercher(recherche, contexte: contexteRecherche),
+                             choisir: { aller($0) },
+                             suggerer: { recherche = $0 })
+    }
+
+    /// La touche « Rechercher » du clavier : le premier résultat.
+    fileprivate func allerAuPremier() {
+        if let e = RechercheReglages.premier(recherche, contexte: contexteRecherche) { aller(e) }
+    }
+
+    /// Ouvre l'écran du résultat, la ligne mise en évidence. La saisie reste
+    /// (retour = les résultats), sauf pour une ligne de cet écran-ci.
+    fileprivate func aller(_ e: EntreeReglage, duree: TimeInterval = 4) {
+        Haptique.leger()
+        let c = RechercheReglages.cible(e, contexte: contexteRecherche)
+        if let a = c.ancre { RepereReglages.partage.viser(a, dans: c.ecran, titre: e.titre, duree: duree) }
+        if let note = c.note { app.dire(note) }
+        switch c.ecran {
+        case .reglages:
+            rechercheActive = false
+            recherche = ""
+        case .diagnostic: diagnostic = true
+        case .usage: usage = true
+        case .memoire: memoire = true
+        case .modeles: modelesOuverts = true
+        case .lieux: lieuxOuverts = true
+        case .activitePC: activitePCOuverte = true
+        case .sourcesConversations: sourcesConversationsOuvertes = true
+        case .priorites: prioritesOuvertes = true
+        case .regles: reglesOuvertes = true
+        case .appareils: appareilsOuverts = true
+        case .aTrancher: triOuvert = true
+        case .revue: revueOuverte = true
+        case .nouveautes:
+            if let id = c.tutoriel, let n = Nouveautes.catalogue.first(where: { $0.id == id }) {
+                tutoriel = app.nouveautes.lot(pour: n)
+            } else {
+                nouveautesOuvertes = true
+            }
+        case .iphone:
+            if let u = RepereReglages.reglagesIPhone { ouvrirURL(u) }
+        }
+    }
+
+    /// Captures de la CI : une recherche, une recherche vide, un résultat touché.
+    fileprivate func demoRecherche() async {
+        let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"] ?? ""
+        guard ecran.hasPrefix("reglages-") else { return }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        rechercheActive = true
+        switch ecran {
+        case "reglages-recherche": recherche = "notif"
+        case "reglages-recherche-vide": recherche = "trampoline"
+        case "reglages-repere", "reglages-repere-ici":
+            // Un sous-écran (Diagnostic), puis une ligne de Réglages même, en bas.
+            recherche = ecran == "reglages-repere" ? "jauge" : "dimanche"
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let e = RechercheReglages.premier(recherche, contexte: contexteRecherche) { aller(e, duree: 60) }
+        default: break
+        }
     }
 }
 
@@ -784,6 +897,7 @@ extension ReglagesView {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Activité en direct")
         .onChange(of: activiteActive) { _, actif in
             Task {
                 if actif { await ActiviteEnDirect.partagee.suivre() } else { await ActiviteEnDirect.partagee.toutArreter() }
@@ -805,6 +919,7 @@ extension ReglagesView {
             .padding(.leading, 40)
             .frame(minHeight: 60)
             .overlay(alignment: .bottom) { Filet() }
+            .repere("Démarrer seule")
         }
     }
 }

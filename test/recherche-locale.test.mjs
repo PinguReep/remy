@@ -149,6 +149,9 @@ process.env.REMY_BROWSE = "off";
 // Ce fichier teste le chemin direct (le modèle principal cherche lui-même,
 // REMY_SALLE_BLANCHE=off) ; la salle blanche : test/salle-blanche.test.mjs.
 process.env.REMY_SALLE_BLANCHE = "off";
+// Ce fichier teste les chemins d'avant la recherche rapide (29/10) : le mode
+// « salle » ; les modes direct et hybride : test/recherche-rapide.test.mjs.
+process.env.REMY_RECHERCHE_MODE = "salle";
 process.env.BROWSE_TEST_PUBLIQUES = "127.0.0.1";
 process.env.REMY_DUCKDUCKGO_URL = `http://127.0.0.1:${serveurDdg.address().port}/html/`;
 process.env.REMY_DUCKDUCKGO_LITE_URL = `http://127.0.0.1:${serveurDdg.address().port}/lite/`;

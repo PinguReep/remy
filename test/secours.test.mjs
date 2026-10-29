@@ -66,7 +66,7 @@ process.env.REMY_BROWSE = "off";
 process.env.OPENAI_API_KEY = "cle-de-test"; // une clé cloud de dictée existe…
 
 const { routeApi } = await import("../lib/routes.js");
-const { fournisseurDeFond, SECOURS_COUPE, PRIVE_DE_FOND } = await import("../lib/providers.js");
+const { fournisseurDeFond, estSecoursCoupe, estPriveDeFond } = await import("../lib/providers.js");
 const { transcribeProvider } = await import("../lib/transcribe.js");
 
 const remy = http.createServer(async (req, res) => {
@@ -111,7 +111,8 @@ test("par défaut : GLM éteint → rien ne part chez Claude, et la réponse dit
   const ev = await echanger("Bonjour");
   const erreur = ev.find((e) => e.nom === "error");
   assert.ok(erreur, "un événement d'erreur");
-  assert.equal(erreur.data.message, SECOURS_COUPE);
+  // La cause (vue par la tour) et quoi faire, sans « GLM » supposé.
+  assert.match(erreur.data.message, /^Le modèle local ne répond pas \(.+\), et le secours Claude est coupé : rien n'est parti dans le cloud\. Vérifie que les Sparks sont allumées/);
   assert.equal(appelsClaude, 0);
 });
 
@@ -137,7 +138,12 @@ test("conversation privée : jamais de secours, même activé", async () => {
 
 test("tâches de fond (nuit, capture, analyse) : même règle", async () => {
   appelsClaude = 0;
-  await assert.rejects(fournisseurDeFond().complete({ system: "s", prompt: "p", maxTokens: 10 }), { message: SECOURS_COUPE });
+  await assert.rejects(fournisseurDeFond().complete({ system: "s", prompt: "p", maxTokens: 10 }), (err) => {
+    assert.ok(estSecoursCoupe(err));
+    assert.equal(err.nature, "injoignable");
+    assert.equal(err.indisponible, true, "une panne qui passe : la nuit réessaiera");
+    return true;
+  });
   assert.equal(appelsClaude, 0);
   process.env.REMY_SECOURS_CLOUD = "on"; // posé exprès sur la tour
   try {
@@ -191,7 +197,7 @@ test("texte lu sur une capture d'écran : jamais chez Claude, ni à la capture n
     assert.equal(r.status, 200);
     assert.match((await r.json()).message, /modèle local ne répond pas/);
     await store.putMemory("## Identité & contexte\n- Sam, essai.");
-    await assert.rejects(runReflection(), (err) => err.message === PRIVE_DE_FOND);
+    await assert.rejects(runReflection(), (err) => estPriveDeFond(err) && /^Matière privée \(conversations importées\) : le modèle local ne répond pas/.test(err.message));
     assert.ok(!corpsClaude.some((c) => c.includes("4821 B") || c.includes("exemple.org/fiche")), "rien de la capture n'est parti chez Claude");
   } finally {
     await reglage(false);
@@ -228,7 +234,7 @@ test("tâche de fond avec matière privée (imports) : jamais Claude, même seco
   process.env.REMY_SECOURS_CLOUD = "on";
   try {
     appelsClaude = 0;
-    await assert.rejects(fournisseurDeFond().complete({ prive: true, system: "s", prompt: "p", maxTokens: 10 }), { message: PRIVE_DE_FOND });
+    await assert.rejects(fournisseurDeFond().complete({ prive: true, system: "s", prompt: "p", maxTokens: 10 }), (err) => estPriveDeFond(err));
     assert.equal(appelsClaude, 0, "rien n'est parti chez Claude");
     // La même tâche sans matière privée, elle, a bien droit au secours.
     await fournisseurDeFond().complete({ system: "s", prompt: "p", maxTokens: 10 });

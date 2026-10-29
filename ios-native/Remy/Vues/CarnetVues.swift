@@ -12,6 +12,11 @@ enum RouteProjets: Hashable {
     case rappels
     /// Un projet Motion (« motion:<id> ») ou un dossier de Remy : son arborescence.
     case noeud(String)
+    /// Tes conversations d'ailleurs (Claude Code, T3, ChatGPT), une d'elles, leurs sources (29/10).
+    case conversations
+    /// `autour` : ouverte au message trouvé par une recherche.
+    case conversationExterne(source: String, id: String, autour: Int? = nil)
+    case sourcesConversations
 }
 
 /// 0 : automatique ; 1, 2 ou 3 listes par ligne.

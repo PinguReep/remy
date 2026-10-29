@@ -4,6 +4,669 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
+
+- **Le planificateur demande chaque job à part** (`lib/planif.js`,
+  `demander`). Les conversations d'ailleurs sont allumées par défaut : chaque
+  passage demande `connaissances-sync`. Un type non enregistré (un test qui
+  n'en enregistre qu'une partie) levait « Type de job inconnu » et le `catch`
+  commun sautait tout le reste du passage — la mise à jour des commerces (#22)
+  ne partait plus. Désormais un type absent n'est pas demandé, les autres
+  suivent ; l'ancien `catch` reste pour ce qui n'est pas une demande.
+- **Les messages « matière privée » nomment le modèle** (#22) : les tests de
+  #26 vérifient la nature de l'erreur (`code: "prive"`) et sa promesse
+  (« Rien n'est parti chez Claude »), plus sa formulation exacte.
+- **Réglages (iPhone)** : la ligne « Sources des conversations » de #26 entre
+  dans l'index de la recherche de #24 (un écran `EcranReglages`, quatre lignes
+  repérées dedans). Nouveautés : la série 5 réunit les trois entrées des deux
+  branches (5 pages, une feuille) ; le parcours des conversations devient P26.
+- **Site** : la vue Conversations (#25) est branchée sur les routes de #26.
+  Les chemins et les phrases vivent dans un module pur
+  (`public/app/analyse/conversations.js`) testé contre les vraies routes ;
+  l'identifiant d'une conversation est encodé deux fois dans l'adresse
+  (`main.js` décode tout le fragment avant de le couper aux « / »). La
+  section Réglages › Sources des conversations et Ctrl+K se cachent sur une
+  tour sans la capacité (`indexVisible`).
+
+## 2026-10-29 — Sparks et nuit : « reflexion-nuit abandonné · Sparks 0/2 », la vraie cause
+
+Constat sur la tour après la mise à jour : `/api/health` disait « reflexion-nuit
+abandonné : Le modèle local (GLM, sur la tour) ne répond pas… · Sparks 0/2 »,
+alors que l'installeur venait d'écrire « GLM : ✅ joignable (DeepSeek-…) » et
+que le chat répondait. Rejoué contre de faux serveurs compatibles OpenAI
+(`test/sparks-nuit.test.mjs`), avant et après.
+
+- **L'alerte venait d'une version d'avant.** Son texte (« GLM, sur la tour »)
+  n'existe plus depuis le 23/10. L'ancienne version envoyait toujours
+  `REMY_GLM_MODEL` (GLM-5.3) : les Sparks passées à DeepSeek répondaient 404
+  `model_not_found`, et `fournisseurDeFond` traduisait TOUTE erreur du modèle
+  par « ne répond pas ». Puis `etatJobs` montrait chaque abandon pour
+  toujours. Désormais : une alerte est datée (« abandonné le 29/10 à 05:10 »),
+  disparaît quand une tâche du même type réussit ensuite, et au bout de 48 h
+  (`REMY_ALERTE_JOBS_H`).
+- **« Sparks 0/2 » ne comptait pas les Sparks** mais les inférences en cours de
+  la garde de charge (`taps + fond` sur `REMY_SPARKS_MAX`) : 0 la nuit, lu
+  « aucune Spark ne répond ». Renommé « inférences en cours : 0 (fond : 2 à la
+  fois au plus) ». La nouvelle ligne `sparks` (`lib/sparks.js`) sonde chaque
+  serveur déclaré dans `REMY_SPARKS` (`/models`, 3 s, au plus toutes les 30 s,
+  seulement quand on demande l'état) : « Sparks 1/2 répond — spark-1 (Rémy) :
+  DeepSeek-… · spark-2 : ❌ injoignable ». En tensor parallèle, seule la
+  Spark de tête a un serveur HTTP : l'autre se déclare par un port qu'elle
+  ouvre (`spark-2=tcp://<ip>:22`), « allumée (tensor parallèle, sans serveur
+  de modèle) » — sinon fausse alerte « Sparks 1/2 ». Sans `REMY_SPARKS`, une seule
+  adresse est connue : la ligne ne prétend pas compter (deux Sparks en tensor
+  parallèle derrière une adresse, ou une seule ? la tour ne peut pas le
+  savoir). Les adresses n'en sortent jamais (des noms) ; le jeton du relais ne
+  part que vers `REMY_GLM_URL`. Même chose dans `/api/modeles` (`sparks`) et
+  dans `GET /api/incidents/:code` (« Copier le diagnostic » : ce que chaque
+  Spark sert au moment de la copie).
+- **Mêmes symptômes, d'autres causes, corrigées aussi :**
+  - modèle changé ou renommé entre deux lectures de `/models` (cache d'une
+    minute) : un 404 (ou 400 qui le dit) relit la liste et repart une fois
+    avec le modèle servi ; s'il n'y en a pas d'autre, « Les Sparks ne servent
+    pas le modèle demandé (« X », réponse 404) » ; une adresse fausse (404 sur
+    `/models` aussi) reste une erreur de réponse ;
+  - premier jeton lent : les en-têtes au-delà de 8 s, le silence au-delà de
+    60 s ne coupent plus si `/models` répond (le serveur lit un long contexte
+    ou fait la queue) ; en-têtes : jusqu'à 2 min (`REMY_GLM_ENTETES_MAX_MS`),
+    puis « occupé » ; silence après le premier mot : trois fois, puis « délai »
+    (« n'écrit plus rien depuis 3 min »). Éteint pour de bon : coupé aussitôt ;
+  - réflexion longue : une tâche sans flux en job a 4 min 50
+    (`REMY_FOND_DELAI_MS`, plafonné ; 3 min pour un tap), et un délai dépassé
+    avec `/models` vivant est « délai », plus « injoignable » : le modèle n'est
+    pas noté en panne pour la minute suivante (le routeur à 10 s le faisait).
+    Pas plus de 5 min SANS FLUX : le fetch de Node (undici) abandonne de
+    lui-même une réponse sans en-têtes à 300 s (`headersTimeout`), en
+    « fetch failed » (cause `UND_ERR_HEADERS_TIMEOUT`). Rejoué contre un faux
+    serveur (réponse à 310 s) avec un plafond à 15 min : « ne répond pas
+    (fetch failed) », essai NON compté, repris toutes les 20 min jusqu'à 8 h
+    (5 min de calcul jetées à chaque fois) et modèle noté en panne une minute
+    pour le chat. Les délais d'undici sont maintenant des « délai » ; au-delà
+    de 5 min, il faudra streamer ;
+  - 429 (Sparks saturées) : « occupé », plus « ne répond pas ».
+- **La nuit réessaie.** Une erreur `indisponible` (modèle éteint ou saturé)
+  ne compte pas d'échec pour un type qui déclare `repriseJusqua` : nouvel
+  essai toutes les 20 min (`REMY_REPRISE_LOCAL_MIN`), un dernier à l'heure
+  limite, puis la règle commune (10, 20, 40 min, abandon). La réflexion de la
+  nuit : jusqu'à 8 h, heure de Paris, le jour de la réflexion
+  (`REMY_REFLEXION_LIMITE`, au moins 2 h après son heure). Un essai sur des
+  Sparks éteintes = une sonde `/models`, aucune inférence. Un « délai », lui,
+  compte : on ne relance pas 5 min de calcul toutes les 20 min.
+- **Les messages nomment le modèle servi** (`nomModeleLocal()` : vu sur
+  `/models`, jamais l'ancien réglage ni le défaut ; « le modèle local » tant
+  qu'on ne sait pas) et disent quoi faire selon la cause (`ErreurLocal`,
+  `code` « secours_coupe » ou « prive », `nature`). `SECOURS_COUPE` et
+  `PRIVE_DE_FOND` restent exportés pour qui les compare ; `estSecoursCoupe` /
+  `estPriveDeFond` reconnaissent les deux. Le verdict de `verifierGlm` ne dit
+  plus « Rémy passe par Claude » (faux quand le secours est coupé).
+- **Commerces : mise à jour mensuelle** (`lib/commerces-maj.js`, job
+  `commerces-maj`, circuit « socle », sans IA). Il n'y en avait pas : l'import
+  ne se faisait qu'à la main. Demandée la nuit (1 h–3 h, `REMY_COMMERCES_HEURE`)
+  quand le dernier import a 30 jours (`REMY_COMMERCES_JOURS`) ou que son format
+  est dépassé, seulement si une base existe (le premier import reste un
+  geste) ; `REMY_COMMERCES_AUTO=off` ou `REMY_LIEUX=off` la coupent. Le même
+  importeur, dans un processus à part (75 min au plus) : la mémoire du serveur
+  n'est pas touchée, un import interrompu garde l'ancienne base. Échec : 3
+  essais dans la nuit (30 min, 1 h), puis la nuit suivante (clé du jour).
+  Jamais au-delà de la fenêtre (3 h) : la file des jobs est séquentielle, et
+  un Overpass qui traîne (75 min par essai) retardait la sauvegarde de 3 h et
+  la réflexion de 4 h (rejoué : réflexion due à 0,3 s, lancée à 3,1 s, à la
+  fin de l'import). Chaque essai est borné par la fin de la fenêtre (`avant`
+  dans l'entrée du job) ; un essai qui tombe après ne lance rien.
+  Affichée : ligne `commerces` de `/api/health` (date, prochaine, dernier
+  échec daté) et `commerces.maj` dans la vue des lieux.
+- **Capacités** : `sparks-v1` (`sparks` dans `/api/modeles` et dans un
+  incident) et `commerces-maj-v1` (`commerces.maj` dans `/api/lieux`), pour
+  que l'app ne les cherche que sur une tour qui les sert.
+- **Écartés à la contre-relecture (et pourquoi).** (1) Chaque reprise de la
+  réflexion relit le contexte, Motion compris, avant de sonder le modèle :
+  au plus 3 requêtes Motion toutes les 20 min (quota : 12 par minute ;
+  instantané en cache une minute), aucune IA — sonder d'abord dupliquerait
+  la décision privé / secours de `fournisseurDeFond`. (2) Après 8 h, les 4
+  essais comptés courent jusque vers 9 h 10 : sur Sparks éteintes, une sonde
+  `/models` chacun ; revenues, le briefing sort quand même le matin, et la
+  garde de charge laisse passer le chat d'abord (comme sur main, de 4 h à
+  5 h 10).
+
+## 2026-10-29 — Recherche rapide : la tour cherche, le modèle répond en un appel
+
+- **Le problème.** Une question sur l'ACRE prenait plus d'une minute. Ce n'est
+  pas le web : moteur et pages, c'est 1 à 3 s (mesuré ci-dessous). C'est le
+  nombre d'appels au modèle local, chacun avec sa réflexion : le modèle
+  principal écrit la question (réflexion « high »), la salle blanche choisit
+  une page, la lit, en choisit une autre, rédige sa synthèse, puis le modèle
+  principal répond — 4 à 5 appels en série, ~2 000 jetons écrits (estimés),
+  plus la lecture de ~7 000 jetons de pages. Le débit du modèle n'est mesuré
+  nulle part dans le dépôt (la jauge et ses tests n'ont que des exemples
+  d'affichage) : l'estimation ci-dessous le suppose, et le banc de la tour
+  (vrai modèle) le mesure.
+- **Les stratégies** (`lib/recherche-rapide.js`, `REMY_RECHERCHE_MODE`) :
+  `salle` (le 25/10, inchangé) ; `direct` — pour une question classée « web »
+  (`indiceWeb`, sans routeur), la TOUR cherche avec la question de Sam, classe
+  les résultats (sites officiels, puis le site de la ville de la question, puis
+  l'ordre du moteur ; une page par site d'abord), lit 3 pages EN PARALLÈLE,
+  en extrait les passages utiles sans IA (mots de la question pondérés par
+  leur rareté sur la page, chiffres — montants, pourcentages, heures, dates,
+  durées —, lignes de tableau chiffrées, chapeau, avec le titre qui précède,
+  et la liste qu'annonce une ligne finie par « : » — « vous devez : » suivi
+  des conditions de l'ACRE, vérifié sur la page de l'Urssaf ; une année seule
+  ne rend pas une ligne pertinente ; ~1 500 caractères par page), et le modèle principal répond en UN appel, sans
+  aucun outil web, la matière jointe au message de Sam dans
+  `<matiere_externe>` avec liens et dates ; `hybride` (le défaut) — direct, plus
+  UNE relance possible : l'outil `rechercher` avec un budget de 1, que le
+  modèle appelle avant d'écrire si les passages ne répondent pas (le
+  « marqueur structuré » est un appel d'outil natif). La vérification des
+  chiffres (`chiffresAVerifier`) relit les pages ENTIÈRES lues par la tour
+  (`webDeja` passé à `lib/glm.js`). `REMY_RECHERCHE_REFLEXION` (défaut `low`)
+  borne la réflexion quand la matière est là (`off` : « direct-vif »).
+- **Hors des questions « web »** (ou quand la question ne s'y prête pas),
+  `rechercher` reste offert ; hors mode salle, la TOUR l'exécute de la même
+  façon (chercher la question écrite par le modèle, lire, extraire) au lieu de
+  la boucle de la salle blanche : 2 appels au lieu de 4 ou 5. Ce qui sort est
+  un sous-ensemble de ce que sortait la salle blanche : la question du modèle,
+  puis les pages rendues par le moteur — aucune adresse écrite par un modèle,
+  ni les requêtes de la salle blanche. Une question écrite par le modèle
+  APRÈS une lecture (relance de l'hybride, deuxième recherche) est, elle,
+  bien écrite par un modèle qui a lu une page : voir « Contre-relecture »
+  plus bas (filtre sans exemption, aucun nom propre).
+- **Ce qui sort, en direct.** La question de Sam, nettoyée (salutations,
+  « dis-moi », « stp » ; les phrases interrogatives seulement ; 200
+  caractères), et SEULEMENT si : elle porte au moins deux mots utiles (« et
+  pour les commerçants ? » n'a pas de sujet : le modèle reformule) ; elle ne
+  contient aucun nom propre, sigle inconnu ni identifiant (`nomsDuTexte`, le
+  lexique structurel du filtre appliqué au message — sans la règle des lignes
+  de santé : « effets du lithium » est le sujet même) ; elle passe le filtre
+  SANS l'exemption « Sam l'a écrit » (`verifier(…, { exempter: false })`) :
+  un nom de sa mémoire écrit dans sa question ne part pas tel quel. Sinon,
+  pas de recherche directe : le modèle écrit une question générale
+  (`rechercher`), filtrée comme avant. C'est plus strict que la salle
+  blanche pour les noms (la question écrite par le modèle pouvait reprendre
+  un nom que Sam venait d'écrire) ; pour le CONTEXTE, la question partant
+  telle quelle, il a fallu deux règles de plus (contre-relecture) : une
+  question à la première personne qui porte un contexte de santé, de
+  famille, de justice ou un montant (« J'ai un cancer du sein, l'ACRE est-elle
+  cumulable avec l'AAH ? ») et une suite (« Et pour la vente ? ») reviennent
+  au modèle. Les liens donnés par Sam (hors privé) sont lus tels quels, sans
+  moteur ; en privé, jamais.
+- **Garde-fous inchangés.** Conversation privée : réglage `recherchePrivee`
+  (coupé par défaut), filtre privé (la conversation au lexique) ; recherche
+  web coupée ou réglages illisibles : rien ; moteur en panne : la note de la
+  tour le dit au modèle, et la ligne « À vérifier (recherche impossible,
+  chiffres de mémoire) » reste ; étapes « Rémy cherche « … » » et « Rémy lit
+  3 pages en même temps (…) », lignes `recherche` et `lecture` au panneau des
+  coûts (0 $) ; plus de ligne `salle blanche`.
+- **Plus rapide aussi** : lectures parallèles avec remplaçants (une page
+  refusée laisse sa place au résultat suivant, 5 essais au plus), temps total
+  `REMY_RECHERCHE_LECTURES_MS` (5 s) et délai de grâce
+  (`REMY_RECHERCHE_GRACE_MS`, 1,5 s : dès qu'un site officiel ou deux pages
+  sont lus, les autres n'ont plus que ce temps) ; relais DuckDuckGo (si
+  html.duckduckgo.com n'a pas répondu en 2 s, lite.duckduckgo.com part aussi,
+  la première réponse gagne — une seule requête dans le cas courant) ; cache
+  en mémoire vive des résultats et des pages (15 min, jamais sur le disque).
+- **Mesures** (`scripts/mesurer-recherche.mjs`, 29/10, depuis une machine de
+  développement : adresse de centre de données, d'où des blocages DuckDuckGo
+  intermittents — 8 sur 36 à la première série, 0 sur 40 puis 0 sur 48 aux
+  deux suivantes — et des pages refusées qu'une adresse résidentielle ne
+  verrait pas) — trois passes, 12 questions (règles, montants, taux, date limite, horaires
+  de mairie, prix du gazole, produit, météo, actualité, abonnement) :
+  - DuckDuckGo html, la question telle quelle : 24 réponses sur 36 (8
+    vérifications anti-robot, 4 délais de 10 s), médiane 724 ms, mais 4
+    réponses sur 24 vers 5,7 s (P90 5,7 s) — d'où le relais à 2 s. Site de
+    référence dans les 3 premiers : 23/24 (24/24 une fois les sites officiels
+    remontés), premier : 20/24 (21/24). Mots-clés au lieu de la question :
+    7/8 dans les 3 premiers, P90 6,0 s. Lite : médiane 700 ms, 7/7, mais
+    autant bloqué.
+  - Lire 3 pages (une par site, officiels d'abord, jusqu'à 3 lues) : en série
+    médiane 1,6 s (P90 3,8 s), en parallèle 1,0 s (P90 1,6 s), sur 33 trios ;
+    une fois 11,1 s en parallèle à cause d'une seule page lente — 2,4 s avec
+    le délai de grâce. Pages : 90/118 lues (27 refusées : Cloudflare, 403 —
+    l'adresse de centre de données), médiane 489 ms, P90 1,1 s ; 68 datées.
+  - Extraction : la matière jointe pèse 4 800 caractères (médiane, ~1 500
+    jetons) contre 22 200 pour les trois pages entières (~6 900 jetons ; la
+    salle blanche en lit une ou deux). La réponse attendue est dans les
+    passages pour 11 questions sur 12 — dont 3 seulement sur une page
+    officielle — avec des critères resserrés par la contre-relecture (le
+    premier critère comptait « conditions », mot de la question, et
+    n'importe quelle année) ; 12 sur 12, dont 6 sur une page officielle,
+    après les corrections de l'extraction (ci-dessous), mêmes pages.
+  - Côté web, chaque stratégie coûte 1,5 à 2,5 s (banc avec un faux modèle :
+    salle 1,9 s, direct 1,7 s pour l'ACRE) : la lenteur est dans le modèle.
+- **Choix du défaut : `hybride`, réflexion `low`.** Estimation (même script,
+  repassé après la contre-relecture : tailles MESURÉES de ce qu'envoie chaque
+  appel ; SUPPOSÉS : le débit d'écriture — aucune mesure dans le dépôt, la
+  jauge et ses tests n'ont que des exemples d'affichage, d'où trois
+  hypothèses —, 2 000 jetons/s en lecture, réflexion high 400 / medium 250 /
+  low 120 jetons, réponse et synthèse 350), par message, médianes des 12
+  questions :
+
+  | Stratégie | Appels | Jetons écrits | Consigne en cache, à 20 / 40 / 80 jetons/s | Consigne froide de 31 000 jetons, à 40 jetons/s |
+  | --- | --- | --- | --- | --- |
+  | salle (2 pages) | 5 | ~2 090 | 110 / 58 / 32 s | 74 s |
+  | salle (1 page) | 4 | ~1 800 | 94 / 49 / 26 s | 64 s |
+  | direct (réflexion low) | 1 | ~470 | 26 / 14,5 / 8,6 s | 30 s |
+  | direct sans réflexion | 1 | ~350 | 20 / 11,5 / 7,1 s | 27 s |
+  | hybride avec relance | 2 | ~940 | 52 / 29 / 17 s | 44,5 s |
+
+  (Hybride sans relance : comme direct.) Les temps absolus dépendent du
+  débit, pas le classement : à tout débit, la salle coûte environ quatre
+  fois le direct. Direct et hybride font le même appel quand les passages
+  suffisent (12 questions sur 12, critère strict) ; la relance de l'hybride
+  ne coûte que quand ils ne suffisent pas, et rattrape une page mal choisie
+  ou une extraction ratée — et une suite, que le direct ne rattrape pas.
+  Côté confidentialité, l'hybride n'est défendable qu'avec les corrections
+  de la contre-relecture (contexte personnel, relance sans nom propre,
+  relance coupée quand le moteur bloque) : elles sont faites. Le banc de la
+  tour tranche, débit mesuré à l'appui : si la relance part souvent pour
+  rien, `direct` ; si la réponse sans réflexion vaut l'autre,
+  `REMY_RECHERCHE_REFLEXION=off`.
+- **Le banc** (`scripts/banc-recherche.mjs`, une commande sur la tour,
+  `docs/tour.md`) : 9 questions (dont une suite de conversation) × 4
+  stratégies contre le vrai modèle ; temps total et au premier mot, appels
+  au modèle, jetons, pages lues, chiffres vérifiés / à vérifier, débit
+  d'écriture mesuré, réponses complètes dans `<coffre>/.remy/bancs/`.
+  Sans Motion (clé retirée du processus), sans écrire la mémoire ni les
+  conversations (il appelle le modèle directement), sans IA cloud ; un
+  blocage de DuckDuckGo est attendu (5 min) puis l'essai rejoué ; un essai
+  sans page lue est compté à part. Essayé ici contre un faux modèle (moteur et
+  pages réels, puis tout simulé) : il tourne de bout en bout.
+- **Autres points d'entrée sans clé, écartés** : Mojeek, Brave Search,
+  Ecosia, Qwant, Bing et Startpage interdisent leurs pages de résultats aux
+  robots (`robots.txt` : `Disallow: /search`, `/sp/`…) ; la recherche de
+  service-public.gouv.fr est permise mais ne couvre que « Démarches et
+  outils » (« Aucun résultat » pour « acre conditions »), le reste demandant
+  JavaScript ; Wikipédia (API) ne dit ni règles ni prix à jour. SearXNG reste
+  la parade documentée (`docs/tour.md`). Mesuré : la question telle quelle
+  vaut les mots-clés — site de référence dans les 3 premiers aussi souvent
+  (14/16 pour les deux en ordre alterné), même latence quand l'ordre alterne
+  (médiane 630 contre 547 ms, P90 743 contre 709 ms). Dans une série où la
+  question partait toujours la première, les réponses vers 5,7 s sont toutes
+  tombées sur elle (P90 5,7 s contre 0,6 s) : c'est sans doute la première
+  requête d'un sujet qui tarde, quelle que soit sa forme — le relais à 2 s
+  la couvre. La tour envoie la question.
+- **Limites.** Les passages sont choisis sans IA : une page où la réponse est
+  dans une image, un PDF ou un tableau rendu en JavaScript (le site des prix
+  des carburants) n'en donne pas — le mode hybride relance, et les extraits
+  du moteur sont joints (marqués « pages NON lues »). Une question qui ne
+  ressemble pas au web (`indiceWeb`) n'a pas de recherche directe : le modèle
+  peut toujours appeler `rechercher` (2 appels). Un nom propre public absent
+  des listes (une marque, un lieu) renvoie la question au modèle : plus lent,
+  pas plus risqué. Ajoutés aux listes du filtre : LEP, PEL, PEA, CEL,
+  livret A, PAC, PPA, prime d'activité ; « pro », « max », « ultra ».
+  Non fait : préchauffer le modèle pendant les lectures (le gain est borné
+  par le temps du web, 1 à 2 s, et nul si le serveur garde déjà la consigne
+  en cache) ; écrire la réponse avant la fin des lectures (le délai de grâce
+  borne déjà l'attente).
+- **Contre-relecture (même nuit) : ce qui a été corrigé.** Chaque point a
+  son test, qui échouait avant (`test/recherche-rapide.test.mjs`).
+  - *Contexte personnel* (bloquant). La requête directe part TELLE QUELLE ;
+    le filtre ne connaît que la mémoire et le planning, `nomsDuTexte` que les
+    noms propres : « J'ai un cancer du sein, est-ce que l'ACRE est cumulable
+    avec l'AAH ? » sortait mot pour mot, en privé aussi (recherche permise),
+    comme « … avec 80 000 € de chiffre d'affaires ? ». Désormais, une question
+    à la première personne (je, j', m', mon, ma, mes, nous…) qui porte un mot
+    de santé, de famille, de justice ou un montant en euros revient au modèle
+    (raison « personnel »), qui écrit une question générale. Les 12
+    questions des mesures et « J'ai droit à l'ACRE si je suis au RSA ? »
+    restent directes ; « mari » ne prend pas « mariage » (mots entiers).
+  - *Relance après lecture* (bloquant). L'affirmation « aucune requête écrite
+    par un modèle qui a lu une page » était fausse pour la relance de
+    l'hybride et toute deuxième recherche : une page piégée faisait sortir
+    un nom écrit trois messages plus haut (hors privé, la conversation n'est
+    pas au lexique). Désormais, dès que de la matière web a été lue dans le
+    message (passages joints, premier `rechercher`, synthèse de la salle
+    blanche, extraits du moteur), la question passe le filtre SANS
+    exemption et ne peut contenir aucun nom propre, sigle inconnu ni
+    identifiant (refus « nom propre après lecture », tracé sans le nom). La
+    règle vaut aussi en mode salle, où le même trou existait depuis le 25/10
+    (la synthèse de la salle blanche peut porter la consigne d'une page).
+    PASS et Île-de-France Mobilités rejoignent les organismes publics (une
+    relance ordinaire les cite).
+  - *Extraction* (important). Sur la page Smic de l'Urssaf, les passages
+    retenus étaient trois boutons « Partagez le contenu… » et le montant de
+    Mayotte ; sur l'annuaire officiel, « Horaires » sans rien dessous.
+    Désormais : bruit de partage écarté (« Partagez », « Nouvelle fenêtre »,
+    « Lien copié », « Consulter l'historique »…) ; un titre court qui porte
+    des mots de la question emporte les lignes chiffrées qui le suivent (une
+    cellule par ligne, une liste d'horaires) ; un passage en double est
+    écarté. Mêmes pages réelles, critère strict : 11/12 (3 sur une page
+    officielle) → 12/12 (6), pour +4,5 % de caractères.
+  - *Pages vides* (moyen). Trois pages vides prenaient les trois places (« la
+    tour a lu 3 pages », citations vides) et deux déclenchaient le délai de
+    grâce, coupant la page utile mais lente. Une page de moins de 150
+    caractères compte désormais comme un échec : le résultat suivant prend
+    sa place.
+  - *Moteur bloqué* (coût). En hybride, la relance restait offerte alors
+    qu'elle échouerait : un second appel au modèle pour rien. Plus offerte ni
+    annoncée quand aucune page n'est lue et que DuckDuckGo est en pause.
+  - *Suite* (qualité). « Et le seuil pour la vente de marchandises, c'est
+    combien en 2026 ? » partait sans « micro-entreprise », sans recours en
+    direct. Une question qui commence par Et, Mais, Sinon, Aussi, Pareil,
+    Celui-ci… revient au modèle (raison « suite »). Le banc ne jouait que
+    des questions autonomes (ce qui avantageait le direct) : il joue
+    maintenant une suite, avec les messages qui la précèdent.
+  - *Docs.* Le débit de 40 jetons/s n'était pas une mesure (corrigé : trois
+    hypothèses, et le banc mesure le débit réel) ; les blocages DuckDuckGo
+    sont intermittents, pas systématiques (voir « Mesures ») ; le banc dit
+    qu'installer la branche met l'hybride en service tout de suite, et
+    comment garder la salle jusqu'au verdict.
+- **Contre-relecture : ce qui ne change pas, et pourquoi.** Un montant
+  présent sur une page lue mais hors des passages montrés au modèle passe
+  pour « vérifié » : la vérification dit qu'un chiffre figure dans une
+  source lue, ce qui reste vrai — c'est le modèle qui l'a trouvé ailleurs,
+  et il est juste. Limite connue, acceptée. Les fausses balises de fin et
+  fausses « Note de la tour » d'une page restent dans le cadre (testé) ; une
+  question de plus de 200 caractères n'est pas cherchée telle quelle
+  (testé).
+
+## 2026-10-29 — Chercher dans les réglages, bilan à 22 h 45, prototypes retirés
+
+- **Un index déclaratif dans le cœur** (`RemyCore/RechercheReglages.swift`),
+  pas une recherche dans l'arbre des vues : SwiftUI n'expose pas ses lignes,
+  et l'index se teste sous Linux. Chaque entrée : titre, sous-titre, mots-clés
+  (synonymes : « notif », « privé », « Siri », « GPS », « tok/s »…), l'écran à
+  ouvrir, la ligne à mettre en évidence (son libellé), les conditions de sa
+  présence (capacité de la tour, réglage qu'elle a dit, interrupteur allumé)
+  et un repli quand la ligne n'est pas affichée (« Heure du bilan », bilan
+  coupé : on montre « Bilan du soir » et on le dit).
+- **Sans IA ni réseau** : mots sans accents ni majuscules, chacun doit trouver
+  le début d'un mot (titre > mots-clés > sous-titre et chemin), mots vides
+  ignorés (« l'heure du bilan »). Rien d'exact : une faute de frappe tolérée
+  (1 lettre jusqu'à 7, 2 au-delà, 4 lettres minimum), et c'est dit.
+- **Ce que la tour ne propose pas n'est pas proposé** ; si c'est tout ce qui
+  correspond, l'état vide le dit (« dépend de ta tour »), au lieu d'un
+  « rien » trompeur. Sinon : « Rien ne correspond à « … » » et trois mots à
+  essayer (boutons de 48 pt).
+- **Arriver au réglage** : `.repere("Titre")` (ou `dans: .diagnostic`, `.lieux`…)
+  sur la ligne, `.allerAuRepere(.ecran)` sur sa liste. Un état partagé
+  (`RepereReglages`) traverse feuilles et pages poussées ; la ligne visée a un
+  fond orange pâle et un filet quelques secondes, VoiceOver s'y pose et dit
+  « Réglage trouvé ». La saisie reste : le retour rend les résultats.
+- **Les vues et l'index ne divergent pas** : `RechercheReglagesTests` relit les
+  sources des vues. Une ligne repérée absente de l'index, une ligne de
+  Réglages (`ligne(`, `circuit(`, rendez-vous quotidien) sans entrée, ou une
+  ancre renommée font échouer. Une nouvelle ligne de Réglages = une entrée.
+- **ReglagesView ne change que par ajouts** (état, `.repere`, une extension) :
+  d'autres branches y ajoutent leurs lignes.
+- **Bilan du soir à 22 h 45 par défaut** (21 h 30 avant), le matin reste à
+  7 h 30. `@AppStorage` n'écrit l'heure qu'au choix de Sam : une heure absente
+  prend le nouveau défaut, une heure choisie (même 21 h 30) reste. Les
+  notifications se reprogramment au lancement suivant (`planifierRituel`).
+- **Prototypes de design retirés** (`Remy/Prototypes`, `REMY_PROTO`,
+  `ios-prototypes.yml`) : la direction A est en place depuis le Lot 1, ils ne
+  servaient plus qu'à leurs propres captures.
+
+## 2026-10-29 (fin) — Bureau Windows : intégration des lots SHELL et SITE
+
+- **Deux fusions `--no-ff`** dans `claude/bureau-windows` : le lot SHELL
+  (`desktop/`, workflow de l'installateur) puis le lot SITE (`public/`,
+  `server.js`, tests du site). Les lots touchaient des fichiers disjoints
+  (1.8 de `docs/bureau.md`) : aucun conflit, aucune retouche de code.
+- **Ce que chaque lot laissait à l'intégration**, porté dans
+  `docs/bureau.md` : côté coquille, les deux conditions du script de
+  contrôle (jamais de 2xx vide, garder `allow-bureau-page-chargee`) ;
+  côté site, la notification « Rémy est déconnecté » (une fois par jour),
+  la fenêtre Noter qui marche sans session, les rituels retentés toutes les
+  5 min et le rail replié dès 1279 px.
+- **Reste hors de cette intégration** : la session de la tour expire
+  toujours au bout de 30 jours (une fenêtre glissante dans `lib/auth.js`
+  la renouvellerait à chaque usage) ; à faire dans un lot de la tour.
+
+## 2026-10-29 (suite) — Coquille Windows : contre-relecture
+
+- **Tour jointe, Rémy arrêté (502) : la coquille lit le statut de la page.**
+  À l'ouverture de session, la tâche « Rémy » et l'app démarrent ensemble ;
+  Tailscale Serve répond 502 tant que `server.js` n'écoute pas. La sonde
+  `no-cors` ne voit pas le statut : la fenêtre partait sur une page blanche,
+  sans Réessayer, Noter aussi, et le site ne démarrait jamais les
+  notifications. Correctif : un script injecté par la coquille dans chaque
+  page (`desktop/src-tauri/src/controle.js`) lit le statut de la navigation
+  (`PerformanceNavigationTiming.responseStatus`, donné par WebView2 ; WebKit
+  non, d'où « page vide » en repli) et le dit par `bureau_page_chargee`. 5xx
+  ou vide → retour sur la page embarquée sans changer de visibilité, message
+  « Rémy ne répond pas encore », nouvel essai seul à 30 s (60 s pour Noter),
+  jamais d'aller-retour immédiat. Garde-fou de 20 s pour une page qui ne se
+  signale pas (chargement bloqué, page d'erreur), mesuré dans un fil Rust
+  (les minuteries d'une fenêtre cachée sont ralenties).
+  **Écarté** : renvoyer la fenêtre si `bureau_etat` n'arrive pas en 20 s —
+  sans déploiement automatique, la tour peut encore servir l'ancien site
+  (qui ne l'appelle pas) : la fenêtre ferait des allers-retours sans fin. Le
+  script de contrôle, lui, accepte toute page 2xx. **Écarté aussi** : lire le
+  statut par une sonde CORS sur `/api/version` — le 502 vient de Tailscale,
+  sans en-tête CORS, il resterait illisible ; et une tour pas encore mise à
+  jour bloquerait l'app sur « ne répond pas ».
+- **Plus de `.msi`** : celui de Tauri s'installe pour toute la machine et sa
+  désinstallation laisse la valeur « Rémy » de la clé `Run` (posée par l'app)
+  pointer vers un programme effacé ; l'installateur NSIS par utilisateur
+  l'efface. La CI échoue si un `.msi` réapparaît.
+- **Adresses dans les sources, avant la construction** : les pages de
+  `desktop/ui` sont compressées (brotli) dans `Remy.exe`, le contrôle du
+  binaire ne les voyait pas. La CI cherche maintenant `*.ts.net`
+  (hors exemples `*.mon-tailnet.ts.net`, `*.exemple.ts.net`) et les IP
+  privées du réseau local dans les sources embarquées ; le contrôle du binaire reste pour les chaînes
+  Rust.
+- **Publier seulement depuis `main`** : une Release lancée d'une branche
+  posait le tag sur du code non fusionné et prenait le numéro de version. Le
+  job Windows refuse d'emblée (« Publier seulement depuis main ») et le job
+  de publication a la même condition.
+- **AltGr = Ctrl+Alt sous Windows** : un raccourci Ctrl+Alt + lettre, chiffre
+  ou ponctuation volerait le caractère AltGr partout (Ctrl+Alt+0 = « @ » sur
+  un clavier français). Refusé, sauf avec Maj ou Win en plus ; Espace,
+  Entrée, F1–F12 restent permis. Un raccourci gardé devenu invalide repasse
+  au défaut au lancement (comme avant).
+- **Notes de secours chiffrées par DPAPI** (`CryptProtectData`, portée de
+  l'utilisateur, avec une valeur propre à l'app) : données personnelles au
+  repos, sans clé à garder nous-mêmes. Fichier `notes-en-attente.dat` (en-tête
+  `REMY-DPAPI-1` puis le bloc) ; l'ancien `.json` en clair de la 0.1.0 est
+  repris puis effacé ; un fichier illisible (profil réinitialisé, autre PC)
+  est renommé `notes-en-attente.illisible`, jamais écrasé, et Noter le dit.
+  Hors Windows (tests, essai de fumée), en clair. Testé sous Windows par la
+  CI (`cargo test` : le texte n'apparaît pas dans le fichier).
+- **File d'envoi du site dans `localStorage`, en clair** (lot SITE) : laissée
+  ainsi. Le site tourne aussi dans un navigateur, où il n'a aucune clé à lui
+  (une clé à côté des données ne protégerait rien) ; dans l'app, le profil
+  WebView2 est sous `%LOCALAPPDATA%` du compte, la file ne garde que ce qui
+  n'est pas encore parti et se vide au retour de la tour. Le disque n'est
+  pas chiffré au niveau du volume (pas de BitLocker, choix du propriétaire) :
+  pour cette file, c'est la session Windows qui protège, rien de plus — dit
+  tel quel dans `docs/bureau.md` 1.3.
+
+## 2026-10-29 — Rémy sur Windows : la coquille (desktop/, Tauri v2)
+
+Conception complète et contrat avec le site : `docs/bureau.md`. Ce qui a été
+décidé en construisant :
+
+- **Tauri v2 (WebView2) plutôt qu'Electron** : installateur de 1,5 Mo
+  (NSIS) au lieu d'une centaine, WebView2 déjà dans Windows 11, et des règles
+  d'accès par origine pour les API natives. La fenêtre affiche le site de la
+  tour (pas une copie) : la tour mise à jour, l'app l'est aussi.
+- **Deux verrous pour les commandes natives.** Les règles d'accès de Tauri
+  n'acceptent que des motifs génériques (`https://*.ts.net:*/*`, localhost) ;
+  chaque commande vérifie ensuite que la page vient exactement de l'adresse
+  configurée (`adresse::meme_origine`). Les commandes des pages embarquées
+  (adresse, notes de secours) sont refusées à toute page distante ; un test
+  vérifie que `build.rs`, les deux fichiers de règles et `run()` concordent.
+- **Ni shell, ni fichiers, ni HTTP côté Rust.** La sonde de la tour est un
+  `fetch` `no-cors` de la page de démarrage vers `/api/version` (et non
+  `/api/health`, qui teste la clé Anthropic et Motion quand l'appel vient de
+  la tour elle-même). Les liens externes partent au navigateur (`http(s)`
+  seulement, sans identifiants) ; toute autre navigation est refusée.
+- **Démarrage avec Windows par `auto-launch` directement**, pas par
+  `tauri-plugin-autostart` : le greffon inscrit le chemin du programme sans
+  guillemets dans la clé `Run`, ambigu dès que le profil Windows contient une
+  espace. Valeur « Rémy » (= `productName`) : le désinstallateur Tauri
+  l'efface déjà. Allumé une fois au premier lancement, ensuite Windows fait
+  foi (Gestionnaire des tâches compris).
+- **Identifiant d'app explicite** (`SetCurrentProcessExplicitAppUserModelID`,
+  = l'identifiant du raccourci du menu Démarrer posé par l'installateur) :
+  l'épingle de la barre des tâches retrouve la même app qu'elle ait été
+  lancée par le menu ou au démarrage de Windows, et les notifications portent
+  le nom de Rémy.
+- **Notifications bornées côté coquille** : titre 80, corps 240 caractères,
+  10 par minute, la même clé pas deux fois en 10 minutes — une page qui
+  s'emballe ne peut pas inonder l'écran. C'est le site qui décide quoi
+  notifier (il a la session) ; la coquille ne fait aucune requête.
+- **Noter de secours** : la fenêtre Noter est préchargée cachée sur une page
+  embarquée qui passe sur le site de la tour dès qu'elle répond, jamais
+  pendant qu'on tape. Hors ligne, la note est gardée dans
+  `%APPDATA%\com.pingureep.remy.bureau\notes-en-attente.dat` (200 au plus,
+  4 000 caractères chacune, chiffrée — voir la suite) jusqu'à ce que le site
+  l'envoie.
+- **« Recharger » repasse par la page de démarrage** : tour tombée, on obtient
+  « La tour ne répond pas » + Réessayer au lieu de la page d'erreur de WebView2.
+- **Raccourci** : écriture française acceptée (Maj, Espace, Win), forme rangée
+  re-lisible, au moins Ctrl, Alt ou Win ; refusé par Windows → l'ancien reste.
+- **Clic sur l'icône = montrer / ranger** : le clic donne d'abord le focus à
+  la barre des tâches, donc « la fenêtre est-elle devant ? » se lit sur la
+  perte de focus de moins d'une demi-seconde, pas sur le focus actuel (sinon
+  le clic ne rangerait jamais).
+- **CI** (`bureau-windows.yml`) : `cargo test` puis `tauri build` sur
+  `windows-latest` (~9 min, cache Cargo), installateurs renommés sans accent
+  (`Remy-Bureau_X.Y.Z_x64-setup.exe`), `SHA256SUMS.txt`, contrôle
+  qu'aucune adresse `*.ts.net` n'est écrite dans les sources embarquées ni
+  dans le binaire. Lancée par un
+  envoi qui touche `desktop/` (sur `main` et `claude/bureau-windows**`) ou à
+  la main ; « publier » (depuis `main` seulement) crée alors la Release
+  `bureau-vX.Y.Z`.
+- **Non signé** : SmartScreen prévient (mode d'emploi, `docs/bureau.md` 2.2).
+- **Essai de fumée sous Linux** (`desktop/essais/fumee.mjs`, job `fumee` de
+  la CI) : la coquille compile aussi pour WebKitGTK, ce qui permet de lancer
+  le VRAI binaire sous Xvfb contre une fausse tour et de vérifier de bout en
+  bout ce que ni les tests unitaires ni la CI Windows (qui ne peut pas
+  cliquer) ne voient : `__TAURI__` injecté dans le site distant, commandes
+  locales refusées par les règles d'accès, navigation et `window.open` vers
+  une autre origine bloqués. Les pages embarquées sont jouées à part dans
+  Chromium avec un faux pont (`desktop/essais/pages.cjs`).
+
+## 2026-10-29 (suite) — Conversations externes : deux contre-relectures (fuites, formats)
+
+Deux relectures adverses ont trouvé 4 bloquants et 8 importants ; tous
+corrigés, chacun rejoué en test (les tests d'attaque échouent sur le code
+d'avant, passent après).
+
+- **Rien en clair hors de la base** : une réponse de Rémy qui cite ces
+  passages était recopiée en clair dans le coffre Obsidian (nom de fichier
+  compris) et dans `conversations.json`. Plutôt que chiffrer toute la base
+  JSON (changement de format pour tout Rémy, risque de migration), seules les
+  conversations « matière d'ailleurs » (`matiereExterne`, ou `origine` pour
+  les imports du site) sont **scellées** : un en-tête lisible (id, dates,
+  épinglée, privée) et le reste chiffré avec la clé des conversations
+  (AES-256-GCM, l'identifiant en données associées). En mémoire rien ne
+  change (`fileLoad` déscelle) ; une clé changée rend la conversation
+  « illisible » sans jamais réécrire son texte chiffré. Les imports d'avant
+  sont scellés à la première lecture, et le coffre ne garde qu'un renvoi.
+- **Réflexion de nuit** : `priorites.traces()` lisait le titre de toutes les
+  conversations, privées comprises, et la réflexion peut partir chez Claude.
+  Le titre d'une privée sert encore à reconnaître la priorité, jamais à la
+  dire (« une conversation privée, le … »).
+- **Modèle « local »** : `REMY_GLM_URL` acceptait n'importe quel hôte ;
+  passages et nuit exigent maintenant un hôte de la machine, du réseau privé
+  ou du tailnet (`modeleLocalChezToi`), sinon `REMY_GLM_LOCAL=oui`.
+- **Exports hors du coffre** : un export importé quitte `Imports` pour
+  `%USERPROFILE%\.remy\imports-importes` (copie puis effacement s'il change de
+  disque), effacé après 7 jours ; un export abîmé n'est plus relu toutes les
+  30 min (signature nom/taille/date mémorisée) ; la somme de contrôle CRC-32
+  du .zip est vérifiée (le lecteur JSON draine l'entrée jusqu'au bout pour
+  que la vérification ait lieu).
+- **T3, curseur sur l'ordre d'insertion** : le curseur `(updated_at, id)`
+  perdait les sessions que T3 importe avec leurs dates d'origine, et un
+  message daté dans le futur bloquait tout. Maintenant : `rowid >` dernier vu
+  (les nouvelles lignes), une fenêtre de 2 h sur `julianday(updated_at)` à
+  partir de l'heure de la dernière lecture (les modifications), un fil
+  inconnu relu en entier ; une réponse « en cours » de moins d'1 h retient le
+  curseur. Une colonne `version` (migration v3) évite de rechiffrer un message
+  inchangé. La copie Claude Code d'une session menée dans T3 n'est cachée que
+  si le fil T3 a des messages, ou s'il a été effacé dans T3 (`liens.efface`).
+- **Quand Rémy puise** : « où j'en suis » seul, le dossier OneDrive\Bureau ou
+  le dépôt de l'assistant lui-même rendaient privées des conversations
+  ordinaires. Un nom de projet générique ne compte plus ; un nom d'un seul mot
+  doit être désigné (« le projet X », « dans X »). Classement par rareté des
+  mots (idf calculé à partir des résultats de l'index), tes messages avant
+  les réponses, et seulement les décisions (ou les choses à faire) quand la
+  question en demande ; couverture minimale de la question et seuil relatif au
+  meilleur passage.
+- **La nuit lit tout le jour** : toutes les conversations, le budget réparti,
+  et dans chacune les lignes marquées (« il faut », « avant vendredi »,
+  « on part sur »…) où qu'elles soient, tes messages, les deux dernières
+  réponses.
+- **Envoi de 5 min et plus** : `requestTimeout` de Node (300 s) coupait un
+  gros export en 4G. Sans toucher à `server.js`, la route allonge le délai du
+  serveur (3 h) tant qu'un envoi authentifié est en cours, puis le rend ; un
+  envoi qui ne reçoit plus rien pendant 2 min est coupé. L'iPhone affiche le
+  pourcentage envoyé (pas de session d'arrière-plan : elle exige un délégué
+  d'app et un fichier recopié, à faire si les envois longs deviennent courants).
+- **Formats** : lignes `.env`/YAML masquées (le `\b` ne coupait pas après
+  « _ ») ; transcriptions des conversations vocales et documents Canvas de
+  ChatGPT gardés ; Claude Code garde le texte tapé avec une capture de
+  plusieurs Mo (les `"data"` base64 sont retirés au fil de l'eau), écarte
+  « [Request interrupted by user] » et reprend après des octets nuls ;
+  écritures par lots de 400 messages ou ~120 000 caractères (indexer, c'est
+  un HMAC par mot), lecture qui rend la main chaque Mo, requêtes préparées
+  une fois : sur 300 Mo de sessions fictives, la boucle d'événements bloquée
+  au pire 143 ms (1,24 s avant) ; sur un export de 1 000 conversations,
+  342 ms (858 avant) ; noms de projets avec
+  leurs majuscules ; pages sur `(date, identifiant)` ; `autour=` pour ouvrir
+  au message trouvé ; « Aller à un jour » sur l'iPhone.
+- **Écartés, et pourquoi** : « Me le rappeler » et une tâche Motion proposée
+  dans une conversation privée restent possibles — c'est ton geste, sur un
+  texte que tu vois ; worktrees T3 rattachés à leur dépôt (il faudrait lire
+  git) ; T3 servi depuis WSL (`\\wsl.localhost\…`, non testé :
+  `REMY_T3_DIRS`) ; recherche de phrase exacte (index sans positions, par
+  choix).
+
+## 2026-10-29 — Conversations externes : Claude Code, T3 Code, ChatGPT (`conversations-externes-v1`)
+
+Le lot B (19/10) lisait les sessions Claude Code, mais rien n'en sortait :
+source coupée par défaut sans écran pour l'allumer, aucune vue de lecture,
+Rémy ne s'en servait pas, T3 vu seulement à travers les JSONL de Claude (ni
+Codex ni titres), ChatGPT seulement par l'ancien import du site, et une base
+en clair. Refait de bout en bout (`docs/conversations-externes.md`) :
+
+- **Allumées par défaut** (Claude Code, T3 ; ChatGPT au premier envoi), parce
+  que la lecture est locale et à sens unique ; `REMY_SOURCE_*=off` l'emporte
+  sur l'app. L'état dit, par source, où la tour a cherché, ce qu'elle a
+  trouvé, la dernière lecture, l'erreur et quoi faire.
+- **Chiffrement au repos** dans la base elle-même (pas de BitLocker) :
+  AES-256-GCM par champ, l'emplacement du texte en données associées (un
+  texte recopié ailleurs dans la base ne se déchiffre pas) ; sous-clés HKDF.
+  Clé dans `%USERPROFILE%\.remy\conversations.cle` (hors du coffre), ou
+  `REMY_CONVERSATIONS_CLE` ; une empreinte de contrôle dans la base détecte une
+  clé changée (« Tout effacer » plutôt qu'une base à moitié lisible). Les
+  curseurs (dossier de travail d'une session) sont chiffrés aussi : un mot de
+  projet traînait en clair dans le WAL.
+- **Index aveugle** : FTS5 sans contenu (`contentless_delete`, `detail=none`)
+  sur des empreintes HMAC des mots et de leurs débuts (4 et 6 lettres) ; ni
+  mots ni positions sur le disque. bm25 vaut 0 sans positions : classement
+  maison (mots trouvés, puis date). Le prix : pas de recherche de phrase.
+- **T3** : `statev2.sqlite` ouverte en lecture seule quand T3 tourne, en
+  `immutable=1` quand il est fermé (aucun `-wal`/`-shm` créé chez lui) ;
+  curseur `(updated_at, message_id)` par pages de 1 000. Une session Claude
+  menée depuis T3 est liée (`provider_threads`) et ne s'affiche qu'une fois,
+  sous T3.
+- **ChatGPT** : lecteur ZIP minimal (ZIP64, deflate en flux) et découpeur de
+  tableau JSON en flux : un export de plusieurs centaines de Mo ne passe
+  jamais en mémoire d'un bloc. Seule la branche affichée (`current_node`) ;
+  ni système, ni consignes personnalisées, ni appels d'outils. Idempotent
+  (empreinte du fichier, `update_time` par conversation). Le dossier `Imports`
+  n'entre pas dans les sauvegardes (lourd, en clair, déjà dans la base) ;
+  l'envoi depuis l'iPhone est un `.tmp`, effacé après l'import.
+- **Usage, toujours local** : les passages ne vont qu'aux blocs du modèle
+  local, seulement quand la question s'y rapporte (source citée, nom de
+  projet, ou rappel « on avait dit… » avec des passages assez proches) ; la
+  conversation devient privée (`done.prive`), ce qui coupe le secours Claude,
+  le titre et la mémoire en ligne ; les mots des passages entrent au filtre de
+  la salle blanche ; la recherche web d'une conversation devenue privée suit
+  `recherchePrivee`. La nuit passe `prive: true` à `fournisseurDeFond` :
+  modèle local ou rien. La ligne du matin est lue à l'affichage, jamais
+  écrite dans le briefing stocké.
+- **iPhone** : Projets › Conversations (puces par source, jours, recherche
+  sur la tour, lecture paginée, digest de la nuit avec « Me le rappeler »),
+  Réglages › Sources des conversations (état, emplacements, lire maintenant,
+  effacer, import par le sélecteur de fichiers, envoyé depuis le disque :
+  `upload(fromFile:)`), ligne dans le briefing, Nouveautés (série 5).
+  Parcours P26 (P25 à l'origine, renuméroté à l'intégration) contre une
+  tour de démo aux données fictives, dossier personnel factice (jamais le
+  `~/.claude` de la machine de CI).
+
 ## 2026-10-27 (suite) — Contre-relecture : rien de privé ne sort par un détour
 
 - **Le brouillon suit le caractère privé.** Quitter une privée pour un fil
@@ -1362,3 +2025,6 @@ sonnaient). MVP à comparer à la version d'avant (captures `11-…` de la CI).
 - `ios-parcours.yml` (à la demande) : les parcours du quotidien joués sur le
   simulateur (XCUITest, `ios-native/RemyParcours/`) contre une tour de démo
   pilotée ; captures par étape, gestes et durées, résumé dans la page du run.
+- `bureau-windows.yml` : l'app Windows (`desktop/`) — `cargo test`, puis
+  l'installateur NSIS en artefact sur `windows-latest` ; lancé à la main
+  depuis `main` avec « publier », la Release `bureau-vX.Y.Z`.

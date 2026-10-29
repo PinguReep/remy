@@ -98,6 +98,8 @@ struct CarteMenacee: View {
 struct BriefingVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
+    /// Ouvre Projets › Conversations (la ligne d'hier, 29/10) ; nil : pas de lien.
+    var ouvrirConversations: (() -> Void)? = nil
 
     var body: some View {
         let r = app.rituel
@@ -111,6 +113,13 @@ struct BriefingVue: View {
                         encadre("Ta tour ne sait pas encore préparer le briefing : relance son installeur pour la mettre à jour.")
                     } else if let b {
                         TroisLignes(b: b, le: r.le, chargement: r.chargement, erreur: r.erreur) { Task { await r.charger() } }
+                        // Une ligne tirée la nuit de tes conversations d'hier (Claude Code, T3, ChatGPT).
+                        if let l = r.donnees?.conversations {
+                            LigneConversationsBriefing(ligne: l, ouvrir: ouvrirConversations == nil ? nil : {
+                                fermer()
+                                ouvrirConversations?()
+                            })
+                        }
                     } else if r.chargement {
                         Squelette(largeurs: [0.55, 0.95, 0.85, 0.9])
                             .padding(18)
@@ -478,7 +487,7 @@ struct ReglagesRituelVue: View {
             interrupteur("Briefing du matin", sous: "Ce qui compte, pourquoi, ce qui est menacé. Calculé par ta tour, sans IA.",
                          symbole: "sunrise", valeur: $matin)
             if matin { choixHeure("Heure du briefing", $heureMatin) }
-            interrupteur("Bilan du soir", sous: "Fait, glissé, ce qui reste pour demain : 30 secondes.",
+            interrupteur("Bilan du soir", sous: "Fait, glissé, ce qui reste pour demain : 30 secondes avant de te coucher.",
                          symbole: "moon.stars", valeur: $soir)
             if soir { choixHeure("Heure du bilan", $heureSoir) }
             if refuse {
@@ -531,6 +540,7 @@ struct ReglagesRituelVue: View {
         .padding(.vertical, 10)
         .frame(minHeight: 60)
         .overlay(alignment: .bottom) { Filet() }
+        .repere(titre)
     }
 
     private func choixHeure(_ titre: String, _ minutes: Binding<Int>) -> some View {
@@ -544,6 +554,7 @@ struct ReglagesRituelVue: View {
             .padding(.leading, 40)
             .frame(minHeight: 50)
             .overlay(alignment: .bottom) { Filet() }
+            .repere(titre)
     }
 }
 
@@ -572,6 +583,7 @@ struct ReglageCapture: View {
         .foregroundStyle(Palette.encre)
         .padding(.vertical, 12)
         .overlay(alignment: .bottom) { Filet() }
+        .repere("Une pensée sans action claire")
     }
 }
 
@@ -623,6 +635,7 @@ struct DiagnosticVue: View {
                 }
                 .buttonStyle(.plain)
                 .overlay(alignment: .bottom) { Filet() }
+                .repere("Temps de réponse", dans: .diagnostic)
                 Toggle(isOn: $jauge) {
                     HStack(spacing: 14) {
                         Image(systemName: "gauge.with.dots.needle.33percent").font(.system(size: 18)).frame(width: 26)
@@ -638,6 +651,7 @@ struct DiagnosticVue: View {
                 .padding(.vertical, 10)
                 .frame(minHeight: 60)
                 .overlay(alignment: .bottom) { Filet() }
+                .repere("Jauge du contexte", dans: .diagnostic)
                 Toggle(isOn: $vitesse) {
                     HStack(spacing: 14) {
                         Image(systemName: "speedometer").font(.system(size: 18)).frame(width: 26)
@@ -653,6 +667,7 @@ struct DiagnosticVue: View {
                 .padding(.vertical, 10)
                 .frame(minHeight: 60)
                 .overlay(alignment: .bottom) { Filet() }
+                .repere("Vitesse de Rémy", dans: .diagnostic)
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 14) {
                         Image(systemName: "hand.tap").font(.system(size: 18)).frame(width: 26)
@@ -668,6 +683,7 @@ struct DiagnosticVue: View {
                 }
                 .padding(.vertical, 12)
                 .overlay(alignment: .bottom) { Filet() }
+                .repere("Appui pour agrandir le planning", dans: .diagnostic)
                 Text("Les codes d'erreur (R-…) restent sous chaque message raté, avec « Copier le diagnostic ».")
                     .font(Police.texte(13))
                     .foregroundStyle(Palette.encre3)
@@ -679,6 +695,7 @@ struct DiagnosticVue: View {
             .padding(.bottom, 24)
         }
         .background(Palette.fond)
+        .allerAuRepere(.diagnostic)
         .navigationTitle("Diagnostic")
         .navigationBarTitleDisplayMode(.inline)
     }

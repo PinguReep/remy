@@ -29,6 +29,22 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "conversations-externes", serie: 5, date: "29 oct.", titre: "Tes conversations d'ailleurs, ici", capacite: "conversations-externes-v1", pages: [
+            .init(symbole: "bubble.left.and.bubble.right", titre: "Claude Code, T3, ChatGPT",
+                  texte: "Projets › Conversations : tes sessions Claude Code et tes fils T3 Code (ordinateur ou téléphone), lus par ta tour. Par source, par jour (« Aller à un jour »), ou cherche un mot : la conversation s'ouvre au message trouvé."),
+            .init(symbole: "square.and.arrow.down", titre: "ChatGPT en un geste",
+                  texte: "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Puis « Importer ChatGPT » ici, et choisis le .zip reçu par mail. Ou dépose-le dans le dossier Imports de ton coffre."),
+            .init(symbole: "lock.shield", titre: "Rien ne repart",
+                  texte: "Tout est chiffré sur ta tour ; rien ne retourne chez Claude ni chez OpenAI. Rémy s'en inspire avec son modèle local, et la nuit en tire thèmes et choses à faire. Réglages › Sources des conversations pour couper ou effacer."),
+        ]),
+        Nouveaute(id: "reglages-recherche", serie: 5, date: "29 oct.", titre: "Chercher dans les réglages", capacite: nil, pages: [
+            .init(symbole: "magnifyingglass", titre: "Va droit au réglage",
+                  texte: "En haut de Réglages, tape ce que tu cherches : « notif », « jauge », « privé », « Siri »… Touche un résultat : son écran s'ouvre, le réglage mis en évidence."),
+        ]),
+        Nouveaute(id: "bilan-coucher", serie: 5, date: "29 oct.", titre: "Le bilan, avant de te coucher", capacite: "rituel-v1", pages: [
+            .init(symbole: "moon.stars", titre: "22 h 45 par défaut",
+                  texte: "Allumé sans heure choisie, le bilan du soir arrive désormais à 22 h 45 (21 h 30 avant). Une heure que tu avais choisie reste la tienne : Réglages › Rendez-vous quotidien."),
+        ]),
         Nouveaute(id: "privee-iphone", serie: 4, date: "27 oct.", titre: "Conversation privée sur l'iPhone", capacite: nil, pages: [
             .init(symbole: "lock", titre: "Une conversation qui reste chez toi",
                   texte: "Nouvelle conversation : touche « Privée » au-dessus du champ. Ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas reste sur la marque de Rémy, en haut."),
@@ -94,7 +110,7 @@ public enum Nouveautes {
             .init(symbole: "exclamationmark.triangle", titre: "Les échéances menacées",
                   texte: "En haut d'Aujourd'hui : une tâche qui ne tiendra plus son échéance, avant qu'elle soit en retard, avec l'action utile (repousser, ou demander à Rémy)."),
             .init(symbole: "moon.stars", titre: "Le soir, 30 secondes",
-                  texte: "Fait, glissé, et tout ce qui reste vers demain d'un geste (annulable). Une ligne sur ta journée si tu veux : Rémy la relit la nuit. Réglages › Rendez-vous quotidien."),
+                  texte: "Vers 22 h 45, avant de te coucher : fait, glissé, et tout ce qui reste vers demain d'un geste (annulable). Une ligne sur ta journée si tu veux : Rémy la relit la nuit. Réglages › Rendez-vous quotidien."),
         ]),
         Nouveaute(id: "idees", serie: 3, date: "24 oct.", titre: "Tes idées restent des idées", capacite: "dossiers-v1", pages: [
             .init(symbole: "tray.and.arrow.down", titre: "Plus de tâche par erreur",

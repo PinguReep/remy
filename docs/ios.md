@@ -182,6 +182,33 @@ tag) avant l'échéance.
   (Réglages › Diagnostic pour la masquer) et dit, juste sous le cadran, quand
   le résumé automatique (70 %) se fera ou s'est fait ; les tokens par seconde
   ont leur propre réglage (coupé par défaut).
+- Chercher dans les réglages (29/10) : le champ en haut de Réglages trouve
+  chaque réglage et chaque écran (Diagnostic, Rendez-vous quotidien,
+  Localisation, Activité du PC, Sources des conversations…) par son titre, son
+  sous-titre et des synonymes (« notif », « jauge », « privé », « Siri »,
+  « ChatGPT », « T3 », « import »), sans IA. Toucher un
+  résultat ouvre son écran, la ligne mise en évidence. L'index est dans le
+  cœur (`RechercheReglages.swift`) ; une ligne se déclare avec `.repere(…)`.
+  **Une nouvelle ligne de Réglages = une entrée dans `RechercheReglages.index`**
+  (et, pour un nouvel écran, un cas d'`EcranReglages` et sa branche dans
+  `ReglagesView.aller`) : les tests du cœur relisent les vues et échouent sinon. Captures : `REMY_DEMO_ECRAN=
+  reglages-recherche`, `reglages-recherche-vide`, `reglages-repere`.
+- Bilan du soir : 22 h 45 par défaut (avant le coucher), briefing à 7 h 30 ;
+  une heure déjà choisie n'est jamais remplacée.
+- Conversations d'ailleurs (29/10, `conversations-externes-v1`) : Projets ›
+  Conversations (Claude Code, T3 Code, ChatGPT lus par la tour ; puces par
+  source, « Aller à un jour » pour une date (`/jours`, `jour=`), recherche
+  sur la tour dont un résultat ouvre la conversation AU message trouvé
+  (`autour=`, mis en avant, « Depuis le début »), lecture paginée, ce que la
+  nuit en a tiré) et Réglages › Sources des conversations (état et quoi faire
+  par source, lire maintenant, effacer, import d'un export ChatGPT par le
+  sélecteur de fichiers, avec le pourcentage envoyé ; ce qui reste des
+  exports hors du coffre). Une erreur de la tour dit aussi `quoiFaire`. Le
+  cœur (`ConversationsExternes.swift`) est testé sous Linux ; l'export part
+  du disque (`envoyerFichier`, `upload(fromFile:delegate:)`), jamais chargé en
+  mémoire. Une réponse de Rémy qui cite ces conversations rend le fil privé
+  (`done.prive`). Parcours P26 contre la tour de démo (données fictives).
+  Contrat : `docs/conversations-externes.md`.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces
