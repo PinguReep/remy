@@ -273,6 +273,40 @@ test("réglages : les circuits se coupent d'un geste, valeur invalide refusée",
   }
 });
 
+test("cerveau local qui ne sait pas imposer le format : schéma dans la consigne, objet repris dans le texte", async () => {
+  const recus = [];
+  const relais = http.createServer((req, res) => {
+    let corps = "";
+    req.on("data", (c) => (corps += c));
+    req.on("end", () => {
+      const b = JSON.parse(corps);
+      recus.push(b);
+      if (b.response_format) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: { message: "structured output (response_format and the guided_* fields) is not supported by this engine yet" } }));
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ choices: [{ message: { content: 'Voici : {"priorite":"santé"} — voilà.' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }));
+    });
+  });
+  await new Promise((r) => relais.listen(0, "127.0.0.1", r));
+  try {
+    const qwen = cerveauLocal({ nom: "qwen", url: `http://127.0.0.1:${relais.address().port}/v1`, modele: "qwen-test" });
+    const schema = { type: "object", properties: { priorite: { type: "string" } } };
+    const a = await qwen.analyser({ system: "Classe.", prompt: "p", schema });
+    assert.deepEqual(a.valeur, { priorite: "santé" });
+    assert.equal(recus.length, 2);
+    assert.match(recus[1].messages[0].content, /^Classe\.[\s\S]*objet JSON valide/);
+    assert.ok(recus[1].messages[0].content.includes(JSON.stringify(schema)));
+    // Retenu : le suivant part directement sans format imposé.
+    await qwen.analyser({ prompt: "p", schema });
+    assert.equal(recus.length, 3);
+    assert.equal(recus[2].response_format, undefined);
+  } finally {
+    relais.close();
+  }
+});
+
 test("cerveaux locaux (Hermès, Qwen) : 0 $, via la garde, JSON validé, 429 = Sparks saturées", async () => {
   let quatreCentVingtNeuf = false;
   const relais = http.createServer((req, res) => {

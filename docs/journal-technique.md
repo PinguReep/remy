@@ -4,6 +4,26 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-29 (après-midi) — Un moteur qui refuse le format imposé
+
+Le moteur qui sert DeepSeek-V4.1-Flash sur les Sparks répond **400**
+« structured output (response_format and the guided_* fields) is not supported
+by this engine yet » dès qu'on lui demande un format JSON. Tout ce qui passait
+un `schema` à `glmProvider.complete` tombait : le conseil du moment (l'iPhone
+affichait le JSON brut de l'erreur), l'analyse des captures, les rappels
+déduits, les sujets de la nuit, le résumé des conversations externes.
+
+- `formatRefuse(status, detail)` (`lib/glm.js`) reconnaît ce refus ; `complete`
+  repart **une fois** sans `response_format`, le schéma dit en clair à la fin de
+  la consigne système. Les appelants lisaient déjà le JSON avec tolérance (bloc
+  `json`, texte autour) : rien à changer chez eux.
+- Le refus est retenu **par modèle**, 6 h : les appels suivants ne repaient pas
+  l'aller-retour en 400 ; au-delà, un moteur mis à jour retrouve le format imposé.
+- Même chose pour les cerveaux déclarés à côté (`lib/cerveau.js`, Hermès, Qwen),
+  dont `analyser` reprend en plus l'objet au milieu d'un texte.
+- Les autres erreurs du modèle se lisent en clair (`detailLisible` : le
+  `error.message` d'un corps OpenAI), jamais un JSON brut sous les yeux de Sam.
+
 ## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
 
 - **Le planificateur demande chaque job à part** (`lib/planif.js`,
