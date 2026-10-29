@@ -33,6 +33,7 @@ struct LieuxVue: View {
                     }
                     .tint(Palette.signal)
                     .frame(minHeight: 60)
+                    .repere("Localisation", dans: .lieux)
                     if m.active { autorisationLigne }
                     if m.active {
                         if m.enPause, let p = m.pauseJusqua {
@@ -44,6 +45,7 @@ struct LieuxVue: View {
                             Button { Haptique.leger(); m.pause() } label: {
                                 Label("Pause 2 h", systemImage: "pause.circle").frame(minHeight: 44)
                             }
+                            .repere("Pause 2 h", dans: .lieux)
                         }
                     }
                 }
@@ -58,6 +60,7 @@ struct LieuxVue: View {
                             Label(position ? "Je cherche où tu es…" : "Nommer ce lieu", systemImage: "mappin.and.ellipse").frame(minHeight: 44)
                         }
                         .disabled(position || !m.active)
+                        .repere("Nommer ce lieu", dans: .lieux)
                     }
                     if !v.aujourdhui.isEmpty {
                         Section("Aujourd'hui") {
@@ -137,6 +140,7 @@ struct LieuxVue: View {
                         Button(role: .destructive) { effacerOuvert = true } label: {
                             Label("Effacer l'historique", systemImage: "trash").frame(minHeight: 44)
                         }
+                        .repere("Effacer l'historique", dans: .lieux)
                     }
                 } else if let e = m.erreur {
                     Section {
@@ -147,6 +151,7 @@ struct LieuxVue: View {
                     Section { Squelette(largeurs: [0.6, 0.9, 0.5]) }
                 }
             }
+            .allerAuRepere(.lieux)
             .navigationTitle("Localisation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { fermer() } } }

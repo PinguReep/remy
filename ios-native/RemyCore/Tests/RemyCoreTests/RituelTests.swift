@@ -81,10 +81,10 @@ final class RituelTests: XCTestCase {
 
     func testLeSoirNeDitPasDesChiffresDuMatin() throws {
         let r = try rituel()
-        // Relu à 8 h : « 1 fait » serait faux à 21 h 30, la notification reste générique.
-        let n = Rituel.notificationSoir(r.soir, prepareA: date("2026-10-23T06:00:00Z"), declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal)
+        // Relu à 8 h : « 1 fait » serait faux à 22 h 45, la notification reste générique.
+        let n = Rituel.notificationSoir(r.soir, prepareA: date("2026-10-23T06:00:00Z"), declenchement: date("2026-10-23T20:45:00Z"), calendrier: cal)
         XCTAssertTrue(n.corps.hasPrefix("Fait, glissé"), n.corps)
-        XCTAssertTrue(Rituel.notificationSoir(r.soir, prepareA: nil, declenchement: date("2026-10-23T19:30:00Z"), calendrier: cal).corps.hasPrefix("Fait, glissé"))
+        XCTAssertTrue(Rituel.notificationSoir(r.soir, prepareA: nil, declenchement: date("2026-10-23T20:45:00Z"), calendrier: cal).corps.hasPrefix("Fait, glissé"))
     }
 
     func testUneSourceMuetteResteDiteMemeAncienne() throws {
@@ -104,7 +104,30 @@ final class RituelTests: XCTestCase {
         // Le soir allumé aussi : le bilan de ce soir passe avant le briefing de demain.
         let deux = Rituel.prochainReveil(ReglagesRituel(matin: true, soir: true), apres: apres, calendrier: cal)
         XCTAssertEqual(deux.map { Rituel.cleJour($0, calendrier: cal) }, "2026-10-23")
-        XCTAssertEqual(deux.map { cal.component(.hour, from: $0) }, 20)
+        XCTAssertEqual(deux.map { cal.component(.hour, from: $0) }, 21, "une heure avant 22 h 45")
+        XCTAssertEqual(deux.map { cal.component(.minute, from: $0) }, 45)
+    }
+
+    /// Le bilan du soir vient avant le coucher (29/10) : 22 h 45 par défaut,
+    /// le matin reste à 7 h 30 ; une heure déjà choisie n'est jamais écrasée.
+    func testLeBilanDuSoirParDefautVientAvantLeCoucher() {
+        XCTAssertEqual(ReglagesRituel.heureSoirParDefaut, 22 * 60 + 45)
+        XCTAssertEqual(ReglagesRituel.heureMatinParDefaut, 7 * 60 + 30)
+        let d = UserDefaults(suiteName: "rituel-heure-\(UUID().uuidString)")!
+        // Jamais choisie : la nouvelle heure.
+        d.set(true, forKey: ReglagesRituel.cleSoir)
+        XCTAssertEqual(ReglagesRituel.lire(d).heureSoir, 22 * 60 + 45)
+        XCTAssertEqual(ReglagesRituel.lire(d).heureMatin, 7 * 60 + 30)
+        // Choisie, même à l'ancienne heure par défaut : gardée telle quelle.
+        d.set(21 * 60 + 30, forKey: ReglagesRituel.cleHeureSoir)
+        XCTAssertEqual(ReglagesRituel.lire(d).heureSoir, 21 * 60 + 30)
+        d.set(23 * 60, forKey: ReglagesRituel.cleHeureSoir)
+        XCTAssertEqual(ReglagesRituel.lire(d).heureSoir, 23 * 60)
+        // La notification du soir tombe à 22 h 45 tant que rien n'est choisi.
+        let apres = date("2026-10-23T12:00:00Z") // 14 h à Paris
+        let quand = Rituel.prochains(minutes: ReglagesRituel().heureSoir, apres: apres, nombre: 1, calendrier: cal).first
+        XCTAssertEqual(quand.map { cal.component(.hour, from: $0) }, 22)
+        XCTAssertEqual(quand.map { cal.component(.minute, from: $0) }, 45)
     }
 
     func testToutCeQuiResteADemainEnUneEcriture() throws {

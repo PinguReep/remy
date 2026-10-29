@@ -201,15 +201,23 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["capture-hors-ligne", "privee-iphone"])
         b.nouveautes.pageVue(b.nouveautes.affichees!.pages.count - 1)
         b.nouveautes.fermer()
+        // Puis les séries suivantes (sans capacité : la tour n'en a aucune ici),
+        // au lancement d'après, et plus rien ensuite.
         let b2 = app([], reglages: r)
         b2.nouveautes.verifier()
-        XCTAssertNil(b2.nouveautes.affichees)
+        let suivantes = Nouveautes.catalogue.filter { $0.serie > 4 && $0.capacite == nil }.map(\.id)
+        XCTAssertEqual(b2.nouveautes.affichees?.entrees.map(\.id) ?? [], suivantes)
+        b2.nouveautes.pageVue(99)
+        b2.nouveautes.fermer()
+        let b3 = app([], reglages: r)
+        b3.nouveautes.verifier()
+        XCTAssertNil(b3.nouveautes.affichees)
         // Une installation neuve n'a rien à reprendre : seule la dernière série.
         let neuve = suite()
         let c = app([], reglages: neuve)
         XCTAssertTrue(neuve.bool(forKey: "nouveautes.reprise37"))
         c.nouveautes.verifier()
-        XCTAssertEqual(c.nouveautes.affichees?.entrees.first?.id, "privee-iphone")
+        XCTAssertEqual(c.nouveautes.affichees?.entrees.first?.serie, Nouveautes.catalogue.map(\.serie).max())
     }
 
     func testRevoirDepuisLHistorique() {
@@ -244,12 +252,34 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(serie4.map(\.id), ["privee-iphone", "jauge-retour"])
         XCTAssertEqual(Nouveautes.lot(serie4).map(\.id), ["privee-iphone", "jauge-retour"])
         XCTAssertLessThanOrEqual(serie4.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app(["jauge-v1"], reglages: suite())
+        // Une mise à jour depuis la série 3 (les séries suivantes déjà vues, pour
+        // ne regarder que la 4).
+        func depuisLaSerie3() -> UserDefaults {
+            let r = suite()
+            r.set(Nouveautes.catalogue.filter { $0.serie != 4 }.map(\.id).sorted(), forKey: "nouveautes.vues")
+            r.set(true, forKey: "nouveautes.reprise37")
+            return r
+        }
+        let a = app(["jauge-v1"], reglages: depuisLaSerie3())
         a.nouveautes.verifier()
         XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["privee-iphone", "jauge-retour"])
         // Une tour sans la jauge : la conversation privée seule (elle n'a besoin de rien).
-        let b = app([], reglages: suite())
+        let b = app([], reglages: depuisLaSerie3())
         b.nouveautes.verifier()
         XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["privee-iphone"])
+    }
+
+    /// Série 5 (29/10) : la recherche dans les réglages pour tous ; le bilan à
+    /// 22 h 45 seulement si la tour a le rendez-vous quotidien.
+    func testLaSerie5() {
+        let serie5 = Nouveautes.catalogue.filter { $0.serie == 5 }.map(\.id)
+        XCTAssertTrue(serie5.contains("reglages-recherche") && serie5.contains("bilan-coucher"), "\(serie5)")
+        let a = app(["rituel-v1"], reglages: suite())
+        a.nouveautes.verifier()
+        XCTAssertTrue(Set(a.nouveautes.affichees?.entrees.map(\.id) ?? []).isSuperset(of: ["reglages-recherche", "bilan-coucher"]))
+        let b = app([], reglages: suite())
+        b.nouveautes.verifier()
+        XCTAssertFalse(b.nouveautes.affichees?.entrees.map(\.id).contains("bilan-coucher") ?? true, "sans rituel-v1 : pas de bilan")
+        XCTAssertTrue(b.nouveautes.affichees?.entrees.map(\.id).contains("reglages-recherche") == true)
     }
 }

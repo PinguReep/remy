@@ -182,6 +182,17 @@ tag) avant l'échéance.
   (Réglages › Diagnostic pour la masquer) et dit, juste sous le cadran, quand
   le résumé automatique (70 %) se fera ou s'est fait ; les tokens par seconde
   ont leur propre réglage (coupé par défaut).
+- Chercher dans les réglages (29/10) : le champ en haut de Réglages trouve
+  chaque réglage et chaque écran (Diagnostic, Rendez-vous quotidien,
+  Localisation, Activité du PC…) par son titre, son sous-titre et des
+  synonymes (« notif », « jauge », « privé », « Siri »), sans IA. Toucher un
+  résultat ouvre son écran, la ligne mise en évidence. L'index est dans le
+  cœur (`RechercheReglages.swift`) ; une ligne se déclare avec `.repere(…)`.
+  **Une nouvelle ligne de Réglages = une entrée dans l'index** : les tests du
+  cœur relisent les vues et échouent sinon. Captures : `REMY_DEMO_ECRAN=
+  reglages-recherche`, `reglages-recherche-vide`, `reglages-repere`.
+- Bilan du soir : 22 h 45 par défaut (avant le coucher), briefing à 7 h 30 ;
+  une heure déjà choisie n'est jamais remplacée.
 - Session : le cookie du serveur, gardé par le système (même mécanisme que le site).
 - Signature : automatique via la clé API. Chaque build crée un certificat de
   développement sur une machine jetable ; le workflow TestFlight révoque ces

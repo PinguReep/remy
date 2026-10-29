@@ -44,11 +44,13 @@ struct UsageVue: View {
                 Button(role: .destructive) { confirmer = true } label: {
                     Text("Remettre les compteurs à zéro").frame(minHeight: 44)
                 }
+                .repere("Remettre les compteurs à zéro", dans: .usage)
             } footer: {
                 Text("Compté sur cet iPhone seulement : un nom de fonction et un nombre par jour, jamais un texte, un titre ou un lieu. Rien ne part. Gardé 60 jours.")
             }
         }
         .font(Police.texte(15))
+        .allerAuRepere(.usage)
         .navigationTitle("Ce que tu utilises")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { resume = ResumeUsage.de(CompteursUsage.partages) }

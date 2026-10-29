@@ -99,7 +99,10 @@ public struct ReglagesRituel: Equatable, Sendable {
     /// La proposition de l'accueil (« Recevoir ton briefing chaque matin ? ») : une fois.
     public static let clePropose = "rituel.propose"
     public static let heureMatinParDefaut = 7 * 60 + 30
-    public static let heureSoirParDefaut = 21 * 60 + 30
+    /// « Plutôt vers 22 h 30, 23 h, avant que je me couche » (29/10) : 22 h 45
+    /// (21 h 30 avant). Seulement quand Sam n'a jamais choisi d'heure : une
+    /// heure choisie est gardée dans les réglages de l'iPhone et lue telle quelle.
+    public static let heureSoirParDefaut = 22 * 60 + 45
 
     public var matin: Bool
     public var heureMatin: Int
