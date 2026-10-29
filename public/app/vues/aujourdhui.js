@@ -13,11 +13,11 @@
 // toutes les 5 min quand la fenêtre est visible (jamais en boucle serrée : il
 // peut relancer le conseil réfléchi du modèle local).
 import { api, sait, evenements } from "../api.js";
-import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, quand, duree, occupe, local } from "../ui.js";
+import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, heure, jourLong, duree, occupe, local } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
-import { gerer, terminer, decaler, prolonger, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite } from "./gerer.js";
+import { gerer, terminer, decaler, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite, marquerFaite, cochees, renoncerCochee, suivreFileCochees, chargerEtiquettes, nomsEtiquettes, preparerQuestion } from "./gerer.js";
 import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
-import { BROUILLONS, titreFilJournee } from "../analyse/journee.js";
+import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, plusEnRetard } from "../analyse/journee.js";
 import { creerConseil } from "./conseil.js";
 
 let racine;
@@ -32,6 +32,7 @@ let minuteurLecture = null;
 let ctx;
 let enLecture = null;
 let conseil = null; // la carte « Conseil du moment » (vues/conseil.js)
+let desabonnerCochees = null;
 
 const zones = {};
 
@@ -62,6 +63,13 @@ export default {
     conseil = creerConseil(ctx, { journee: journeeVue, ouvrirGerer: (e) => gerer(e, gestesDe(e)), surChange: () => majModules({ seulement: "boite" }) });
     vider(zones.conseil, conseil.carte);
     evenements.addEventListener("remy:sujets", surSujets);
+    // Les tâches cochées d'ici : la journée suit leur liste (et la file d'envoi, sans réseau).
+    desabonnerCochees?.();
+    desabonnerCochees = cochees.surChangement(() => {
+      if (racine?.isConnected && donnees) redessiner();
+    });
+    suivreFileCochees({ apres });
+    if (sait("etiquettes-v1")) chargerEtiquettes().then(() => { if (racine?.isConnected && donnees) redessiner(); }).catch(() => {});
     modulesPrets = monterModules();
     await charger();
     ouvrirRoute(args);
@@ -83,6 +91,8 @@ export default {
     clearInterval(minuteurLecture);
     conseil?.arreter();
     evenements.removeEventListener("remy:sujets", surSujets);
+    desabonnerCochees?.();
+    desabonnerCochees = null;
   },
   actualiser() {
     charger({ discret: true });
@@ -237,19 +247,20 @@ function prochain(j, m) {
     if (src.motion === "erreur" || src.agenda === "erreur") return { cas: "enPanne" };
     return { cas: "aucuneSource" };
   }
-  const items = (j.items || []).filter((e) => !masquees.has(e.id));
+  const items = j.items || [];
+  // Une activité faite ne compte plus comme « en cours ».
   const enCours = items.find((e) => etat(e, m) === "encours" && !e.fait);
   if (enCours) return { cas: "enCours", e: enCours };
   const suivant = items.find((e) => etat(e, m) === "avenir");
   if (suivant) return { cas: "suivant", e: suivant };
-  const aFaire = (j.aFaire || []).filter((t) => !masquees.has(t.id));
+  const aFaire = j.aFaire || [];
   if (aFaire.length) return { cas: "aFaire", t: aFaire[0], total: aFaire.length };
   return { cas: "rien", retards: j.retard?.total || 0 };
 }
 
-/** La journée telle qu'elle s'affiche : sans les lignes retirées tout de suite (Terminer). */
+/** La journée telle qu'elle s'affiche : sans les tâches cochées d'ici ni les lignes retirées tout de suite. */
 function journeeVue() {
-  const j = donnees?.journee;
+  const j = sansCochees(donnees?.journee || null, cochees.ids());
   if (!j || !masquees.size) return j || null;
   const garder = (x) => !masquees.has(x.id);
   const retard = j.retard ? { ...j.retard, items: (j.retard.items || []).filter(garder) } : j.retard;
@@ -259,31 +270,40 @@ function journeeVue() {
 
 const pucesProjet = (p) => (p ? h("span", { class: "puce" }, h("span", { class: "point", style: { background: couleurProjet(p) } }), h("span", null, p)) : null);
 
-function retirerLigne(id) {
-  masquees.add(id);
+function redessiner() {
+  if (!racine?.isConnected) return;
   dessinerMaintenant();
   dessinerJournee();
   dessinerRetards();
   conseil?.dessiner();
+}
+function retirerLigne(id) {
+  masquees.add(id);
+  redessiner();
 }
 function remettreLigne(id) {
   masquees.delete(id);
-  dessinerMaintenant();
-  dessinerJournee();
-  dessinerRetards();
-  conseil?.dessiner();
+  redessiner();
 }
-const gestesDe = (e) => ({ apres, contexte: ctx, retirer: () => retirerLigne(e.id), remettre: () => remettreLigne(e.id) });
+/**
+ * Ce que « Gérer » et Terminer reçoivent : relire, retirer ou remettre la
+ * ligne, la journée du jour (l'effet d'une prolongation), la journée pour
+ * « Et maintenant ? » après Terminer, l'agenda branché ou pas.
+ */
+const gestesDe = (e) => ({
+  apres, contexte: ctx, retirer: () => retirerLigne(e.id), remettre: () => remettreLigne(e.id),
+  jour: journeeVue(), journee: journeeVue, systeme: donnees?.systeme || null, maj: redessiner,
+  ouvrir: (x) => gerer(x, gestesDe(x)),
+});
+/** Terminer sans proposer la suite (une tâche qui n'est pas celle du moment). */
+const sansSuite = (e) => ({ ...gestesDe(e), journee: null });
 const sansCreneau = (t, retard) => ({ ...t, type: "sans-creneau", debut: null, retard });
 
-function demanderARemy(texte) {
-  local.ecrire("remy-question", { texte, a: Date.now() });
-  ctx.aller("remy/nouvelle");
-}
+const demanderARemy = (texte) => preparerQuestion(texte, ctx);
 
 function dessinerMaintenant() {
   const m = Date.now();
-  const j = donnees?.journee;
+  const j = journeeVue();
   const p = prochain(j, m);
   const carte = h("section", { class: "carte maintenant", "aria-label": "Maintenant" });
   if (p.cas === "enCours" && p.e.type === "tache") {
@@ -294,7 +314,7 @@ function dessinerMaintenant() {
     ajouterA(carte, 
       h("div", { class: "tete" }, pucesProjet(e.projet), h("span", { class: "marque-en-cours" }, "EN COURS")),
       h("h2", null, e.titre),
-      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), `En attente${e.raison ? ` : ${e.raison}` : ""}`) : null,
+      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)) : null,
       h("div", { class: "reste", "aria-label": `${r.texteReste} ${r.unite} sur ${duree(r.total)}` },
         h("span", { class: "gros" }, r.texteReste), h("span", { class: "unite" }, r.unite), h("span", { class: "sur" }, `· sur ${duree(r.total)}`)),
       h("div", { class: "barre-temps", role: "img", "aria-label": `Temps écoulé : ${Math.round(prog * 100)} % du créneau` },
@@ -304,7 +324,7 @@ function dessinerMaintenant() {
       h("div", { class: "rangee gestes-maintenant" },
         bouton("Terminer", { classe: "plein extensible", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }),
         decalerBtn,
-        e.duree ? bouton("+15", { classe: "papier", titre: "Prolonger de 15 minutes", etiquette: "Prolonger de 15 minutes", onclick: (ev) => occupe(ev.currentTarget, () => prolonger(e, 15, { apres })) }) : null,
+        e.duree ? bouton("+15", { classe: "papier", titre: "Prolonger de 15 minutes", etiquette: "Prolonger de 15 minutes", onclick: () => gerer(e, { ...gestesDe(e), prolonger: 15 }) }) : null,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(e, gestesDe(e)) })));
   } else if (p.cas === "enCours") {
     const e = p.e;
@@ -312,7 +332,7 @@ function dessinerMaintenant() {
       h("p", { class: "detail-maintenant" }, [`Jusqu'à ${heure(finEffective(e))}`, e.lieu].filter(Boolean).join(" · ")),
       h("div", { class: "rangee gestes-maintenant" },
         estActivite(e) ? bouton("Terminer", { classe: "plein", icone: "coche", onclick: () => terminer(e, gestesDe(e)) }) : null,
-        estActivite(e) ? bouton("+15", { classe: "papier", onclick: (ev) => occupe(ev.currentTarget, () => prolonger(e, 15, { apres })) }) : null,
+        estActivite(e) && sait("agenda-gestes-v1") ? bouton("+15", { classe: "papier", titre: "Prolonger de 15 minutes", etiquette: "Prolonger de 15 minutes", onclick: () => gerer(e, { ...gestesDe(e), prolonger: 15 }) }) : null,
         bouton("Gérer", { classe: "papier", icone: "curseurs", onclick: () => gerer(e, gestesDe(e)) }),
         bouton("En parler à Rémy", { classe: "papier", icone: "remy", onclick: () => demanderARemy(e.type === "rdv" ? BROUILLONS.rendezVous(e) : BROUILLONS.tache(e.titre)) })));
   } else if (p.cas === "suivant") {
@@ -382,10 +402,10 @@ function menuDecaler(e, ancre) {
 
 // --- La journée à l'échelle ---
 function dessinerJournee() {
-  const j = donnees?.journee;
+  const j = journeeVue();
   if (!j) return vider(zones.journee);
   const m = Date.now();
-  const items = (j.items || []).filter((e) => !masquees.has(e.id) && e.debut != null);
+  const items = (j.items || []).filter((e) => e.debut != null);
   const carte = h("section", { class: "carte journee-echelle", "aria-label": "La journée" });
   ajouterA(carte, h("h2", { class: "titre-section" }, "La journée", items.length ? h("span", { class: "compte" }, String(items.length)) : null,
     h("span", { class: "fin" }, j.motion?.luA ? `Motion lu à ${heure(j.motion.luA)}` : "")));
@@ -455,22 +475,39 @@ function dessinerJournee() {
     const top = (debutVu - h0) * PX;
     const haut = Math.max(44, (finVue - debutVu) * PX - 2);
     const { col, n } = places.get(e);
-    const st = etat(e, m);
-    const bloc = h("button", {
-      type: "button",
-      class: `bloc ${e.type === "rdv" ? "rdv" : "tache"} ${st}${haut < 50 ? " court" : ""}`,
-      style: { top: `${top}px`, height: `${haut}px`, left: `calc(8px + (100% - 8px) * ${col / n})`, width: `calc((100% - 8px) / ${n} - 4px)`, "--couleur": e.type === "rdv" ? "var(--encre-2)" : couleurProjet(e.projet) },
-      title: `${e.titre} · ${heure(e.debut)} – ${heure(finEffective(e))}`,
-      onclick: () => gerer(e, gestesDe(e)),
-    },
-    h("span", { class: "t" }, e.type === "rdv" && e.avecAutres ? icone("cadenas") : null, e.titre),
-    h("span", { class: "h" }, `${heure(e.debut)} – ${heure(finEffective(e))}${e.lieu ? ` · ${e.lieu}` : ""}${e.retard ? " · en retard" : ""}`));
-    ajouterA(echelle, bloc);
+    ajouterA(echelle, blocFrise(e, { m, top, haut, col, n }));
   }
   const mn = minDe(m);
   if (mn >= h0 && mn <= h1) ajouterA(echelle, h("div", { class: "maintenant-trait", style: { top: `${(mn - h0) * PX}px` }, title: `Maintenant · ${heure(m)}` }));
   ajouterA(carte, echelle, basculeJournee ? h("div", { class: "rangee bascule-journee" }, basculeJournee) : null);
   vider(zones.journee, carte, lienOrganiser());
+}
+
+/**
+ * Un bloc de la frise : il s'ouvre dans « Gérer » ; une tâche ou une activité
+ * à soi a sa case (44 px, Espace au clavier) sans gêner ce clic ; un
+ * rendez-vous avec d'autres n'en a pas. Une activité faite est grisée.
+ */
+function blocFrise(e, { m, top, haut, col, n }) {
+  const st = etat(e, m);
+  const rdv = e.type === "rdv";
+  const detail = [`${heure(e.debut)} – ${heure(finEffective(e))}`, detailLigne(e, m, nomsEtiquettes(e.etiquettes))].filter(Boolean).join(" · ");
+  const marques = [e.retard && st !== "passe" ? "En retard" : null, e.bloquee ? marqueBloquee(e.raison) : null].filter(Boolean);
+  let caseB = null;
+  if (!rdv) {
+    caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": "false", "aria-label": `Terminer « ${e.titre} »`, title: "Terminer", onclick: (ev) => { ev.stopPropagation(); terminer(e, st === "encours" ? gestesDe(e) : sansSuite(e)); } });
+  } else if (estActivite(e) && sait("taches-etat-v2")) {
+    caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": String(Boolean(e.fait)), "aria-label": e.fait ? `« ${e.titre} » : faite` : `Marquer « ${e.titre} » comme faite`, title: e.fait ? "Pas encore terminée" : "Terminer", onclick: (ev) => { ev.stopPropagation(); marquerFaite(e, !e.fait, { maj: redessiner }); } });
+  }
+  return h("div", {
+    class: `bloc ${rdv ? "rdv" : "tache"} ${st}${haut < 50 ? " court" : ""}${e.fait ? " faite" : ""}${caseB ? " avec-case" : ""}`,
+    style: { top: `${top}px`, height: `${haut}px`, left: `calc(8px + (100% - 8px) * ${col / n})`, width: `calc((100% - 8px) / ${n} - 4px)`, "--couleur": rdv ? "var(--encre-2)" : couleurProjet(e.projet) },
+  },
+  h("button", { type: "button", class: "bloc-ouvrir", title: [e.titre, detail, ...marques].join(" · "), onclick: () => gerer(e, gestesDe(e)) },
+    h("span", { class: "t" }, rdv ? icone("cadenas") : null, h("span", { class: "tt" }, e.titre)),
+    h("span", { class: "h" }, detail),
+    marques.length && haut >= 66 ? h("span", { class: "marques" }, e.bloquee ? icone("pause") : icone("alerte"), marques.join(" · ")) : null),
+  caseB);
 }
 
 /** « Organiser ma journée avec Rémy » : le clic est le geste, la demande part dans un fil neuf (contrat C). */
@@ -484,26 +521,43 @@ function lienOrganiser() {
 // --- À faire aujourd'hui (sans créneau) et en retard ---
 function ligneTache(t, { retard = false } = {}) {
   const e = sansCreneau(t, retard);
-  const caseBtn = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": "false", "aria-label": `Terminer « ${t.titre} »`, onclick: () => terminer(e, gestesDe(e)) });
+  const caseBtn = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": "false", "aria-label": `Terminer « ${t.titre} »`, onclick: () => terminer(e, sansSuite(e)) });
+  const detail = detailTache(t, { enRetard: retard, noms: nomsEtiquettes(t.etiquettes) });
   return h("li", { class: "ligne ligne-tache", style: { "--couleur": couleurProjet(t.projet) } },
     caseBtn,
     h("span", { class: "projet-trait" }),
     h("div", { class: "corps cliquable", role: "button", tabindex: "0", onclick: () => gerer(e, gestesDe(e)), onkeydown: (ev) => { if (ev.key === "Enter") gerer(e, gestesDe(e)); } },
       h("div", { class: "titre-ligne" }, t.titre),
-      h("div", { class: "meta" },
-        t.echeance ? h("span", { class: retard ? "risque" : "" }, retard ? icone("alerte") : null, `${retard ? "était due " : "échéance "}${quand(t.echeance)}`) : null,
-        t.projet ? h("span", null, t.projet) : null,
-        t.bloquee ? h("span", null, icone("pause"), " en attente") : null)),
+      detail ? h("div", { class: `meta${retard ? " risque-texte" : ""}` }, retard ? icone("alerte") : null, h("span", null, detail)) : null,
+      t.bloquee ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(t.raison)) : null),
     bouton("", { classe: "texte", icone: "curseurs", etiquette: `Gérer « ${t.titre} »`, onclick: () => gerer(e, gestesDe(e)) }));
 }
+
+/** Une tâche cochée d'ici : barrée, avec son « Annuler » (LigneCochee). */
+function ligneCochee(c) {
+  const annuler = () => bouton("Annuler", { classe: "texte petit", etiquette: `Annuler la coche de « ${c.titre} »`, onclick: () => renoncerCochee(c.id, { apres }) });
+  let fin = null;
+  if (c.envoi === "delai") fin = annuler();
+  else if (c.envoi === "attente" || c.envoi === "tentee") fin = c.defaire ? h("span", { class: "etat-cochee" }, "sera rouverte") : [h("span", { class: "etat-cochee" }, "pas encore envoyée"), annuler()];
+  else if (c.enCours) fin = h("span", { class: "cochee-tourne", role: "status", "aria-label": `« ${c.titre} » : en cours…` });
+  else if (c.ledgerId) fin = annuler();
+  return h("li", { class: "ligne faite cochee" }, h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, c.titre)), fin);
+}
 function dessinerRetards() {
-  const j = donnees?.journee;
+  const j = journeeVue();
   if (!j) return vider(zones.retards);
-  const aFaire = (j.aFaire || []).filter((t) => !masquees.has(t.id));
-  const retards = (j.retard?.items || []).filter((t) => !masquees.has(t.id));
+  const aFaire = j.aFaire || [];
+  const retards = j.retard?.items || [];
   const blocs = [];
   if (aFaire.length) blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section" }, "À faire aujourd'hui", h("span", { class: "compte" }, String(aFaire.length)), h("span", { class: "fin aide" }, "sans créneau")), h("ul", { class: "liste" }, aFaire.map((t) => ligneTache(t)))));
-  if (retards.length) blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section", style: { color: "var(--danger)" } }, "En retard", h("span", { class: "compte" }, String(j.retard.total ?? retards.length))), h("ul", { class: "liste" }, retards.map((t) => ligneTache(t, { retard: true })))));
+  if (retards.length || j.retard?.total > 0) {
+    const autres = plusEnRetard(j.retard);
+    blocs.push(h("section", { class: "carte" }, h("h2", { class: "titre-section", style: { color: "var(--danger)" } }, "En retard", h("span", { class: "compte" }, String(j.retard.total ?? retards.length))),
+      h("ul", { class: "liste" }, retards.map((t) => ligneTache(t, { retard: true }))),
+      autres ? h("p", { class: "aide plus-en-retard" }, autres) : null));
+  }
+  const faites = cochees.liste();
+  if (faites.length) blocs.push(h("section", { class: "carte", "aria-label": "Cochées tout à l'heure" }, h("h2", { class: "titre-section" }, "Cochées tout à l'heure"), h("ul", { class: "liste" }, faites.map(ligneCochee))));
   vider(zones.retards, blocs);
 }
 
@@ -520,7 +574,8 @@ function ligneMenacee(t) {
           : bouton(t.action.libelle || "En parler à Rémy", { classe: "papier petit", icone: "remy", onclick: () => demanderARemy(BROUILLONS.menacee(t)) })) : null));
 }
 function dessinerMenacees() {
-  const liste = (donnees?.menacees || []).filter((t) => !masquees.has(t.id));
+  const faites = cochees.ids();
+  const liste = (donnees?.menacees || []).filter((t) => !masquees.has(t.id) && !faites.has(t.id));
   if (!liste.length) return vider(zones.menacees);
   const montrees = menaceesTout ? liste : liste.slice(0, 1);
   vider(zones.menacees, h("section", { class: "carte", "aria-label": "Menacées" },
