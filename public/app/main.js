@@ -8,6 +8,7 @@ import * as fileEnvoi from "./file-envoi.js";
 import * as noter from "./vues/noter.js";
 import * as palette from "./palette.js";
 
+const MODULE_NON_LUS = "./non-lus.js";
 const params = new URLSearchParams(location.search);
 export const modeNoter = params.get("fenetre") === "noter";
 
@@ -103,7 +104,9 @@ function construire() {
     h("div", { class: "rail-pied" },
       h("button", { class: "rail-recherche", type: "button", onclick: () => ouvrirPalette(), title: `Palette de commandes (${ctrl}+K)` },
         icone("recherche"), h("span", { class: "lib" }, "Chercher…"), h("span", { class: "kbd" }, `${ctrl} K`)),
-      h("div", { class: "etat-tour", id: "etat-tour" }, h("span", { class: "point" }), h("span", { class: "lib", id: "etat-tour-texte" }, "Tour en ligne"))));
+      // L'état de la tour mène à ce qui attend d'être envoyé (Réglages › Envoi en attente).
+      h("button", { class: "etat-tour", id: "etat-tour", type: "button", title: "Envoi en attente", "aria-label": libelleEtatTour("Tour en ligne"), onclick: () => aller("reglages/file") },
+        h("span", { class: "point" }), h("span", { class: "lib", id: "etat-tour-texte" }, "Tour en ligne"))));
   const onglets = h("nav", { class: "onglets", "aria-label": "Onglets" },
     ["aujourdhui", "remy", "+", "projets", "reglages"].map((id) => {
       if (id === "+") return h("button", { class: "onglet plus", type: "button", "aria-label": "Noter", onclick: () => ouvrirNoter() }, h("span", { class: "rond" }, icone("plus")));
@@ -127,16 +130,21 @@ function majNavigation(id) {
 /** Les compteurs du rail (captures en attente…). */
 export function majCompteurs() {
   const n = fileEnvoi.compte();
-  const texte = document.getElementById("etat-tour-texte");
-  if (texte && tourJoignable()) texte.textContent = n ? `${n} en attente d'envoi` : "Tour en ligne";
+  if (tourJoignable()) direEtatTour(n ? `${n} en attente d'envoi` : "Tour en ligne");
+}
+const libelleEtatTour = (texte) => `${texte}. Voir l'envoi en attente`;
+/** Le texte de l'état de la tour, et ce que le bouton dit à un lecteur d'écran. */
+function direEtatTour(texte) {
+  const t = document.getElementById("etat-tour-texte");
+  if (t) t.textContent = texte;
+  document.getElementById("etat-tour")?.setAttribute("aria-label", libelleEtatTour(texte));
 }
 
 // --- Tour injoignable ---
 let relance = null;
 function horsLigne() {
   document.getElementById("etat-tour")?.classList.add("hors-ligne");
-  const t = document.getElementById("etat-tour-texte");
-  if (t) t.textContent = "Tour injoignable";
+  direEtatTour("Tour injoignable");
   if (!bandeauReseau) return;
   const btn = bouton("Réessayer", { classe: "petit", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, verifierTour) });
   vider(bandeauReseau, icone("alerte"), h("span", null, "La tour ne répond pas."),
@@ -250,6 +258,9 @@ async function demarrerSession() {
   majCompteurs();
   fileEnvoi.vider().then(majCompteurs).catch(() => {});
   bureau.demarrer({ aller, ouvrirNoter, contexte }).catch((err) => console.warn("Pont bureau :", err));
+  // La pastille des réponses de Rémy pas encore vues (contrat F) : un module
+  // d'un autre lot, chargé par son nom (absent, rien ne change ici).
+  import(MODULE_NON_LUS).then((m) => m.demarrer?.(contexte)).catch(() => {});
 }
 
 async function ecranConnexion() {

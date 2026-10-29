@@ -462,3 +462,18 @@ export const local = {
     } catch {}
   },
 };
+
+// --- lot reglages : icônes de Réglages, de la palette et des nouveautés ---
+Object.assign(CHEMINS, {
+  calendrier: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
+  etoile: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z",
+  cpu: "M8 8h8v8H8zM5 5h14v14H5zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3",
+  lieu: "M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10zM12 8.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+  graphique: "M5 20V10M12 20V4M19 20v-7M3 20h18",
+  etincelles: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z",
+  oeil: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  oeilBarre: "M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a15 15 0 0 1-3 3.4M6.6 7.6C4.3 9.2 3 12 3 12s4 6 9 6a8.7 8.7 0 0 0 4-1M9.9 9.9a3 3 0 0 0 4.2 4.2",
+  plateau: "M4 13h4l2 3h4l2-3h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 7l3-3 3 3",
+  lien: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+});
+// --- fin lot reglages

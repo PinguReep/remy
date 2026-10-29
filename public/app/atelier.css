@@ -576,6 +576,13 @@ body.mode-noter .app { display: block; }
 .paires dt { color: var(--encre-3); }
 .paires dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 
+/* --- lot reglages : Réglages, état de la tour, nouveautés --- */
+/* L'état de la tour, en bas du rail : un bouton vers Réglages › Envoi en attente. */
+button.etat-tour { width: 100%; min-height: 44px; border: 0; background: none; border-radius: 10px; cursor: pointer; text-align: left; }
+button.etat-tour:hover { background: var(--fond-2); color: var(--encre); }
+@media (max-width: 1279px) { button.etat-tour { width: 52px; justify-content: center; padding: 0; } }
+/* --- fin lot reglages */
+
 /* ---------- Connexion ---------- */
 .connexion { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
 .connexion .carte { width: min(420px, 100%); padding: 28px; }
