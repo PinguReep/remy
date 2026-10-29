@@ -3,13 +3,17 @@
 Depuis le 29/10, la tour lit ce que tu as dit **ailleurs** — tes sessions
 Claude Code, tes fils T3 Code (ordinateur ou téléphone), ton export ChatGPT —,
 le range **chiffré** dans ton coffre, te le montre (app iPhone, site) et s'en
-inspire (modèle local seulement). Capacité : `conversations-externes-v1`
-(`GET /api/version`).
+inspire (modèle local seulement). Capacités : `conversations-externes-v1`
+(`GET /api/version`) ; `conversations-externes-v2` (soir du 29/10) : l'export
+ChatGPT pris dans Téléchargements, la carte « Exporter ChatGPT », le
+recensement des sources et le diagnostic qui dit la vraie raison d'un « rien ».
 
 ## Ce qui est garanti
 
 Prouvé par `test/conversations-externes.test.mjs`,
-`test/conversations-externes-vie-privee.test.mjs` et, rejouées contre un faux
+`test/conversations-externes-vie-privee.test.mjs`,
+`test/conversations-externes-sources.test.mjs` (règle d'exclusion, migration,
+diagnostic, T3 rangé comme un fork, Téléchargements laissé intact) et, rejouées contre un faux
 GLM, un faux Claude et un faux DuckDuckGo, les attaques de la contre-relecture
 du 29/10 (`test/attaque-fuites-conversations.test.mjs`,
 `test/conversations-externes-formats.test.mjs`).
@@ -51,7 +55,9 @@ du 29/10 (`test/attaque-fuites-conversations.test.mjs`,
 
 Ce qui reste en clair, et où : un export ChatGPT pendant le temps où il
 attend dans `Imports` (quelques minutes, jusqu'au passage suivant), puis hors
-du coffre jusqu'à son effacement.
+du coffre jusqu'à son effacement. Un export pris dans **Téléchargements** y
+reste tel que ton navigateur l'a rangé : Rémy le lit sans jamais le déplacer,
+le renommer ni l'effacer (il est à toi).
 
 Ce qui reste visible sans la clé : le nombre de conversations et de messages,
 leurs dates et tailles, des identifiants techniques (UUID), et quels messages
@@ -61,12 +67,100 @@ partagent une même empreinte de mot.
 
 | Source (`id`) | Où la tour lit | Comment |
 | --- | --- | --- |
-| `claude-code` | `%USERPROFILE%\.claude\projects\**\*.jsonl` (trouvé seul), `CLAUDE_CONFIG_DIR`, `REMY_CLAUDE_DIRS` | relecture incrémentale toutes les 30 min, la nuit et à la demande ; ton texte et celui de Claude, jamais les outils ni la réflexion ; sous-agents et `claude -p` (Rémy, titres de T3) écartés |
-| `t3` | `%USERPROFILE%\.t3\userdata\statev2.sqlite` (trouvé seul ; aussi `dev\`, et l'ancien `state.sqlite`), `T3CODE_HOME`, `REMY_T3_DIRS` | même rythme ; base ouverte en lecture seule (T3 lancé) ou « immutable » (T3 fermé : aucun fichier créé à côté) ; lue dans l'ordre d'insertion (une session importée dans T3 avec ses dates d'origine, un message daté dans le futur ne perdent rien), modifications reprises sur une fenêtre de 2 h, fil inconnu relu en entier ; fils supprimés et sous-agents écartés ; une session Claude menée depuis T3 n'apparaît qu'une fois, sous T3 (cachée côté Claude Code seulement si le fil T3 a des messages, ou si tu l'as effacé dans T3) |
-| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` — le .zip, `conversations.json`, ou le dossier d'« Extraire tout » ; les autres fichiers de l'export sont ignorés — (relu toutes les 30 min, puis sorti du coffre) ; idempotent ; conversations vocales (transcriptions) et documents Canvas gardés ; un .zip abîmé (somme de contrôle) est refusé et n'est pas relu tant qu'il ne change pas |
+| `claude-code` | `%USERPROFILE%\.claude\projects\<dossier>\<session>.jsonl` (trouvé seul : le terminal, l'app Claude de bureau, Remote Control et l'Agent SDK y écrivent tous), `CLAUDE_CONFIG_DIR`, `REMY_CLAUDE_DIRS` | relecture incrémentale toutes les 30 min, la nuit et à la demande ; ton texte et celui de Claude, jamais les outils ni la réflexion ; sous-agents (`<session>\subagents\`) jamais listés ; seuls les appels de Rémy et les `claude -p` d'un seul échange écartés (voir « La règle d'exclusion ») |
+| `t3` | `%USERPROFILE%\.t3\userdata\statev2.sqlite` (trouvé seul ; aussi `dev\`, l'ancien `state.sqlite`, et tout `statev2.sqlite` / `state.sqlite` sur 4 niveaux), `T3CODE_HOME` (`~` compris), les profils de l'app (`%APPDATA%\T3 Code (Alpha)`, `t3code-v2`, `t3code`…), `REMY_T3_DIRS` | même rythme ; base ouverte en lecture seule (T3 lancé) ou « immutable » (T3 fermé : aucun fichier créé à côté) ; lue dans l'ordre d'insertion (une session importée dans T3 avec ses dates d'origine, un message daté dans le futur ne perdent rien), modifications reprises sur une fenêtre de 2 h, fil inconnu relu en entier ; fils supprimés et sous-agents écartés ; une session Claude menée depuis T3 n'apparaît qu'une fois, sous T3 (cachée côté Claude Code seulement si le fil T3 a des messages, ou si tu l'as effacé dans T3) |
+| `chatgpt` | l'export officiel : ChatGPT › Réglages › Contrôle des données › Exporter → un .zip par mail | pris dans **Téléchargements** (voir plus bas), envoyé depuis l'app (`POST …/chatgpt`) ou déposé dans `<coffre>\Imports` — le .zip, `conversations.json`, ou le dossier d'« Extraire tout » ; les autres fichiers de l'export sont ignorés — (relu toutes les 30 min, puis sorti du coffre) ; idempotent ; conversations vocales (transcriptions) et documents Canvas gardés ; un .zip abîmé (somme de contrôle) est refusé et n'est pas relu tant qu'il ne change pas |
 
-Allumées par défaut (Claude Code, T3) ; l'import ChatGPT s'allume au premier
-envoi. Chaque source se coupe dans l'app, ou sur la tour.
+Les trois sources sont allumées par défaut ; un import en rallume une coupée.
+Chaque source se coupe dans l'app, ou sur la tour.
+
+### La règle d'exclusion (Claude Code)
+
+Une session n'est écartée que si elle n'est **pas une conversation** (en tête
+de `lib/connaissances/claudeCode.js`) :
+
+- **Rémy lui-même** : `lib/providers.js` lance le CLI dans un dossier vide à
+  lui (`<temp>\remy-claude-XXXX\vide`) ; avec un CLI récent,
+  `--no-session-persistence` n'en laisse même aucune trace. Rémy ne pose pas
+  de `CLAUDE_CODE_ENTRYPOINT` à lui : le CLI la respecte, mais l'envoie aussi
+  à Anthropic dans l'en-tête d'attribution de chaque appel, et une valeur
+  inconnue pourrait faire compter les appels de l'abonnement autrement.
+- **Un `claude -p` d'un seul échange** lancé par un autre programme :
+  entrypoint `sdk-cli` (le CLI non interactif) et au plus un message tapé
+  (titres de T3, messages de commit…), ou une session dans le dossier de
+  titres de T3 (`<temp>\t3code-claude-title-XXXX`).
+
+Tout le reste est lu, quel que soit l'entrypoint : `cli` (terminal),
+`claude-desktop` (l'app de bureau), `sdk-ts`/`sdk-py` (T3 Code, l'Agent SDK),
+`remote…`, `claude-vscode`, `local-agent`, une session sans entrypoint (CLI
+d'avant ce champ) et un `sdk-cli` de **plusieurs échanges** (Remote Control,
+un script qui reprend sa session). Une session `claude -p` qui gagne un
+deuxième échange est relue en entier. Puis `lib/connaissances/sync.js` écarte
+ce qui est hors du filtre `REMY_CONNAISSANCES_PROJETS` (un projet retiré du
+filtre sort de la base, un projet ajouté est relu), une session sans dossier,
+une session sans dialogue lisible.
+
+La règle a une version (`REGLE`) : la changer fait relire une fois, depuis le
+début, tout ce qui avait été écarté ou lu sans rien donner (ce qui laissait,
+le 29/10, des sessions « inchangées » jamais écrites : 0 conversation sur une
+tour pleine de sessions).
+
+### Le diagnostic : la vraie raison d'un « rien »
+
+Chaque lecture recense **toutes** les sessions (lues, inchangées, écartées et
+pourquoi) et toutes les bases de T3 (fils lus, hors filtre, supprimés,
+sous-agents, sans message). L'état le dit de deux façons :
+
+- `aide` (les champs de toujours, `code` / `message` / `quoiFaire`, qu'un
+  iPhone déjà installé affiche tels quels) : `introuvable` (rien sur la
+  tour), `aucune-session` (le dossier est là, vide), `ecartees` (« 2 sessions
+  trouvées, aucune gardée : 1 d'un seul échange lancée par un programme
+  (claude -p), 1 de Rémy lui-même. »), `hors-filtre` (et quoi faire :
+  retirer `REMY_CONNAISSANCES_PROJETS`), `format-inconnu` (des sessions,
+  rien de lisible), `sous-t3` (toutes menées depuis T3), `base-vide` (une
+  base de T3 trouvée, sans fil), `a-relire` (pas encore relu depuis la mise
+  à jour de Rémy) ;
+- `recensement` (nouveau), avec sa `phrase` : « 312 sessions : 280 lues, 30
+  d'un seul échange lancées par un programme (claude -p), 2 de Rémy
+  lui-même. », « 2 bases, 41 fils : 38 lus, 3 supprimés dans T3. ».
+
+« Où Rémy a cherché » (`emplacements`) nomme chaque base de T3 trouvée et sa
+sorte, et un dossier présent mais sans base. Sur la tour,
+`scripts\connaissances-etat.mjs --lire` imprime le bilan complet (fichiers
+lus, inchangés, écartés, hors filtre, à relire ; chaque base de T3 ;
+Téléchargements).
+
+### ChatGPT sans y penser : Téléchargements et la carte
+
+ChatGPT n'a pas d'API de l'historique, seulement son export par mail. Rémy ne
+pilote aucun navigateur et ne se connecte ni à ChatGPT ni à ta messagerie :
+tu demandes l'export, tu cliques le lien du mail sur l'ordinateur, le
+navigateur range le .zip dans **Téléchargements** — et Rémy l'y prend, au
+passage suivant (30 min, la nuit, ou « Lire maintenant »).
+
+- **Ce qu'il regarde** : `~\Downloads` (ou `REMY_TELECHARGEMENTS`), seulement
+  les `.zip` du premier niveau, modifiés il y a moins de 90 jours, pas plus
+  gros que `REMY_IMPORT_MAX_MO`. D'un .zip, il ne lit d'abord que l'annuaire
+  central (les noms des entrées) : un export ChatGPT a `conversations.json`
+  à sa racine ; seulement alors il l'ouvre. L'export d'un autre assistant
+  (même nom de fichier, autre forme) n'est pas compté comme un import.
+- **Ce qu'il ne fait jamais** : déplacer, renommer, effacer ou modifier un
+  fichier de Téléchargements — il est à toi, efface-le quand tu veux. Un
+  même export n'est importé qu'une fois (son empreinte, comme pour Imports) ;
+  un .zip déjà regardé n'est pas relu tant qu'il ne change pas (empreintes
+  HMAC de son chemin, de sa taille et de sa date : aucun nom de fichier
+  gardé en clair).
+- **La carte « Exporter ChatGPT »** (écran Conversations, iPhone et site) :
+  quand le dernier import a plus de 30 jours — ou jamais, la source allumée —,
+  et qu'aucun export n'attend dans Imports. « Ouvrir ChatGPT » ouvre
+  `https://chatgpt.com/#settings/DataControls` ; « Exporte tes données ;
+  quand le mail arrive, clique le lien : Rémy prend le fichier dans
+  Téléchargements. » Elle se coupe (« Ne plus me le rappeler », ou Réglages ›
+  Sources des conversations › « Me rappeler d'exporter ChatGPT ») ; la
+  surveillance aussi (« Prendre l'export dans Téléchargements », allumée par
+  défaut, son chemin affiché).
+- Effacer ChatGPT oublie aussi les .zip déjà vus : rallumée, la source
+  reprend l'export encore dans Téléchargements.
 
 ### Réglages de la tour (`remy.env`)
 
@@ -74,8 +168,9 @@ envoi. Chaque source se coupe dans l'app, ou sur la tour.
 | --- | --- |
 | `REMY_SOURCE_CLAUDE_CODE` / `REMY_SOURCE_T3` / `REMY_SOURCE_CHATGPT` | `off` coupe la source quoi que dise l'app ; `on` la force |
 | `REMY_CLAUDE_DIRS` | des dossiers `.claude` en plus, séparés par `;` (une distribution WSL : `\\wsl.localhost\Ubuntu\home\<toi>\.claude`) |
-| `REMY_T3_DIRS` | des dossiers de T3 en plus (un fork rangé ailleurs), séparés par `;` ; un dossier peut être directement celui de la base |
+| `REMY_T3_DIRS` | des dossiers de T3 en plus (un fork rangé ailleurs, T3 lancé dans WSL : `\\wsl.localhost\<distro>\home\<toi>\.t3`), séparés par `;` ; un dossier peut être directement celui de la base |
 | `REMY_IMPORTS_DIR` | le dossier surveillé des exports (défaut : `<coffre>\Imports`) |
+| `REMY_TELECHARGEMENTS` | les dossiers où le navigateur range l'export (défaut : `%USERPROFILE%\Downloads` ; plusieurs, séparés par `;`) — lecture seule ; `off` coupe la surveillance quoi que dise l'app |
 | `REMY_IMPORT_MAX_MO` | taille maximale d'un envoi (défaut 2048) |
 | `REMY_IMPORTS_GARDE_JOURS` | jours de garde d'un export importé, hors du coffre (défaut 7 ; 0 : effacé tout de suite) |
 | `REMY_GLM_LOCAL=oui` | déclare local un `REMY_GLM_URL` qui ne l'a pas l'air (nom public) ; sans lui, ni passages ni nuit hors de la machine, du réseau privé (RFC 1918, `.local`, `.lan`, un nom sans point) et du tailnet (100.64/10, `.ts.net`) |
@@ -120,7 +215,12 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
       "derniereConversation": 1793228665297,
       "bilan": { "fichiers": 50, "lus": 3, "messages": 12, "masques": 1, "erreurs": 0 },
       "erreur": null,
-      "aide": null
+      "aide": null,
+      "recensement": {
+        "sessions": 50, "gardees": 42, "vides": 0, "illisibles": 0, "erreurs": 0, "masquees": 3,
+        "ecartees": { "remy": 1, "programme": 7, "horsFiltre": 0, "sansDossier": 0 },
+        "phrase": "50 sessions : 39 lues, 3 rangées sous T3 Code, 7 d'un seul échange lancées par un programme (claude -p), 1 de Rémy lui-même."
+      }
     }
   ],
   "usage": { "chat": true, "nuit": true, "forceParLaTour": false },
@@ -130,6 +230,10 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
     "dossier": "~\\Documents\\Rémy\\Imports", "enAttente": 0, "importes": 1,
     "originaux": { "dossier": "~\\.remy\\imports-importes", "fichiers": 1, "octets": 48213, "gardeJours": 7 }
   },
+  "chatgpt": {
+    "telechargements": { "actif": true, "forceParLaTour": false, "dossiers": [{ "chemin": "~\\Downloads", "trouve": true }], "joursMax": 90 },
+    "rappel": { "actif": true, "aMontrer": false, "dernierImport": 1793235865350, "depuisJours": 4, "seuilJours": 30, "lien": "https://chatgpt.com/#settings/DataControls" }
+  },
   "total": { "conversations": 57, "messages": 1702 },
   "lectureToutesLesMin": 30
 }
@@ -138,9 +242,21 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
 - `erreur` : la dernière lecture a échoué (`{ code, message, quoiFaire }` ;
   codes : `illisible`, `occupe`, `node-ancien`, `schema-inconnu`,
   `zip-invalide`, `json-invalide`, `sans-conversations`, `cle-differente`).
-- `aide` : rien à montrer, et quoi faire (`introuvable` : la source n'est pas
-  sur la tour ; `rien-importe` : aucun export ChatGPT).
-- `bilan` : les compteurs de la dernière lecture (jamais de contenu).
+- `aide` : rien à montrer, POURQUOI, et quoi faire (`introuvable` : la
+  source n'est pas sur la tour ; `rien-importe` : aucun export ChatGPT ; et
+  les codes du diagnostic plus haut : `aucune-session`, `ecartees`,
+  `hors-filtre`, `format-inconnu`, `sous-t3`, `base-vide`, `a-relire`). Un
+  client ne s'appuie que sur `message` et `quoiFaire` : un code inconnu ne
+  change rien pour lui.
+- `bilan` : les compteurs de la dernière lecture (jamais de contenu) ; pour
+  T3, `detail` donne chaque base (chemin, fils, gardés, hors filtre…) ; pour
+  ChatGPT, `telechargements` (dossiers, .zip vus, exports, importés, déjà
+  vus, autres, trop vieux, trop gros, illisibles).
+- `recensement` : toutes les sessions (Claude Code) ou tous les fils (T3) vus
+  à la dernière lecture, et `phrase`, à montrer telle quelle (`null` : rien
+  lu encore, ou tour plus ancienne).
+- `chatgpt` : Téléchargements surveillé (`forceParLaTour` :
+  `REMY_TELECHARGEMENTS=off`) et la carte (`rappel.aMontrer`).
 - `cle.origine` : `fichier`, `remy.env` ou `a-creer` (rien lu encore).
 - `imports.enAttente` : les exports déposés pas encore importés (un .zip, un
   `conversations*.json`, un dossier qui en contient) ; `imports.originaux` :
@@ -251,8 +367,8 @@ des 7 derniers jours) : des **propositions**, rien n'est fait seul.
 
 | Route | Corps | Réponse |
 | --- | --- | --- |
-| `POST /api/conversations-externes/synchroniser` | `{}` ou `{ "source": "t3" }` | `{ bilan: { ok, sources: { <id>: { ok, …compteurs } \| { ok: false, erreur } } }, etat }` ; 409 `source-coupee` |
-| `PUT /api/conversations-externes/sources/:id` | `{ "actif": true }` | l'état |
+| `POST /api/conversations-externes/synchroniser` | `{}` ou `{ "source": "t3" }` (`chatgpt` : Imports et Téléchargements) | `{ bilan: { ok, sources: { <id>: { ok, …compteurs } \| { ok: false, erreur } } }, etat }` ; 409 `source-coupee` |
+| `PUT /api/conversations-externes/sources/:id` | `{ "actif": true }` ; pour `chatgpt`, aussi `{ "telechargements": false }`, `{ "rappel": false }` | l'état ; 400 sans aucun de ces booléens |
 | `DELETE /api/conversations-externes/sources/:id` | — | `{ ok, message, etat }` : tout ce qui vient de la source est effacé (et les résumés de nuit qui s'en servaient), la source coupée ; l'original n'est pas touché |
 | `DELETE /api/conversations-externes/tout` | — | `{ ok, message, etat }` : tout effacé (clé changée) |
 | `PUT /api/conversations-externes/usage` | `{ "chat": false }`, `{ "nuit": true }` | l'état |
@@ -290,7 +406,11 @@ site : Conversations › Sources, ou Réglages › Sources des conversations) ;
 
 `#/conversations` (et `#/conversations/<source>/<id>[/<message>]` pour ouvrir
 une conversation au message trouvé) : la même chose que l'écran de l'iPhone,
-avec les mêmes phrases. Les chemins de ce contrat et ces phrases vivent dans
+avec les mêmes phrases — la carte « Exporter ChatGPT » sous l'état, le
+recensement sous chaque source, les réglages de Téléchargements et du rappel
+dans la source ChatGPT (feuille « Sources » et Réglages › Sources des
+conversations ; dans l'app de bureau, « Ouvrir ChatGPT » ouvre le navigateur
+par défaut). Les chemins de ce contrat et ces phrases vivent dans
 `public/app/analyse/conversations.js` ; `test/site-conversations.test.mjs` les
 joue contre les vraies routes, sur les conversations fictives des trois
 sources. L'export ChatGPT part en corps brut (XHR, pour suivre l'envoi).
