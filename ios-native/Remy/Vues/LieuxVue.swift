@@ -41,6 +41,8 @@ struct LieuxVue: View {
                                 Label("En pause jusqu'à \(Format.heure(p)) — reprendre", systemImage: "play.circle")
                                     .frame(minHeight: 44)
                             }
+                            // La même ligne, en pause : la recherche de « pause » y mène aussi.
+                            .repere("Pause 2 h", dans: .lieux)
                         } else {
                             Button { Haptique.leger(); m.pause() } label: {
                                 Label("Pause 2 h", systemImage: "pause.circle").frame(minHeight: 44)
