@@ -162,6 +162,13 @@ struct ResultatsReglagesVue: View {
         }
         .scrollDismissesKeyboard(.immediately)
         .background(Palette.fond)
+        // VoiceOver : combien de réglages, une fois la frappe posée.
+        .task(id: resultats.requete) {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard !Task.isCancelled, UIAccessibility.isVoiceOverRunning,
+                  let annonce = resultats.enTete ?? resultats.titreVide else { return }
+            UIAccessibility.post(notification: .announcement, argument: annonce)
+        }
     }
 
     private func ligne(_ e: EntreeReglage) -> some View {

@@ -89,6 +89,12 @@ final class RechercheReglagesTests: XCTestCase {
         XCTAssertEqual(ids("iPhone perdu").first, "appareils")
         XCTAssertEqual(ids("tutoriel").first, "nouveautes")
         XCTAssertEqual(ids("micro").first, "iphone")
+        XCTAssertEqual(ids("partager").first, "partage")
+        XCTAssertEqual(ids("conversation privée").first, "conversation-privee")
+        XCTAssertEqual(ids("bug").first, "diagnostic")
+        XCTAssertEqual(ids("code d'erreur").first, "diagnostic")
+        XCTAssertEqual(Set(ids("alarme").prefix(2)), ["rituel.matin", "rituel.soir"])
+        XCTAssertEqual(ids("batterie").first, "lieux")
     }
 
     func testPlusieursMotsEtMotsVides() {

@@ -152,6 +152,8 @@ struct LieuxVue: View {
                 }
             }
             .allerAuRepere(.lieux)
+            // Ce qu'un résultat de recherche dit en y menant (« Allume d'abord… »).
+            .overlay(alignment: .bottom) { ToastView(marge: 24, annoncer: false) }
             .navigationTitle("Localisation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { fermer() } } }
