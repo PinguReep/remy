@@ -382,3 +382,34 @@ test("le site : la vue, Réglages et Ctrl+K passent par ces chemins et ces phras
   const palette = fs.readFileSync(new URL("../public/app/palette.js", import.meta.url), "utf8");
   assert.match(palette, /indexVisible/, "Ctrl+K ne propose pas une section cachée");
 });
+
+test("Réglages et Ctrl+K : les deux réglages de l'export ChatGPT se trouvent, sur une tour qui les connaît (comme l'iPhone)", async () => {
+  // Contre-relecture du 30/10 : « téléchargements » ne trouvait rien, « rappel »
+  // seulement les notifications. Les libellés et les mots de RechercheReglages.swift.
+  globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} };
+  const { indexVisible } = await import("../public/app/vues/reglages.js");
+  const { chargerVersion } = await import("../public/app/api.js");
+  // Ce que fait la recherche des Réglages (et Ctrl+K, sur les mêmes entrées).
+  const trouver = (q) => indexVisible().filter(([, lib, mots]) => `${lib} ${mots}`.toLowerCase().includes(q)).map(([, lib]) => lib);
+  const vraiFetch = globalThis.fetch;
+  const tour = (capacites) => {
+    globalThis.fetch = async () => new Response(JSON.stringify({ version: "0.0.0", capacites }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return chargerVersion();
+  };
+  try {
+    await tour(["conversations-externes-v1"]);
+    assert.deepEqual(trouver("téléchargements"), [], "une tour qui ne surveille pas Téléchargements : rien");
+    assert.ok(!trouver("rappel").includes("Me rappeler d'exporter ChatGPT"));
+    await tour(["conversations-externes-v1", "conversations-externes-v2"]);
+    assert.deepEqual(trouver("téléchargements"), ["Prendre l'export dans Téléchargements"]);
+    assert.deepEqual(trouver("downloads"), ["Prendre l'export dans Téléchargements"]);
+    assert.ok(trouver("rappel").includes("Me rappeler d'exporter ChatGPT"), trouver("rappel").join(" | "));
+    assert.ok(trouver("30 jours").includes("Me rappeler d'exporter ChatGPT"));
+    assert.ok(trouver("chatgpt").includes("Prendre l'export dans Téléchargements"));
+    for (const [section] of indexVisible().filter(([, lib]) => /Téléchargements|exporter ChatGPT/.test(lib))) assert.equal(section, "conversations");
+    await tour([]);
+    assert.deepEqual(trouver("chatgpt"), [], "sans conversations externes : toute la section se cache");
+  } finally {
+    globalThis.fetch = vraiFetch;
+  }
+});

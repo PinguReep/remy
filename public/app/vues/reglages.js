@@ -16,7 +16,11 @@ let section = "ordinateur";
 let refs = {};
 let recherche = "";
 
-/** L'index des réglages : section, libellé, mots-clés (pour la recherche et Ctrl+K). */
+/**
+ * L'index des réglages : section, libellé, mots-clés (pour la recherche et
+ * Ctrl+K), et la capacité de la tour qui porte le réglage s'il en faut une.
+ * Les libellés et les mots sont ceux de l'iPhone (RechercheReglages.swift).
+ */
 export const INDEX = [
   ["ordinateur", "Raccourci global « Noter »", "raccourci clavier ctrl alt espace global noter"],
   ["ordinateur", "Démarrer avec Windows", "démarrage session ouverture automatique"],
@@ -42,6 +46,8 @@ export const INDEX = [
   ["activite", "Activité du PC", "activité pc activitywatch temps écran"],
   ["conversations", "Sources des conversations", "conversations sources chatgpt openai claude code t3 import importer export zip historique effacer"],
   ["conversations", "Importer un export ChatGPT", "chatgpt openai import importer export zip conversations.json"],
+  ["conversations", "Prendre l'export dans Téléchargements", "téléchargements downloads export exporter chatgpt openai zip automatique dossier mail lien", "conversations-externes-v2"],
+  ["conversations", "Me rappeler d'exporter ChatGPT", "rappel rappeler export exporter chatgpt openai carte mois 30 jours", "conversations-externes-v2"],
   ["regles", "Règles de Rémy", "règles avant tâches conditionnelles"],
   ["file", "Envoi en attente", "file attente hors ligne envoi captures"],
   ["diagnostic", "Diagnostic et incidents", "diagnostic incidents version erreurs copier"],
@@ -74,7 +80,7 @@ const CAPACITE_SECTION = { conversations: "conversations-externes-v1" };
 const sectionVisible = (id) => !CAPACITE_SECTION[id] || sait(CAPACITE_SECTION[id]);
 const sectionsVisibles = () => SECTIONS.filter(([id]) => sectionVisible(id));
 /** L'index sans ce que la tour ne propose pas (la recherche, et Ctrl+K). */
-export const indexVisible = () => INDEX.filter(([s]) => sectionVisible(s));
+export const indexVisible = () => INDEX.filter(([s, , , capacite]) => sectionVisible(s) && (!capacite || sait(capacite)));
 
 export default {
   async monter(el, args, contexte) {
