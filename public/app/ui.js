@@ -126,6 +126,9 @@ export async function occupe(btn, faire) {
 }
 
 // --- lot boite : icônes de la boîte, du briefing et d'« À trancher » ---
+// Le plateau de l'iPhone en quatre noms : plateau (tray), plateauPlein
+// (tray.full), plateauEnvoi (tray.and.arrow.up, ce qui attend d'être envoyé),
+// plateauRanger (tray.and.arrow.down, ranger, une idée).
 Object.assign(CHEMINS, {
   plateau: "M3 13h5l1.5 3h5l1.5-3h5M3 13l3-8h12l3 8v6H3z",
   plateauPlein: "M3 13h5l1.5 3h5l1.5-3h5M3 13l3-8h12l3 8v6H3zM8.5 8h7M7.5 10.5h9",
@@ -227,7 +230,6 @@ Object.assign(CHEMINS, {
   etoile: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z",
   frise: "M6 3v18M10 5h9v4h-9zM10 13h6v4h-6z",
   etiquette: "M3 12V4h8l9 9-8 8zM7.5 8h.01",
-  plateau: "M4 14h4l1.5 3h5l1.5-3h4v6H4zM12 3v9M8 7l4-4 4 4",
   agenda: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
   deplacer: "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
   arriere: "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
@@ -258,7 +260,6 @@ Object.assign(CHEMINS, {
   "haut-gauche": "M17 17 7 7M7 15V7h8",
   "point-plein": "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   diagnostic: "M6 3v6a4 4 0 0 0 8 0V3M10 13v2a5 5 0 0 0 10 0v-3M20 9a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z",
-  plateau: "M4 13h4l1.5 3h5l1.5-3h4M4 13l2-8h12l2 8v6H4z",
   branche: "M7 4v16M7 12c6 0 10-3 10-8M14 4h3v3",
   "puce-calcul": "M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4",
   cerveau: "M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V6a2 2 0 0 0-3-2zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1",
@@ -352,16 +353,13 @@ export function demanderTexte(titre, { valeur = "", libelle = "Enregistrer", eti
 // --- lot noter : icônes (Noter, propositions, voix) ---
 Object.assign(CHEMINS, {
   etincelles: "M11 3l1.7 4.6L17.3 9.3l-4.6 1.7L11 15.6l-1.7-4.6L4.7 9.3l4.6-1.7zM18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z",
-  etiquette: "M3 4h8l10 10-7 7L4 11zM7.5 8h.01",
-  plateau: "M4 13h4l1.5 3h5L16 13h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 8.5l3 3 3-3",
+  plateauRanger: "M4 13h4l1.5 3h5L16 13h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 8.5l3 3 3-3",
   panier: "M3 4h2.2l2.3 11h10.8L20.5 7H6.4M9 20h.01M17 20h.01",
-  sablier: "M7 3h10M7 21h10M8 3c0 5 8 5.5 8 9s-8 4-8 9M16 3c0 5-8 5.5-8 9s8 4 8 9",
   note: "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5",
   calendrier: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
   reglage: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
   embranchement: "M6 3v18M6 9c0 4 3 6 7 6h1M18 13a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
   onde: "M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2",
-  telephone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z",
   raccrocher: "M3 14.5c5-4.7 13-4.7 18 0l-2.2 3.2-3.8-1.4v-2.8a12 12 0 0 0-6 0v2.8l-3.8 1.4z",
 });
 // --- fin lot noter
@@ -412,17 +410,12 @@ export const depuisChampDate = (v) => (v ? new Date(v) : null);
 
 // --- lot projets : icônes du carnet (rappels, listes, dossiers, historique) ---
 Object.assign(CHEMINS, {
-  agenda: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
-  etiquette: "M3 12V4h8l10 10-8 8zM7.5 7.5h.01",
   entonnoir: "M3 5h18l-7 8v6l-4 2v-8z",
-  plateau: "M3 14h5l1.5 2.5h5L16 14h5M3 14l2.5-9h13l2.5 9v6H3zM8 8.5h8M7 11h10",
   points: "M5 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0zM10.8 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0zM16.6 12a1.2 1.2 0 1 0 2.4 0 1.2 1.2 0 1 0-2.4 0z",
-  moins: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 12h8",
   grille: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   pile: "M8 9h12v11H8zM6 6h12M4 3h12",
   blocnotes: "M6 3h9l4 4v14H6zM9 9h7M9 13h7M9 17h4",
   personne: "M3 5h18v14H3zM8.5 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5.5 16.5a3 3 0 0 1 6 0M14 9h4M14 13h4",
-  chariot: "M3 4h2l2.5 11h10L20 7H6.5M9 19a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0-2.6 0zM15.5 19a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0-2.6 0z",
   trousse: "M4 8h16v12H4zM9 8V5h6v3M12 11v6M9 14h6",
   cadeau: "M4 9h16v4H4zM5 13h14v8H5zM12 9v12M12 9c-1.5-4-6-4-5-1s5 1 5 1M12 9c1.5-4 6-4 5-1s-5 1-5 1",
   livre: "M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2zM4 20a2 2 0 0 1 2-2h13v3H6a2 2 0 0 1-2-1",
@@ -560,15 +553,12 @@ export const local = {
 
 // --- lot reglages : icônes de Réglages, de la palette et des nouveautés ---
 Object.assign(CHEMINS, {
-  calendrier: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
-  etoile: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z",
   cpu: "M8 8h8v8H8zM5 5h14v14H5zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3",
   lieu: "M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10zM12 8.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
   graphique: "M5 20V10M12 20V4M19 20v-7M3 20h18",
-  etincelles: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z",
   oeil: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
   oeilBarre: "M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a15 15 0 0 1-3 3.4M6.6 7.6C4.3 9.2 3 12 3 12s4 6 9 6a8.7 8.7 0 0 0 4-1M9.9 9.9a3 3 0 0 0 4.2 4.2",
-  plateau: "M4 13h4l2 3h4l2-3h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 7l3-3 3 3",
+  plateauEnvoi: "M4 13h4l2 3h4l2-3h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 7l3-3 3 3",
   lien: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 });
 // --- fin lot reglages

@@ -255,7 +255,7 @@ export function phraseSession(s, e) {
 // --- La barre d'étapes (BarreEtapes, EtapeReponse) ---
 
 /** L'icône de chaque étape (clés de lib/chat.js). */
-export const ICONES_ETAPE = { contexte: "plateau", choix: "branche", modele: "puce-calcul", reflexion: "cerveau", motion: "liste", web: "globe", navigateur: "boussole", proposition: "calendrier-plus", budget: "sablier", secours: "alerte", ecrit: "crayon" };
+export const ICONES_ETAPE = { contexte: "plateauPlein", choix: "branche", modele: "puce-calcul", reflexion: "cerveau", motion: "liste", web: "globe", navigateur: "boussole", proposition: "calendrier-plus", budget: "sablier", secours: "alerte", ecrit: "crayon" };
 export const iconeEtape = (cle) => (cle == null ? "horloge" : ICONES_ETAPE[cle] || "horloge");
 
 /** Ajoute une étape, ou met à jour la dernière si c'est la même (la réflexion envoie un nouvel extrait). */

@@ -40,7 +40,7 @@ export function monter(racine, { surConnecte }) {
   },
   h("label", { class: "etiquette-champ", for: "mot-de-passe" }, "Mot de passe"),
   champ, erreur, envoyer,
-  phraseFile(fileEnvoi.compte()) ? h("p", { class: "aide connexion-file" }, icone("plateau"), h("span", null, phraseFile(fileEnvoi.compte()))) : null);
+  phraseFile(fileEnvoi.compte()) ? h("p", { class: "aide connexion-file" }, icone("plateauEnvoi"), h("span", null, phraseFile(fileEnvoi.compte()))) : null);
   vider(racine, h("div", { class: "carte" },
     h("span", { class: "marque-r", "aria-hidden": "true", style: { width: "44px", height: "44px", fontSize: "24px", borderRadius: "13px" } }, "R"),
     h("h1", null, "Bonjour"),

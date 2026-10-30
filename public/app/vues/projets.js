@@ -803,7 +803,7 @@ function detailRappels(id) {
   const menu = () => [
     { libelle: "Nouveau rappel", icone: "plus", faire: nouveau },
     capable ? { libelle: filtreActif.size ? `Filtré (${filtreActif.size})…` : "Filtrer…", icone: "entonnoir", faire: () => ouvrirFiltreRappels({ surChangement: () => dessinerDetail() }) } : null,
-    capable ? { libelle: "Organiser mes rappels…", icone: "plateau", faire: ouvrirTriRappels } : null,
+    capable ? { libelle: "Organiser mes rappels…", icone: "plateauPlein", faire: ouvrirTriRappels } : null,
   ];
   const plus = bouton("", { classe: "texte icone", icone: "points", etiquette: "Ajouter, filtrer, organiser", titre: "Ajouter, filtrer, organiser" });
   plus.addEventListener("click", () => ouvrirMenu(plus, menu(), { titre: "Rappels" }));

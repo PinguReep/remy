@@ -43,7 +43,7 @@ export const ACTIONS = {
   question: "Ouvrir chez Rémy",
   projet: "Créer le dossier",
 };
-const ICONES = { tache: "coche", idee: "plateau", liste: "panier", rappel: "cloche", retenir: "ampoule", question: "remy", projet: "dossier" };
+const ICONES = { tache: "coche", idee: "plateauRanger", liste: "panier", rappel: "cloche", retenir: "ampoule", question: "remy", projet: "dossier" };
 const ICONES_NATURE = { tache: "coche", rappel: "cloche", contrainte: "sablier", liste: "panier", note: "note", "rendez-vous": "calendrier", projet: "dossier" };
 
 // Ce que la tour sait déjà (listes, dossiers, projets, étiquettes, agenda,
@@ -361,7 +361,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     if (!brut.trim()) return;
     // La tour ne répond pas : dit avant d'envoyer (le bandeau réseau est derrière la feuille).
     if (a.genre !== "question" && !tourJoignable()) {
-      ajouterA(vueApercu, h("p", { class: "noter-attendra" }, icone("plateau"), h("span", null, "La tour est injoignable : ce sera gardé sur ce PC et envoyé dès qu'elle répond.")));
+      ajouterA(vueApercu, h("p", { class: "noter-attendra" }, icone("plateauEnvoi"), h("span", null, "La tour est injoignable : ce sera gardé sur ce PC et envoyé dès qu'elle répond.")));
     }
     if (sait("analyse-capture-v1") && plusieursIntentions(brut)) {
       const plusieurs = h("button", { type: "button", class: "noter-plusieurs", disabled: analyseEnCours, "aria-busy": analyseEnCours ? "true" : null, onclick: () => analyser(brut) },
@@ -442,7 +442,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     const liste = h("ul", { class: "noter-recap-liste" });
     const bilanLigne = h("div", { class: "noter-fait erreur", role: "alert", hidden: true });
     const attente = h("p", { class: "noter-attente", hidden: true });
-    const ranger = bouton(R.libelleRanger(0), { classe: "plein", icone: "plateau" });
+    const ranger = bouton(R.libelleRanger(0), { classe: "plein", icone: "plateauRanger" });
     const retour = bouton("Retour", { classe: "texte", icone: "retour", titre: "Revenir au texte (il est intact)" });
     retour.addEventListener("click", () => cacherRecap());
     const fermerBtn = fermer ? bouton("Fermer", { classe: "texte", icone: "fermer" }) : null;

@@ -304,7 +304,7 @@ export function boutonFiltre({ surChangement } = {}) {
 /** La ligne « Rappels à traiter » et sa pastille rouge (LigneTriRappels). */
 export function ligneTriRappels(nombre, { ouvrir }) {
   return h("button", { type: "button", class: "rappels-a-traiter", "aria-label": `Rappels à traiter, ${nombre}`, onclick: ouvrir },
-    h("span", { class: "boite-icone" }, icone("plateau")),
+    h("span", { class: "boite-icone" }, icone("plateauPlein")),
     h("span", { class: "textes" }, h("strong", null, "Rappels à traiter"), h("span", null, "Une date et une catégorie pour chacun")),
     h("span", { class: "rappels-pastille", "aria-hidden": "true" }, String(nombre)),
     icone("chevron"));

@@ -73,7 +73,7 @@ export const CATALOGUE = [
     p("graphique", "Ce que tu utilises vraiment", "Réglages › Ce que tu utilises vraiment : les gestes que tu fais le plus, et ceux que tu ne touches jamais. Compté sur cet ordinateur, sans aucun contenu, et rien ne part."),
   ]),
   n("capture-hors-ligne", 3, "25 oct.", "Noté sans réseau, envoyé ensuite", null, [
-    p("plateau", "Rien ne se perd", "Tour injoignable : une tâche, une idée, « Retenir » ou un dossier noté avec « Noter » attend sur cet ordinateur, et part dès que Rémy répond. Une seule fois : jamais deux tâches dans Motion."),
+    p("plateauEnvoi", "Rien ne se perd", "Tour injoignable : une tâche, une idée, « Retenir » ou un dossier noté avec « Noter » attend sur cet ordinateur, et part dès que Rémy répond. Une seule fois : jamais deux tâches dans Motion."),
     p("liste", "« En attente d'envoi »", "En bas du rail, l'état de la tour : clique-le pour voir ce qui attend, l'envoyer tout de suite ou le retirer. Un refus de Motion y reste, avec sa raison."),
     p("calendrier", "Des échéances comprises", "« cette semaine » : jusqu'à dimanche soir. « fin octobre » : le 31. « avant mardi » : la veille au soir. Un flou comme « mi-novembre » reste dans le titre."),
   ]),

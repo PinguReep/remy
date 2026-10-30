@@ -289,7 +289,7 @@ function dessinerEtat() {
   const captures = phraseCaptures(file);
   if (captures) {
     lignes.push(h("button", { type: "button", class: "bandeau-motion etat-ligne etat-captures", "aria-label": `${captures.texte}. Ouvre la liste de ce qui attend Rémy.`, onclick: () => ctx.aller("reglages/file") },
-      icone(captures.aRevoir ? "alerte" : "plateau", captures.aRevoir ? "danger" : "signal"), h("span", { class: "msg" }, captures.texte),
+      icone(captures.aRevoir ? "alerte" : "plateauEnvoi", captures.aRevoir ? "danger" : "signal"), h("span", { class: "msg" }, captures.texte),
       h("span", { class: "voir" }, "Voir"), icone("chevron")));
   }
   const j = donnees?.journee;
