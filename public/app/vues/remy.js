@@ -636,6 +636,15 @@ async function recharger(id, { fond = false } = {}) {
 
 // --- Ce que les autres vues envoient à Rémy (contrat C) ---
 function consommerEntrees(cible) {
+  // « Appeler Rémy » (Ctrl+K) : l'appel s'ouvre sur la conversation neuve (le choix est le geste).
+  const appel = local.lire("remy-appeler", null);
+  if (appel != null) {
+    local.effacer("remy-appeler");
+    if (cible === "nouvelle" && Date.now() - Number(appel) < 30e3) {
+      appeler();
+      return;
+    }
+  }
   const e = local.lire("remy-envoi", null);
   if (e && (e.conv ? e.conv === cible : cible === "nouvelle")) {
     local.effacer("remy-envoi");

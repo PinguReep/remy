@@ -232,3 +232,47 @@ test("l'index et l'écran s'accordent : chaque ancre est repérée dans vues/reg
   const palette = fs.readFileSync(new URL("../public/app/palette.js", import.meta.url), "utf8");
   assert.match(palette, /indexVisible|rechercherReglages/);
 });
+
+test("RÉGRESSION : « appel » et « onboarding » ne mènent plus à l'interface classique (l'appel et Faire connaissance sont dans le site)", () => {
+  for (const q of ["appel", "mode appel", "onboarding"]) assert.ok(!ids(q).includes("avance.classique"), `${q} : ${ids(q).join()}`);
+  assert.ok(ids("classique").includes("avance.classique"), "l'interface classique se trouve encore par son nom");
+  const vue = fs.readFileSync(new URL("../public/app/vues/reglages.js", import.meta.url), "utf8");
+  assert.doesNotMatch(vue, /Le mode appel, l'onboarding guidé/, "Réglages › Avancé ne renvoie plus l'appel vers l'ancienne page");
+});
+
+test("RÉGRESSION : Ctrl+K trouve les gestes qui ont une adresse (historique, catégories, tri des rappels, retards, appel, Faire connaissance)", async () => {
+  const P = await import("../public/app/palette.js");
+  const allees = [];
+  const contexte = { aller: (r) => allees.push(r), noter: () => {} };
+  const vues = [{ id: "aujourdhui", titre: "Aujourd'hui", icone: "aujourdhui" }, { id: "projets", titre: "Projets", icone: "projets" }];
+  const capacites = new Set(["historique-v2", "a-trancher-v1", "rituel-v1", "semaine-v1"]);
+  const base = P.lignesDeBase({ contexte, vues, sait: (c) => capacites.has(c) });
+  const premier = (q) => P.filtrer(base, q)[0]?.titre ?? null;
+  const titres = (q) => P.filtrer(base, q).map((e) => e.titre);
+  assert.equal(premier("historique"), "Historique des actions");
+  assert.ok(titres("annuler").includes("Historique des actions"));
+  assert.ok(titres("catégories").includes("Catégories"));
+  assert.ok(titres("categories").includes("Catégories"), "sans accent");
+  assert.ok(titres("rappels à traiter").includes("Trier les rappels"));
+  for (const q of ["retard", "en retard"]) assert.ok(titres(q).includes("Retards au retour"), q);
+  for (const q of ["appel", "mode appel"]) assert.equal(premier(q), "Appeler Rémy", q);
+  assert.ok(!titres("appel").includes("Interface classique"));
+  assert.equal(premier("onboarding"), "Faire connaissance");
+  // Chaque ligne mène à son adresse.
+  const lancer = (titre) => base.find((e) => e.titre === titre).faire();
+  lancer("Historique des actions");
+  lancer("Catégories");
+  lancer("Trier les rappels");
+  lancer("Retards au retour");
+  lancer("Faire connaissance");
+  assert.deepEqual(allees, ["projets/historique", "projets/categories", "projets/rappels/tri", "aujourdhui/retards", "aujourdhui/connaissance"]);
+  // Une tour sans historique ni « À trancher » : pas de ligne qui mène à un écran vide.
+  const ancienne = P.lignesDeBase({ contexte, vues, sait: () => false }).map((e) => e.titre);
+  assert.ok(!ancienne.includes("Historique des actions") && !ancienne.includes("Retards au retour"));
+  // Sans rien tapé : seulement les vues et les actions.
+  assert.ok(P.filtrer(base, "").every((e) => e.groupe === "Aller à" || e.groupe === "Actions"));
+  // Les conversations, listes et dossiers lus à l'ouverture ont encore leur « aller » (ReferenceError sinon).
+  const source = fs.readFileSync(new URL("../public/app/palette.js", import.meta.url), "utf8");
+  const corps = source.slice(source.indexOf("export async function ouvrir"), source.indexOf("\n}\n", source.indexOf("export async function ouvrir")));
+  assert.ok(!/faire: aller\(/.test(corps) || /const aller = /.test(corps), "ouvrir() se sert d'aller() sans le définir");
+});

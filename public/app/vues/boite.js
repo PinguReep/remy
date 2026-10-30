@@ -81,6 +81,13 @@ export function creerBoite(ctx, { relire } = {}) {
   let lectureTableau = null; // relecture du tableau demandée à l'ouverture de la feuille
   let tableauIllisible = false;
 
+  // L'Historique des actions (Projets › Historique), là où chaque écriture s'annule.
+  const historiqueConnu = () => sait("historique-v1") || sait("historique-v2");
+  const voirHistorique = () => (historiqueConnu() ? { libelle: "Historique", faire: () => {
+    ouverte?.f.fermer();
+    ctx.aller("projets/historique");
+  } } : null);
+
   const ic = h("span", { class: "boite-ic" }, icone("plateau"));
   const pastille = h("span", { class: "pastille-compte boite-pastille", "aria-hidden": "true", hidden: true }, "0");
   const btn = h("button", { type: "button", class: "btn papier icone boite-bouton", onclick: () => ouvrir("boite") }, ic, pastille);
@@ -445,7 +452,8 @@ export function creerBoite(ctx, { relire } = {}) {
         bloc("Fait", "coche", (soir.fait || []).map((x) => (typeof x === "string" ? x : x?.titre)).filter(Boolean), "Rien coché dans Rémy aujourd'hui. Ce que tu as coché dans Motion n'apparaît pas ici."),
         bloc("A glissé", "retour", (soir.glisse || []).map((x) => x.titre), "Rien n'a glissé de son créneau."),
         bloc("Reste pour aujourd'hui", "plateau", reste.map((x) => x.titre), R.videReste(bilan.poussees)),
-        pousser ? h("div", { class: "boite-pousser" }, pousser, h("p", { class: "aide" }, "Une seule écriture dans Motion, même heure demain. Annulable depuis le bandeau ou l'Historique.")) : null);
+        pousser ? h("div", { class: "boite-pousser" }, pousser, h("p", { class: "aide" }, "Une seule écriture dans Motion, même heure demain. Annulable depuis le bandeau ou l'",
+          historiqueConnu() ? h("a", { href: "#/projets/historique", onclick: () => ouverte?.f.fermer() }, "Historique") : "Historique", ".")) : null);
     }
     const ranger = avecCle(bouton(range ? "Rangé pour la nuit" : bilan.envoi ? "Envoi…" : "Ranger pour la nuit", { classe: "papier", icone: range ? "coche" : "lune" }), "ranger");
     ranger.disabled = range || bilan.envoi;
@@ -509,7 +517,7 @@ export function creerBoite(ctx, { relire } = {}) {
   async function annulerPoussee(ledgerId) {
     try {
       const r = await ecrire("/api/motion/undo", { id: ledgerId }, { delai: 150000 });
-      if (r?.ok === false) dire("Impossible de tout remettre à aujourd'hui : regarde l'Historique.", { genre: "erreur" });
+      if (r?.ok === false) dire("Impossible de tout remettre à aujourd'hui : regarde l'Historique.", { genre: "erreur", action: voirHistorique() });
       else {
         bilan.poussees = new Set();
         dire("Remis à aujourd'hui.", { genre: "succes" });

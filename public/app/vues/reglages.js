@@ -1200,7 +1200,7 @@ const SECTIONS_RENDU = {
 
   async avance() {
     return carte("Avancé", null,
-      repere("Interface classique", h("div", { class: "reglage" }, h("strong", null, "Interface classique"), h("p", { class: "aide", style: { margin: "4px 0 8px" } }, "Le mode appel, l'onboarding guidé, l'import de conversations, la roadmap et la consigne de nuit y restent."), h("a", { class: "btn papier", href: "/classique.html" }, icone("externe"), "Ouvrir l'interface classique"))),
+      repere("Interface classique", h("div", { class: "reglage" }, h("strong", null, "Interface classique"), h("p", { class: "aide", style: { margin: "4px 0 8px" } }, "La roadmap et la consigne de nuit y restent. L'appel, Faire connaissance et l'import de conversations sont maintenant ici."), h("a", { class: "btn papier", href: "/classique.html" }, icone("externe"), "Ouvrir l'interface classique"))),
       repere("Se déconnecter", h("div", { class: "reglage" }, h("strong", null, "Session"), h("p", { class: "aide", style: { margin: "4px 0 8px" } }, "Sur cet ordinateur seulement."), bouton("Se déconnecter", { classe: "danger", onclick: async (e) => {
         if (!(await confirmer("Se déconnecter de Rémy ?", { detail: phraseDeconnexion(fileEnvoi.compte()), libelle: "Se déconnecter", danger: true }))) return;
         await occupe(e.currentTarget, async () => {

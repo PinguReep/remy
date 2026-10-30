@@ -231,6 +231,8 @@ function aideRaccourcis() {
       ...vuesVisibles().map((v, i) => ligne(v.titre, ctrl, String(i + 1))),
       ligne("Envoyer (Rémy, Noter)", "Entrée"),
       ligne("Aller à la ligne", "Maj", "Entrée"),
+      ligne("Gestes d'une ligne (clic droit)", "Maj", "F10"),
+      ligne("Jour d'à côté (À l'échelle)", "←", "→"),
       ligne("Fermer une fenêtre", "Échap"),
       ligne("Cette aide", "?")),
   });

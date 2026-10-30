@@ -305,10 +305,13 @@ Toutes ces routes existent (`lib/routes.js`) ; l'iPhone les utilise déjà.
 | **Réglages** `#/reglages/…` | **Recherche dans les réglages** (filtre en direct, aussi dans `Ctrl+K`). Ordinateur (app Windows : raccourci, démarrage, fermer dans la zone, notifications rappels / briefing / bilan et leurs heures, tester une notification, adresse, version), Apparence, Rémy (circuits : réflexion de nuit, conseil réfléchi, compactage auto, règles), Recherche web, recherche dans les conversations privées, secours Claude, contexte cloud, modèle local, Mémoire, Coûts, Appareils connectés, jeton de capture, Agenda Google (état, connexion), Activité du PC, Sources des conversations (si la tour les lit ; « ChatGPT », « Claude Code », « T3 », « import » la trouvent), Diagnostic (version tour, incidents, copier le diagnostic), Se déconnecter, Interface classique | `GET/PUT /api/reglages`, `GET/PUT /api/modeles`, `GET/PUT /api/memory`, `GET /api/costs`, `GET/POST/DELETE /api/appareils`, `GET/POST/DELETE /api/capture/jeton`, `GET /api/google/status`, `POST /api/google/{auth,deconnexion,test}`, `GET/PUT/DELETE /api/activite-pc`, `GET /api/regles`, `PATCH/DELETE /api/regles/:id`, `GET /api/version`, `GET /api/incidents[/:code]`, `POST /api/logout` |
 | Connexion | Mot de passe, erreurs claires (mauvais mot de passe, trop d'essais, tour injoignable) | `POST /api/login`, `GET /api/version` (426 : « mets la tour à jour ») |
 
-**Ce qui ne passe pas dans la nouvelle interface** (mode appel, onboarding
-guidé, import de conversations, roadmap, consigne de nuit) reste disponible :
-l'ancienne page devient `public/classique.html`, liée depuis Réglages ›
-Avancé. Rien n'est perdu ; on la retirera quand plus personne ne l'ouvre.
+**Ce qui ne passe pas dans la nouvelle interface** (roadmap, consigne de
+nuit) reste disponible : l'ancienne page devient `public/classique.html`,
+liée depuis Réglages › Avancé. Rien n'est perdu ; on la retirera quand plus
+personne ne l'ouvre. Le mode appel (bouton téléphone en tête d'une
+conversation, « Appeler Rémy » dans `Ctrl+K`), « Faire connaissance » (carte
+d'Aujourd'hui) et l'import d'un export ChatGPT (Conversations › Sources) sont
+dans la nouvelle interface.
 
 ### 1.7 Manques côté tour
 

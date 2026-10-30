@@ -180,8 +180,8 @@ export const INDEX = [
     { ancre: "Vitesse de Rémy", mots: ["tokens par seconde", "tok/s", "vitesse", "débit", "rapidité", "performance"] }),
   entree("version", "Version de Rémy", "Le numéro du site et celui de ta tour.", "diagnostic",
     { ancre: "Version", mots: ["version", "build", "numéro", "serveur", "tour", "à jour"] }),
-  entree("avance.classique", "Interface classique", "Le mode appel, l'onboarding guidé, la roadmap et la consigne de nuit.", "avance",
-    { ancre: "Interface classique", mots: ["classique", "ancienne interface", "onboarding", "appel", "roadmap", "consigne"] }),
+  entree("avance.classique", "Interface classique", "La roadmap et la consigne de nuit.", "avance",
+    { ancre: "Interface classique", mots: ["classique", "ancienne interface", "roadmap", "consigne"] }),
   entree("deconnexion", "Se déconnecter", "Il faudra retaper le mot de passe.", "avance",
     { ancre: "Se déconnecter", mots: ["déconnexion", "déconnecter", "quitter", "sortir", "compte", "mot de passe", "logout"] }),
 ];

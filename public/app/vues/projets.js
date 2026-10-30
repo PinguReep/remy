@@ -218,7 +218,7 @@ function retourMobile() {
 function dessinerDetail() {
   if (!refs.detail) return;
   if (!selection) {
-    vider(refs.detail, h("section", { class: "carte" }, vide("Choisis à gauche", "Un projet, un dossier, une liste ou tes rappels. N pour noter quelque chose n'importe où. Clic droit sur une ligne : ses gestes.")));
+    vider(refs.detail, h("section", { class: "carte" }, vide("Choisis à gauche", "Un projet, un dossier, une liste ou tes rappels. N pour noter quelque chose n'importe où. Clic droit, ou Maj+F10 au clavier, sur une ligne : ses gestes.")));
     return;
   }
   const { type, id } = selection;

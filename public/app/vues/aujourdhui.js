@@ -51,7 +51,11 @@ export default {
       h("h1", { class: "titre-ecran" }, salutation(maintenant)));
     const rafraichir = bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", titre: "Relire Motion et l'agenda", onclick: (e) => occupe(e.currentTarget, () => charger({ frais: true })) });
     const noter = bouton("Noter", { classe: "plein", icone: "plus", kbd: "N", onclick: () => ctx.noter() });
-    actionsEntete = h("div", { class: "actions-entete" }, rafraichir, noter);
+    // L'historique des actions, à un geste comme sur l'iPhone (l'horloge de l'en-tête) : chaque écriture s'y annule.
+    const historique = sait("historique-v1") || sait("historique-v2")
+      ? bouton("", { classe: "papier icone", icone: "horloge", etiquette: "Historique des actions", titre: "Historique des actions", onclick: () => ctx.aller("projets/historique") })
+      : null;
+    actionsEntete = h("div", { class: "actions-entete" }, historique, rafraichir, noter);
     // Chaque zone a sa place (classe zone-…) : deux colonnes sur grand écran,
     // une seule dans l'ordre de l'iPhone en dessous de 1024 px (atelier.css).
     for (const k of ["motion", "conseil", "maintenant", "rappels", "menacees", "rituel", "journee", "retards", "semaine", "trancher", "connaissance"]) zones[k] = h("div", { class: `auj-zone zone-${k}` });
@@ -188,6 +192,14 @@ async function ouvrirRoute(args = []) {
     else absent();
   } else if (quoi === "echelle") {
     semaine?.ouvrir(arg || "aujourdhui");
+  } else if (quoi === "connaissance") {
+    // « Faire connaissance » (Ctrl+K) : la carte d'Aujourd'hui, son bouton prêt au clavier.
+    const b = zones.connaissance?.querySelector("button");
+    if (b) {
+      zones.connaissance.scrollIntoView({ block: "center", behavior: "smooth" });
+      b.focus({ preventScroll: true });
+    } else if (donnees?.setup) dire("Faire connaissance est terminé : Rémy continue d'apprendre en te parlant.");
+    else dire("Faire connaissance n'a pas pu être lu : rafraîchis Aujourd'hui, puis réessaie.", { genre: "erreur" });
   }
 }
 
