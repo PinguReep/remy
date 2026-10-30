@@ -26,6 +26,13 @@ export const CATALOGUE = [
   n("bilan-coucher", 5, "29 oct.", "Le bilan, avant de te coucher", "rituel-v1", [
     p("lune", "22 h 45 par défaut", "Allumé sans heure choisie, le bilan du soir arrive désormais à 22 h 45 (21 h 30 avant). Une heure que tu avais choisie reste la tienne : Réglages › Ordinateur."),
   ]),
+  // Série 6 de l'iPhone, rangée ici en série 5 : le site reçoit tout le 29/10
+  // d'un coup, et la première feuille garde le bilan de 22 h 45 (6 pages au plus).
+  n("chatgpt-automatique", 5, "29 oct.", "ChatGPT, sans y penser", "conversations-externes-v2", [
+    p("ranger", "L'export pris dans Téléchargements", "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements, en lecture seule. Reçu ailleurs ? « Importer le .zip » dans la carte."),
+    p("cloche", "Un rappel par mois", "Quand ton dernier export a plus de 30 jours, une carte « Exporter ChatGPT » dans Conversations ouvre la bonne page. Réglages › Sources des conversations pour la couper."),
+    p("recherche", "Claude Code et T3, bien trouvés", "Les sessions de l'app Claude de bureau et de Remote Control sont lues. Sources dit combien Rémy en a vu, et pourquoi il en écarte : ses propres appels, les « claude -p » d'un seul échange."),
+  ]),
   n("jauge-retour", 4, "27 oct.", "La jauge du contexte, de retour", "jauge-v1", [
     p("jauge", "Visible dès le premier message", "Le cadran en haut du chat montre la place que prend la conversation. Pour le masquer : Réglages › Diagnostic › Jauge du contexte."),
     p("compresser", "Le résumé à 70 %", "Clique le cadran : il dit quand Rémy résumera le début du fil (dès 70 %), s'il l'a fait, et « Compacter maintenant » le fait tout de suite. Rien n'est effacé."),

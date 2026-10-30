@@ -555,7 +555,8 @@ function reglagesChatGPT(dessiner) {
   return [
     t ? bascule("telechargements", "Prendre l'export dans Téléchargements", C.phraseTelechargements(t), t.actif, t.forceParLaTour) : null,
     r ? bascule("rappel", "Me rappeler d'exporter ChatGPT", "Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail sur la tour, Rémy fait le reste.", r.actif) : null,
-    h("div", { class: "rangee serree", style: { marginTop: "6px" } }, lienExport("Demander un export à ChatGPT", { classe: "papier petit", lien: r?.lien || C.LIEN_EXPORT_CHATGPT })),
+    // Suivi de la rangée « Lire maintenant » : 10 px entre les deux, sinon leurs zones de 46 px se chevauchent (42 px).
+    h("div", { class: "rangee serree", style: { marginTop: "6px", paddingBottom: "4px" } }, lienExport("Demander un export à ChatGPT", { classe: "papier petit", lien: r?.lien || C.LIEN_EXPORT_CHATGPT })),
   ];
 }
 
