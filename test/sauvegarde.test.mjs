@@ -30,6 +30,10 @@ const coffre = path.join(racine, "Rémy");
 const base = path.join(coffre, ".remy");
 for (const v of ["UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "REMY_DATA_DIR", "MOTION_API_KEY", "VERCEL"]) delete process.env[v];
 process.env.REMY_VAULT = coffre;
+// La clé des conversations d'ailleurs : jamais celle du dossier personnel.
+const dossierCles = path.join(racine, "cles");
+process.env.REMY_CLES_DIR = dossierCles;
+delete process.env.REMY_CONVERSATIONS_CLE;
 const CLE = crypto.randomBytes(32).toString("hex");
 process.env.REMY_SAUVEGARDE_CLE = CLE;
 
@@ -305,5 +309,79 @@ test("les exports ChatGPT déposés pour Rémy ne partent pas dans les sauvegard
     fs.rmSync(imports, { recursive: true, force: true });
     fs.rmSync(path.join(base, "imports-en-cours"), { recursive: true, force: true });
     (await import("../lib/db.js")).fermer();
+  }
+});
+
+// Une seule clé à garder hors de la tour : celle des sauvegardes. La clé des
+// conversations d'ailleurs voyage DANS l'archive chiffrée.
+test("la clé des conversations part dans l'archive chiffrée, et revient avec elle", async () => {
+  remplirCoffre();
+  const chiffre = await import("../lib/connaissances/chiffre.js");
+  const avant = { ...process.env };
+  process.env.REMY_SAUVEGARDES = path.join(racine, "avec-cle");
+  delete process.env.REMY_SAUVEGARDES_EXTERNE;
+  delete process.env.REMY_SAUVEGARDES_SPARK;
+  const fichierCle = path.join(dossierCles, "conversations.cle");
+  const archiveDe = (r) => sv.lireArchive(fs.readFileSync(r.copies[0].fichier), { cle });
+  try {
+    // Pas encore de clé : rien n'est emporté, et la sauvegarde n'en crée pas.
+    chiffre.oublierCle();
+    let r = await sv.sauvegarderRemy({ raison: "test" });
+    assert.ok(!archiveDe(r).fichiers.some((f) => f.chemin.startsWith("cles/")));
+    assert.equal(fs.existsSync(fichierCle), false, "aucune clé créée pour l'occasion");
+
+    // La clé du fichier.
+    const hex = crypto.randomBytes(32).toString("hex");
+    fs.mkdirSync(dossierCles, { recursive: true });
+    fs.writeFileSync(fichierCle, hex + "\n");
+    chiffre.oublierCle();
+    r = await sv.sauvegarderRemy({ raison: "test" });
+    const { fichiers } = archiveDe(r);
+    const emportee = fichiers.find((f) => f.chemin === sv.CHEMIN_CLE_CONVERSATIONS);
+    assert.equal(emportee?.contenu.toString("utf8").trim(), hex);
+
+    // Dans un dossier neuf : elle y est.
+    const vers = path.join(racine, "neuf-avec-cle");
+    sv.restaurerFichiers(fichiers, { vers });
+    assert.equal(fs.readFileSync(path.join(vers, "cles", "conversations.cle"), "utf8").trim(), hex);
+
+    // En place, la même clé : rien ne bouge.
+    const avantMtime = fs.statSync(fichierCle).mtimeMs;
+    let ecrits = sv.restaurerFichiers(fichiers.filter((f) => f.chemin.startsWith("cles/")), { cibles: { cles: dossierCles } });
+    assert.deepEqual(ecrits, []);
+    assert.equal(fs.statSync(fichierCle).mtimeMs, avantMtime);
+
+    // En place, une autre clé (tour réinstallée) : mise de côté, jamais effacée ;
+    // celle de la sauvegarde, qui va avec sa base, prend sa place.
+    const autre = crypto.randomBytes(32).toString("hex");
+    fs.writeFileSync(fichierCle, autre + "\n");
+    ecrits = sv.restaurerFichiers(fichiers.filter((f) => f.chemin.startsWith("cles/")), { cibles: { cles: dossierCles } });
+    assert.equal(fs.readFileSync(fichierCle, "utf8").trim(), hex);
+    const deCote = ecrits.find((e) => /conversations\.cle\.avant-restauration-\d+$/.test(e));
+    assert.ok(deCote, "l'ancienne clé est mise de côté");
+    assert.equal(fs.readFileSync(deCote, "utf8").trim(), autre);
+
+    // Posée dans remy.env : c'est elle qui part.
+    const env = crypto.randomBytes(32).toString("hex");
+    process.env.REMY_CONVERSATIONS_CLE = env;
+    chiffre.oublierCle();
+    r = await sv.sauvegarderRemy({ raison: "test" });
+    assert.equal(archiveDe(r).fichiers.find((f) => f.chemin === sv.CHEMIN_CLE_CONVERSATIONS)?.contenu.toString("utf8").trim(), env);
+  } finally {
+    for (const k of ["REMY_SAUVEGARDES", "REMY_SAUVEGARDES_EXTERNE", "REMY_SAUVEGARDES_SPARK", "REMY_CONVERSATIONS_CLE"]) {
+      if (avant[k] === undefined) delete process.env[k];
+      else process.env[k] = avant[k];
+    }
+    chiffre.oublierCle();
+    fs.rmSync(dossierCles, { recursive: true, force: true });
+    (await import("../lib/db.js")).fermer();
+  }
+});
+
+test("seule la clé des conversations est admise sous cles/", () => {
+  const ok = sv.lireArchive(sv.creerArchive([{ chemin: sv.CHEMIN_CLE_CONVERSATIONS, contenu: Buffer.from("ab\n") }], { cle }), { cle });
+  assert.equal(ok.fichiers.length, 1);
+  for (const chemin of ["cles/autre.cle", "cles/../base/x", "cles/conversations.cle/x"]) {
+    assert.throws(() => sv.lireArchive(sv.creerArchive([{ chemin, contenu: Buffer.from("x") }], { cle }), { cle }), /chemin refusé/, chemin);
   }
 });

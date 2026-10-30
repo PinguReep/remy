@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { lireArchive, restaurerFichiers, cleSauvegarde, sauvegarderRemy, destinations, EXTENSION } from "../lib/sauvegarde.js";
+import { dossierCles } from "../lib/connaissances/chiffre.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -101,5 +102,7 @@ if (fs.existsSync(base)) {
   fs.renameSync(base, deCote);
   console.log(`Base actuelle mise de côté : ${deCote}`);
 }
-const ecrits = restaurerFichiers(fichiers, { cibles: { base, coffre: coffre() || null } });
+const ecrits = restaurerFichiers(fichiers, { cibles: { base, coffre: coffre() || null, cles: dossierCles() } });
+const cleDeCote = ecrits.find((e) => /conversations\.cle\.avant-restauration-/.test(e));
+if (cleDeCote) console.log(`Clé des conversations actuelle mise de côté : ${cleDeCote} (celle de la sauvegarde va avec sa base).`);
 console.log(`✅ ${ecrits.length} fichiers restaurés en place. Relance la tâche « Rémy ».`);
