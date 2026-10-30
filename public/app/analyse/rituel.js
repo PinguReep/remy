@@ -53,14 +53,24 @@ export function rienBoite(briefing, reflexion, maintenant = Date.now()) {
 
 // --- Les sujets de la nuit ---
 
-/** Les sujets avec l'état vu à l'écran (`surcharges` : id → état, gestes en cours ou pas encore relus). */
+/**
+ * Les sujets avec l'état vu à l'écran (`surcharges` : id → état, gestes en
+ * cours ou pas encore relus), dans l'ordre de la tour comme l'iPhone : un
+ * sujet réglé reste à sa place, barré, avec « Rouvrir ».
+ */
 export function sujets(briefing, surcharges = new Map()) {
   return (briefing?.items || [])
     .filter((s) => s && s.id)
     .map((s) => (surcharges.has(s.id) ? { ...s, etat: surcharges.get(s.id) } : s));
 }
-/** Les ouverts en tête, dans l'ordre de la tour ; puis les réglés, dans le même ordre. */
-export const sujetsRanges = (liste) => [...liste.filter((s) => s.etat === "ouvert"), ...liste.filter((s) => s.etat !== "ouvert")];
+/**
+ * Un geste pas encore relu reste montré tel quel ; il s'efface quand un
+ * tableau lu APRÈS lui le confirme, ou le contredit (changé ailleurs). `s` :
+ * { etat, a } (`a` : quand la tour l'a pris) ; `luA` : le `maintenant` du
+ * tableau. Jamais au seul passage du temps : un tableau plus vieux que le
+ * geste ne le défait pas.
+ */
+export const surchargeRelue = (s, etatTour, luA) => s.etat === etatTour || (typeof luA === "number" && typeof s.a === "number" && luA >= s.a);
 /** Ce que comptent la pastille et l'intertitre : les sujets OUVERTS seulement. */
 export const compteOuverts = (liste) => liste.filter((s) => s.etat === "ouvert").length;
 /** « À voir avec Rémy (2) » ; sans sujet, sans nombre (BriefingVue). */
@@ -72,6 +82,14 @@ export function libelleBoite(n, avecRituel) {
 }
 /** Le bandeau d'un geste réussi ; « Rouvrir » n'en a pas. */
 export const phraseEtatSujet = (etat) => (etat === "traite" ? "Noté comme fait." : etat === "ignore" ? "Laissé de côté : Rémy ne le reproposera pas." : null);
+
+/**
+ * Le second clic d'un double clic arrive dans ce délai. Après un geste qui a
+ * fait bouger une liste, un clic aussi rapproché est ignoré : il tomberait sur
+ * le sujet ou la ligne qui vient de glisser sous le pointeur.
+ */
+export const DOUBLE_CLIC = 400;
+export const clicEnEcho = (bougeA, maintenant = Date.now()) => bougeA != null && maintenant >= bougeA && maintenant - bougeA < DOUBLE_CLIC;
 
 // --- Le briefing du matin et le bilan du soir (GET /api/rituel) ---
 
@@ -179,6 +197,16 @@ export const GESTES_TRI = {
 };
 export const gestesTri = (type) => GESTES_TRI[type] || [["plusTard", "Plus tard"]];
 export const PRINCIPAUX = new Set(["oui", "fusionner", "retirer", "fait"]);
+/** Le début du bandeau quand un geste échoue (ATrancherModel.echec) : ce qui n'a pas été fait. */
+export function prefixeEchec(geste, l = {}) {
+  if (geste === "plusTard") return "Pas reporté";
+  if (geste === "oui" && l.type === "carte" && l.source === "regle") return "Règle pas créée";
+  if (geste === "non") return "« Non » pas enregistré";
+  if (geste === "garder") return "Idée pas rangée";
+  if (geste === "supprimer" && l.type === "idee") return "Idée pas supprimée";
+  if (geste === "abandonner" && l.type === "retard") return "Pas abandonnée";
+  return "Pas fait";
+}
 
 /** Le lundi 00:00 de la semaine de `d` (RituelSemaine.debutSemaine). */
 export function debutSemaine(d) {

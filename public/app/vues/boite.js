@@ -21,15 +21,16 @@ import { decaler } from "./gerer.js";
 import * as bureau from "../bureau.js";
 
 const MINUTE = 60e3;
-/** Un geste pas encore relu par la tour : montré tel quel au plus 10 min. */
-const SURCHARGE_MAX = 10 * MINUTE;
+/** Une relecture du tableau demandée par la boîte : au-delà (45 s d'attente de la tour), on dit qu'il n'est pas venu. */
+const ATTENTE_TABLEAU = 50e3;
 
 // Ce qui survit à un nouveau montage d'Aujourd'hui (même page) : la dernière
 // lecture du rituel, les gestes sur les sujets, l'état du bilan du jour.
 const lu = { rituel: null, luA: null, essaiA: -Infinity, erreur: null, chargement: false, lecture: null };
-const surcharges = new Map(); // id du sujet → { etat, a }
+const surcharges = new Map(); // id du sujet → { etat, a } (a : quand la tour l'a pris), jusqu'au tableau qui le relit
 const enVol = new Set(); // sujets dont l'écriture est en route
-const bilan = { jour: null, poussees: new Set(), pousse: false, envoi: false, brouillon: "" };
+// `range` : le bilan rangé, gardé ici aussi (le stockage local peut refuser l'écriture).
+const bilan = { jour: null, poussees: new Set(), pousse: false, envoi: false, brouillon: "", range: null };
 
 // Session perdue : l'écran de connexion prend la place ; une feuille restée
 // ouverte le masquerait (main.js ne connaît pas les feuilles des modules).
@@ -60,14 +61,7 @@ function lireRituelTour() {
   return lu.lecture;
 }
 
-const etatsVus = () => {
-  const m = new Map();
-  for (const [id, s] of surcharges) {
-    if (!enVol.has(id) && Date.now() - s.a > SURCHARGE_MAX) surcharges.delete(id);
-    else m.set(id, s.etat);
-  }
-  return m;
-};
+const etatsVus = () => new Map([...surcharges].map(([id, s]) => [id, s.etat]));
 const erreurMontree = (err) => (err && err.nature !== "auth" ? err : null);
 const avecCle = (el, cle) => {
   el.dataset.cle = cle;
@@ -87,6 +81,9 @@ export function creerBoite(ctx, { relire } = {}) {
   let focusApres = null;
   let bilanDemande = false;
   let replieOuvert = false;
+  let bougeA = null; // dernier geste qui a fait bouger les sujets (double clic)
+  let lectureTableau = null; // relecture du tableau demandée à l'ouverture de la feuille
+  let tableauIllisible = false;
 
   const ic = h("span", { class: "boite-ic" }, icone("plateau"));
   const pastille = h("span", { class: "pastille-compte boite-pastille", "aria-hidden": "true", hidden: true }, "0");
@@ -158,13 +155,16 @@ export function creerBoite(ctx, { relire } = {}) {
     if (enVol.has(s.id)) return;
     const avant = etatsVus().get(s.id) ?? s.etat;
     if (avant === etat) return;
-    surcharges.set(s.id, { etat, a: Date.now() });
+    surcharges.set(s.id, { etat, a: null });
     enVol.add(s.id);
     focusApres = etat === "ouvert" ? `parler:${s.id}` : `rouvrir:${s.id}`;
     dessiner();
+    bougeA = Date.now();
     try {
       await remplacer("/api/briefing/etat", { id: s.id, etat });
       enVol.delete(s.id);
+      // Montré tel quel jusqu'au premier tableau lu après ce moment.
+      surcharges.set(s.id, { etat, a: Date.now() });
       focusApres = etat === "ouvert" ? `parler:${s.id}` : `rouvrir:${s.id}`;
       const phrase = R.phraseEtatSujet(etat);
       if (phrase) dire(phrase, { genre: "succes", action: { libelle: "Annuler", faire: () => changer(s, avant) } });
@@ -175,6 +175,7 @@ export function creerBoite(ctx, { relire } = {}) {
       direErreur(err, () => changer(s, etat), "Pas enregistré");
     }
     dessiner();
+    bougeA = Date.now();
   }
 
   function carteSujet(s, generatedAt) {
@@ -199,14 +200,36 @@ export function creerBoite(ctx, { relire } = {}) {
         : h("div", { class: "boite-regle" }, h("span", null, s.etat === "traite" ? "Fait" : "Laissé de côté"), geste("Rouvrir", `rouvrir:${s.id}`, "ouvert", "texte")));
   }
 
+  /** Feuille ouverte sans tableau : Aujourd'hui le relit ; s'il ne vient pas, on le dit (jamais un squelette sans fin). */
+  function attendreTableau() {
+    if (dashboard || lectureTableau) return lectureTableau;
+    tableauIllisible = false;
+    lectureTableau = (async () => {
+      try {
+        await Promise.race([Promise.resolve(relire?.()), new Promise((ok) => setTimeout(ok, ATTENTE_TABLEAU))]);
+      } catch {}
+      lectureTableau = null;
+      tableauIllisible = !dashboard;
+      dessiner();
+    })();
+    dessiner();
+    return lectureTableau;
+  }
+
   /** L'intro, puis les sujets ; sinon le texte du briefing ; sinon pourquoi il n'y a rien. */
   function blocSujets() {
     const b = dashboard?.briefing;
     if (!dashboard) {
       const err = erreurMontree(erreurTableau);
-      return h("div", { class: "carte plate boite-rien" }, err ? blocErreur(err, () => relire?.()) : squelette([0.8, 0.55]));
+      const reessayer = () => (err ? relire?.() : attendreTableau());
+      return h("div", { class: "carte plate boite-rien" },
+        err ? blocErreur(err, reessayer)
+          : tableauIllisible && !lectureTableau
+            ? vide("Pas pu charger", "Le tableau n'a pas pu être lu : réessaie quand ta tour répond.", avecCle(bouton("Réessayer", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, reessayer) }), "reessayer-tableau"))
+            : squelette([0.8, 0.55]));
     }
-    const liste = R.sujetsRanges(R.sujets(b, etatsVus()));
+    // Dans l'ordre de la tour : un sujet réglé reste à sa place, le suivant ne glisse pas sous le pointeur.
+    const liste = R.sujets(b, etatsVus());
     return [
       h("p", { class: "boite-intro" }, R.introBoite(b)),
       liste.length
@@ -321,6 +344,13 @@ export function creerBoite(ctx, { relire } = {}) {
     const retour = document.activeElement;
     // Le focus sur le contenu (pas sur un geste) : Entrée n'agit pas par mégarde, Tab y entre.
     const corps = h("div", { class: "boite-feuille", tabindex: "-1", autofocus: true });
+    // Le second clic d'un double clic tomberait sur ce qui vient de bouger : un geste à la fois.
+    corps.addEventListener("click", (e) => {
+      if (e.detail > 0 && R.clicEnEcho(bougeA)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
     const f = feuille({
       titre: sait("rituel-v1") ? "Ton briefing" : "À voir avec Rémy",
       large: true,
@@ -338,6 +368,7 @@ export function creerBoite(ctx, { relire } = {}) {
     dessinerFeuille();
     corps.focus();
     lireRituel();
+    if (!dashboard && !erreurTableau) attendreTableau();
   }
 
   // --- La carte de la colonne : proposition, bilan (le soir), briefing ---
@@ -377,7 +408,7 @@ export function creerBoite(ctx, { relire } = {}) {
       if (br) corps.push(h("div", { class: "boite-trois-court" }, lignes(br, { court: true }), provenance()));
       else corps.push(sansBriefing());
     }
-    const etatSujets = n ? `${n} ${n > 1 ? "ouverts" : "ouvert"}` : liste.length ? "tous réglés" : dashboard ? R.rienBoite(b, dashboard?.systeme?.reflexion) : "…";
+    const etatSujets = n ? `${n} ${n > 1 ? "ouverts" : "ouvert"}` : liste.length ? "tous réglés" : dashboard ? R.rienBoite(b, dashboard?.systeme?.reflexion) : tableauIllisible || erreurMontree(erreurTableau) ? "pas pu être lus" : "…";
     corps.push(h("div", { class: "boite-ligne-sujets" },
       icone(n ? "plateauPlein" : "plateau"),
       h("span", { class: "boite-ligne-sujets-texte" }, h("strong", null, "Sujets de la nuit"), ` · ${etatSujets}`),
@@ -400,7 +431,7 @@ export function creerBoite(ctx, { relire } = {}) {
       bilan.jour = jour;
       bilan.poussees = new Set();
     }
-    const range = R.bilanRange(local.lire(CLE_BILAN, null), jour);
+    const range = R.bilanRange(bilan.range, jour) || R.bilanRange(local.lire(CLE_BILAN, null), jour);
     const section = h("section", { class: "carte boite-bilan", "aria-label": "Bilan du soir", tabindex: "-1" }, h("h2", { class: "titre-section" }, "Bilan du soir"));
     if (!soir) ajouterA(section, sansBriefing("Le bilan d'aujourd'hui n'est pas encore prêt."));
     else {
@@ -439,7 +470,8 @@ export function creerBoite(ctx, { relire } = {}) {
     dessinerCarte();
     try {
       const r = await ecrire("/api/rituel/bilan", { ressenti: champ.value.trim() });
-      local.ecrire(CLE_BILAN, { jour, range: true });
+      bilan.range = { jour, range: true };
+      local.ecrire(CLE_BILAN, bilan.range);
       dire(r?.phrase || "Bilan rangé : Rémy le relira cette nuit.", { genre: "succes" });
     } catch (err) {
       if (err?.nature !== "auth") dire(`Bilan pas rangé : ${texteErreur(err)} Ton texte est toujours là.`, { genre: "erreur", action: { libelle: "Réessayer", faire: () => rangerBilan(jour) } });
@@ -538,11 +570,24 @@ export function creerBoite(ctx, { relire } = {}) {
     feuillesOuvertes.add(f);
     let restantes = [];
     let regles = [];
+    let bouge = null; // la liste vient de perdre un sujet : le suivant glisse sous le pointeur
+    corps.addEventListener("click", (e) => {
+      if (e.detail > 0 && R.clicEnEcho(bouge)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
     const plusTard = (p) => {
-      // Rien ne part : elle reste proposée tant que la tour la propose.
+      // Rien ne part : elle reste proposée tant que la tour la propose. L'app
+      // Windows la redit dans 3 heures (l'iPhone aussi : delaiPlusTard).
+      if (bureau.estBureau()) {
+        bureau.reporterProposition(p.id);
+        dire("Plus tard : Rémy te le redemandera dans 3 heures.");
+      }
       restantes = restantes.filter((x) => x !== p);
       if (!restantes.length && !regles.length) f.fermer();
       else dessinerNuit();
+      bouge = Date.now();
     };
     const dessinerNuit = () => {
       if (!restantes.length && !regles.length) {
@@ -572,6 +617,7 @@ export function creerBoite(ctx, { relire } = {}) {
         restantes = restantes.filter((x) => x !== p);
         if (!restantes.length && !regles.length) f.fermer();
         else dessinerNuit();
+        bouge = Date.now();
       } catch (err) {
         direErreur(err, () => accepter(p), "Pas ajouté");
       }
@@ -604,11 +650,17 @@ export function creerBoite(ctx, { relire } = {}) {
 
   /** Aujourd'hui passe le tableau (et le conseil affiché) ; `frais` : Rafraîchir. `erreur` : le tableau n'a pas pu être lu. */
   function maj({ dashboard: d, conseil: c, frais = false, erreur } = {}) {
-    if (d !== undefined && d !== null) dashboard = d;
+    if (d !== undefined && d !== null) {
+      dashboard = d;
+      tableauIllisible = false;
+    }
     if (c !== undefined) conseil = c;
     erreurTableau = d ? null : erreur ?? erreurTableau;
-    // Ce que la tour a rattrapé n'a plus besoin d'être surchargé.
-    for (const s of dashboard?.briefing?.items || []) if (!enVol.has(s.id) && surcharges.get(s.id)?.etat === s.etat) surcharges.delete(s.id);
+    // Un tableau lu après le geste le relit (confirmé, ou changé ailleurs) ; un plus ancien ne le défait pas.
+    for (const s of dashboard?.briefing?.items || []) {
+      const sc = surcharges.get(s.id);
+      if (sc && !enVol.has(s.id) && R.surchargeRelue(sc, s.etat, d ? dashboard.maintenant : null)) surcharges.delete(s.id);
+    }
     dessiner();
     lireRituel({ frais });
   }

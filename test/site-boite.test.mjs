@@ -57,11 +57,11 @@ test("l'intro et les états vides de la boîte disent pourquoi il n'y a rien", (
   assert.equal(R.rienBoite({ text: "" }, true, maintenant), "Chaque nuit, Rémy relit tes échanges et note ici ce qui mérite ton attention.");
 });
 
-test("les sujets : les gestes en cours surchargent la tour, les ouverts d'abord, seuls les ouverts comptent", () => {
+test("les sujets : les gestes en cours surchargent la tour, l'ordre reste celui de la tour, seuls les ouverts comptent", () => {
   const b = { items: [{ id: "a", texte: "A", etat: "ouvert" }, { id: "b", texte: "B", etat: "traite" }, { id: "c", texte: "C", etat: "ouvert" }, { texte: "sans id" }] };
   const vus = R.sujets(b, new Map([["a", "ignore"]]));
-  assert.deepEqual(vus.map((s) => `${s.id}:${s.etat}`), ["a:ignore", "b:traite", "c:ouvert"]);
-  assert.deepEqual(R.sujetsRanges(vus).map((s) => s.id), ["c", "a", "b"], "ouverts en tête, puis réglés dans l'ordre de la tour");
+  assert.deepEqual(vus.map((s) => `${s.id}:${s.etat}`), ["a:ignore", "b:traite", "c:ouvert"], "le sujet réglé reste à sa place (ForEach(items) de l'iPhone) : rien ne glisse sous le pointeur");
+  assert.equal(R.sujetsRanges, undefined, "plus de tri « ouverts en tête » : un double clic réglait le sujet voisin");
   assert.equal(R.compteOuverts(vus), 1);
   assert.equal(R.intertitreSujets(vus), "À voir avec Rémy (1)");
   assert.equal(R.intertitreSujets([]), "À voir avec Rémy");
@@ -71,6 +71,25 @@ test("les sujets : les gestes en cours surchargent la tour, les ouverts d'abord,
   assert.equal(R.phraseEtatSujet("traite"), "Noté comme fait.");
   assert.equal(R.phraseEtatSujet("ignore"), "Laissé de côté : Rémy ne le reproposera pas.");
   assert.equal(R.phraseEtatSujet("ouvert"), null, "Rouvrir : sans bandeau de succès");
+});
+
+test("un geste sur un sujet reste montré jusqu'au tableau lu après lui, jamais effacé au seul passage du temps", () => {
+  const geste = { etat: "traite", a: date(2026, 10, 29, 9, 10) };
+  assert.equal(R.surchargeRelue(geste, "traite", null), true, "la tour l'a rattrapé : confirmé");
+  assert.equal(R.surchargeRelue(geste, "ouvert", null), false, "tableau sans heure (ou relu d'avant) : on garde le geste");
+  assert.equal(R.surchargeRelue(geste, "ouvert", date(2026, 10, 29, 9, 9)), false, "un tableau plus vieux que le geste ne le défait pas");
+  assert.equal(R.surchargeRelue(geste, "ouvert", date(2026, 10, 29, 9, 30)), true, "un tableau lu après le contredit (rouvert ailleurs) : la tour l'emporte");
+  assert.equal(R.surchargeRelue({ etat: "traite", a: null }, "ouvert", date(2026, 10, 29, 9, 30)), false, "écriture en route : pas encore prise par la tour");
+});
+
+test("double clic : le second clic, moins de 400 ms après un geste qui a fait bouger la liste, est ignoré", () => {
+  const t = date(2026, 10, 29, 9, 10);
+  assert.equal(R.clicEnEcho(null, t), false, "aucun geste encore");
+  assert.equal(R.clicEnEcho(t, t + 120), true, "un double clic humain (120 ms)");
+  assert.equal(R.clicEnEcho(t, t + 399), true);
+  assert.equal(R.clicEnEcho(t, t + R.DOUBLE_CLIC), false, "au-delà : un geste voulu passe");
+  assert.equal(R.clicEnEcho(t, t + 700), false);
+  assert.equal(R.clicEnEcho(t + 10, t), false, "horloge revenue en arrière : on ne bloque rien");
 });
 
 // --- Le briefing et le bilan (Rituel.swift, RituelTests.swift) ---
@@ -178,6 +197,19 @@ test("un geste par ligne selon son type, le principal mis en avant", () => {
   assert.deepEqual(ids("inconnu"), ["plusTard"]);
   for (const l of Object.values(R.GESTES_TRI)) for (const [, lib] of l) assert.ok(lib.length);
   assert.ok(R.PRINCIPAUX.has("oui") && R.PRINCIPAUX.has("fait") && !R.PRINCIPAUX.has("plusTard"));
+});
+
+test("un geste qui échoue dit ce qui n'a pas été fait, avec les mots de l'iPhone (ATrancherModel.echec)", () => {
+  assert.equal(R.prefixeEchec("plusTard", { type: "carte" }), "Pas reporté");
+  assert.equal(R.prefixeEchec("plusTard", { type: "fil" }), "Pas reporté");
+  assert.equal(R.prefixeEchec("oui", { type: "carte", source: "regle" }), "Règle pas créée");
+  assert.equal(R.prefixeEchec("oui", { type: "carte", source: "motion" }), "Pas fait");
+  assert.equal(R.prefixeEchec("non", { type: "carte" }), "« Non » pas enregistré");
+  assert.equal(R.prefixeEchec("garder", { type: "idee" }), "Idée pas rangée");
+  assert.equal(R.prefixeEchec("supprimer", { type: "idee" }), "Idée pas supprimée");
+  assert.equal(R.prefixeEchec("abandonner", { type: "retard" }), "Pas abandonnée");
+  assert.equal(R.prefixeEchec("supprimer", { type: "rappel" }), "Pas fait");
+  assert.equal(R.prefixeEchec("retirer", { type: "articles" }), "Pas fait");
 });
 
 test("les rappels datés passés depuis plus d'une heure sont des retards", () => {
@@ -300,6 +332,7 @@ test("au-delà de trois, les plus anciennes sont regroupées en une seule notifi
 function banc({ maintenant = date(2026, 10, 29, 14), reglages = {}, propositions = attente, sait = () => true } = {}) {
   const horloge = { t: maintenant };
   const memoire = new Set();
+  const plusTard = new Map();
   const notifs = [];
   const lectures = [];
   const refus = [];
@@ -308,7 +341,12 @@ function banc({ maintenant = date(2026, 10, 29, 14), reglages = {}, propositions
     reglages: () => ({ ...B.REGLAGES_PAR_DEFAUT, rappels: false, ...reglages }),
     memoire: { deja: () => new Set(), noter: () => {} },
     sait,
-    memoirePropositions: { lire: () => new Set(memoire), ecrire: (ids) => { memoire.clear(); for (const id of ids) memoire.add(id); } },
+    memoirePropositions: {
+      lire: () => new Set(memoire),
+      ecrire: (ids) => { memoire.clear(); for (const id of ids) memoire.add(id); },
+      plusTard: () => new Map(plusTard),
+      ecrirePlusTard: (m) => { plusTard.clear(); for (const [id, t] of m) plusTard.set(id, t); },
+    },
     lire: async (chemin) => {
       lectures.push(chemin);
       if (chemin === "/api/propositions/attente") return { propositions: typeof propositions === "function" ? propositions() : propositions };
@@ -319,7 +357,7 @@ function banc({ maintenant = date(2026, 10, 29, 14), reglages = {}, propositions
       notifs.push({ titre, corps, cle, vue });
     },
   });
-  return { tic, horloge, memoire, notifs, lectures, refus };
+  return { tic, horloge, memoire, plusTard, notifs, lectures, refus };
 }
 
 test("la boucle d'une minute : dite une fois, relue au plus chaque minute, refus de Windows = pas marquée", async () => {
@@ -338,6 +376,36 @@ test("la boucle d'une minute : dite une fois, relue au plus chaque minute, refus
   b.horloge.t += 60e3;
   await b.tic();
   assert.equal(b.notifs.length, 3, "rien de plus");
+});
+
+test("« Plus tard » sur un sujet de nuit : redit dans 3 heures, une fois, s'il attend toujours (delaiPlusTard de l'iPhone)", async () => {
+  const b = banc();
+  await b.tic();
+  assert.equal(b.notifs.length, 3);
+  const memoire = { lire: () => new Set(b.memoire), ecrire: () => {}, plusTard: () => new Map(b.plusTard), ecrirePlusTard: (m) => { b.plusTard.clear(); for (const [id, t] of m) b.plusTard.set(id, t); } };
+  B.reporterProposition("nuit-abc123def456", { maintenant: b.horloge.t, memoire });
+  assert.equal(b.plusTard.get("nuit-abc123def456"), b.horloge.t + B.PLUS_TARD_PROPOSITION);
+  assert.equal(B.PLUS_TARD_PROPOSITION, 3 * H);
+  for (const plus of [M, 2 * H, 2 * H + 59 * M]) {
+    b.horloge.t = date(2026, 10, 29, 14) + plus;
+    await b.tic();
+  }
+  assert.equal(b.notifs.length, 3, "pas avant 3 heures");
+  b.horloge.t = date(2026, 10, 29, 17, 1);
+  await b.tic();
+  assert.deepEqual(b.notifs.slice(3).map((n) => [n.titre, n.vue]), [["Cette nuit, je creuse aussi ?", "aujourdhui/nuit/nuit-abc123def456"]], "redite une fois l'heure passée");
+  assert.equal(b.plusTard.size, 0, "redite : le « plus tard » est oublié");
+  b.horloge.t += M;
+  await b.tic();
+  assert.equal(b.notifs.length, 4, "une seule fois");
+  // Remise à plus tard puis tranchée ailleurs : oubliée, rien ne part.
+  B.reporterProposition("p-rasage", { maintenant: b.horloge.t, memoire });
+  const sans = attente.filter((p) => p.id !== "p-rasage");
+  const c = banc({ propositions: sans });
+  for (const [id, t] of b.plusTard) c.plusTard.set(id, t);
+  await c.tic();
+  assert.equal(c.plusTard.has("p-rasage"), false, "plus en attente : oubliée");
+  assert.deepEqual(B.propositionsADire(attente, { deja: new Set(["p-rasage"]), plusTard: new Map([["p-rasage", 5000]]), maintenant: 1000 }).garder, [], "remise à plus tard : plus comptée comme dite");
 });
 
 test("les propositions : coupées par la bascule, ou sur une tour sans propositions-attente-v1", async () => {

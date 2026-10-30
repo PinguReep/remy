@@ -70,6 +70,7 @@ const poserRappels = (liste) => ecrire("/api/rappels", { rappels: liste.map((r) 
 export function creerTrancher(ctx, { relire } = {}) {
   const carte = h("div", { class: "trancher-carte" });
   let ouverte = null; // { quoi, f, corps, dessiner }
+  let bougeA = null; // dernier geste qui a retiré ou remis une ligne (double clic)
   const apres = () => relire?.();
 
   async function maj({ frais = false } = {}) {
@@ -176,6 +177,13 @@ export function creerTrancher(ctx, { relire } = {}) {
     }
     const retour = document.activeElement;
     const corps = h("div", { class: "trancher-feuille", tabindex: "-1", autofocus: true });
+    // Le second clic d'un double clic tomberait sur la ligne qui vient de prendre la place : ignoré.
+    corps.addEventListener("click", (e) => {
+      if (e.detail > 0 && R.clicEnEcho(bougeA)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
     const f = feuille({
       titre, sousTitre, large: true, classe: "trancher-dialog", contenu: corps, pied, avantFermeture,
       surFermeture: () => {
@@ -396,10 +404,11 @@ export function creerTrancher(ctx, { relire } = {}) {
     try {
       await faire(g, l);
     } catch (err) {
-      direErreur(err, () => agir(g, l), "Pas fait");
+      direErreur(err, () => agir(g, l), R.prefixeEchec(g, l));
     } finally {
       enCours.delete(l.cle);
       dessiner();
+      bougeA = Date.now();
     }
   }
 
@@ -429,10 +438,30 @@ export function creerTrancher(ctx, { relire } = {}) {
       direErreur(err, () => remettreRappels(liste, l, message), "Pas remis");
     }
   }
-  const rappelDe = (l) => lu.rappels?.find((r) => r.id === l.rappelId) || { id: l.rappelId, texte: l.texte, quand: l.depuis ?? null, fait: false, etiquettes: [] };
+  /** Le carnet pas encore lu (ou illisible) : rien n'est « déjà fait », on attend (ATrancherModel.carnetLu). */
+  function carnetLu() {
+    if (lu.rappels) return true;
+    dire("Le carnet n'est pas encore lu : réessaie dans un instant.");
+    if (!lu.lecture) maj({ frais: true });
+    return false;
+  }
+  /**
+   * Le rappel tel que le carnet l'a lu, jamais reconstruit depuis la ligne
+   * (sa date et ses étiquettes se perdraient à l'« Annuler ») ; null s'il
+   * n'est plus là (c'est dit, la ligne sort).
+   */
+  function rappelLu(l) {
+    if (!carnetLu()) return null;
+    const r = lu.rappels.find((x) => x.id === l.rappelId);
+    if (r) return r;
+    masquer(l);
+    dire("Ce rappel n'est plus là.");
+    return null;
+  }
 
   async function supprimerRappel(l) {
-    const r = rappelDe(l);
+    const r = rappelLu(l);
+    if (!r) return;
     await api(`/api/rappels/${seg(r.id)}`, { methode: "DELETE" });
     lu.rappels = (lu.rappels || []).filter((x) => x.id !== r.id);
     masquer(l);
@@ -441,7 +470,8 @@ export function creerTrancher(ctx, { relire } = {}) {
 
   /** Change un rappel (fait, demain) ; « Annuler » le remet tel qu'avant. */
   async function changerRappel(l, changement, message) {
-    const avant = rappelDe(l);
+    const avant = rappelLu(l);
+    if (!avant) return;
     const apresChangement = { ...avant, ...changement };
     await poserRappels([apresChangement]);
     lu.rappels = (lu.rappels || []).map((x) => (x.id === avant.id ? apresChangement : x));
@@ -503,7 +533,7 @@ export function creerTrancher(ctx, { relire } = {}) {
         }
       } } });
     } else if (g === "fusionner") {
-      if (!lu.rappels) throw new Error("Le carnet n'est pas encore lu : réessaie dans un instant.");
+      if (!carnetLu()) return;
       const ids = new Set(l.doublons || []);
       const retires = lu.rappels.filter((r) => ids.has(r.id));
       if (!retires.length) {
@@ -592,7 +622,9 @@ export function creerTrancher(ctx, { relire } = {}) {
     } else if (g === "fait" && l.type === "rappel-retard") {
       await changerRappel(l, { fait: true }, `« ${l.texte} » : fait.`);
     } else if (g === "demain" && l.type === "rappel-retard") {
-      const quand = R.demainMemeHeure(rappelDe(l).quand);
+      const r = rappelLu(l);
+      if (!r) return;
+      const quand = R.demainMemeHeure(r.quand);
       await changerRappel(l, { quand }, `« ${l.texte} » : demain, ${R.heure(quand)}.`);
     }
   }

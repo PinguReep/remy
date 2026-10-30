@@ -137,6 +137,8 @@ export const vueRituel = (nom) => `aujourdhui/${nom === "bilan" ? "bilan" : "bri
 // --- Les propositions qui attendent un « oui » (GET /api/propositions/attente) ---
 /** Au-delà, les plus anciennes sont regroupées en une seule (comme les rappels). */
 export const MAX_PROPOSITIONS_SEULES = 3;
+/** « Plus tard » : elle revient dans 3 heures (NotificationsPropositions.delaiPlusTard). */
+export const PLUS_TARD_PROPOSITION = 3 * 3600e3;
 /** Une vue du site que la coquille accepte (adresse.rs, vue_valide) et que `bureau://aller` relaie. */
 const vueSure = (v) => (/^[a-z0-9/-]{1,60}$/.test(v) ? v : null);
 /** Ce que dit la notification d'une proposition (PropositionEnAttente.notification). */
@@ -156,12 +158,14 @@ export function vueProposition(p) {
  * d'abord ; au-delà de 3, les plus anciennes regroupées en une seule. `garder` :
  * les identifiants déjà dits ET encore en attente (une proposition tranchée
  * ailleurs est oubliée). `ids` d'une notification : ce qu'elle couvre (marqué
- * dit seulement quand Windows l'a prise).
+ * dit seulement quand Windows l'a prise). `plusTard` : id → pas avant (ms) ;
+ * une proposition remise à plus tard se redit une fois cette heure passée.
  */
-export function propositionsADire(liste, { deja = new Set() } = {}) {
+export function propositionsADire(liste, { deja = new Set(), plusTard = new Map(), maintenant = Date.now() } = {}) {
   const enAttente = (liste || []).filter((p) => p && p.id);
-  const garder = enAttente.map((p) => p.id).filter((id) => deja.has(id));
-  const nouvelles = enAttente.filter((p) => !deja.has(p.id)).sort((a, b) => (a.a ?? 0) - (b.a ?? 0));
+  const garder = enAttente.map((p) => p.id).filter((id) => deja.has(id) && !plusTard.has(id));
+  const pasEncore = (p) => (plusTard.get(p.id) ?? -Infinity) > maintenant;
+  const nouvelles = enAttente.filter((p) => (!deja.has(p.id) || plusTard.has(p.id)) && !pasEncore(p)).sort((a, b) => (a.a ?? 0) - (b.a ?? 0));
   const seules = nouvelles.slice(-MAX_PROPOSITIONS_SEULES);
   const groupe = nouvelles.slice(0, Math.max(0, nouvelles.length - MAX_PROPOSITIONS_SEULES));
   const notifications = seules.map((p) => ({ ...texteProposition(p), cle: `proposition:${p.id}`.slice(0, 200), vue: vueProposition(p), ids: [p.id] }));
@@ -197,11 +201,22 @@ function noterDeja(cles) {
 }
 const ensembleDeja = () => new Set(lireDeja().map((x) => x.cle));
 // Les propositions déjà dites : seulement celles encore en attente (la tour les rend).
+// Celles remises à plus tard : id → pas avant (ms), oubliées une fois redites.
 const CLE_PROPOSITIONS = "remy-bureau-propositions";
+const CLE_PLUS_TARD = "remy-bureau-propositions-plus-tard";
 const memoirePropositionsLocale = {
   lire: () => new Set((local.lire(CLE_PROPOSITIONS, []) || []).filter((x) => typeof x === "string")),
   ecrire: (ids) => local.ecrire(CLE_PROPOSITIONS, [...ids].slice(-200)),
+  plusTard: () => new Map(Object.entries(local.lire(CLE_PLUS_TARD, {}) || {}).filter(([, t]) => typeof t === "number")),
+  ecrirePlusTard: (m) => local.ecrire(CLE_PLUS_TARD, Object.fromEntries([...m].slice(-200))),
 };
+/** « Plus tard » sur une proposition (feuille « Cette nuit, je creuse aussi ? ») : redite dans 3 heures si elle attend toujours. */
+export function reporterProposition(id, { maintenant = Date.now(), memoire = memoirePropositionsLocale } = {}) {
+  if (!id) return;
+  const m = memoire.plusTard();
+  m.set(id, maintenant + PLUS_TARD_PROPOSITION);
+  memoire.ecrirePlusTard(m);
+}
 
 // --- Les commandes ---
 let etat = null;
@@ -293,7 +308,8 @@ export function creerTic({
       derniereLecturePropositions = maintenant;
       try {
         const { propositions } = (await lire("/api/propositions/attente", { delai: 15000 })) || {};
-        const { notifications, garder } = propositionsADire(propositions, { deja: memoirePropositions.lire() });
+        const plusTard = memoirePropositions.plusTard?.() || new Map();
+        const { notifications, garder } = propositionsADire(propositions, { deja: memoirePropositions.lire(), plusTard, maintenant });
         const dites = new Set(garder);
         for (const n of notifications) {
           try {
@@ -304,6 +320,14 @@ export function creerTic({
           }
         }
         memoirePropositions.ecrire(dites);
+        if (memoirePropositions.plusTard) {
+          // Relue maintenant (un « Plus tard » a pu arriver pendant les notifications) :
+          // on oublie celles redites, et celles qui n'attendent plus.
+          const attente = new Set((propositions || []).map((p) => p?.id));
+          const m = memoirePropositions.plusTard();
+          for (const [id, t] of m) if (!attente.has(id) || (t <= maintenant && dites.has(id))) m.delete(id);
+          memoirePropositions.ecrirePlusTard(m);
+        }
       } catch (err) {
         if (err?.nature === "auth") await direDeconnecte(maintenant);
         // Tour injoignable : on réessaiera à la prochaine minute.
