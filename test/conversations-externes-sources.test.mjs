@@ -29,6 +29,12 @@ process.env.REMY_IMPORTS_DIR = path.join(dossier, "imports");
 process.env.HOME = maison;
 process.env.USERPROFILE = maison;
 fs.mkdirSync(maison, { recursive: true });
+// Les profils Electron de l'app T3, à leur place par défaut selon le système
+// (lib/connaissances/t3.js) : %APPDATA% sous Windows, ~/.config sous Linux.
+const dossierProfils =
+  process.platform === "win32" ? path.join(maison, "AppData", "Roaming")
+  : process.platform === "darwin" ? path.join(maison, "Library", "Application Support")
+  : path.join(maison, ".config");
 
 const fx = await import("./outils/conversations-fictives.mjs");
 const claude = await import("../lib/connaissances/claudeCode.js");
@@ -326,8 +332,8 @@ test("T3 : une base de dev vide ne cache plus l'ancienne base ; le profil de l'a
   // Une base rangée plus profond (profil nommé), et une dans worktrees (jamais lue).
   fx.creerBaseT3(path.join(t3dir, "profils", "alpha", "userdata", "statev2.sqlite"), filsT3("prof", "Profil alpha"));
   fx.creerBaseT3(path.join(t3dir, "worktrees", "site", ".t3", "userdata", "statev2.sqlite"), filsT3("wt", "Copie de travail"));
-  // Le profil Electron « T3 Code (Alpha) » (sous Linux : ~/.config).
-  fx.creerBaseT3(path.join(maison, ".config", "T3 Code (Alpha)", "userdata", "statev2.sqlite"), filsT3("app", "Profil de l'app"));
+  // Le profil Electron « T3 Code (Alpha) » (%APPDATA% sous Windows, ~/.config sous Linux).
+  fx.creerBaseT3(path.join(dossierProfils, "T3 Code (Alpha)", "userdata", "statev2.sqlite"), filsT3("app", "Profil de l'app"));
   const avant = empreinte(t3dir);
   const r = await lire("t3");
   const b = r.bilan.sources.t3;
@@ -350,7 +356,7 @@ test("T3 : T3CODE_HOME en « ~/… » est compris ; une base sans aucun fil le d
   process.env.T3CODE_HOME = "~/T3 maison";
   const garde = path.join(dossier, "t3-de-cote");
   fs.renameSync(path.join(maison, ".t3"), garde);
-  fs.renameSync(path.join(maison, ".config"), `${garde}-config`);
+  fs.renameSync(dossierProfils, `${garde}-config`);
   try {
     assert.equal(t3.deplier("~/T3 maison"), home);
     await json("DELETE", "/api/conversations-externes/sources/t3");
@@ -364,7 +370,7 @@ test("T3 : T3CODE_HOME en « ~/… » est compris ; une base sans aucun fil le d
   } finally {
     delete process.env.T3CODE_HOME;
     fs.renameSync(garde, path.join(maison, ".t3"));
-    fs.renameSync(`${garde}-config`, path.join(maison, ".config"));
+    fs.renameSync(`${garde}-config`, dossierProfils);
   }
   await json("DELETE", "/api/conversations-externes/sources/t3");
   await json("PUT", "/api/conversations-externes/sources/t3", { actif: true });
