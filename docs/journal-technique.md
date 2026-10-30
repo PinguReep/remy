@@ -4,6 +4,27 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 — Site : une coche en route, et ce que la file a envoyé
+
+- **La file d'envoi note ce qui est parti** (`public/app/file-envoi.js`,
+  clé locale `remy-file-envoyes`, deux jours, 50 au plus) avec le `ledgerId`
+  rendu par la tour, avant de retirer l'envoi de la file. Le suivi des coches
+  (`gerer.js`, `suivreFileCochees`) en déduit le sort d'une coche sortie de
+  la file : partie (« Envoyé », ou rouverte si Sam l'avait annulée en
+  route), ou retirée à la main (absente de la file ET du registre). Avant, il
+  relançait une vidange pour lire son bilan : une coche partie pendant
+  qu'Aujourd'hui n'était pas monté (fenêtre rechargée sur Rémy) passait pour
+  retirée, et « sera rouverte » n'était pas tenu.
+- **Le suivi part au démarrage** (`main.js`, avant la première vidange), plus
+  au montage d'Aujourd'hui seulement.
+- **Un envoi en vol est marqué** (`enEnvoi`) : « Annuler » ne peut plus le
+  retenir, il le marque à défaire ; la ligne tourne comme sur l'iPhone. La
+  vidange relit la file à chaque envoi : une commande retirée pendant qu'une
+  autre est en vol ne part plus.
+- `h()` (`ui.js`) pose les propriétés « --… » par `setProperty` :
+  `Object.assign(el.style, …)` les ignorait, la couleur de projet des blocs
+  n'était jamais appliquée.
+
 ## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
 
 - **Le planificateur demande chaque job à part** (`lib/planif.js`,
