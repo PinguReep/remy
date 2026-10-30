@@ -71,6 +71,7 @@ console.log(`\nExports ChatGPT à déposer dans : ${e.imports.dossier} (${e.impo
 const dl = e.chatgpt?.telechargements;
 if (dl?.actif) for (const d of dl.dossiers) console.log(`  Téléchargements surveillé (lecture seule) : ${d.chemin}${d.trouve ? "" : " — absent"}`);
 else if (dl) console.log(`  Téléchargements : non surveillé${dl.forceParLaTour ? " (REMY_TELECHARGEMENTS=off)" : " (coupé dans l'app)"}`);
+if (dl?.phraseIllisibles) console.log(`  ${dl.phraseIllisibles}`);
 const rp = e.chatgpt?.rappel;
 if (rp) console.log(`  Dernier import : ${rp.dernierImport ? `${date(rp.dernierImport)} (il y a ${rp.depuisJours} j)` : "jamais"} ; carte « Exporter ChatGPT » : ${!rp.actif ? "coupée" : rp.aMontrer ? "montrée" : "pas maintenant"}`);
 const o = e.imports.originaux;

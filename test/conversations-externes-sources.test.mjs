@@ -391,6 +391,14 @@ function creerBaseV1(fichier, { projets = [], fils = [], messages = [] }) {
 const telechargements = path.join(maison, "Downloads");
 const conv = (id, titre, q) => fx.conversationChatGPT({ id, titre, debut: Math.round(HIER / 1000), echanges: [[q, "Bonne idée pour la boutique."]] });
 const ilYa = (jours) => new Date(Date.now() - jours * 86_400_000);
+// Un export abîmé : l'annuaire se lit, le contenu de conversations.json non.
+const zipAbime = (id) => {
+  const z = Buffer.from(fx.exportChatGPT([conv(id, "Abîmé", "?")]));
+  const k = z.indexOf(Buffer.from("conversations.json")) + 40;
+  z[k] ^= 0xff;
+  z[k + 1] ^= 0xff;
+  return z;
+};
 
 test("Téléchargements : seul l'export ChatGPT est importé, une fois ; rien n'y est déplacé, renommé, effacé ni modifié", async () => {
   fs.mkdirSync(telechargements, { recursive: true });
@@ -441,23 +449,28 @@ test("Téléchargements : un export déjà importé (envoyé depuis l'app) n'est
   assert.equal(r.bilan.sources.chatgpt.telechargements.deja, 2, "celui d'avant, et celui-ci reconnu à son empreinte");
   assert.equal(r.bilan.sources.chatgpt.telechargements.importes, 0);
   assert.equal(r.etat.imports.importes, 2);
-  // Un export abîmé (annuaire lisible, contenu tronqué) : l'erreur, et quoi faire.
-  const abime = Buffer.from(fx.exportChatGPT([conv("6f1c0000-bbbb-4000-8000-000000000004", "Abîmé", "?")]));
-  const debut = abime.indexOf(Buffer.from("conversations.json")) + 40;
-  abime[debut] ^= 0xff;
-  abime[debut + 1] ^= 0xff;
+  // Un export abîmé (annuaire lisible, contenu tronqué), plus récent que le
+  // dernier import (daté d'il y a 3 jours) : l'erreur, qui le nomme, et quoi faire.
+  base().prepare("UPDATE imports SET a = ?").run(Date.now() - 3 * 86_400_000);
   const g = path.join(telechargements, "export-abime.zip");
-  fs.writeFileSync(g, abime);
+  fs.writeFileSync(g, zipAbime("6f1c0000-bbbb-4000-8000-000000000004"));
   fs.utimesSync(g, ilYa(1), ilYa(1));
   const avant = empreinte(telechargements);
-  r = await lire("chatgpt");
-  assert.equal(r.bilan.sources.chatgpt.ok, false);
-  assert.equal(source(r.etat, "chatgpt").erreur.code, "zip-invalide");
-  assert.match(source(r.etat, "chatgpt").erreur.quoiFaire, /Retélécharge/);
+  for (const passage of [1, 2]) {
+    r = await lire("chatgpt");
+    assert.equal(r.bilan.sources.chatgpt.ok, false, `passage ${passage}`);
+    const err = source(r.etat, "chatgpt").erreur;
+    assert.equal(err.code, "zip-invalide");
+    assert.match(err.message, /— « export-abime\.zip » \(du \d+\/\d+\), dans les Téléchargements de la tour\.$/);
+    assert.match(err.quoiFaire, /^Retélécharge l'export depuis le lien du mail de ChatGPT, sur la tour/);
+    assert.doesNotMatch(err.quoiFaire, /Imports/, "un fichier de Téléchargements n'est jamais dans Imports");
+    assert.match(r.etat.chatgpt.telechargements.phraseIllisibles, /^1 \.zip illisible dans les Téléchargements de la tour : « export-abime\.zip »/);
+  }
   assert.equal(empreinte(telechargements), avant);
   fs.rmSync(g); // c'est l'utilisateur qui l'efface, jamais Rémy
   r = await lire("chatgpt");
   assert.equal(source(r.etat, "chatgpt").erreur, null);
+  assert.equal(r.etat.chatgpt.telechargements.phraseIllisibles, null);
 });
 
 test("Téléchargements : coupable dans l'app, REMY_TELECHARGEMENTS (plusieurs dossiers, « off ») sur la tour", async () => {
@@ -537,4 +550,57 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   assert.ok(r.bilan.sources.chatgpt.telechargements.importes >= 1, JSON.stringify(r.bilan.sources.chatgpt.telechargements));
   assert.equal(r.etat.chatgpt.rappel.aMontrer, false);
   assert.equal(empreinte(telechargements), avant);
+});
+
+test("Téléchargements : un vieux .zip abîmé ne masque pas un export plus récent ; nommé, jamais gardé en clair", async () => {
+  // Contre-relecture du 30/10 : l'export d'octobre téléchargé abîmé laissait
+  // ChatGPT en erreur 90 jours, même le bon export de novembre importé.
+  base().prepare("UPDATE imports SET a = ?").run(Date.now() - 40 * 86_400_000);
+  const ecrire = (nom, contenu, quand) => {
+    const f = path.join(telechargements, nom);
+    fs.writeFileSync(f, contenu);
+    fs.utimesSync(f, quand, quand);
+    return f;
+  };
+  const octobre = ecrire("export-octobre.zip", zipAbime("6f1c0000-bbbb-4000-8000-000000000007"), ilYa(20));
+  ecrire("export-novembre.zip", fx.exportChatGPT([conv("6f1c0000-bbbb-4000-8000-000000000008", "Coffrets de Noël", "Trois coffrets ?")]), ilYa(1));
+  const avant = empreinte(telechargements);
+  for (const passage of [1, 2]) {
+    const r = await lire("chatgpt");
+    assert.equal(r.bilan.sources.chatgpt.ok, true, `passage ${passage} : ${JSON.stringify(r.bilan.sources.chatgpt)}`);
+    assert.equal(r.bilan.sources.chatgpt.telechargements.erreurs, 1, "compté");
+    assert.equal(source(r.etat, "chatgpt").erreur, null, "le bon export, plus récent, l'emporte");
+    const t = r.etat.chatgpt.telechargements;
+    assert.deepEqual(t.illisibles.map((x) => [x.nom, x.bloquant]), [["export-octobre.zip", false]]);
+    assert.match(t.phraseIllisibles, /^1 \.zip illisible dans les Téléchargements de la tour : « export-octobre\.zip » \(du \d+\/\d+\)\. Un export plus récent est déjà importé : efface-le quand tu veux/);
+  }
+  assert.ok((await json("GET", "/api/conversations-externes/liste?source=chatgpt")).corps.conversations.some((c) => c.titre === "Coffrets de Noël"));
+  assert.equal(empreinte(telechargements), avant, "rien n'est touché dans Téléchargements");
+  // Le nom n'est jamais gardé en clair (ni dans la base, ni dans son journal).
+  for (const f of fs.readdirSync(process.env.REMY_DATA_DIR)) {
+    const p = path.join(process.env.REMY_DATA_DIR, f);
+    if (fs.statSync(p).isFile()) assert.ok(!fs.readFileSync(p).includes("export-octobre"), f);
+  }
+  // Un mois plus tard, l'export de décembre arrive abîmé : plus récent que
+  // tout import, c'est l'erreur de la source — elle nomme le bon fichier.
+  base().prepare("UPDATE imports SET a = ?").run(Date.now() - 30 * 86_400_000);
+  const decembre = ecrire("export-decembre.zip", zipAbime("6f1c0000-bbbb-4000-8000-000000000009"), new Date(Date.now() - 60_000));
+  let r = await lire("chatgpt");
+  assert.equal(r.bilan.sources.chatgpt.ok, false);
+  const err = source(r.etat, "chatgpt").erreur;
+  assert.match(err.message, /« export-decembre\.zip »/);
+  assert.doesNotMatch(err.message, /octobre/);
+  assert.deepEqual(r.etat.chatgpt.telechargements.illisibles.map((x) => [x.nom, x.bloquant]), [["export-decembre.zip", true], ["export-octobre.zip", false]]);
+  assert.match(r.etat.chatgpt.telechargements.phraseIllisibles, /^2 \.zip illisibles .* Retélécharge l'export depuis le lien du mail, sur la tour/);
+  // Le script de la tour le dit aussi.
+  const { execFileSync } = await import("node:child_process");
+  const sortie = execFileSync(process.execPath, ["--no-warnings", path.resolve("scripts/connaissances-etat.mjs")], { env: process.env, encoding: "utf8" });
+  assert.match(sortie, /2 \.zip illisibles dans les Téléchargements de la tour : « export-decembre\.zip »/);
+  // Effacés par Sam : plus rien à dire.
+  fs.rmSync(decembre);
+  fs.rmSync(octobre);
+  r = await lire("chatgpt");
+  assert.equal(r.bilan.sources.chatgpt.ok, true);
+  assert.equal(source(r.etat, "chatgpt").erreur, null);
+  assert.deepEqual(r.etat.chatgpt.telechargements.illisibles, []);
 });

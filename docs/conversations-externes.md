@@ -151,6 +151,14 @@ passage suivant (30 min, la nuit, ou « Lire maintenant »).
   un .zip déjà regardé n'est pas relu tant qu'il ne change pas (empreintes
   HMAC de son chemin, de sa taille et de sa date : aucun nom de fichier
   gardé en clair).
+- **Un .zip illisible** (téléchargement abîmé) : nommé à l'écran (« 1 .zip
+  illisible dans les Téléchargements de la tour : « export.zip » (du 9/10)… »,
+  sous « Prendre l'export dans Téléchargements » et dans
+  `connaissances-etat.mjs`), son nom chiffré dans le bilan. C'est une erreur
+  de la source seulement s'il est plus récent que le dernier export importé
+  (un vieux fichier abîmé ne masque pas un bon export plus récent) ; l'erreur
+  le nomme, et dit de retélécharger l'export sur la tour puis d'effacer
+  l'abîmé — Rémy ne le fait jamais.
 - **La carte « Exporter ChatGPT »** (écran Conversations, iPhone et site) :
   quand le dernier import a plus de 30 jours — ou jamais, la source allumée —,
   et qu'aucun export n'attend dans Imports. « Ouvrir ChatGPT » ouvre
@@ -257,7 +265,10 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
   à la dernière lecture, et `phrase`, à montrer telle quelle (`null` : rien
   lu encore, ou tour plus ancienne).
 - `chatgpt` : Téléchargements surveillé (`forceParLaTour` :
-  `REMY_TELECHARGEMENTS=off`) et la carte (`rappel.aMontrer`).
+  `REMY_TELECHARGEMENTS=off` ; `illisibles` : les .zip illisibles de la
+  dernière lecture, `{ nom, date, bloquant }`, et `phraseIllisibles`, à
+  montrer telle quelle) et la carte (`rappel.aMontrer`). Une erreur venue
+  de Téléchargements porte `origine: "telechargements"`.
 - `cle.origine` : `fichier`, `remy.env` ou `a-creer` (rien lu encore).
 - `imports.enAttente` : les exports déposés pas encore importés (un .zip, un
   `conversations*.json`, un dossier qui en contient) ; `imports.originaux` :
