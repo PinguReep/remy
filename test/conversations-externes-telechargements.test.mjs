@@ -168,6 +168,67 @@ test("un annuaire menteur (taille annoncée plus petite) : la décompression est
   assert.equal(zip.invraisemblable({ taille: 500, compresse: 1 }), false, "un petit fichier n'est pas jugé");
 });
 
+/** Le même .zip, avec la taille décompressée de `nom` mise à 0xFFFFFFFF dans l'annuaire, SANS champ ZIP64. */
+const tailleInconnue = (contenu, nom) => {
+  const b = Buffer.from(contenu);
+  for (let o = 0; o + 46 <= b.length; o++) {
+    if (b.readUInt32LE(o) !== 0x02014b50) continue;
+    const l = b.readUInt16LE(o + 28);
+    if (b.subarray(o + 46, o + 46 + l).toString("utf8") === nom) b.writeUInt32LE(0xffffffff, o + 24);
+  }
+  return b;
+};
+
+test("RÉGRESSION : une taille 0xFFFFFFFF sans champ ZIP64 est invraisemblable : écartée sur l'annuaire, rien n'est décompressé", async () => {
+  // « [ » + 40 Mo d'espaces : la décompression complète prendrait des secondes ; l'annuaire suffit à l'écarter.
+  const piege = tailleInconnue(fx.zipper([{ nom: "user.json", contenu: JSON.stringify({ id: "user-inconnu" }) }, { nom: "conversations.json", contenu: Buffer.concat([Buffer.from("["), Buffer.alloc(40_000_000, 0x20)]) }]), "conversations.json");
+  const f = path.join(dossier, "taille-inconnue.zip");
+  fs.writeFileSync(f, piege);
+  const e = zip.entrees(f).find((x) => x.nom === "conversations.json");
+  assert.equal(e.taille, Infinity, "taille inconnue");
+  assert.equal(zip.invraisemblable(e), true);
+  assert.deepEqual(sync.examinerZip(f), { export: true, piege: true });
+  // Aucun flux ouvert sur l'entrée : rien n'est décompressé.
+  const vrai = fs.createReadStream;
+  let ouverts = 0;
+  let debut, r;
+  fs.createReadStream = function (p, o) {
+    if (o?.start !== undefined) ouverts++;
+    return vrai.call(fs, p, o);
+  };
+  try {
+    // La lecture directe (import, ressemblance) refuse avant d'ouvrir le flux.
+    const { conversationsDuFichier } = await import("../lib/connaissances/chatgpt.js");
+    await assert.rejects(async () => {
+      for await (const _ of conversationsDuFichier(f)) void _;
+    }, (err) => err.code === "ZIP_INVALIDE" && /sans être ouverte/.test(err.message));
+    // Dans Téléchargements : écartée en quelques ms, jamais proposée, dite.
+    ranger("export-premier.zip", piege);
+    debut = Date.now();
+    r = await lire();
+  } finally {
+    fs.createReadStream = vrai;
+  }
+  assert.equal(ouverts, 0, "aucune entrée décompressée");
+  assert.ok(Date.now() - debut < 2000, `${Date.now() - debut} ms`);
+  const t = r.bilan.sources.chatgpt.telechargements;
+  assert.equal(t.erreurs, 1, JSON.stringify(t));
+  assert.equal(t.proposes, 0, "jamais proposé");
+  // Une taille inconnue n'est jamais « sans borne » : au pire TAILLE_MAX ; et une lecture avant le geste s'arrête au plafond.
+  const honnete = path.join(dossier, "honnete.zip");
+  fs.writeFileSync(honnete, fx.zipper([{ nom: "conversations.json", contenu: Buffer.concat([Buffer.from("["), Buffer.alloc(900_000, 0x20), Buffer.from("]")]) }]));
+  const [h] = zip.entrees(honnete);
+  let lu = 0;
+  await assert.rejects(async () => {
+    for await (const c of zip.fluxEntree(honnete, h, { plafond: 100_000 })) lu += c.length;
+  }, (err) => err.code === "PLAFOND");
+  assert.ok(lu <= 100_000, `${lu} octets`);
+  assert.equal(await sync.ressembleAChatGPT(honnete, { plafond: 100_000 }), false, "rien de reconnaissable sous le plafond : pas proposé");
+  assert.ok(sync.LECTURE_AVANT_GESTE <= 64 * 1024 * 1024);
+  vider();
+  await lire();
+});
+
 test("RÉGRESSION : « Tout effacer » n'attend pas un import en cours ; l'import s'arrête au morceau suivant", async () => {
   const beaucoup = Array.from({ length: 3000 }, (_, i) => conv(`6f1c0000-dddd-4000-8000-${String(i).padStart(12, "0")}`, `Fil ${i}`, `Question ${i} sur les bougies ?`));
   const f = path.join(dossier, "gros-export.zip");
