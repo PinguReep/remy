@@ -387,10 +387,10 @@ test("Réglages et Ctrl+K : les deux réglages de l'export ChatGPT se trouvent, 
   // Contre-relecture du 30/10 : « téléchargements » ne trouvait rien, « rappel »
   // seulement les notifications. Les libellés et les mots de RechercheReglages.swift.
   globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} };
-  const { indexVisible } = await import("../public/app/vues/reglages.js");
+  const { indexVisible, rechercherReglages } = await import("../public/app/vues/reglages.js");
   const { chargerVersion } = await import("../public/app/api.js");
-  // Ce que fait la recherche des Réglages (et Ctrl+K, sur les mêmes entrées).
-  const trouver = (q) => indexVisible().filter(([, lib, mots]) => `${lib} ${mots}`.toLowerCase().includes(q)).map(([, lib]) => lib);
+  // La recherche des Réglages elle-même (Ctrl+K passe par la même), sur l'index par ligne.
+  const trouver = (q) => rechercherReglages(q).map((e) => e.titre);
   const vraiFetch = globalThis.fetch;
   const tour = (capacites) => {
     globalThis.fetch = async () => new Response(JSON.stringify({ version: "0.0.0", capacites }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -406,7 +406,9 @@ test("Réglages et Ctrl+K : les deux réglages de l'export ChatGPT se trouvent, 
     assert.ok(trouver("rappel").includes("Me rappeler d'exporter ChatGPT"), trouver("rappel").join(" | "));
     assert.ok(trouver("30 jours").includes("Me rappeler d'exporter ChatGPT"));
     assert.ok(trouver("chatgpt").includes("Prendre l'export dans Téléchargements"));
-    for (const [section] of indexVisible().filter(([, lib]) => /Téléchargements|exporter ChatGPT/.test(lib))) assert.equal(section, "conversations");
+    const export2 = indexVisible().filter((e) => /Téléchargements|exporter ChatGPT/.test(e.titre));
+    assert.equal(export2.length, 2);
+    for (const e of export2) assert.equal(e.section, "conversations");
     await tour([]);
     assert.deepEqual(trouver("chatgpt"), [], "sans conversations externes : toute la section se cache");
   } finally {
