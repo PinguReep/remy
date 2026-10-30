@@ -122,6 +122,27 @@ export function demainISO(maintenant = Date.now()) {
   return jourISO(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
 }
 
+/** Minuit (heure de la machine) du jour « 2026-11-20 », ou null si ce n'est pas un vrai jour (« 2026-13-45 »). */
+export function debutJourISO(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ""));
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return jourISO(d) === iso ? d.getTime() : null;
+}
+
+/**
+ * Un jour demandé par son adresse (#/aujourdhui/echelle/2026-11-20, un lien
+ * ouvert le lendemain…) face aux jours lus : « lu » (dans la liste), « attente »
+ * (les jours ne sont pas encore lus : on ne sait rien), « passe » (avant
+ * aujourd'hui) ou « hors » (au-delà de ce que la tour a lu). Seul « lu » permet
+ * de dire « rien de prévu ».
+ */
+export function situerJour(iso, jours, { lus = true, maintenant = Date.now() } = {}) {
+  if ((jours || []).some((j) => j.jour === iso)) return "lu";
+  if (!lus) return "attente";
+  return iso < jourISO(maintenant) ? "passe" : "hors";
+}
+
 /** Le bandeau de la vue : vue gardée, tour injoignable, mise à jour (null : rien à dire). */
 export function etatVue({ misAJour = null, erreur = null, chargement = false } = {}, maintenant = Date.now()) {
   if (misAJour == null) return null;
@@ -149,6 +170,8 @@ export const VIDES = {
   semaine: "Rien de prévu sur les 7 prochains jours : ni rendez-vous, ni tâche placée par Motion.",
   pasAJour: "Demain et les 7 jours arrivent avec la mise à jour de ta tour (scripts/installer-tour.ps1).",
   reseau: "La tour ne répond pas : Tailscale est-il actif ? Rien n'est gardé ici pour ces jours-là.",
+  passe: "Ce jour est passé : « À l'échelle » montre aujourd'hui et les 7 prochains jours.",
+  hors: "Ce jour n'est pas dans les 7 prochains jours : Rémy ne l'a pas encore lu.",
 };
 
 // --- La frise à l'échelle (JourneeEtendue) ---

@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 
 const S = await import("../public/app/analyse/semaine.js");
-const { impactProlongation, autreJour } = await import("../public/app/analyse/journee.js");
+const { impactProlongation, autreJour, jourTitre } = await import("../public/app/analyse/journee.js");
 
 // L'exemple de SemaineTests.swift (lundi 26 octobre 2026, 10:00).
 const exemple = {
@@ -79,6 +79,23 @@ test("les jours se lisent même abîmés, à partir d'aujourd'hui, sans les coch
   assert.deepEqual(S.joursAffiches(null, lundi10h), []);
   assert.equal(S.demainISO(lundi10h), "2026-10-27");
   assert.equal(S.demainISO(new Date(2026, 9, 31, 23, 30).getTime()), "2026-11-01", "fin de mois");
+});
+
+test("RÉGRESSION : un jour demandé par l'adresse hors des jours lus n'est jamais dit « rien de prévu »", () => {
+  const jours = S.joursAffiches(exemple, lundi10h);
+  assert.equal(S.situerJour("2026-10-27", jours, { maintenant: lundi10h }), "lu");
+  assert.equal(S.situerJour("2026-11-20", jours, { maintenant: lundi10h }), "hors", "au-delà des 7 jours lus");
+  assert.equal(S.situerJour("2026-10-25", jours, { maintenant: lundi10h }), "passe", "un lien de la veille, ouvert le lendemain");
+  assert.equal(S.situerJour("2026-10-28", jours, { maintenant: lundi10h }), "hors", "un jour que la tour n'a pas rendu");
+  assert.equal(S.situerJour("2026-11-20", [], { lus: false, maintenant: lundi10h }), "attente", "pas encore lus : on ne sait rien");
+  // Le titre d'un tel jour : en toutes lettres, jamais la chaîne ISO.
+  assert.equal(S.debutJourISO("2026-11-20"), new Date(2026, 10, 20).getTime());
+  assert.equal(jourTitre(S.debutJourISO("2026-11-20")), "Vendredi 20 novembre");
+  assert.equal(S.debutJourISO("2026-13-45"), null, "pas un vrai jour");
+  assert.equal(S.debutJourISO("demain"), null);
+  assert.equal(S.debutJourISO(undefined), null);
+  assert.match(S.VIDES.hors, /pas dans les 7 prochains jours/);
+  assert.match(S.VIDES.passe, /passé/);
 });
 
 test("un jour : rendez-vous, tâches, titres, menaces, ce qu'il faut signaler", () => {

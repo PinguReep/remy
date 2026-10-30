@@ -10,7 +10,7 @@ import { api, sait } from "../api.js";
 import { h, vider, icone, bouton, feuille, squelette, vide, texteErreur, occupe } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import { heure, finEffective, estRendezVous, etatMoment, jourISO, jourTitre } from "../analyse/journee.js";
-import { niveauCharge, remplissage, phraseCharge, chargeDe, titreCourtJour, titreLongJour, estVide, menaceesDuJour, aSignaler, detailEcheance, resumeJour, ligneRendezVous, journeeDuJour, joursAffiches, demainISO, etatVue, notesSemaine, VIDES, heuresFrise, dansLeJour, couloirs, bornesJour } from "../analyse/semaine.js";
+import { niveauCharge, remplissage, phraseCharge, chargeDe, titreCourtJour, titreLongJour, estVide, menaceesDuJour, aSignaler, detailEcheance, resumeJour, ligneRendezVous, journeeDuJour, joursAffiches, demainISO, etatVue, notesSemaine, VIDES, heuresFrise, dansLeJour, couloirs, bornesJour, situerJour, debutJourISO } from "../analyse/semaine.js";
 import { gerer, cochees } from "./gerer.js";
 
 const PX = 1.5; // pixels par minute : 30 min = 45 px, une cible au doigt comme à la souris
@@ -146,7 +146,7 @@ export function creerSemaine(ctx, { journee, gestes } = {}) {
     if (p === "7jours" || p === "semaine") return "7jours";
     if (p === jourISO()) return "aujourdhui";
     if (p === demainISO()) return "demain";
-    if (p === "aujourdhui" || p === "demain" || /^\d{4}-\d{2}-\d{2}$/.test(String(p))) return p;
+    if (p === "aujourdhui" || p === "demain" || debutJourISO(p) != null) return p;
     return "aujourdhui";
   };
   const estJour = (p) => /^\d{4}-\d{2}-\d{2}$/.test(p);
@@ -205,7 +205,10 @@ export function creerSemaine(ctx, { journee, gestes } = {}) {
     const { f, corps, retour, portee } = vue;
     const dem = jourDe(demainISO());
     const j = estJour(portee) ? jourDe(portee) : null;
-    const titre = portee === "aujourdhui" ? jourTitre(Date.now()) : portee === "demain" ? "Demain" : portee === "7jours" ? "Les 7 jours" : j ? titreLongJour(j) : portee;
+    // Un jour demandé que la tour n'a pas lu (passé, ou au-delà des 7 jours) : on le dit, jamais « rien de prévu ».
+    const situation = estJour(portee) ? situerJour(portee, jours(), { lus: Boolean(etat.donnees) }) : null;
+    const horsVue = situation === "passe" || situation === "hors";
+    const titre = portee === "aujourdhui" ? jourTitre(Date.now()) : portee === "demain" ? "Demain" : portee === "7jours" ? "Les 7 jours" : j ? titreLongJour(j) : jourTitre(debutJourISO(portee));
     const sous = portee === "7jours" ? "Heures prévues sur tes heures libres" : portee === "demain" ? `${dem ? `${titreLongJour(dem)} · ` : ""}les durées sont à l'échelle` : "Les durées sont à l'échelle";
     const h2 = f.el.querySelector(".feuille-tete h2");
     if (h2) h2.textContent = titre;
@@ -215,7 +218,7 @@ export function creerSemaine(ctx, { journee, gestes } = {}) {
     retour.hidden = !estJour(portee);
     const segment = disponible() ? h("div", { class: "echelle-segment", role: "group", "aria-label": "Portée" },
       [["aujourdhui", "Aujourd'hui"], ["demain", "Demain"], ["7jours", "7 jours"]].map(([id, lib]) => h("button", {
-        type: "button", "aria-pressed": String(portee === id || (id === "7jours" && estJour(portee))),
+        type: "button", "aria-pressed": String(portee === id || (id === "7jours" && estJour(portee) && !horsVue)),
         onclick: () => {
           if (portee !== id) aller(id);
         },
@@ -233,9 +236,12 @@ export function creerSemaine(ctx, { journee, gestes } = {}) {
       const jj = jourDe(iso);
       contenu = h("div", null, bandeauVue(), jj && !estVide(jj)
         ? [resumeDuJour(jj), frise(jj.items || [], [jj.debut, Math.max(jj.debut + 3600e3, jj.fin ?? jj.debut + 86400e3)], { aujourdhui: false, vide: VIDES.frise, jour: jj })]
-        : etatSansJours(portee === "demain" ? VIDES.demain : VIDES.jour));
+        : horsVue
+          ? vide(null, VIDES[situation], bouton(situation === "passe" ? "Voir aujourd'hui" : "Voir les 7 jours", { classe: "papier", onclick: () => aller(situation === "passe" ? "aujourdhui" : "7jours") }))
+          : etatSansJours(portee === "demain" ? VIDES.demain : VIDES.jour));
     }
-    vider(corps, segment, contenu, disponible() && portee !== "7jours" ? h("p", { class: "aide echelle-aide" }, "← → : le jour d'avant, le jour d'après.") : null);
+    // ← → seulement entre les jours lus : depuis un jour hors de la vue, les flèches ne mèneraient nulle part.
+    vider(corps, segment, contenu, disponible() && portee !== "7jours" && !horsVue ? h("p", { class: "aide echelle-aide" }, "← → : le jour d'avant, le jour d'après.") : null);
     if (vue.defile) {
       vue.defile = false;
       requestAnimationFrame(() => defilerAuDebut());
