@@ -130,8 +130,9 @@ function dessinerEtat() {
 // La tour dit quand la montrer (dernier import de plus de 30 jours, ou
 // jamais) ; le bouton ouvre la page d'export de ChatGPT (dans l'app de
 // bureau : le navigateur par défaut). Rémy ne s'y connecte jamais : le mail
-// arrive, tu cliques son lien sur la tour, Rémy prend le .zip dans ses
-// Téléchargements ; reçu ailleurs (autre ordinateur), « Importer le .zip ».
+// arrive, tu cliques son lien sur la tour, Rémy trouve le .zip dans ses
+// Téléchargements et te demande ton accord (la carte ci-dessus) ; reçu
+// ailleurs (autre ordinateur), « Importer le .zip ».
 // Comme l'iPhone, la carte ne se montre que sur « Toutes » ou ChatGPT, et
 // jamais à la place des résultats d'une recherche (contre-relecture du 30/10).
 function dessinerCarte({ forcer = false } = {}) {
@@ -152,23 +153,40 @@ function cartesTelechargements(dessiner) {
   if (!liste.length) return null;
   return liste.map((p) => {
     const c = C.carteProposition(p);
-    const repondre = (importer) => async (e) => occupe(e.currentTarget, async () => {
+    const boutons = [];
+    // Les DEUX boutons attendent la réponse : « Pas celui-là » pendant un
+    // « Importer » en cours importait quand même, puis disait « Pas importé »
+    // (contre-relecture du 30/10, tour 2).
+    const repondre = (importer) => async (e) => {
+      const autres = boutons.filter((b) => b !== e.currentTarget);
+      for (const b of autres) b.disabled = true;
       try {
-        const r = await ecrire(C.cheminReponseTelechargement(), { id: p.id, importer }, { delai: 300000 });
-        dire(importer ? `Import ChatGPT : ${C.phraseImport(r?.bilan || {})}` : r?.message || "Pas importé.", { genre: importer ? "succes" : "info", duree: importer ? 7000 : undefined });
-        apres(dessiner, r?.etat);
-      } catch (err) {
-        direErreur(err, importer ? () => repondre(true)({ currentTarget: null }) : null, importer ? "Pas importé" : "Pas enregistré", { rafraichir: () => synchroniser("chatgpt") });
+        await occupe(e.currentTarget, async () => {
+          try {
+            const r = await ecrire(C.cheminReponseTelechargement(), { id: p.id, importer }, { delai: 300000 });
+            dire(importer ? `Import ChatGPT : ${C.phraseImport(r?.bilan || {})}` : r?.message || "Pas importé.", { genre: importer ? "succes" : "info", duree: importer ? 7000 : undefined });
+            apres(dessiner, r?.etat);
+          } catch (err) {
+            // Déjà importé (la tour l'a fait juste avant) : dit tel quel, et la carte s'en va.
+            if (!importer && err?.statut === 409) {
+              dire(err.message, { genre: "info", duree: 9000 });
+              apres(dessiner);
+              return;
+            }
+            direErreur(err, importer ? () => repondre(true)({ currentTarget: null }) : null, importer ? "Pas importé" : "Pas enregistré", { rafraichir: () => synchroniser("chatgpt") });
+          }
+        });
+      } finally {
+        for (const b of autres) b.disabled = false;
       }
-    });
+    };
+    boutons.push(bouton(c.importer, { classe: "plein", icone: "envoyer", onclick: repondre(true) }), bouton(c.refuser, { classe: "papier", onclick: repondre(false) }));
     return h("section", { class: "carte", "aria-label": c.titre, dataset: { carte: "export-trouve" }, style: { margin: "0 0 12px" } },
       h("div", { class: "sur-titre" }, "ChatGPT"),
       h("h3", { class: "carte-titre", style: { margin: "2px 0 6px" } }, c.titre),
       h("p", { style: { margin: "0 0 4px", overflowWrap: "anywhere" } }, c.texte),
       h("p", { class: "aide", style: { margin: "0 0 10px" } }, c.detail),
-      h("div", { class: "rangee serree" },
-        bouton(c.importer, { classe: "plein", icone: "envoyer", onclick: repondre(true) }),
-        bouton(c.refuser, { classe: "papier", onclick: repondre(false) })));
+      h("div", { class: "rangee serree" }, boutons));
   });
 }
 function lienExport(libelle, { classe = "plein", lien = C.LIEN_EXPORT_CHATGPT, apres = null } = {}) {

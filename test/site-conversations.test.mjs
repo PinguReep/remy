@@ -123,7 +123,7 @@ test("le recensement : la phrase de la tour, sinon rien (tour plus ancienne)", (
 test("Téléchargements et la carte « Exporter ChatGPT » : les mêmes mots que l'iPhone", () => {
   const t = { actif: true, forceParLaTour: false, dossiers: [{ chemin: "~\\Downloads", trouve: true }], joursMax: 90 };
   // Le dossier est celui de la tour, pas de l'ordinateur où l'on lit (contre-relecture du 30/10).
-  assert.equal(C.phraseTelechargements(t), "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.");
+  assert.equal(C.phraseTelechargements(t), "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, avec ton accord, sans jamais rien y déplacer ni effacer.");
   // Un .zip illisible : la phrase de la tour, à la suite.
   const illisible = "1 .zip illisible dans les Téléchargements de la tour : « export.zip » (du 9/10). Un export plus récent est déjà importé : efface-le quand tu veux (Rémy n'y touche jamais).";
   assert.equal(C.phraseTelechargements({ ...t, phraseIllisibles: illisible }), `${C.phraseTelechargements(t)} ${illisible}`);
@@ -136,7 +136,11 @@ test("Téléchargements et la carte « Exporter ChatGPT » : les mêmes mots que
   const jamais = C.carteExportChatGPT({ chatgpt: { telechargements: t, rappel: { aMontrer: true, dernierImport: null, depuisJours: null, lien: C.LIEN_EXPORT_CHATGPT } } });
   assert.deepEqual([jamais.titre, jamais.bouton, jamais.lien], ["Exporter ChatGPT", "Ouvrir ChatGPT", "https://chatgpt.com/#settings/DataControls"]);
   // Où cliquer le lien : sur la tour ; reçu ailleurs, la carte importe le .zip.
-  assert.equal(jamais.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici.");
+  assert.equal(jamais.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements et te demande ton accord. Ailleurs, importe le .zip ici.");
+  // Un export trouvé attend ton accord : sa carte parle, pas le rappel (que la tour garde pour un iPhone plus ancien).
+  const attente = { chatgpt: { telechargements: { ...t, propositions: [{ id: "f-000000000000000000000001", nom: "export-premier.zip", octets: 1000, date: 1 }] }, rappel: { aMontrer: true, dernierImport: null } } };
+  assert.equal(C.carteExportChatGPT(attente), null);
+  assert.equal(C.propositionsTelechargements(attente).length, 1);
   assert.equal(jamais.importer, "Importer le .zip");
   assert.equal(jamais.detail, "Aucun export importé pour l'instant.");
   const vieux = C.carteExportChatGPT({ chatgpt: { telechargements: { ...t, actif: false }, rappel: { aMontrer: true, dernierImport: 1, depuisJours: 45 } } });

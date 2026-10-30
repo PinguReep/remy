@@ -336,10 +336,26 @@ final class NouveautesTests: XCTestCase {
         let serie6 = Nouveautes.catalogue.filter { $0.serie == 6 }
         XCTAssertEqual(serie6.map(\.id), ["chatgpt-automatique"])
         XCTAssertLessThanOrEqual(serie6.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app(["conversations-externes-v1", ConversationsExternes.capaciteExport], reglages: suite())
+        let a = jusqua(6, ["conversations-externes-v1", ConversationsExternes.capaciteExport])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["chatgpt-automatique"])
+        let b = jusqua(6, ["conversations-externes-v1"])
+        b.verifier()
+        XCTAssertNil(b.affichees, "une tour pas encore à jour : rien à présenter")
+        // Le premier export attend ton accord : la page le dit (contre-relecture du 30/10, tour 2).
+        XCTAssertTrue(serie6[0].pages[0].texte.contains("te demande ton accord"))
+        XCTAssertFalse(serie6.flatMap(\.pages).contains { $0.texte.contains("prend le .zip") })
+    }
+
+    /// Série 7 (30/10) : la carte d'un export trouvé dans Téléchargements,
+    /// seulement quand la tour la connaît (telechargements-accord-v1).
+    func testLaSerie7AttendLaTour() {
+        let serie7 = Nouveautes.catalogue.filter { $0.serie == 7 }
+        XCTAssertEqual(serie7.map(\.id), ["telechargements-accord"])
+        let a = app(["conversations-externes-v1", ConversationsExternes.capaciteExport, ConversationsExternes.capaciteAccord], reglages: suite())
         a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["chatgpt-automatique"])
-        let b = app(["conversations-externes-v1"], reglages: suite())
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["telechargements-accord"])
+        let b = app(["conversations-externes-v1", ConversationsExternes.capaciteExport], reglages: suite())
         b.nouveautes.verifier()
         XCTAssertNil(b.nouveautes.affichees, "une tour pas encore à jour : rien à présenter")
     }

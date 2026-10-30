@@ -4,6 +4,25 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 (soir) — Revue finale, tour 2 : les constats confirmés
+
+- **Taille 0xFFFFFFFF sans champ ZIP64** : c'est une taille INCONNUE, pas
+  « pas jugée ». `entrees()` la rend `Infinity`, `invraisemblable()` l'écarte
+  sur l'annuaire, et `verifie()` n'est plus jamais sans borne (TAILLE_MAX au
+  pire). Les lectures faites AVANT le geste de Sam (reconnaître un export,
+  lire son compte) s'arrêtent à 64 Mo et 1 Mo décompressés (`PLAFOND`) : un
+  .zip quelconque de Téléchargements n'occupe jamais la tour des minutes.
+- **Un export trouvé, sur l'iPhone** : la tour ne tait plus le rappel
+  (`rappel.aMontrer`) quand une proposition attend — un iPhone plus ancien
+  n'a pas la carte de l'export trouvé, et sans le rappel il ne lui restait
+  rien. Le site et l'iPhone à jour cachent eux-mêmes le rappel. Sans
+  conversation ChatGPT, l'`aide` de la source (affichée telle quelle par
+  tous les iPhone) dit qu'un export attend ton accord, et où le donner.
+  L'iPhone à jour a la carte (`telechargements-accord-v1`, Nouveautés série 7).
+- **« Pas celui-là » après « Importer »** : la tour répond 409 `deja-importe`
+  (et dit comment effacer) au lieu de « Pas importé » ; le site occupe les
+  deux boutons de la carte, l'iPhone passe par `geste` (un à la fois).
+
 ## 2026-10-30 — Téléchargements : rien n'entre dans la mémoire sans un geste
 
 - **Le constat** (revue finale) : un site peut ranger un .zip dans

@@ -187,8 +187,10 @@ depuis « Importer le .zip » (dans la carte) ou « Importer ».
   quand le dernier import a plus de 30 jours — ou jamais, la source allumée —,
   et qu'aucun export n'attend dans Imports. « Ouvrir ChatGPT » ouvre
   `https://chatgpt.com/#settings/DataControls` ; « Exporte tes données ;
-  quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier
-  dans ses Téléchargements. Ailleurs, importe le .zip ici. » ; « Importer le
+  quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses
+  Téléchargements et te demande ton accord. Ailleurs, importe le .zip ici. » ;
+  tant qu'un export trouvé attend un geste, c'est sa carte qui parle (site et
+  iPhone à jour : « Importer » / « Pas celui-là ») ; « Importer le
   .zip » envoie celui reçu sur l'iPhone ou sur un autre ordinateur. Comme sur
   l'iPhone, le site ne la montre que sur « Toutes » ou ChatGPT, jamais à la
   place des résultats d'une recherche. Elle se coupe (« Ne plus me le rappeler », ou Réglages ›
@@ -298,8 +300,12 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
   dernière lecture, `{ nom, date, bloquant }`, et `phraseIllisibles`, à
   montrer telle quelle ; `propositions` : les exports trouvés qui attendent
   un geste, `{ id, nom, octets, date, autreCompte }`) et la carte
-  (`rappel.aMontrer`, qui se tait tant qu'une proposition attend). Une
-  erreur venue de Téléchargements porte `origine: "telechargements"`.
+  (`rappel.aMontrer`). `aMontrer` ne se tait PAS quand une proposition
+  attend : un iPhone plus ancien n'a pas la carte de l'export trouvé ; le
+  site et l'iPhone à jour cachent eux-mêmes le rappel tant que `propositions`
+  n'est pas vide. Sans conversation ChatGPT, l'`aide` de la source le dit
+  (`code: "a-accepter"`, « Un export ChatGPT attend ton accord : … », et où
+  le donner). Une erreur venue de Téléchargements porte `origine: "telechargements"`.
 - `cle.origine` : `fichier`, `remy.env` ou `a-creer` (rien lu encore).
 - `imports.enAttente` : les exports déposés pas encore importés (un .zip, un
   `conversations*.json`, un dossier qui en contient) ; `imports.originaux` :
@@ -415,7 +421,7 @@ des 7 derniers jours) : des **propositions**, rien n'est fait seul.
 | `DELETE /api/conversations-externes/sources/:id` | — | `{ ok, message, etat }` : tout ce qui vient de la source est effacé (et les résumés de nuit qui s'en servaient), la source coupée ; l'original n'est pas touché |
 | `DELETE /api/conversations-externes/tout` | — | `{ ok, message, etat }` : tout effacé (clé changée) |
 | `PUT /api/conversations-externes/usage` | `{ "chat": false }`, `{ "nuit": true }` | l'état |
-| `POST /api/conversations-externes/chatgpt/telechargements` | `{ "id": "f-…", "importer": true }` (la réponse à la carte d'un export trouvé dans Téléchargements ; `false` : « Pas celui-là », plus proposé tant qu'il ne change pas) | `{ ok, bilan, etat }` (importé : son compte devient connu) ou `{ ok, message, etat }` ; 400 sans `id` ni `importer` ; 404 `introuvable` (le fichier a bougé, `quoiFaire` : « Lire maintenant ») ; 422 `zip-invalide`, `json-invalide`, `sans-conversations`, `pas-chatgpt` |
+| `POST /api/conversations-externes/chatgpt/telechargements` | `{ "id": "f-…", "importer": true }` (la réponse à la carte d'un export trouvé dans Téléchargements ; `false` : « Pas celui-là », plus proposé tant qu'il ne change pas) | `{ ok, bilan, etat }` (importé : son compte devient connu) ou `{ ok, message, etat }` ; 400 sans `id` ni `importer` ; 404 `introuvable` (le fichier a bougé, `quoiFaire` : « Lire maintenant ») ; 409 `deja-importe` (« Pas celui-là » après un « Importer » déjà fait : `quoiFaire` dit comment l'effacer, `etat` suit) ; 422 `zip-invalide`, `json-invalide`, `sans-conversations`, `pas-chatgpt` |
 | `POST /api/conversations-externes/chatgpt` | **le fichier** (.zip de l'export ou `conversations.json`), en corps brut (`Content-Type: application/zip` ou `application/octet-stream`) | `{ bilan: { deja, conversations, nouvelles, misesAJour, inchangees, ignorees, messages, masques, tronquees }, etat }` ; 413 `trop-gros` (avec `quoiFaire` : n'envoyer que `conversations.json`) ; 422 `zip-invalide`, `json-invalide`, `sans-conversations` ; 400 `envoi-interrompu` (rien reçu pendant 2 min). Un envoi lent (4G) peut durer plus de 5 min : la tour allonge son délai de réception le temps des envois authentifiés |
 
 Un export déjà envoyé rend `bilan.deja: true` (reconnu à son empreinte) ; une

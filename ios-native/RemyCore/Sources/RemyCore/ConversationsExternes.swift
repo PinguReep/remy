@@ -204,14 +204,19 @@ public struct EtatConversations: Codable, Equatable, Sendable {
             /// Les .zip illisibles de la dernière lecture, dits par la tour
             /// (« 1 .zip illisible dans les Téléchargements de la tour : … »), ou nil.
             public var phraseIllisibles: String?
-            public init(actif: Bool = true, forceParLaTour: Bool = false, dossiers: [Dossier] = [], joursMax: Int = 90, phraseIllisibles: String? = nil) {
+            /// Les exports trouvés qui attendent ton geste (contre-relecture du
+            /// 30/10, tour 2) ; [] sur une tour plus ancienne.
+            public var propositions: [PropositionTelechargement]
+            public init(actif: Bool = true, forceParLaTour: Bool = false, dossiers: [Dossier] = [], joursMax: Int = 90, phraseIllisibles: String? = nil,
+                        propositions: [PropositionTelechargement] = []) {
                 self.actif = actif
                 self.forceParLaTour = forceParLaTour
                 self.dossiers = dossiers
                 self.joursMax = joursMax
                 self.phraseIllisibles = phraseIllisibles
+                self.propositions = propositions
             }
-            enum CodingKeys: String, CodingKey { case actif, forceParLaTour, dossiers, joursMax, phraseIllisibles }
+            enum CodingKeys: String, CodingKey { case actif, forceParLaTour, dossiers, joursMax, phraseIllisibles, propositions }
             public init(from d: Decoder) throws {
                 let c = try d.container(keyedBy: CodingKeys.self)
                 actif = (try? c.decodeIfPresent(Bool.self, forKey: .actif)) ?? false
@@ -219,6 +224,9 @@ public struct EtatConversations: Codable, Equatable, Sendable {
                 dossiers = (try? c.decodeIfPresent([Dossier].self, forKey: .dossiers)) ?? []
                 joursMax = (try? c.decodeIfPresent(Int.self, forKey: .joursMax)) ?? 90
                 phraseIllisibles = try? c.decodeIfPresent(String.self, forKey: .phraseIllisibles)
+                // Une proposition mal formée est laissée de côté, les autres restent.
+                propositions = ((try? c.decodeIfPresent([Tolerant<PropositionTelechargement>].self, forKey: .propositions)) ?? [])
+                    .compactMap(\.valeur).filter { !$0.id.isEmpty && !$0.nom.isEmpty }
             }
         }
         public struct Rappel: Codable, Equatable, Sendable {
@@ -540,6 +548,55 @@ public struct LigneConversations: Codable, Equatable, Sendable {
     }
 }
 
+/// Un export ChatGPT trouvé dans les Téléchargements de la tour, qui attend
+/// ton geste : rien n'entre dans la mémoire sans lui (revue du 30/10).
+public struct PropositionTelechargement: Codable, Equatable, Identifiable, Sendable {
+    /// La clé de la proposition (« f-… »), à renvoyer telle quelle.
+    public var id: String
+    /// Le nom du fichier, en clair à l'écran seulement.
+    public var nom: String
+    public var octets: Int
+    public var date: Millis?
+    /// L'export d'un autre compte que celui déjà accepté.
+    public var autreCompte: Bool
+
+    public init(id: String, nom: String, octets: Int = 0, date: Millis? = nil, autreCompte: Bool = false) {
+        self.id = id
+        self.nom = nom
+        self.octets = octets
+        self.date = date
+        self.autreCompte = autreCompte
+    }
+
+    enum CodingKeys: String, CodingKey { case id, nom, octets, date, autreCompte }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        nom = try c.decode(String.self, forKey: .nom)
+        octets = (try? c.decodeIfPresent(Int.self, forKey: .octets)) ?? 0
+        date = try? c.decodeIfPresent(Millis.self, forKey: .date)
+        autreCompte = (try? c.decodeIfPresent(Bool.self, forKey: .autreCompte)) ?? false
+    }
+}
+
+/// Décode un élément sans faire échouer le tableau entier.
+struct Tolerant<T: Decodable>: Decodable {
+    let valeur: T?
+    init(from d: Decoder) throws { valeur = try? T(from: d) }
+}
+
+/// La carte « Un export ChatGPT trouvé dans Téléchargements » : les mêmes
+/// mots que le site (analyse/conversations.js, carteProposition).
+public struct CartePropositionTelechargement: Equatable, Sendable {
+    public var titre: String
+    public var texte: String
+    public var detail: String
+    public var importer: String
+    public var refuser: String
+}
+
+struct RetourTelechargement: Codable, Sendable { var message: String?; var bilan: BilanImport?; var etat: EtatConversations? }
+
 /// La carte « Exporter ChatGPT » (soir du 29/10).
 public struct CarteExportChatGPT: Equatable, Sendable {
     public var titre: String
@@ -556,6 +613,8 @@ public enum ConversationsExternes {
     public static let capacite = "conversations-externes-v1"
     /// Téléchargements surveillé, la carte « Exporter ChatGPT », le recensement.
     public static let capaciteExport = "conversations-externes-v2"
+    /// Un export trouvé dans Téléchargements attend ton geste (carte « Importer » / « Pas celui-là »).
+    public static let capaciteAccord = "telechargements-accord-v1"
     public static let sources = ["claude-code", "t3", "chatgpt"]
     public static let lienExportChatGPT = URL(string: "https://chatgpt.com/#settings/DataControls")!
 
@@ -566,7 +625,7 @@ public enum ConversationsExternes {
         guard let t else { return nil }
         if t.forceParLaTour { return "Coupé sur la tour (REMY_TELECHARGEMENTS=off)." }
         let ou = t.dossiers.map(\.chemin).filter { !$0.isEmpty }.joined(separator: ", ")
-        let phrase = "Rémy regarde \(ou.isEmpty ? "Téléchargements" : ou) sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de \(t.joursMax) jours, sans jamais rien y déplacer ni effacer."
+        let phrase = "Rémy regarde \(ou.isEmpty ? "Téléchargements" : ou) sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de \(t.joursMax) jours, avec ton accord, sans jamais rien y déplacer ni effacer."
         guard let i = t.phraseIllisibles, !i.isEmpty else { return phrase }
         return "\(phrase) \(i)"
     }
@@ -574,8 +633,10 @@ public enum ConversationsExternes {
     /// La carte, ou nil : la tour dit quand la montrer (dernier import de plus
     /// de 30 jours, ou jamais, la source allumée). Le lien du mail se clique
     /// SUR LA TOUR : reçu sur l'iPhone, le .zip s'importe depuis la carte.
+    /// Un export trouvé attend ton accord : c'est sa carte qui parle (la tour
+    /// garde `aMontrer` pour un iPhone plus ancien, qui n'a pas cette carte).
     public static func carteExportChatGPT(_ e: EtatConversations?) -> CarteExportChatGPT? {
-        guard let r = e?.chatgpt?.rappel, r.aMontrer else { return nil }
+        guard let r = e?.chatgpt?.rappel, r.aMontrer, propositions(e).isEmpty else { return nil }
         let t = e?.chatgpt?.telechargements
         let dansTelechargements = (t?.actif ?? false) && !(t?.dossiers.isEmpty ?? true)
         let detail: String
@@ -590,13 +651,42 @@ public enum ConversationsExternes {
         return CarteExportChatGPT(
             titre: "Exporter ChatGPT",
             texte: dansTelechargements
-                ? "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici."
+                ? "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements et te demande ton accord. Ailleurs, importe le .zip ici."
                 : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
             detail: detail,
             lien: lien,
             bouton: "Ouvrir ChatGPT",
             importer: "Importer le .zip",
             apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.")
+    }
+
+    /// Les exports trouvés qui attendent ton geste ([] sur une tour plus ancienne).
+    public static func propositions(_ e: EtatConversations?) -> [PropositionTelechargement] {
+        e?.chatgpt?.telechargements?.propositions ?? []
+    }
+
+    /// La carte d'un export trouvé : « « export.zip » (12,4 Mo, du 28/10) : l'importer ? ».
+    public static func carteProposition(_ p: PropositionTelechargement, calendrier: Calendar = Format.calendrier) -> CartePropositionTelechargement {
+        var date = ""
+        if let ms = p.date {
+            let c = calendrier.dateComponents([.day, .month], from: Date(timeIntervalSince1970: Double(ms) / 1000))
+            if let j = c.day, let m = c.month { date = ", du \(j)/\(m)" }
+        }
+        return CartePropositionTelechargement(
+            titre: "Un export ChatGPT trouvé dans Téléchargements",
+            texte: "« \(p.nom) » (\(taille(p.octets))\(date)) : l'importer ?",
+            detail: "Rémy n'importe rien de Téléchargements sans toi : si c'est l'export que tu as demandé, importe-le ; sinon, laisse-le (un site peut y ranger n'importe quel fichier).",
+            importer: "Importer",
+            refuser: "Pas celui-là")
+    }
+
+    /// « 12 ko », « 4,2 Mo », « 128 Mo » : comme le site (taille()).
+    public static func taille(_ octets: Int) -> String {
+        let o = Double(max(0, octets))
+        if o >= 1e6 {
+            return String(format: o >= 1e7 ? "%.0f" : "%.1f", o / 1e6).replacingOccurrences(of: ".", with: ",") + " Mo"
+        }
+        return "\(max(1, Int((o / 1e3).rounded()))) ko"
     }
 
     public static func nomSource(_ id: String) -> String {
@@ -738,6 +828,12 @@ extension ClientAPI {
     public func toutEffacerConversations() async throws -> (message: String?, etat: EtatConversations?) {
         let r = try await json(RetourGeste.self, "api/conversations-externes/tout", methode: "DELETE", delai: 120)
         return (r.message, r.etat)
+    }
+
+    /// La réponse à la carte d'un export trouvé dans Téléchargements :
+    /// `importer` (il entre, son compte devient connu) ou « Pas celui-là ».
+    func repondreTelechargement(id: String, importer: Bool) async throws -> RetourTelechargement {
+        try await json(RetourTelechargement.self, "api/conversations-externes/chatgpt/telechargements", methode: "POST", corps: ["id": id, "importer": importer], delai: 300)
     }
 
     public func reglerUsageConversations(chat: Bool? = nil, nuit: Bool? = nil) async throws -> EtatConversations {
@@ -993,6 +1089,27 @@ public final class ConversationsExternesModel {
 
     /// La carte « Exporter ChatGPT » de l'écran Conversations, ou nil.
     public var carteExport: CarteExportChatGPT? { ConversationsExternes.carteExportChatGPT(etat) }
+
+    /// Les exports trouvés dans Téléchargements qui attendent ton geste.
+    public var propositions: [PropositionTelechargement] { ConversationsExternes.propositions(etat) }
+
+    /// « Importer » ou « Pas celui-là » sur la carte d'un export trouvé. Les
+    /// deux gestes passent par `geste` : l'un attend l'autre (contre-relecture
+    /// du 30/10, tour 2 : « Pas celui-là » pendant un import importait quand
+    /// même). En échec, l'état est relu (le fichier a pu bouger).
+    @discardableResult
+    public func repondre(_ p: PropositionTelechargement, importer: Bool) async -> Bool {
+        let ok = await geste {
+            let r = try await self.api.repondreTelechargement(id: p.id, importer: importer)
+            if let e = r.etat { self.etat = e }
+            guard importer else { return r.message ?? "Pas importé." }
+            if let b = r.bilan { self.dernierImport = b }
+            await self.chargerListe(depuisDebut: true)
+            return "Import ChatGPT : \(r.bilan?.phrase ?? "fait.")"
+        }
+        if !ok { await chargerEtat() }
+        return ok
+    }
 
     @discardableResult
     public func reglerUsage(chat: Bool? = nil, nuit: Bool? = nil) async -> Bool {

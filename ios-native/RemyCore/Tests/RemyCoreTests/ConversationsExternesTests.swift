@@ -410,19 +410,19 @@ final class ConversationsExternesTests: XCTestCase {
         let c = try XCTUnwrap(ConversationsExternes.carteExportChatGPT(e))
         XCTAssertEqual(c.titre, "Exporter ChatGPT")
         // Le lien se clique sur la tour ; reçu sur l'iPhone, la carte importe le .zip (contre-relecture du 30/10).
-        XCTAssertEqual(c.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici.")
+        XCTAssertEqual(c.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements et te demande ton accord. Ailleurs, importe le .zip ici.")
         XCTAssertEqual(c.importer, "Importer le .zip")
         XCTAssertEqual(c.detail, "Aucun export importé pour l'instant.")
         XCTAssertEqual(c.lien.absoluteString, "https://chatgpt.com/#settings/DataControls")
         XCTAssertEqual(c.bouton, "Ouvrir ChatGPT")
         XCTAssertEqual(ConversationsExternes.phraseTelechargements(e.chatgpt?.telechargements),
-                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.")
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, avec ton accord, sans jamais rien y déplacer ni effacer.")
         // Un .zip illisible : la phrase de la tour, à la suite (tour plus ancienne : rien).
         let illisible = "1 .zip illisible dans les Téléchargements de la tour : « export.zip » (du 9/10). Un export plus récent est déjà importé : efface-le quand tu veux (Rémy n'y touche jamais)."
         let avecIllisible = try JSONDecoder().decode(EtatConversations.ExportChatGPT.Telechargements.self,
                                                      from: Data(#"{"actif":true,"dossiers":[{"chemin":"~\\Downloads","trouve":true}],"joursMax":90,"phraseIllisibles":"\#(illisible)"}"#.utf8))
         XCTAssertEqual(ConversationsExternes.phraseTelechargements(avecIllisible),
-                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer. \(illisible)")
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, avec ton accord, sans jamais rien y déplacer ni effacer. \(illisible)")
         XCTAssertNil(e.chatgpt?.telechargements?.phraseIllisibles)
         // Le dernier import a 45 jours, Téléchargements coupé : importer à la main.
         e.chatgpt?.rappel = .init(actif: true, aMontrer: true, dernierImport: 1_790_000_000_000, depuisJours: 45, lien: "https://ailleurs.example/")
@@ -436,6 +436,71 @@ final class ConversationsExternesTests: XCTestCase {
         XCTAssertNil(ConversationsExternes.carteExportChatGPT(e))
         e.chatgpt?.telechargements = .init(actif: false, forceParLaTour: true)
         XCTAssertEqual(ConversationsExternes.phraseTelechargements(e.chatgpt?.telechargements), "Coupé sur la tour (REMY_TELECHARGEMENTS=off).")
+    }
+
+    // Un export trouvé dans Téléchargements (contre-relecture du 30/10, tour 2) :
+    // l'iPhone a sa carte, avec « Importer » et « Pas celui-là ».
+    static let etatProposition = etatExport.replacingOccurrences(
+        of: #""joursMax":90},"#,
+        with: #""joursMax":90,"propositions":[{"id":"f-0123456789abcdef01234567","nom":"export-premier.zip","octets":4200000,"date":1793142325000,"autreCompte":false},{"id":"","nom":"sans clé"},{"nom":"mal formée"}]},"#)
+
+    func testUnExportTrouveDansTelechargementsAttendTonGesteSurLiPhone() async throws {
+        let e = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatProposition.utf8))
+        let props = ConversationsExternes.propositions(e)
+        XCTAssertEqual(props.map(\.nom), ["export-premier.zip"], "les propositions mal formées sont laissées de côté")
+        // Le rappel reste dû pour un iPhone plus ancien ; ici, c'est la carte de l'export trouvé qui parle.
+        XCTAssertEqual(e.chatgpt?.rappel?.aMontrer, true)
+        XCTAssertNil(ConversationsExternes.carteExportChatGPT(e))
+        var paris = Calendar(identifier: .gregorian)
+        paris.timeZone = TimeZone(identifier: "Europe/Paris")!
+        let c = ConversationsExternes.carteProposition(props[0], calendrier: paris)
+        // Les mêmes mots que le site (analyse/conversations.js).
+        XCTAssertEqual(c.titre, "Un export ChatGPT trouvé dans Téléchargements")
+        XCTAssertEqual(c.texte, "« export-premier.zip » (4,2 Mo, du 28/10) : l'importer ?")
+        XCTAssertEqual(c.importer, "Importer")
+        XCTAssertEqual(c.refuser, "Pas celui-là")
+        XCTAssertEqual(ConversationsExternes.taille(820), "1 ko")
+        XCTAssertEqual(ConversationsExternes.taille(12_400), "12 ko")
+        XCTAssertEqual(ConversationsExternes.taille(128_000_000), "128 Mo")
+        // Une tour plus ancienne : aucune proposition, rien ne casse.
+        let ancien = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatExport.utf8))
+        XCTAssertEqual(ConversationsExternes.propositions(ancien), [])
+        XCTAssertNotNil(ConversationsExternes.carteExportChatGPT(ancien))
+    }
+
+    func testImporterOuPasCeluiLaPartentVersLaTourEtSeDisent() async throws {
+        let apres = Self.etatExport
+        FauxServeur.reponses = [
+            "POST /api/conversations-externes/chatgpt/telechargements": [
+                (200, #"{"ok":true,"bilan":{"conversations":2,"nouvelles":2,"misesAJour":0},"etat":\#(apres)}"#),
+                (200, #"{"ok":true,"message":"Pas importé : Rémy ne le proposera plus (sauf s'il change).","etat":\#(apres)}"#),
+                (409, #"{"error":"deja-importe","message":"Déjà importé : cet export est entré dans ta mémoire juste avant.","quoiFaire":"Pour le retirer : Sources › ChatGPT › « Effacer ce que Rémy en a gardé »."}"#),
+            ],
+            "GET /api/conversations-externes/liste": [(200, Self.liste)],
+            "GET /api/conversations-externes": [(200, Self.etatExport)],
+        ]
+        let a = app(capacites: ["conversations-externes-v1", ConversationsExternes.capaciteExport])
+        let m = a.conversationsExternes
+        let e = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatProposition.utf8))
+        m.montrerPourCapture(etat: e, liste: [])
+        let p = try XCTUnwrap(m.propositions.first)
+        let ok1 = await m.repondre(p, importer: true)
+        XCTAssertTrue(ok1)
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations-externes/chatgpt/telechargements"]?["id"] as? String, "f-0123456789abcdef01234567")
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations-externes/chatgpt/telechargements"]?["importer"] as? Bool, true)
+        XCTAssertEqual(a.toast, "Import ChatGPT : 2 conversations importées.")
+        XCTAssertEqual(m.propositions, [], "l'état revenu de la tour fait foi")
+        m.montrerPourCapture(etat: e, liste: [])
+        let ok2 = await m.repondre(p, importer: false)
+        XCTAssertTrue(ok2)
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations-externes/chatgpt/telechargements"]?["importer"] as? Bool, false)
+        XCTAssertEqual(a.toast, "Pas importé : Rémy ne le proposera plus (sauf s'il change).")
+        // Déjà importé : dit tel quel, et l'état est relu.
+        m.montrerPourCapture(etat: e, liste: [])
+        let ok3 = await m.repondre(p, importer: false)
+        XCTAssertFalse(ok3)
+        XCTAssertEqual(a.toast, "Déjà importé : cet export est entré dans ta mémoire juste avant. Pour le retirer : Sources › ChatGPT › « Effacer ce que Rémy en a gardé ».")
+        XCTAssertEqual(m.propositions, [], "relu après l'échec")
     }
 
     func testLesReglagesDeLExportPartentEtSeDisent() async {

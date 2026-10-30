@@ -125,6 +125,28 @@ test("RÉGRESSION : un .zip qu'un site range dans Téléchargements est PROPOSÉ
   vider();
 });
 
+test("RÉGRESSION : « Pas celui-là » pendant un « Importer » en cours : 409 « déjà importé », jamais « Pas importé »", async () => {
+  ranger("export-double-geste.zip", exportDe("user-autre-fictif", [conv("6f1c0000-cccc-4000-8000-000000000020", "Senteurs d'automne", "Quelles senteurs pour l'automne ?")]));
+  const r = await lire();
+  const p = r.etat.chatgpt.telechargements.propositions.find((x) => x.nom === "export-double-geste.zip");
+  assert.ok(p, JSON.stringify(r.etat.chatgpt.telechargements));
+  // Les deux gestes partent ensemble : la tour les traite l'un après l'autre.
+  const [oui, non] = await Promise.all([
+    json("POST", "/api/conversations-externes/chatgpt/telechargements", { id: p.id, importer: true }),
+    json("POST", "/api/conversations-externes/chatgpt/telechargements", { id: p.id, importer: false }),
+  ]);
+  assert.equal(oui.status, 200, JSON.stringify(oui.corps));
+  assert.equal(oui.corps.bilan.nouvelles, 1);
+  assert.equal(non.status, 409, JSON.stringify(non.corps));
+  assert.equal(non.corps.error, "deja-importe");
+  assert.match(non.corps.message, /^Déjà importé/);
+  assert.match(non.corps.quoiFaire, /Effacer ce que Rémy en a gardé/);
+  assert.doesNotMatch(JSON.stringify(non.corps), /Pas importé/);
+  // Toujours importé, plus proposé.
+  assert.deepEqual(non.corps.etat.chatgpt.telechargements.propositions.filter((x) => x.id === p.id), []);
+  vider();
+});
+
 test("RÉGRESSION : un export SANS user.json attend la carte, même quand un compte est connu", async () => {
   ranger("export-sans-compte.zip", fx.zipper([{ nom: "conversations.json", contenu: JSON.stringify([conv("6f1c0000-cccc-4000-8000-000000000003", "Sans compte", "?")]) }]));
   const r = await lire();

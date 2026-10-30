@@ -84,7 +84,11 @@ struct ConversationsExternesVue: View {
                         resultats(r)
                     } else {
                         if let p = m.etat?.probleme { probleme(p) }
-                        if m.filtre == nil || m.filtre == "chatgpt", let c = m.carteExport { CarteExportChatGPTVue(carte: c, importer: { importOuvert = true }) }
+                        if m.filtre == nil || m.filtre == "chatgpt" {
+                            // Un export trouvé dans Téléchargements attend ton geste (sa carte cache le rappel).
+                            ForEach(m.propositions) { p in CartePropositionTelechargementVue(proposition: p) }
+                            if let c = m.carteExport { CarteExportChatGPTVue(carte: c, importer: { importOuvert = true }) }
+                        }
                         if m.filtre == nil, let d = m.digest, !d.vide { CarteNuitConversations(digest: d) }
                         liste
                     }
@@ -1023,11 +1027,66 @@ struct SourcesConversationsVue: View {
     }
 }
 
+/// Un export ChatGPT trouvé dans les Téléchargements de la tour (contre-relecture
+/// du 30/10, tour 2) : rien n'entre dans ta mémoire sans ce geste. Les mêmes
+/// mots et les mêmes gestes que le site ; les deux boutons attendent la réponse
+/// (« Pas celui-là » pendant un import importait quand même).
+struct CartePropositionTelechargementVue: View {
+    @Environment(AppModel.self) private var app
+    let proposition: PropositionTelechargement
+    /// Le geste en cours sur cette carte : true « Importer », false « Pas celui-là ».
+    @State private var geste: Bool?
+
+    var body: some View {
+        let m = app.conversationsExternes
+        let c = ConversationsExternes.carteProposition(proposition)
+        VStack(alignment: .leading, spacing: 10) {
+            Label("ChatGPT", systemImage: ConversationsExternes.symbole("chatgpt"))
+                .font(Police.mono(12, .medium))
+                .foregroundStyle(Palette.encre2)
+            Text(c.titre)
+                .font(Police.titre(20))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(c.texte)
+                .font(Police.texte(15))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(c.detail)
+                .font(Police.texte(13))
+                .foregroundStyle(Palette.encre3)
+                .fixedSize(horizontal: false, vertical: true)
+            BoutonA(titre: geste == true ? "Import en cours sur la tour…" : c.importer, symbole: "square.and.arrow.down") {
+                repondre(true)
+            }
+            .accessibilityIdentifier("conversations.trouve.importer")
+            BoutonA(titre: c.refuser, symbole: "xmark", principal: false) {
+                repondre(false)
+            }
+            .accessibilityIdentifier("conversations.trouve.refuser")
+        }
+        .disabled(m.enCours || geste != nil)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .carte(rayon: 18)
+        .padding(.horizontal, 16)
+    }
+
+    private func repondre(_ importer: Bool) {
+        Haptique.leger()
+        geste = importer
+        Task {
+            await app.conversationsExternes.repondre(proposition, importer: importer)
+            geste = nil
+        }
+    }
+}
+
 /// La carte « Exporter ChatGPT » (soir du 29/10) : la tour dit quand la
 /// montrer (dernier import de plus de 30 jours, ou jamais). Le bouton ouvre
 /// la page d'export de ChatGPT ; Rémy ne s'y connecte jamais : le mail
-/// arrive, tu cliques son lien sur l'ordinateur, Rémy prend le .zip dans
-/// Téléchargements.
+/// arrive, tu cliques son lien sur l'ordinateur, Rémy trouve le .zip dans
+/// Téléchargements et te demande ton accord (la carte ci-dessus).
 struct CarteExportChatGPTVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var ouvrirURL

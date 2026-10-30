@@ -432,7 +432,13 @@ test("Téléchargements : seul l'export ChatGPT est PROPOSÉ, puis importé sur 
   assert.match(p.id, /^f-[a-f0-9]{24}$/);
   assert.ok(p.octets > 0 && p.date > 0 && p.autreCompte === true, JSON.stringify(p));
   assert.equal(source(r.etat, "chatgpt").conversations, 0);
-  assert.equal(r.etat.chatgpt.rappel.aMontrer, false, "la carte de l'export trouvé parle à la place du rappel");
+  // Le rappel reste dû (un iPhone plus ancien n'a pas la carte de l'export trouvé) ;
+  // l'aide de la source dit qu'un export attend ton accord, et où le donner.
+  assert.equal(r.etat.chatgpt.rappel.aMontrer, true, "un iPhone plus ancien garde sa carte");
+  const aide = source(r.etat, "chatgpt").aide;
+  assert.equal(aide.code, "a-accepter");
+  assert.match(aide.message, /^Un export ChatGPT attend ton accord : « 4d8e-export-2026-10-28\.zip » \(du \d+\/\d+\), dans les Téléchargements de la tour\.$/);
+  assert.match(aide.quoiFaire, /Ouvre Conversations sur l'ordinateur \(ou dans l'app iPhone à jour\) : « Importer » sur sa carte/);
   // Relu : toujours proposé, jamais importé seul.
   const r1 = await lire("chatgpt");
   assert.equal(r1.bilan.sources.chatgpt.telechargements.importes, 0);
@@ -560,7 +566,7 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   await json("DELETE", "/api/conversations-externes/sources/chatgpt");
   e = (await json("PUT", "/api/conversations-externes/sources/chatgpt", { actif: true })).corps;
   assert.deepEqual([e.chatgpt.rappel.dernierImport, e.chatgpt.rappel.aMontrer], [null, true]);
-  assert.match(source(e, "chatgpt").aide.quoiFaire, /clique son lien sur la tour : Rémy prend le \.zip dans ses Téléchargements\. Reçu ailleurs \(iPhone, autre ordinateur\) : envoie-le depuis l.app \(Importer\)/);
+  assert.match(source(e, "chatgpt").aide.quoiFaire, /clique son lien sur la tour : Rémy le trouve dans ses Téléchargements et te demande ton accord, dans Conversations\. Reçu ailleurs \(iPhone, autre ordinateur\) : envoie-le depuis l.app \(Importer\)/);
   // Effacée puis rallumée : les comptes acceptés sont oubliés aussi ; l'export
   // encore dans Téléchargements est PROPOSÉ (un geste), et la carte du rappel se tait.
   const avant = empreinte(telechargements);
@@ -568,7 +574,8 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   const t = r.bilan.sources.chatgpt.telechargements;
   assert.equal(t.importes, 0, JSON.stringify(t));
   assert.ok(t.proposes >= 1, JSON.stringify(t));
-  assert.equal(r.etat.chatgpt.rappel.aMontrer, false);
+  assert.equal(r.etat.chatgpt.rappel.aMontrer, true, "gardé pour un iPhone plus ancien");
+  assert.equal(source(r.etat, "chatgpt").aide.code, "a-accepter");
   // « Importer » sur la plus récente : son compte redevient connu, les autres du même compte suivent seuls.
   const plusRecente = r.etat.chatgpt.telechargements.propositions[0];
   assert.equal((await json("POST", "/api/conversations-externes/chatgpt/telechargements", { id: plusRecente.id, importer: true })).status, 200);

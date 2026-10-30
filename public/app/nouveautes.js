@@ -15,6 +15,9 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("telechargements-accord", 6, "30 oct.", "Un export ChatGPT attend ton accord", "telechargements-accord-v1", [
+    p("bouclier", "Rien n'entre sans toi", "Un .zip trouvé dans les Téléchargements de la tour attend sur une carte de Conversations : « Importer » si c'est ton export, « Pas celui-là » sinon. Les exports suivants du même compte entrent seuls."),
+  ]),
   n("conversations-externes", 5, "29 oct.", "Tes conversations d'ailleurs, ici", "conversations-externes-v1", [
     p("conversations", "Claude Code, T3, ChatGPT", "La vue Conversations : tes sessions Claude Code et tes fils T3 Code, lus par ta tour. Par source, par jour, ou cherche un mot : la conversation s'ouvre au message trouvé."),
     p("envoyer", "ChatGPT en un geste", "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Puis Réglages › Sources des conversations › « Importer un export ChatGPT », et choisis le .zip reçu par mail."),
@@ -29,7 +32,7 @@ export const CATALOGUE = [
   // Série 6 de l'iPhone, rangée ici en série 5 : le site reçoit tout le 29/10
   // d'un coup, et la première feuille garde le bilan de 22 h 45 (6 pages au plus).
   n("chatgpt-automatique", 5, "29 oct.", "ChatGPT, sans y penser", "conversations-externes-v2", [
-    p("ranger", "L'export pris dans Téléchargements", "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements, en lecture seule. Reçu ailleurs ? « Importer le .zip » dans la carte."),
+    p("ranger", "L'export trouvé dans Téléchargements", "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements, en lecture seule, et te demande ton accord. Reçu ailleurs ? « Importer le .zip » dans la carte."),
     p("cloche", "Un rappel par mois", "Quand ton dernier export a plus de 30 jours, une carte « Exporter ChatGPT » dans Conversations ouvre la bonne page. Réglages › Sources des conversations pour la couper."),
     p("recherche", "Claude Code et T3, bien trouvés", "Les sessions de l'app Claude de bureau et de Remote Control sont lues. Sources dit combien Rémy en a vu, et pourquoi il en écarte : ses propres appels, les « claude -p » d'un seul échange."),
   ]),
