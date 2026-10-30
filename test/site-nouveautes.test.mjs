@@ -107,7 +107,7 @@ test("le catalogue reste court, sans les entrées propres à l'iPhone", () => {
   const ids = N.CATALOGUE.map((e) => e.id);
   assert.equal(new Set(ids).size, ids.length, "identifiants uniques");
   for (const id of ["hors-app", "partage", "au-pouce", "privee-iphone", "selection"]) assert.ok(!ids.includes(id), id);
-  for (const id of ["conversations-externes", "reglages-recherche", "bilan-coucher", "jauge-retour", "activite-pc", "rituel", "a-trancher", "priorites", "carnet-remy", "recherche-web", "modele", "regles", "compactage"]) {
+  for (const id of ["telechargements-accord", "image-noter", "conversation-privee", "conversations-externes", "reglages-recherche", "bilan-coucher", "jauge-retour", "activite-pc", "rituel", "a-trancher", "priorites", "carnet-remy", "recherche-web", "modele", "regles", "compactage"]) {
     assert.ok(ids.includes(id), id);
   }
   for (const e of N.CATALOGUE) {

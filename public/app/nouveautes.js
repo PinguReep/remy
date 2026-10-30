@@ -5,8 +5,9 @@
 // encore cachée). Réglages › Nouveautés garde l'historique pour les revoir.
 // Le catalogue reprend les entrées de l'iPhone qui valent sur l'ordinateur,
 // textes adaptés (clic, clic droit, Réglages › Ordinateur) ; celles propres à
-// l'iPhone (Siri et widgets, Partager, au pouce, conversation privée de
-// l'iPhone, sélection) n'y sont pas.
+// l'iPhone (Siri et widgets, Partager, au pouce, sélection) n'y sont pas. La
+// conversation privée et l'image (Partager, sur l'iPhone) ont leur entrée
+// d'ici, au clic (contre-relecture du 30/10, tour 2).
 // La logique est pure (le stockage passe par `local`, lu à l'appel) ; la
 // feuille n'utilise le document qu'à l'ouverture : importable sous node.
 import { h, vider, icone, bouton, feuille, local } from "./ui.js";
@@ -17,6 +18,14 @@ const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie
 export const CATALOGUE = [
   n("telechargements-accord", 6, "30 oct.", "Un export ChatGPT attend ton accord", "telechargements-accord-v1", [
     p("bouclier", "Rien n'entre sans toi", "Un .zip trouvé dans les Téléchargements de la tour attend sur une carte de Conversations : « Importer » si c'est ton export, « Pas celui-là » sinon. Les exports suivants du même compte entrent seuls."),
+  ]),
+  n("image-noter", 6, "30 oct.", "Une image dans Noter", "partage-v1", [
+    p("plateauRanger", "Colle ou dépose une image", "Dans Noter (N), Ctrl+V d'une capture d'écran, ou dépose une image depuis l'Explorateur : un aperçu s'affiche. Échap la retire."),
+    p("crayon", "Un mot, puis « Ranger l'image »", "Elle est rangée dans ton coffre, Captures/Images. Le texte de l'image n'est pas lu ici : un mot (facultatif) dit à Rémy ce qu'il doit en retenir."),
+  ]),
+  n("conversation-privee", 6, "30 oct.", "Une conversation privée", null, [
+    p("cadenas", "Privée, d'un clic", "Dans Rémy, avant le premier message : la puce « Privée » au-dessus du champ, ou le cadenas en haut de la liste. Une conversation commencée : « Rendre privée » parmi ses actions, en haut du fil (sans retour)."),
+    p("bouclier", "Ce que ça change", "Rien ne part chez Claude : le modèle local de ta tour répond, n'en retient rien dans sa mémoire, et la nuit ne la relit pas. Ni ailleurs, tant que la recherche y reste coupée. Tour éteinte : pas de réponse."),
   ]),
   n("conversations-externes", 5, "29 oct.", "Tes conversations d'ailleurs, ici", "conversations-externes-v1", [
     p("conversations", "Claude Code, T3, ChatGPT", "La vue Conversations : tes sessions Claude Code et tes fils T3 Code, lus par ta tour. Par source, par jour, ou cherche un mot : la conversation s'ouvre au message trouvé."),
