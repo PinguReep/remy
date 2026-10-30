@@ -4,6 +4,32 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 — Conversations externes : contre-relecture du lot (curseurs, Téléchargements, carte)
+
+- **Curseurs Claude Code d'avant la mise à jour** : ils ne portent pas les
+  compteurs (`passages`, `dialogue`) ; lue à la suite, une session gardée
+  repartait de zéro, et un ajout sans texte (un `/rename`, des appels
+  d'outils) la classait « vide » et l'effaçait — son début perdu. Plutôt que
+  de tout relire à la mise à jour (rechiffrer et réindexer chaque session),
+  une session **déjà gardée et lue à la suite de son curseur** (`aLaSuite`)
+  n'est jamais jugée vide ni illisible : seule une lecture depuis le début en
+  décide. Gardée, elle a eu au moins un passage ; ajouter ne peut pas l'ôter.
+- **Un .zip abîmé dans Téléchargements** : relancé en erreur à chaque passage,
+  il masquait 90 jours un bon export plus récent. Il n'est l'erreur de la
+  source que s'il est **plus récent que le dernier export importé** (imports
+  d'avant le passage, ou date du fichier d'un export de Téléchargements
+  importé ou déjà vu) ; sinon il est seulement signalé. Il est nommé à
+  l'écran, mais son nom est rangé **chiffré** dans le bilan (la règle « aucun
+  nom de fichier en clair » de Téléchargements tient) et n'est mis en clair
+  que par `etat()`.
+- **La carte « Exporter ChatGPT »** dit où cliquer le lien (sur la tour : Rémy
+  ne voit que ses Téléchargements) et importe le .zip reçu ailleurs ; sur le
+  site, elle suit le filtre et la recherche comme l'iPhone, redessinée
+  seulement quand elle apparaît ou disparaît (un import en cours garde sa
+  progression pendant la frappe).
+- **L'index des Réglages du site** : une entrée peut porter sa capacité
+  (4ᵉ élément) ; `indexVisible` la cache sur une tour qui ne l'a pas.
+
 ## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
 
 - **Le planificateur demande chaque job à part** (`lib/planif.js`,
