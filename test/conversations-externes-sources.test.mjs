@@ -234,6 +234,65 @@ test("script de la tour : connaissances-etat.mjs dit le recensement et la vraie 
   assert.ok(!/bougies|Figuier/i.test(sortie), "jamais le contenu des conversations");
 });
 
+test("mise à jour : une session lue par l'ancienne version (curseur sans compteurs) n'est jamais effacée par un ajout sans texte", async () => {
+  // Contre-relecture du 30/10 : un /rename après la mise à jour effaçait la
+  // session (« 1 sans dialogue ») et son début était perdu pour de bon.
+  const { fichier } = fx.ecrireSessionClaude(racineClaude, { session: sid(31), entrypoint: "claude-desktop", messages: echanges(2, "Mise à jour") });
+  await lire("claude-code");
+  const b = base();
+  const ligne = b.prepare("SELECT cle, valeur FROM curseurs WHERE source = 'claude-code' AND conversation = ?").get(sid(31));
+  // Le curseur tel que l'ancienne version le posait : cwd, entrypoint, session.
+  const c = JSON.parse(ligne.valeur);
+  c.etat = { cwd: c.etat.cwd, entrypoint: c.etat.entrypoint, session: c.etat.session };
+  b.prepare("UPDATE curseurs SET valeur = ? WHERE cle = ?").run(JSON.stringify(c), ligne.cle);
+  const conversation = async () => (await json("GET", `/api/conversations-externes/conversations/claude-code/${sid(31)}`)).corps;
+  // Sam renomme la session : Claude Code n'ajoute qu'un enregistrement custom-title.
+  fs.appendFileSync(fichier, JSON.stringify({ type: "custom-title", customTitle: "Prix des bougies", sessionId: sid(31) }) + "\n");
+  let r = await lire("claude-code");
+  assert.equal(r.bilan.sources["claude-code"].lus, 1);
+  let m = await conversation();
+  assert.equal(m.messages?.length, 4, "rien d'effacé");
+  assert.equal(m.conversation?.titre, "Prix des bougies", "le nouveau titre est pris");
+  assert.equal(b.prepare("SELECT exclu FROM curseurs WHERE cle = ?").get(ligne.cle).exclu, null);
+  assert.equal(source(r.etat, "claude-code").aide, null);
+  // Des appels d'outils seuls (rien à lire) : toujours gardée.
+  fs.appendFileSync(fichier, JSON.stringify({ type: "assistant", uuid: "a-outil", sessionId: sid(31), timestamp: iso(HIER + 3_500_000), cwd: "C:\\Users\\sam\\code\\bougies", entrypoint: "claude-desktop", isSidechain: false, message: { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }] } }) + "\n");
+  await lire("claude-code");
+  assert.equal((await conversation()).messages?.length, 4);
+  // Puis la conversation continue : le début est toujours là.
+  fs.appendFileSync(fichier, JSON.stringify({ type: "user", uuid: "u-livraison", parentUuid: null, sessionId: sid(31), timestamp: iso(HIER + 3_600_000), cwd: "C:\\Users\\sam\\code\\bougies", entrypoint: "claude-desktop", isSidechain: false, message: { role: "user", content: "Et la livraison ?" } }) + "\n");
+  await lire("claude-code");
+  m = await conversation();
+  assert.equal(m.messages?.length, 5);
+  assert.equal(m.messages.at(-1).texte, "Et la livraison ?");
+  // Une session vraiment vide, elle, reste dite « sans dialogue » (lue depuis le début).
+  const vide = fx.ecrireSessionClaude(racineClaude, { session: sid(32), entrypoint: "cli", titre: "Rien encore", messages: [], lignesEnPlus: [{ type: "system", subtype: "init", sessionId: sid(32), cwd: "C:\\Users\\sam\\code\\bougies", entrypoint: "cli" }] });
+  r = await lire("claude-code");
+  assert.equal(b.prepare("SELECT exclu FROM curseurs WHERE conversation = ?").get(sid(32)).exclu, "vide");
+  fs.rmSync(vide.fichier);
+});
+
+test("diagnostic : une session sortie du filtre de projets n'est comptée qu'une fois, qu'elle ait grandi ou non", async () => {
+  const s = (n) => fx.ecrireSessionClaude(racineClaude, { session: sid(n), dossier: "C--Users-sam-code-atelier", cwd: "C:\\Users\\sam\\code\\atelier", entrypoint: "cli", messages: echanges(1, `Atelier ${n}`) });
+  const grandit = s(33);
+  s(34);
+  await lire("claude-code");
+  process.env.REMY_CONNAISSANCES_PROJETS = "bougies";
+  try {
+    // L'une reçoit un message pendant que le filtre change, l'autre ne bouge pas.
+    fs.appendFileSync(grandit.fichier, JSON.stringify({ type: "user", uuid: "u-atelier", parentUuid: null, sessionId: sid(33), timestamp: iso(HIER + 20_000), cwd: "C:\\Users\\sam\\code\\atelier", entrypoint: "cli", isSidechain: false, message: { role: "user", content: "Et l'étagère ?" } }) + "\n");
+    const b = (await lire("claude-code")).bilan.sources["claude-code"];
+    assert.equal(b.recensement.ecartees.horsFiltre, 2);
+    assert.equal(b.horsFiltre, 2, "une fois chacune, pas trois");
+    const b2 = (await lire("claude-code")).bilan.sources["claude-code"];
+    assert.equal(b2.horsFiltre, 0, "inchangées depuis : plus comptées dans la lecture");
+    assert.equal(b2.recensement.ecartees.horsFiltre, 2);
+  } finally {
+    delete process.env.REMY_CONNAISSANCES_PROJETS;
+  }
+  for (const n of [33, 34]) fs.rmSync(path.join(racineClaude, "projects", "C--Users-sam-code-atelier", `${sid(n)}.jsonl`));
+});
+
 // =============================================================================================
 // T3 Code : là où le fork range sa base
 // =============================================================================================
