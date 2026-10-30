@@ -8,10 +8,17 @@
 // ou incertain (réseau, délai, 500, 504) repart tout seul, plus tard, avec le
 // même identifiant (NatureEchec de l'iPhone) ; un incertain qui se répète
 // (la tour répond 500 à chaque essai) finit par attendre Sam.
+// Ce qui est parti est noté (remy-file-envoyes, deux jours) avec le ledgerId
+// rendu par la tour : une coche partie pendant qu'Aujourd'hui n'était pas
+// affiché (ou depuis une autre fenêtre) se conclut plus tard, « Annuler »
+// compris. Un envoi en vol est marqué (enEnvoi) : l'annuler ne peut plus le
+// retenir, seulement le défaire une fois arrivé.
 import { api, natureEchec } from "./api.js";
 import { local } from "./ui.js";
 
 const CLE = "remy-file-envoi";
+const CLE_ENVOYES = "remy-file-envoyes";
+const GARDE_ENVOYES = 2 * 86400e3;
 const ATTENTES = [0, 15e3, 60e3, 5 * 60e3, 15 * 60e3];
 /** Au-delà, une capture qui reçoit toujours une réponse incertaine de la tour (500, 504) attend Sam. */
 export const ESSAIS_INCERTAINS = 6;
@@ -23,6 +30,19 @@ const prevenir = () => abonnes.forEach((f) => f(lireFile()));
 
 export const liste = () => lireFile();
 export const compte = () => lireFile().length;
+
+const enVol = new Set(); // ids dont la requête est partie, sans réponse encore
+/** La requête de cet envoi est partie et n'a pas encore de réponse. */
+export const enEnvoi = (id) => enVol.has(id);
+
+const lireEnvoyes = () => local.lire(CLE_ENVOYES, []) || [];
+/** Ce que la file a envoyé ces deux derniers jours : { id, resume, genre, a, ledgerId }, ou null. */
+export const envoye = (id) => lireEnvoyes().find((x) => x.id === id) || null;
+function noterEnvoye(e, r) {
+  const garde = lireEnvoyes().filter((x) => x.id !== e.id && Date.now() - (x.a || 0) < GARDE_ENVOYES).slice(-49);
+  garde.push({ id: e.id, resume: e.resume, genre: e.genre || null, a: Date.now(), ledgerId: r?.ledgerId ?? null });
+  local.ecrire(CLE_ENVOYES, garde);
+}
 export const surChangement = (f) => {
   abonnes.add(f);
   return () => abonnes.delete(f);
@@ -102,21 +122,31 @@ export function vider({ force = false, sansAttendre = false } = {}) {
   if (enCours) return enCours;
   enCours = (async () => {
     const envoyes = [];
-    for (const e of lireFile()) {
+    for (const { id } of lireFile()) {
+      // Relu à chaque tour : un envoi retiré pendant la vidange (Annuler, Retirer) ne part plus.
+      const e = lireFile().find((x) => x.id === id);
+      if (!e) continue;
       if (!force && (e.refus || (!sansAttendre && e.prochain > Date.now()))) continue;
       try {
-        const r = await envoyerElement(e);
+        enVol.add(e.id);
+        prevenir();
+        const r = await envoyerElement(e).finally(() => enVol.delete(e.id));
         if (r && r.ok === false && Array.isArray(r.results)) {
           // Motion n'a pas pu cette fois (quota, panne) : passager ; sinon un refus.
           const res = r.results.find((x) => !x.ok);
           const passagere = res?.nature === "passager" || /quota|indisponible|429/i.test(res?.erreur || "");
           throw Object.assign(new Error(res?.erreur || "Refusé par Motion."), { nature: "serveur", statut: passagere ? 429 : 422 });
         }
+        // Noté avant de sortir de la file : qui voit l'envoi disparaître sait qu'il est parti.
+        noterEnvoye(e, r);
         retirer(e.id);
         envoyes.push(e.resume);
       } catch (err) {
         const nature = natureEchec(err);
-        if (nature === "auth") break;
+        if (nature === "auth") {
+          prevenir(); // plus en vol : la ligne qui attendait se redessine
+          break;
+        }
         const t = e.tentatives + 1;
         // La tour répond, mais mal, à chaque essai : on arrête d'insister.
         const repondMal = nature === "incertain" && err.nature !== "reseau" && err.nature !== "delai";

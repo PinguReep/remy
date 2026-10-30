@@ -224,7 +224,10 @@ async function charger({ frais = false, discret = false } = {}) {
   return enLecture;
 }
 
-const apres = () => setTimeout(() => charger({ discret: true }), 600);
+// Relire après un geste, seulement si Aujourd'hui est affiché (une coche peut aboutir ailleurs, sur Rémy).
+const apres = () => setTimeout(() => {
+  if (racine?.isConnected) charger({ discret: true });
+}, 600);
 
 function toutDessiner() {
   if (!racine?.isConnected) return;
@@ -601,13 +604,20 @@ function ligneTache(t, { retard = false } = {}) {
     bouton("", { classe: "texte", icone: "curseurs", etiquette: `Gérer « ${t.titre} »`, onclick: () => gerer(e, gestesDe(e)) }));
 }
 
-/** Une tâche cochée d'ici : barrée, avec son « Annuler » (LigneCochee). */
+/**
+ * Une tâche cochée d'ici : barrée, avec son « Annuler » (LigneCochee). En
+ * route vers Motion (envoyée d'ici ou par la file) ou en cours d'annulation :
+ * elle tourne, comme sur l'iPhone, avant « pas encore envoyée ».
+ */
 function ligneCochee(c) {
   const annuler = () => bouton("Annuler", { classe: "texte petit", etiquette: `Annuler la coche de « ${c.titre} »`, onclick: () => renoncerCochee(c.id, { apres }) });
+  const etatC = (texte) => h("span", { class: "etat-cochee" }, texte);
+  const tourne = () => h("span", { class: "cochee-tourne", role: "status", "aria-label": `« ${c.titre} » : en cours…` });
   let fin = null;
   if (c.envoi === "delai") fin = annuler();
-  else if (c.envoi === "attente" || c.envoi === "tentee") fin = c.defaire ? h("span", { class: "etat-cochee" }, "sera rouverte") : [h("span", { class: "etat-cochee" }, "pas encore envoyée"), annuler()];
-  else if (c.enCours) fin = h("span", { class: "cochee-tourne", role: "status", "aria-label": `« ${c.titre} » : en cours…` });
+  else if (c.enCours) fin = c.defaire ? [etatC("sera rouverte"), tourne()] : tourne();
+  else if (c.defaire) fin = etatC("sera rouverte");
+  else if (c.envoi === "attente" || c.envoi === "tentee") fin = [etatC("pas encore envoyée"), annuler()];
   else if (c.ledgerId) fin = annuler();
   return h("li", { class: "ligne faite cochee" }, h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, c.titre)), fin);
 }

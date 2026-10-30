@@ -5,6 +5,7 @@ import { api, evenements, chargerVersion, versionTour, sait, sonder, tourJoignab
 import { h, vider, icone, bouton, dire, feuille, kbd, ctrl, squelette, appliquerTheme, themeChoisi, occupe } from "./ui.js";
 import * as bureau from "./bureau.js";
 import * as fileEnvoi from "./file-envoi.js";
+import { suivreFileCochees } from "./vues/gerer.js";
 import * as noter from "./vues/noter.js";
 import * as palette from "./palette.js";
 
@@ -244,6 +245,8 @@ async function demarrerSession() {
   if (modeNoter) return demarrerNoter({ sansSession: !v?.serveur });
   if (!v?.serveur) return ecranConnexion();
   construire();
+  // Avant la première vidange : une coche envoyée par la file se conclut quelle que soit la vue (« Annuler » compris).
+  suivreFileCochees();
   window.addEventListener("hashchange", afficher);
   if (!location.hash) history.replaceState(null, "", "#/aujourdhui");
   await afficher();

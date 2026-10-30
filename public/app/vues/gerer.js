@@ -98,6 +98,9 @@ const annulable = (source, r, titre, apres) => (r?.ledgerId ? { libelle: "Annule
 // envoi : « fait » (Motion l'a), « attente » (dans la file, jamais tentée),
 // « tentee » (partie sans réponse nette : elle repart avec la même clé).
 // Pendant les 2 s du bandeau, rien n'est écrit : elles vivent en mémoire.
+// En route (envoi direct, ou la file qui l'envoie) : la ligne tourne, et
+// « Annuler » ne peut plus la retenir : elle est défaite dès son arrivée
+// (defaire), où que soit Sam (le suivi de la file part au démarrage, main.js).
 const CLE_COCHEES = "remy-cochees";
 const enDelai = new Map(); // id → { id, titre, a, renoncer }
 const enCoursCochee = new Set(); // ids dont l'envoi ou l'annulation tourne
@@ -121,10 +124,17 @@ function majCochee(id, changement) {
   ecrireCochees(liste);
 }
 const retirerCochee = (id) => ecrireCochees(lireCochees().filter((c) => c.id !== id));
+/** La file d'envoi est en train d'envoyer cette coche (sa requête est partie). */
+const enVolFile = (c) => Boolean(c.idCommande) && (c.envoi === "attente" || c.envoi === "tentee") && fileEnvoi.enEnvoi(c.idCommande);
+/** « Annuler » touché pendant l'envoi (ici ou sur une autre vue) : à défaire maintenant qu'elle est arrivée. */
+function doitDefaire(id) {
+  const demande = aDefaire.delete(id);
+  return demande || Boolean(lireCochees().find((x) => x.id === id)?.defaire);
+}
 
 /** Les cochées du jour, celles du délai d'abord vues comme « délai ». */
 export const cochees = {
-  liste: () => [...lireCochees().map((c) => ({ ...c, enCours: enCoursCochee.has(c.id) })), ...[...enDelai.values()].map((c) => ({ id: c.id, titre: c.titre, a: c.a, envoi: "delai" }))],
+  liste: () => [...lireCochees().map((c) => ({ ...c, enCours: enCoursCochee.has(c.id) || enVolFile(c) })), ...[...enDelai.values()].map((c) => ({ id: c.id, titre: c.titre, a: c.a, envoi: "delai" }))],
   ids: () => new Set([...lireCochees().map((c) => c.id), ...enDelai.keys()]),
   surChangement(f) {
     abonnesCochees.add(f);
@@ -134,16 +144,23 @@ export const cochees = {
 
 /**
  * « Annuler » sur la ligne d'une cochée : pendant le délai, elle revient sans
- * rien envoyer ; dans la file et jamais tentée, elle en sort ; déjà tentée,
- * elle sera rouverte dès qu'elle sera arrivée ; écrite, Motion la rouvre.
+ * rien envoyer ; dans la file et jamais tentée, elle en sort ; en route (sa
+ * requête est partie) ou déjà tentée, elle sera rouverte dès qu'elle sera
+ * arrivée ; écrite, Motion la rouvre.
  */
 export function renoncerCochee(id, { apres } = {}) {
   if (enDelai.has(id)) return enDelai.get(id).renoncer();
   const c = lireCochees().find((x) => x.id === id);
   if (!c) return;
-  if (c.envoi === "attente") {
-    if (c.idCommande) fileEnvoi.retirer(c.idCommande);
+  if (c.envoi !== "fait" && (enCoursCochee.has(id) || enVolFile(c))) {
+    // Trop tard pour la retenir : la retirer de la liste perdrait ce geste, la coche arrivant quand même.
+    aDefaire.add(id);
+    majCochee(id, { defaire: true });
+    dire(`« ${c.titre} » partait déjà : elle sera rouverte dès qu'elle sera arrivée.`);
+  } else if (c.envoi === "attente") {
+    // La liste d'abord : le suivi de la file ne la prend pas pour une coche retirée ailleurs.
     retirerCochee(id);
+    if (c.idCommande) fileEnvoi.retirer(c.idCommande);
     apres?.();
   } else if (c.envoi === "tentee") {
     majCochee(id, { defaire: true });
@@ -186,13 +203,16 @@ function mettreEnFile(c) {
 
 let suiviFile = null;
 let relireApres = null;
+let volVu = ""; // les coches que la file envoyait au dernier passage (leur ligne tourne)
 const conclues = new Set(); // coches sorties de la file, en cours de conclusion
 const resumeCoche = (c) => `Terminer « ${c.titre} »`;
 /**
- * Suit la file d'envoi : une coche qui en sort a été envoyée (la tour la
- * rejoue avec la même clé pour rendre son ledgerId, sans rien refaire) ou
- * retirée ailleurs (Réglages › Envoi en attente) ; une coche refusée revient
- * dans la journée. Appelé au montage d'Aujourd'hui et à chaque mise en file.
+ * Suit la file d'envoi : une coche qui en sort a été envoyée (le registre de
+ * la file le dit, avec le ledgerId rendu par la tour) ou retirée ailleurs
+ * (Réglages › Envoi en attente) ; une coche refusée revient dans la journée.
+ * Lancé au démarrage du site (main.js), quelle que soit la vue : une coche
+ * partie pendant que Sam est sur Rémy se conclut là, « Annuler » compris.
+ * Aujourd'hui y ajoute `apres` (relire la journée).
  */
 export function suivreFileCochees({ apres } = {}) {
   if (apres) relireApres = apres;
@@ -202,12 +222,22 @@ export function suivreFileCochees({ apres } = {}) {
 }
 function verifierFile(file) {
   const parId = new Map(file.map((x) => [x.id, x]));
-  const sorties = [];
   for (const c of lireCochees()) {
     if ((c.envoi !== "attente" && c.envoi !== "tentee") || !c.idCommande || conclues.has(c.id)) continue;
+    // Envoyée d'ici en ce moment, ou en vol dans la file : sa réponse décidera.
+    if (enCoursCochee.has(c.id) || fileEnvoi.enEnvoi(c.idCommande)) continue;
     const x = parId.get(c.idCommande);
-    if (!x) sorties.push(c);
-    else if (x.refus) {
+    if (!x) {
+      const parti = fileEnvoi.envoye(c.idCommande);
+      if (parti) {
+        conclues.add(c.id);
+        conclure(c, parti).finally(() => conclues.delete(c.id));
+      } else {
+        // Ni dans la file ni partie : retirée à la main (Réglages › Envoi en attente). La tâche revient.
+        retirerCochee(c.id);
+        relireApres?.();
+      }
+    } else if (x.refus) {
       // Refusée par Motion : la tâche revient, et c'est dit.
       fileEnvoi.retirer(c.idCommande);
       retirerCochee(c.id);
@@ -215,29 +245,32 @@ function verifierFile(file) {
       relireApres?.();
     } else if (c.envoi === "attente" && x.tentatives > 0) majCochee(c.id, { envoi: "tentee" });
   }
-  if (!sorties.length) return;
-  // Sorties pendant une vidange : son bilan dit lesquelles sont parties (sinon, une vidange neuve, sans elles).
-  const bilan = fileEnvoi.vider().catch(() => null);
-  for (const c of sorties) {
-    conclues.add(c.id);
-    conclure(c, bilan).finally(() => conclues.delete(c.id));
+  // La file vient de prendre (ou de lâcher) une coche : sa ligne tourne, ou plus.
+  const vol = lireCochees().filter(enVolFile).map((c) => c.id).join(",");
+  if (vol !== volVu) {
+    volVu = vol;
+    prevenirCochees();
   }
 }
-async function conclure(c, bilan) {
-  const b = await bilan;
-  if (!b?.envoyes?.includes(resumeCoche(c))) {
-    retirerCochee(c.id);
-    relireApres?.();
-    return;
+/** Une coche partie par la file : faite, puis défaite si Sam l'a annulée en route. */
+async function conclure(c, parti) {
+  let ledgerId = parti.ledgerId ?? null;
+  if (!ledgerId) {
+    // Pas de ledgerId gardé : rejouer la même clé le rend (la tour répond « rejoue », sans rien refaire).
+    try {
+      ledgerId = (await ecrire("/api/motion/apply", corpsCoche(c), { delai: 30000 }))?.ledgerId ?? null;
+    } catch {}
   }
-  let r = null;
-  try {
-    r = await ecrire("/api/motion/apply", corpsCoche(c), { delai: 30000 });
-  } catch {}
-  majCochee(c.id, { envoi: "fait", ledgerId: r?.ledgerId ?? null, defaire: false });
-  if (c.defaire || aDefaire.delete(c.id)) await annulerCoche(c.id, { apres: relireApres });
-  else dire(`Envoyé : « ${c.titre} » est marqué fait.`, { genre: "succes" });
+  const defaireLa = doitDefaire(c.id);
+  majCochee(c.id, { envoi: "fait", ledgerId, defaire: false });
+  if (defaireLa) await defaireArrivee(c.id, c.titre, { apres: relireApres });
+  else dire(`Envoyé : « ${c.titre} » est marqué fait.`, { genre: "succes", duree: 5000, action: ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(c.id, { apres: relireApres }) } : null });
   relireApres?.();
+}
+/** Défait une coche arrivée après son « Annuler » ; sans ledgerId, Rémy ne peut pas : on dit quoi faire. */
+async function defaireArrivee(id, titre, { apres } = {}) {
+  if (lireCochees().find((x) => x.id === id)?.ledgerId) return annulerCoche(id, { apres });
+  dire(`« ${titre} » est marquée faite dans Motion, mais Rémy n'a pas pu la rouvrir : rouvre-la dans Motion.`, { genre: "erreur" });
 }
 
 /**
@@ -284,8 +317,9 @@ export function terminer(e, { retirer, remettre, apres, journee, ouvrir, context
         throw Object.assign(new Error(erreur), { nature: "refus", statut: /\((404|410)\)|n'existe plus|introuvable/i.test(erreur) ? 404 : 422 });
       }
       enCoursCochee.delete(e.id);
-      majCochee(e.id, { envoi: "fait", ledgerId: r?.ledgerId ?? null });
-      if (aDefaire.delete(e.id)) await annulerCoche(e.id, { apres });
+      const defaireLa = doitDefaire(e.id);
+      majCochee(e.id, { envoi: "fait", ledgerId: r?.ledgerId ?? null, defaire: false });
+      if (defaireLa) await defaireArrivee(e.id, e.titre, { apres });
       else {
         dire(`« ${e.titre} » est marqué fait dans Motion.`, { genre: "succes", duree: 5000, action: r?.ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(e.id, { apres }) } : null });
         if (journee) import("./et-maintenant.js").then((m) => m.proposerSuite(e.titre, { journee, ouvrir, apres, contexte })).catch((err) => console.warn("Et maintenant ?", err));
@@ -317,7 +351,9 @@ function garder(c, { remettre, apres }) {
     dire(`Pas de réseau : « ${c.titre} » n'est pas marqué fait. Il est de retour.`, { genre: "erreur" });
     return;
   }
-  dire(`Pas de réseau : « ${c.titre} » partira dès que Rémy sera joignable.`);
+  // « Annuler » touché pendant l'envoi raté : elle repartira, puis sera défaite.
+  const defaireLa = aDefaire.has(c.id) || Boolean(lireCochees().find((x) => x.id === c.id)?.defaire);
+  dire(defaireLa ? `« ${c.titre} » sera rouverte dès que Rémy sera joignable.` : `Pas de réseau : « ${c.titre} » partira dès que Rémy sera joignable.`);
   prevenirCochees();
   apres?.();
   // La tour répond mais mal (500…) : un nouvel essai dans un moment, la file espace les suivants.
