@@ -186,9 +186,32 @@ export async function annulerCoche(id, { apres } = {}) {
     apres?.();
   } catch (err) {
     enCoursCochee.delete(id);
+    // « Déjà annulé » (409, l'Historique ou un autre appareil l'a fait) : c'est
+    // fait. La cochée s'en va et la journée se relit — un « Réessayer » ne
+    // rendrait que le même refus (contre-relecture du 30/10, tour 2).
+    if (err?.statut === 409) {
+      retirerCochee(id);
+      dire(`Déjà annulé : « ${c.titre} » est de retour.`, { genre: "succes" });
+      apres?.();
+      return;
+    }
     prevenirCochees();
     direErreur(err, () => annulerCoche(id, { apres }), "Pas annulé");
   }
+}
+
+/**
+ * Une écriture annulée ailleurs (l'Historique, sur ce poste) : la cochée qui
+ * la portait s'en va, et la journée la remontre ouverte. Rend vrai si une
+ * cochée portait ce ledgerId.
+ */
+export function oublierCocheeAnnulee(ledgerId) {
+  if (!ledgerId) return false;
+  const liste = lireCochees();
+  const reste = liste.filter((c) => c.ledgerId !== ledgerId);
+  if (reste.length === liste.length) return false;
+  ecrireCochees(reste);
+  return true;
 }
 
 /** Le corps de la coche : la même clé (idCommande) au premier envoi et à chaque renvoi. */

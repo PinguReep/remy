@@ -12,7 +12,7 @@ import { articles as articlesDe } from "../analyse/genre.js";
 import { resumeEtat, depuis, cheminEtat } from "../analyse/conversations.js";
 import * as C from "../analyse/carnet.js";
 import { surMenu, ouvrirMenu } from "../menu.js";
-import { gerer, terminer } from "./gerer.js";
+import { gerer, terminer, oublierCocheeAnnulee } from "./gerer.js";
 import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes } from "./rappels.js";
 import { ouvrirTri } from "./tri-rappels.js";
 
@@ -913,10 +913,15 @@ async function annulerEntree(e, btn) {
     try {
       const r = await ecrire(e.source === "agenda" ? "/api/google/undo" : "/api/motion/undo", { id: e.id }, { delai: 60000 });
       dire(C.phraseAnnulation(e.source, r?.ok), { genre: r?.ok === false ? "erreur" : "succes" });
+      // Une tâche cochée d'ici et défaite ici : elle quitte « Cochées tout à
+      // l'heure » et revient ouverte sur Aujourd'hui (contre-relecture du 30/10, tour 2).
+      if (e.source !== "agenda") oublierCocheeAnnulee(e.id);
     } catch (err) {
       // « Déjà annulé » (409) : c'est fait.
-      if (err.statut === 409) dire("Annulé.", { genre: "succes" });
-      else if (err.nature !== "auth") dire(`Impossible d'annuler : ${texteErreur(err).replace(/\.$/, "")}.`, { genre: "erreur" });
+      if (err.statut === 409) {
+        dire("Annulé.", { genre: "succes" });
+        if (e.source !== "agenda") oublierCocheeAnnulee(e.id);
+      } else if (err.nature !== "auth") dire(`Impossible d'annuler : ${texteErreur(err).replace(/\.$/, "")}.`, { genre: "erreur" });
     }
   });
   chargerHistorique();

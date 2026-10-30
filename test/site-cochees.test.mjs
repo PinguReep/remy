@@ -122,6 +122,7 @@ let retenir = false;
 let enAttente = []; // les « apply » retenus : (réponse) → void
 let numero = 0;
 let forcer = null; // () => Response : la réponse de /api/motion/apply (401, 429…)
+const dejaAnnules = new Set(); // ledgerIds que la tour dit « Déjà annulé » (409)
 globalThis.fetch = async (url, init = {}) => {
   const chemin = String(url);
   const corps = init.body ? JSON.parse(init.body) : null;
@@ -132,6 +133,9 @@ globalThis.fetch = async (url, init = {}) => {
     const r = { ok: true, results: [{ ok: true }], echecs: 0, ledgerId: `L-${corps.idCommande}` };
     if (!retenir) return repondre(r);
     return new Promise((ok) => enAttente.push(() => ok(repondre(r))));
+  }
+  if (chemin === "/api/motion/undo" && dejaAnnules.has(corps.id)) {
+    return new Response(JSON.stringify({ error: "deja", message: "Déjà annulé" }), { status: 409, headers: { "Content-Type": "application/json" } });
   }
   if (chemin === "/api/motion/undo") return repondre({ ok: true, id: corps.id });
   return repondre({ ok: true });
@@ -333,4 +337,34 @@ test("RÉGRESSION : « Et maintenant ? » disparaît dès que la coche qui l'a o
   assert.equal(carteSuite(), null, "fermée dès le début de l'annulation");
   await annulation;
   assert.ok(bandeaux().includes("Annulé : « Finaliser la démo de la boutique » est de retour."), bandeaux().join(" | "));
+});
+
+test("RÉGRESSION : une coche annulée depuis l'Historique quitte « Cochées tout à l'heure » ; son « Annuler » ne boucle pas sur « Déjà annulé »", async () => {
+  magasin.clear();
+  viderBandeaux();
+  G.terminer({ type: "tache", id: "t30", titre: "Préparer le dossier des bougies" }, {});
+  await pause(2100);
+  assert.ok(await attendreQue(() => coche("t30")?.envoi === "fait" && coche("t30")?.ledgerId), "cochée et arrivée");
+  const ledgerId = coche("t30").ledgerId;
+  let prevenu = 0;
+  const desabonner = G.cochees.surChangement(() => prevenu++);
+  // L'Historique annule cette écriture (projets.js) : la cochée s'en va, les vues sont prévenues.
+  assert.equal(G.oublierCocheeAnnulee("L-inconnu"), false, "une autre écriture ne touche à rien");
+  assert.equal(G.oublierCocheeAnnulee(ledgerId), true);
+  assert.equal(coche("t30"), null, "plus dans « Cochées tout à l'heure »");
+  assert.ok(!G.cochees.ids().has("t30"), "Aujourd'hui la remontre ouverte");
+  assert.ok(prevenu >= 1, "Aujourd'hui est prévenu");
+  desabonner();
+  // Et si la cochée était restée (autre onglet) : « Annuler » reçoit 409 « Déjà annulé ».
+  G.terminer({ type: "tache", id: "t31", titre: "Relancer le fournisseur de cire" }, {});
+  await pause(2100);
+  assert.ok(await attendreQue(() => coche("t31")?.envoi === "fait" && coche("t31")?.ledgerId));
+  dejaAnnules.add(coche("t31").ledgerId);
+  viderBandeaux();
+  let relu = 0;
+  await G.annulerCoche("t31", { apres: () => relu++ });
+  assert.equal(coche("t31"), null, "la cochée s'en va");
+  assert.equal(relu, 1, "la journée se relit");
+  assert.ok(bandeaux().includes("Déjà annulé : « Relancer le fournisseur de cire » est de retour."), bandeaux().join(" | "));
+  assert.ok(!bandeaux().some((t) => /Pas annulé/.test(t)), "pas de « Réessayer » qui rendrait le même refus");
 });
