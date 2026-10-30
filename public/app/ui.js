@@ -13,7 +13,14 @@ export function h(tag, props, ...enfants) {
       else if (k === "text") el.textContent = v;
       else if (k === "html") el.innerHTML = v; // réservé au markdown déjà échappé
       else if (k === "dataset") Object.assign(el.dataset, v);
-      else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+      else if (k === "style" && typeof v === "object") {
+        // Une propriété personnalisée (« --couleur ») ne passe que par setProperty : Object.assign l'ignore.
+        for (const [p, val] of Object.entries(v)) {
+          if (p.startsWith("--")) {
+            if (val != null) el.style.setProperty(p, String(val));
+          } else el.style[p] = val;
+        }
+      }
       else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
       else if (v === true) el.setAttribute(k, "");
       else el.setAttribute(k, String(v));
@@ -213,6 +220,21 @@ export function direErreur(err, reessayer, prefixe, { rafraichir } = {}) {
     : reessayer ? { libelle: "Réessayer", faire: reessayer } : null;
   return dire(msg, { genre: "erreur", action });
 }
+
+// --- lot aujourdhui : icônes du conseil, de la journée et des 7 jours
+Object.assign(CHEMINS, {
+  circulaire: "M4 12a8 8 0 0 1 13.7-5.6L20 9M20 4v5h-5M20 12a8 8 0 0 1-13.7 5.6L4 15M4 20v-5h5",
+  etoile: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z",
+  frise: "M6 3v18M10 5h9v4h-9zM10 13h6v4h-6z",
+  etiquette: "M3 12V4h8l9 9-8 8zM7.5 8h.01",
+  plateau: "M4 14h4l1.5 3h5l1.5-3h4v6H4zM12 3v9M8 7l4-4 4 4",
+  agenda: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
+  deplacer: "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
+  arriere: "M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
+  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5",
+  drapeau: "M5 21V4M5 4h11l-2 4 2 4H5",
+});
+// --- fin lot aujourdhui
 
 // --- Squelettes et états ---
 export function squelette(largeurs = [0.9, 0.62, 0.78], grand = false) {

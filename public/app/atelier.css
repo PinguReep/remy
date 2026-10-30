@@ -439,6 +439,189 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .conseil .texte-conseil { font: 400 17px/1.45 var(--serif); }
 .conseil ul { margin-top: 8px; padding-left: 18px; color: var(--encre-2); font-size: 14px; }
 
+/* --- lot aujourdhui : conseil du moment, tâches et Gérer, journée et 7 jours, bandeau d'état */
+/* Une zone dont le module (boîte, À trancher, rappels) n'a rien à montrer ne laisse pas de trou. */
+.auj-zone:has(> [hidden]:only-child), .auj-zone:has(> :only-child:empty) { display: none; }
+
+/* Le conseil du moment : la carte (clic, Entrée, clic droit) et son panneau. */
+.conseil-carte { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: start; padding: 14px 10px 14px 14px; }
+.conseil-ouvrir { border-radius: 12px; padding: 6px; cursor: pointer; min-height: 44px; transition: background-color 120ms ease-out; }
+.conseil-ouvrir:hover { background: var(--fond-2); }
+.conseil-tete { font-size: 13px; color: var(--encre-3); margin-bottom: 6px; }
+.conseil-tete strong { color: var(--encre); font-weight: 600; }
+.conseil-carte .texte-conseil { font: italic 400 19px/1.4 var(--serif); }
+.conseil-autre[aria-busy="true"] svg.ic { display: none; }
+.conseil-autre[aria-busy="true"]::after { margin: 0; }
+.conseil-tete-panneau { display: flex; }
+.conseil-puces { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 18px; }
+.conseil-grand { font: italic 400 24px/1.4 var(--serif); color: var(--encre); }
+.conseil-source { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; color: var(--encre-3); font-size: 13px; }
+.conseil-source svg.ic { width: 14px; height: 14px; margin-top: 2px; }
+.conseil-priorite { display: flex; gap: 6px; align-items: center; margin-top: 10px; color: var(--signal-texte); font-weight: 500; font-size: 14px; }
+.conseil-priorite svg.ic { width: 15px; height: 15px; }
+.conseil-plier { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 14px; border: 0; background: none; padding: 0; text-align: left; }
+.conseil-plier .titre-section { margin: 0; flex: 1; }
+.conseil-plier .chevron-plier { color: var(--encre-3); transition: transform 150ms ease-out; }
+.conseil-plier[aria-expanded="true"] .chevron-plier { transform: rotate(180deg); }
+.conseil-pourquoi .titre-section { margin: 14px 0 8px; }
+.conseil-raisons { list-style: none; display: grid; gap: 8px; }
+.conseil-raisons li { display: flex; gap: 8px; align-items: baseline; }
+.conseil-raisons li::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--signal); flex: none; transform: translateY(-2px); }
+.conseil-raisons.discretes li { color: var(--encre-2); }
+.conseil-raisons.discretes li::before { background: var(--encre-3); }
+.conseil-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+
+/* Les blocs de la frise : le bloc s'ouvre dans « Gérer », sa case coche sans l'ouvrir. */
+.echelle .bloc.avec-case, .echelle .bloc:has(> .bloc-ouvrir) { padding: 0; cursor: default; }
+.echelle .bloc .bloc-ouvrir {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; border: 0; background: none;
+  text-align: left; color: inherit; cursor: pointer; border-radius: 8px; min-width: 0; overflow: hidden;
+}
+.echelle .bloc.avec-case .bloc-ouvrir { padding-right: 46px; }
+.echelle .bloc.court .bloc-ouvrir { flex-direction: row; align-items: center; gap: 8px; padding-top: 2px; padding-bottom: 2px; }
+.echelle .bloc .bloc-ouvrir .t { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.echelle .bloc .bloc-ouvrir .t svg.ic { width: 12px; height: 12px; flex: none; color: var(--encre-2); }
+.echelle .bloc .bloc-ouvrir .tt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.echelle .bloc .marques { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--encre-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.echelle .bloc .marques svg.ic { width: 12px; height: 12px; }
+.echelle .bloc > .case { position: absolute; right: 0; top: 0; margin: 0; z-index: 1; }
+.echelle .bloc.court > .case { top: 50%; transform: translateY(-50%); }
+/* Un bloc étroit (deux éléments côte à côte, petit écran) : la case passe en bas, le titre garde la largeur. */
+.echelle .bloc.avec-case:not(.court) { container-type: inline-size; }
+@container (max-width: 140px) {
+  .echelle .bloc .bloc-ouvrir { padding-right: 10px; padding-bottom: 44px; }
+  .echelle .bloc > .case { top: auto; bottom: 0; }
+}
+/* Une activité faite : grisée, son titre aussi. */
+.echelle .bloc.faite { background: color-mix(in srgb, var(--fond-2) 45%, var(--surface)); border-left-color: color-mix(in srgb, var(--couleur, var(--encre-3)) 40%, var(--fond-3)); }
+.echelle .bloc.faite .t { color: var(--encre-3); text-decoration: line-through; font-weight: 500; }
+.risque-texte, .meta.risque-texte { color: var(--danger); }
+.ligne-tache .meta svg.ic { width: 12px; height: 12px; flex: none; }
+.plus-en-retard { padding: 10px 0 2px; }
+/* « Cochées tout à l'heure » */
+.ligne.cochee .etat-cochee { color: var(--encre-3); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.cochee-tourne { width: 44px; height: 44px; display: grid; place-items: center; flex: none; }
+.cochee-tourne::after { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--encre-2); border-right-color: transparent; animation: tourne 700ms linear infinite; }
+.organiser { margin-top: 6px; }
+/* Une seule colonne : chaque carte prend toute la largeur (la frise n'a pas de largeur à elle). */
+@media (max-width: 1023px) { .auj-grille { align-items: stretch; } }
+/* Sous 720 px, les feuilles larges de ce lot montent du bas sur toute la largeur, comme les autres. */
+@media (max-width: 720px) { dialog.feuille.large.feuille-gerer, dialog.feuille.large.conseil-feuille, dialog.feuille.large.feuille-echelle { width: 100vw; } }
+
+/* « Gérer » : la nature (cadenas), les horaires, prolonger en deux gestes, les actions en lignes. */
+.feuille-gerer .groupe-gestes { margin-top: 16px; }
+.feuille-gerer .separateur { margin: 18px 0 6px; }
+.feuille-gerer.faite .feuille-tete h2 { text-decoration: line-through; color: var(--encre-3); }
+.gerer-nature { display: flex; align-items: center; gap: 6px; color: var(--encre-2); font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.gerer-nature svg.ic { width: 13px; height: 13px; }
+.gerer-horaires { font-size: 12px; color: var(--encre-2); margin: 2px 0 6px; }
+.gerer-note { margin: 4px 0 8px; }
+.gerer-categorie svg.ic { width: 13px; height: 13px; }
+.gerer-impact-zone:empty { display: none; }
+.gerer-impact-zone { margin-top: 10px; }
+.gerer-impact { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 14px; border-radius: 14px; background: color-mix(in srgb, var(--encre-2) 8%, transparent); }
+.gerer-impact.conflit { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.gerer-impact .phrase-impact { display: flex; gap: 8px; align-items: flex-start; color: var(--encre); font-size: 14px; }
+.gerer-impact .phrase-impact svg.ic { width: 15px; height: 15px; margin-top: 2px; flex: none; color: var(--encre-2); }
+.gerer-impact.conflit .phrase-impact svg.ic { color: var(--danger); }
+.gerer-lignes { display: flex; flex-direction: column; }
+.gerer-ligne {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 4px 6px; border: 0; background: none;
+  border-radius: 12px; text-align: left; color: var(--encre); text-decoration: none; cursor: pointer; transition: background-color 120ms ease-out;
+}
+.gerer-ligne:hover { background: var(--fond-2); }
+.gerer-ligne:disabled { opacity: .5; cursor: default; background: none; }
+.gerer-ligne > svg.ic { color: var(--encre-2); width: 18px; height: 18px; }
+.gerer-ligne .textes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gerer-ligne .textes strong { font-weight: 500; font-size: 15px; overflow-wrap: anywhere; }
+.gerer-ligne .textes .detail { font-size: 13px; color: var(--encre-3); }
+.gerer-ligne .chevron-ligne { margin-left: auto; color: var(--encre-3); width: 14px; height: 14px; }
+.gerer-modifier > summary { list-style: none; }
+.gerer-modifier > summary::-webkit-details-marker { display: none; }
+.gerer-modifier[open] > summary .chevron-ligne { transform: rotate(180deg); }
+button.puce.suggeree[aria-pressed="true"] { background: color-mix(in srgb, var(--encre) 78%, var(--fond)); border-style: dashed; }
+.suggestion { margin-left: 4px; }
+.feuille-gerer .feuille-pied .btn.large { width: 100%; }
+
+/* Le bandeau d'état : des lignes de 44 px, liseré rouge pour ce qui manque ; la ligne des captures s'ouvre. */
+.etat-lignes { display: flex; flex-direction: column; gap: 8px; }
+.etat-ligne { min-height: 44px; }
+button.etat-captures { width: 100%; text-align: left; font-weight: 600; cursor: pointer; }
+button.etat-captures:hover { background: var(--fond-3); }
+.etat-captures .voir { margin-left: auto; color: var(--encre-2); }
+.etat-captures svg.ic.signal { color: var(--signal); }
+.etat-captures svg.ic.danger { color: var(--danger); }
+/* Une page d'un autre jour : seule la carte « Rafraîchir » reste. */
+.auj-perimee .auj-zone:not(.zone-maintenant):not(.zone-motion) { display: none; }
+@media (max-width: 1023px) { .zone-connaissance { order: 10; } }
+
+/* Demain et les 7 jours : une carte par jour ; « À l'échelle » en grand. */
+.journee-echelle .titre-section .fin { display: inline-flex; align-items: center; gap: 6px; }
+.journee-echelle .titre-section .fin .lu { color: var(--encre-3); }
+.semaine-carte .titre-section .fin .btn, .journee-echelle .titre-section .fin .btn { text-transform: none; letter-spacing: 0; }
+.semaine-cartes { display: flex; flex-direction: column; gap: 10px; }
+.semaine-jour { border: 1px solid var(--filet); border-radius: 16px; padding: 2px 12px 6px; background: var(--surface); }
+.semaine-jour-tete { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 44px; padding: 10px 0; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; border-radius: 10px; }
+.semaine-jour-tete:hover .ligne-nom strong { text-decoration: underline; text-decoration-color: var(--signal); text-underline-offset: 3px; }
+.semaine-jour-tete .ligne-nom { display: flex; align-items: center; gap: 8px; }
+.semaine-jour-tete .ligne-nom strong { font: 600 17px/1.2 var(--serif); }
+.semaine-jour-tete .chevron-jour { margin-left: auto; color: var(--encre-3); width: 14px; height: 14px; }
+.semaine-jour-tete .resume, .semaine-jour-tete .toute { color: var(--encre-2); font-size: 13px; }
+.semaine-jour-tete .rdv { display: flex; gap: 6px; align-items: baseline; font-size: 14px; }
+.semaine-jour-tete .rdv span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.semaine-jour-tete .rdv svg.ic { width: 11px; height: 11px; flex: none; color: var(--encre-2); }
+.semaine-jauge { height: 6px; border-radius: 999px; background: var(--fond-3); overflow: hidden; }
+.semaine-jauge span { display: block; height: 100%; border-radius: 999px; background: var(--encre-2); }
+.semaine-jauge.charge span { background: var(--signal); }
+.semaine-jauge.deborde span { background: var(--danger); }
+.semaine-echeance { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 6px 4px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; border-radius: 10px; }
+.semaine-echeance:hover { background: var(--fond-2); }
+.semaine-echeance > svg.ic { width: 13px; height: 13px; margin-top: 3px; flex: none; color: var(--encre-2); }
+.semaine-echeance.menacee > svg.ic { color: var(--danger); }
+.semaine-echeance .textes { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.semaine-echeance .t { font-size: 15px; overflow-wrap: anywhere; }
+.semaine-echeance .d { font-size: 12px; font-weight: 500; color: var(--encre-3); }
+.semaine-echeance.menacee .d { color: var(--danger); }
+.semaine-plus { min-height: 44px; width: 100%; border: 0; background: none; text-align: left; color: var(--encre-2); font-weight: 500; font-size: 14px; cursor: pointer; padding: 0 4px; border-radius: 10px; }
+.semaine-plus:hover { background: var(--fond-2); }
+.semaine-note { margin-top: 10px; }
+.semaine-bandeau { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 44px; padding: 4px 6px 4px 12px; margin-bottom: 10px; border-radius: 12px; background: var(--fond-2); color: var(--encre-2); font-size: 13px; }
+.semaine-bandeau .msg { flex: 1 1 200px; }
+.semaine-squelettes { display: grid; gap: 14px; }
+dialog.feuille-echelle { width: min(900px, calc(100vw - 32px)); }
+.feuille-echelle .feuille-tete { align-items: center; }
+.feuille-echelle .echelle-retour[hidden] { display: none; }
+.echelle-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 14px; background: var(--fond-2); margin-bottom: 14px; }
+.echelle-segment button { min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: var(--encre); font-weight: 500; font-size: 15px; }
+.echelle-segment button[aria-pressed="true"] { background: var(--encre); color: var(--fond); font-weight: 600; }
+.echelle-resume { display: flex; flex-direction: column; gap: 6px; padding: 0 0 12px; margin-bottom: 12px; border-bottom: 1px solid var(--filet); }
+.echelle-resume .ligne-charge { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+.echelle-resume .toute { color: var(--encre-2); font-size: 14px; }
+.echelle-defile { max-height: min(58dvh, 560px); overflow: auto; overscroll-behavior: contain; padding: 8px 6px 8px 0; border-radius: 12px; }
+.echelle-grande { margin-top: 8px; }
+.echelle-grande .bloc .t { display: flex; align-items: center; gap: 5px; }
+.echelle-grande .bloc .t svg.ic { width: 12px; height: 12px; flex: none; }
+.echelle-grande .bloc .t svg.ic.retard { color: var(--danger); }
+.echelle-vide { padding: 24px 0; text-align: center; }
+.echelle-aide { margin-top: 14px; }
+@media (hover: none) { .echelle-aide { display: none; } }
+
+/* « Et maintenant ? » : en bas à droite, au-dessus des bandeaux (et des onglets sous 720 px). */
+.maintenant-suite {
+  position: fixed; z-index: 80; right: 24px; bottom: calc(24px + var(--sa-bas)); width: min(380px, calc(100vw - 32px));
+  background: var(--surface); border: 1px solid var(--filet); border-radius: 20px; padding: 10px 10px 14px 16px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .18); animation: entre 180ms ease-out;
+}
+.maintenant-suite-tete { display: flex; align-items: flex-start; gap: 6px; }
+.maintenant-suite-tete p { flex: 1; font-weight: 600; padding-top: 10px; overflow-wrap: anywhere; }
+.maintenant-suite .rangee { margin-top: 6px; }
+.maintenant-suite .rangee .btn { max-width: 100%; white-space: normal; text-align: left; }
+.maintenant-suite .rangee .btn .lib { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.maintenant-choix .groupe-gestes + .groupe-gestes { margin-top: 14px; }
+@media (max-width: 1279px) { .maintenant-suite { bottom: calc(96px + var(--sa-bas)); } }
+@media (max-width: 720px) { .maintenant-suite { left: 16px; right: 16px; width: auto; bottom: calc(var(--haut-onglets) + 84px + var(--sa-bas)); } }
+/* --- fin lot aujourdhui */
+
 /* ---------- Rémy (conversations) ---------- */
 .remy { display: grid; grid-template-columns: 290px minmax(0, 1fr) 270px; height: 100dvh; }
 .remy.sans-panneau { grid-template-columns: 290px minmax(0, 1fr); }
