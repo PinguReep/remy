@@ -6,8 +6,8 @@
 // Rafraîchir), /api/revue à l'ouverture de la revue ; jamais /api/dashboard.
 // Un geste par ligne, par les chemins qui existent déjà, et chacun s'annule
 // depuis son bandeau. Aucun appel IA.
-import { api, ecrire, remplacer, nouvelId, seg, sait, evenements } from "../api.js";
-import { h, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, local, feuille } from "../ui.js";
+import { api, ecrire, remplacer, nouvelId, seg, sait } from "../api.js";
+import { h, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, local, feuille, texteErreur } from "../ui.js";
 import * as R from "../analyse/rituel.js";
 import { couleurProjet } from "../couleurs.js";
 import { terminer, decaler, echeanceDans } from "./gerer.js";
@@ -28,11 +28,8 @@ const masquees = new Set(); // lignes réglées ici (elles reviennent si « Annu
 const enCours = new Set(); // lignes dont le geste est en route
 const enSuppression = new Set(); // fils qui attendent leur suppression
 const revue = { donnees: null, chargement: false, erreur: null };
-// Session perdue : l'écran de connexion prend la place, la feuille ouverte se ferme.
-const feuillesOuvertes = new Set();
-evenements.addEventListener("session-perdue", () => {
-  for (const f of [...feuillesOuvertes]) f.fermer();
-});
+// Session perdue : main.js ferme toutes les feuilles (fermerFeuilles, ui.js)
+// avant de montrer l'écran de connexion.
 
 function lireTour() {
   if (lu.lecture) return lu.lecture;
@@ -187,7 +184,6 @@ export function creerTrancher(ctx, { relire } = {}) {
     const f = feuille({
       titre, sousTitre, large: true, classe: "trancher-dialog", contenu: corps, pied, avantFermeture,
       surFermeture: () => {
-        feuillesOuvertes.delete(f);
         if (ouverte?.f === f) ouverte = null;
         // Le focus revient d'où on venait ; redessiné entre-temps, sur la carte.
         if (document.activeElement === document.body || !document.activeElement) (retour?.isConnected ? retour : carte.querySelector("button"))?.focus();
@@ -214,7 +210,6 @@ export function creerTrancher(ctx, { relire } = {}) {
         else corps.focus({ preventScroll: true });
       },
     };
-    feuillesOuvertes.add(f);
     ouverte = o;
     o.dessiner();
     corps.focus();
@@ -391,6 +386,11 @@ export function creerTrancher(ctx, { relire } = {}) {
   }
 
   // --- Les gestes (ATrancherModel.agir) ---
+  /** « Voir » : la carte dans sa conversation (#/remy/<convId>), là où elle s'ajuste et se confirme. */
+  const voirCarte = (l) => ({ libelle: "Voir", faire: () => {
+    ouverte?.f.fermer();
+    ctx.aller(`remy/${seg(l.convId)}`);
+  } });
   const masquer = (l) => masquees.add(l.cle);
   const montrer = (l) => {
     masquees.delete(l.cle);
@@ -404,7 +404,10 @@ export function creerTrancher(ctx, { relire } = {}) {
     try {
       await faire(g, l);
     } catch (err) {
-      direErreur(err, () => agir(g, l), R.prefixeEchec(g, l));
+      // La tour refuse la carte telle quelle (annulée, ou périmée et pas confirmée) :
+      // la renvoyer échouerait à coup sûr. « Voir » mène à son fil, où elle se règle.
+      if (err?.statut === 409 && l.convId) dire(`${R.prefixeEchec(g, l)} : ${texteErreur(err)}`, { genre: "erreur", action: voirCarte(l) });
+      else direErreur(err, () => agir(g, l), R.prefixeEchec(g, l));
     } finally {
       enCours.delete(l.cle);
       dessiner();
@@ -511,7 +514,22 @@ export function creerTrancher(ctx, { relire } = {}) {
         dire("C'est fait.", { genre: "succes" });
       } else {
         const chemin = l.source === "agenda" ? "/api/google/apply" : "/api/motion/apply";
-        const r = await ecrire(chemin, { actions: [], convId: l.convId, propositionId: l.propositionId }, { delai: 150000 });
+        const corps = { actions: [], convId: l.convId, propositionId: l.propositionId };
+        let r;
+        try {
+          r = await ecrire(chemin, corps, { delai: 150000 });
+        } catch (err) {
+          // Proposée il y a plus de 7 jours : jamais appliquée en silence. La même
+          // boîte que dans le fil (« Proposition ancienne ») ; confirmée, le même
+          // corps repart avec `confirmer` ; sinon, « Voir » mène à la carte pour l'ajuster.
+          if (!(err?.statut === 409 && /confirme pour l'appliquer/.test(err.message || ""))) throw err;
+          const { confirmerPerimee } = await import("./propositions.js");
+          if (!(await confirmerPerimee({ raisonPeremption: err.message }, false))) {
+            dire("Rien n'a été fait : la carte attend dans sa conversation, où tu peux l'ajuster.", { action: voirCarte(l) });
+            return;
+          }
+          r = await ecrire(chemin, { ...corps, confirmer: true }, { delai: 150000 });
+        }
         const rates = (r?.results || []).filter((x) => x?.ok === false);
         if (r?.etat === "echouee") throw new Error(`${rates[0]?.erreur || "raison inconnue"}.`);
         masquer(l);

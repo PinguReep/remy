@@ -562,3 +562,30 @@ test("contrat : les propositions en attente, et « Oui » à un sujet de nuit", 
   assert.equal(inconnu.statut, 404);
   assert.equal(inconnu.corps.message, "Ce sujet n'est plus proposé pour cette nuit.");
 });
+
+test("RÉGRESSION : « Oui » d'À trancher sur une carte de plus de 7 jours : un 409 que le site reconnaît, puis la confirmation passe", async () => {
+  const maintenant = Date.now();
+  await store.putConversation({ id: "c-vidange", title: "Vidange de la Twingo", createdAt: maintenant - 29 * J, updatedAt: maintenant - 29 * J, messages: [
+    { role: "user", content: "Il faut faire la vidange." },
+    { role: "assistant", content: "Je propose.", proposal: { id: "p-vidange", source: "motion", resume: "La vidange en deux temps", actions: [{ type: "creer", nom: "Vidange de la Twingo" }], statut: "en_attente" } },
+  ] });
+  // Le corps que trancher.js envoie au « Oui » d'une carte. Motion « connecté »
+  // (le bac à sable refuse tout appel réel) : la péremption passe avant lui.
+  const corps = { actions: [], convId: "c-vidange", propositionId: "p-vidange" };
+  process.env.MOTION_API_KEY = "cle-de-test";
+  try {
+    const r = await appel("/api/motion/apply", { methode: "POST", corps });
+    assert.equal(r.statut, 409, JSON.stringify(r.corps));
+    assert.equal(r.corps.error, "perimee");
+    assert.match(r.corps.message, /confirme pour l'appliquer/, "le motif qui ouvre « Proposition ancienne » au lieu d'un « Réessayer » sans fin");
+    const c = await appel("/api/motion/apply", { methode: "POST", corps: { ...corps, confirmer: true } });
+    assert.notEqual(c.statut, 409, `confirmée, la péremption ne la bloque plus : ${JSON.stringify(c.corps)}`);
+  } finally {
+    delete process.env.MOTION_API_KEY;
+  }
+  // Le site : la boîte de confirmation, le renvoi avec `confirmer`, et jamais « Réessayer » pour un 409.
+  const vue = fs.readFileSync(new URL("../public/app/vues/trancher.js", import.meta.url), "utf8");
+  assert.match(vue, /confirmerPerimee\(/);
+  assert.match(vue, /\{ \.\.\.corps, confirmer: true \}/);
+  assert.match(vue, /err\?\.statut === 409 && l\.convId\) dire\(/);
+});

@@ -386,8 +386,8 @@ function dessinerPlanning(el, p, c, index, carte, etat, { relire, ctx }) {
   vider(el, blocs);
 }
 
-/** La boîte « Proposition ancienne » : Appliquer quand même / Pas maintenant. */
-function confirmerPerimee(p, ajustable) {
+/** La boîte « Proposition ancienne » : Appliquer quand même / Pas maintenant (aussi pour « À trancher »). */
+export function confirmerPerimee(p, ajustable) {
   const f = feuille({
     titre: "Proposition ancienne",
     contenu: h("p", null, `${p.raisonPeremption || "Elle date un peu."}${ajustable ? " Touche une ligne pour la régler d'abord." : ""}`),
