@@ -163,8 +163,11 @@ depuis « Importer le .zip » (dans la carte) ou « Importer ».
   conversation n'est réécrite que par une version plus récente (`update_time`).
 - **Une archive piégée** (bombe de décompression) : un `conversations.json`
   qui annonce plus de 8 Go, ou plus de 100 fois sa taille compressée, est
-  écarté sans être ouvert (dit comme un .zip illisible) ; une entrée plus
-  longue que ce que l'annuaire annonce est coupée dès le dépassement.
+  écarté sans être ouvert (dit comme un .zip illisible), comme une taille
+  inconnue (0xFFFFFFFF sans champ ZIP64) ; une entrée plus longue que ce que
+  l'annuaire annonce est coupée dès le dépassement. Avant ton geste, Rémy ne
+  décompresse jamais plus de 64 Mo pour reconnaître un export, ni plus de
+  1 Mo pour lire son compte (`user.json`).
   « Effacer » et « Tout effacer » n'attendent jamais un import en cours :
   il s'arrête au morceau suivant.
 - **Ce qu'il ne fait jamais** : déplacer, renommer, effacer ou modifier un
@@ -460,7 +463,10 @@ avec les mêmes phrases — la carte « Exporter ChatGPT » sous l'état, le
 recensement sous chaque source, les réglages de Téléchargements et du rappel
 dans la source ChatGPT (feuille « Sources » et Réglages › Sources des
 conversations ; dans l'app de bureau, « Ouvrir ChatGPT » ouvre le navigateur
-par défaut). Les chemins de ce contrat et ces phrases vivent dans
+par défaut). Dans « Cette nuit », une chose à faire a « Me le rappeler », le
+geste de l'iPhone (un rappel sans heure, `POST /api/rappels` ; gardé dans la
+file d'envoi si la tour ne répond pas), et « Noter » pour en faire autre
+chose. Les chemins de ce contrat et ces phrases vivent dans
 `public/app/analyse/conversations.js` ; `test/site-conversations.test.mjs` les
 joue contre les vraies routes, sur les conversations fictives des trois
 sources. L'export ChatGPT part en corps brut (XHR, pour suivre l'envoi).

@@ -293,6 +293,8 @@ signal**. Mêmes valeurs, en variables CSS :
 ### 1.6 Carte des écrans et des routes
 
 Toutes ces routes existent (`lib/routes.js`) ; l'iPhone les utilise déjà.
+Ce qui a été ajouté ensuite pour la parité, écran par écran, et ce qui reste
+volontairement absent sur ordinateur : 1.10.
 
 | Écran (`#/…`) | Contenu (parité iPhone) | Routes |
 | --- | --- | --- |
@@ -332,7 +334,9 @@ dans la nouvelle interface.
    apprend à pousser (pas cette nuit).
 4. **Conversations externes** : branchées à l'intégration de la nuit du
    29/10 (#26), sans nouvelle route (1.6).
-5. Rien d'autre : la parité ne demande **aucune nouvelle route**.
+5. Rien d'autre : la parité ne demande **aucune nouvelle route**. La seule
+   ajoutée depuis, `POST /api/conversations-externes/chatgpt/telechargements`,
+   est l'accord demandé avant d'importer un export trouvé (1.10).
 
 ### 1.8 Découpage en deux lots aux fichiers disjoints
 
@@ -413,6 +417,90 @@ Réglages › Ordinateur, notifications déclenchées une seule fois.
   désinstallation, laisse la valeur « Rémy » de la clé `Run` (posée par
   l'app) pointer vers un programme effacé ; le `.exe` NSIS l'efface.
 - Non signé : SmartScreen préviendra (partie 2, à écrire par le lot SHELL).
+
+### 1.10 Parité avec l'iPhone (29/10)
+
+Le 29 et le 30/10, le site — donc l'app de bureau, qui l'affiche — a rattrapé
+l'app iPhone écran par écran. La référence : les vues SwiftUI
+(`ios-native/Remy/Vues`) et les phrases de `RemyCore`, reprises mot pour mot
+quand elles existent ; seuls les gestes changent (« clique », « Entrée »,
+« clic droit » au lieu de « touche » et « appui long »). Chaque calcul porté
+vit dans un module pur de `public/app/analyse/`, testé sous node avec les cas
+des tests Swift (`test/site-*.test.mjs`, joués aussi contre les vraies
+routes) ; les écrans, dans `public/app/vues/`.
+
+Sept lots aux fichiers disjoints (conversations, boîte, aujourd'hui, chat,
+noter, projets, réglages), puis une intégration et deux revues. Côté tour,
+la parité n'a demandé qu'une route
+(`POST /api/conversations-externes/chatgpt/telechargements`), deux champs
+(`{ telechargements, rappel }` dans `PUT …/sources/chatgpt`, `depuis` dans
+`POST /api/capture/image`) et deux capacités (`conversations-externes-v2`,
+`telechargements-accord-v1`) ; tout le reste passe par les routes que
+l'iPhone utilise déjà (1.6). Une fonction que la tour ne connaît pas encore
+reste cachée, comme sur l'iPhone.
+
+**Les contrats entre modules** (le code les cite par leur lettre) :
+
+| Contrat | Ce qu'il fixe |
+| --- | --- |
+| A | Les modules d'accueil `creerBoite`, `creerTrancher`, `creerRappelsDuJour(ctx, { relire })` → `{ bouton?, carte, maj, ouvrir? }`. Aujourd'hui les charge par `import()` (un module absent laisse sa zone vide) et leur passe le tableau après chaque lecture, ratée comprise : ils ne lisent jamais `/api/dashboard` eux-mêmes |
+| B | Les adresses `#/aujourdhui/<quoi>[/<arg>]` (`boite`, `briefing`, `bilan`, `nuit/<id>`, `trancher`, `revue`, `retards`, `echelle`, `connaissance`) : la feuille s'ouvre, puis l'adresse redevient `#/aujourdhui`. Les notifications Windows et `Ctrl+K` s'en servent |
+| C | Une demande préparée pour Rémy. `remy-envoi` (`{ texte, a, titre? }`, valable 2 min) : le clic qui l'écrit est le geste, elle part dans une conversation neuve. `remy-question` : posée dans le champ avec le focus, jamais envoyée ; un brouillon en cours n'est remplacé qu'après « Le remplacer » |
+| D | Les modules du chat, chargés par `import()` : `vues/propositions.js` (`carteProposition`, `majEcriture`), `dictee.js` (`demarrerDictee`, `monterAttente`), `vues/retenir.js` (`ouvrirRetenir`), `vues/appel.js` (`ouvrirAppel`). Un module absent est dit à l'écran |
+| E | `analyse/etiquettes.js` : `etiquetteDevinee(texte, etiquettes)`, les indices de l'iPhone (Noter, Gérer, Ajuster, tri des rappels) |
+| F | `non-lus.js` : `demarrer()` au début de la session, `maj(conversations)` ; la pastille des réponses non vues sur le rail, les onglets et le titre de la fenêtre |
+| G | Les clés locales que Réglages écrit et que la conversation lit : `confirmerLiens`, `diagnostic.jauge`, `diagnostic.vitesse` |
+| H | `Ctrl+K` et l'état de la tour : les feuilles d'Aujourd'hui, chacune cachée sans sa capacité ; « Tour en ligne » mène à Réglages › Envoi en attente |
+
+**Ce qui a été ajouté, écran par écran :**
+
+| Écran | Ajouté (comme sur l'iPhone) | Modules |
+| --- | --- | --- |
+| **Aujourd'hui** | Bouton **boîte** en tête (plateau, pastille des sujets ouverts) ; carte du matin compacte (repliée l'après-midi), **bilan du soir** devant dès 18 h ; **conseil du moment** calculé ici (`Conseil.pour`), sa feuille (Pourquoi, « Ce que Rémy a regardé », Ouvrir, « En parler avec Rémy ») et « Un autre conseil » ; **cases à cocher** dans la frise et les lignes (2 s pour Annuler, bloc « Cochées », hors ligne → file d'envoi, relecture ~35 s après un geste) ; « **Et maintenant ?** » après une coche ; « **Demain et 7 jours** » et la feuille « **À l'échelle** » (onglets, ← →) ; **Faire connaissance** ; bandeau d'état (rafraîchi, gestes en attente, phrase Motion), page d'un autre jour marquée périmée ; horloge **Historique des actions** ; « Organiser ma journée avec Rémy » | `vues/aujourdhui.js`, `conseil.js`, `et-maintenant.js`, `semaine.js` ; `analyse/conseil.js`, `journee.js`, `semaine.js` |
+| Gérer (une tâche, un rendez-vous) | Prolonger en deux gestes avec la boîte d'impact (conflit éventuel) ; catégorie avec suggestion ; déplacer un rendez-vous ; « Remettre à sa place » après Commencer ou Arrêter ; détails (priorité, bloquée, horaires, quand sans créneau), Modifier | `vues/gerer.js` |
+| **Boîte, briefing, bilan** | Feuille « Ton briefing » (les trois lignes, provenance, « Hier, dans tes conversations », menacées : Repousser ou « En parler à Rémy ») ; **sujets de la nuit** (C'est fait, Laisser tomber, En parler à Rémy ; Annuler, Rouvrir) ; bilan « Tout ce qui reste → demain » (Annuler 8 s) et « Rangé pour la nuit » ; « Cette nuit, je creuse aussi ? » ; proposition « Ton briefing chaque matin ? » (app Windows seulement) | `vues/boite.js`, `analyse/rituel.js` |
+| **À trancher**, revue | Carte « À trancher · N », feuille groupée (« Et N de plus… »), tous les gestes avec Annuler, rappels en retard (Fait, Demain même heure, Abandonner), carte ancienne confirmée par « Appliquer quand même » ; **retards au retour** (absence de plus de 3 jours) ; **revue du dimanche** en 5 étapes | `vues/trancher.js` |
+| **Rémy** (conversation) | Brouillons qui ne se perdent plus (fil, privée, file « Envoyer après ») ; écran vide de l'iPhone (privée, Organiser ma journée, en retard, Noter une idée, reprendre le fil du jour) ; mode « Noter une idée » ; boîte « Rémy répond encore » ; reprise d'une réponse en cours ; code d'erreur et « Copier le diagnostic » ; **clic droit** sur une bulle, un tableau, une conversation (lu / non lu, Renommer, Épingler, Supprimer) ; liste par jour avec recherche sans accents ; fil importé et « Continuer avec Rémy » ; **jauge détaillée** (niveaux, place, vitesse, cadran), **compactage** et son résumé ; corriger la dictée ; barre d'étapes chronométrée ; conversation privée | `vues/remy.js`, `analyse/remy.js`, `non-lus.js`, `menu.js` |
+| Propositions, Retenir, dictée, appel | Cartes de proposition complètes (cases, « Oui, fais-le », Annuler, partielle, Règle, Carnet, attente de la file Motion), feuille **Ajuster** ; **Retenir** au-delà de 280 caractères ; **dictée** (barre, 15 min au plus, vocal en attente en mémoire seulement) ; **mode appel** (écoute, réflexion, voix locales du système) | `vues/propositions.js`, `ajuster.js`, `retenir.js`, `appel.js`, `dictee.js` |
+| **Noter** | Aperçu du genre et du bouton, **étiquette devinée**, projet sous un parent ; « Plusieurs choses » → **récapitulatif à valider** (cases, question d'heure, bilan d'un échec partiel) ; **déjà-là** (Annuler ne retire que le nouveau) ; brouillon ; Retenir ; **image collée ou déposée** (la feuille de partage de l'iPhone : « Un mot pour Rémy », rangée dans le coffre) | `vues/noter.js`, `analyse/rangement.js`, `analyse/etiquettes.js` |
+| **Projets › Rappels** | Groupes (en retard, aujourd'hui, plus tard, sans date, faits) ; feuille « **Quand ?** » (Dans 1 h, Ce soir, Demain, Lundi, Choisir…) ; **Étiquettes**, **filtre**, clic droit (Reporter, Plus tard, Étiquettes, Retirer) ; « Nouveau rappel » ; **tri des rappels** (tes catégories, puis Garder / Tâche Motion / Rien) ; carte « Rappels du jour » d'Aujourd'hui | `vues/rappels.js`, `tri-rappels.js`, `analyse/carnet.js` |
+| Projets › le reste | Listes en tuiles (disposition, Pris, Annuler partout) ; dossiers (méta, « Aussi dans Motion… », suppression annulable avec tout son contenu) ; tâches rangées (Ranger dans…, Sortir du sous-projet) ; projets Motion (prochaine tâche, en retard, « En parler à Rémy ») ; **Historique** (filtres, « Annuler cette action ? », plus ancien) | `vues/projets.js` |
+| **Conversations** | Carte « **Exporter ChatGPT** », carte « Un export ChatGPT trouvé dans Téléchargements » (Importer / Pas celui-là), recensement sous chaque source, réglages Téléchargements et rappel ; Cette nuit : « **Me le rappeler** » (un rappel sans heure) | `vues/conversations-externes.js`, `analyse/conversations.js` (contrat : `docs/conversations-externes.md`) |
+| **Réglages** | Recherche qui va **droit à la ligne** (port de `RechercheReglages.swift`) ; **Ce qui compte** ; Mémoire (lecture, puis Corriger, conflit dit) ; **Activité du PC** (bilans, exclusions) ; circuits, **Règles**, **Localisation** (lire, renommer, oublier), **Modèle** ; À trancher et revue ; Ordinateur (textes de l'iPhone, Propositions de Rémy) ; Diagnostic (temps de réponse, jauge, vitesse) ; **Nouveautés** ; « **Ce que tu utilises vraiment** » ; Appareils ; **Envoi en attente** | `vues/reglages.js`, `analyse/recherche-reglages.js`, `nouveautes.js`, `usage.js`, `file-envoi.js` |
+| Partout | `Ctrl+K` trouve chaque feuille et geste à adresse (briefing, bilan, À trancher, revue, retards, 7 jours, Historique, Catégories, Trier les rappels, Faire connaissance, Appeler Rémy, Organiser ma journée) ; menu du clic droit aussi au clavier (`Maj+F10`, touche Menu), dit par l'aide `?` ; pastille des non-lus ; session perdue : toutes les feuilles se ferment avant l'écran de connexion ; Nouveautés au lancement ; signe de vie, page visible seulement | `main.js`, `palette.js`, `menu.js`, `ui.js` |
+| App Windows | Bilan à 22 h 45 par défaut ; **propositions de Rémy notifiées** (`GET /api/propositions/attente`) ; une notification ouvre sa feuille (`aujourdhui/briefing`, `aujourdhui/bilan`, `aujourdhui/nuit/<id>`, une conversation) ; une image déposée sur Noter arrive au site | `bureau.js`, `desktop/src-tauri/src/fenetres.rs` |
+
+**Volontairement absent sur ordinateur :**
+
+| Sur l'iPhone | Pourquoi pas ici | Ce qui en tient lieu |
+| --- | --- | --- |
+| Activité en direct, Dynamic Island, widgets | n'existent que sur iOS | la carte Maintenant (temps restant), les notifications Windows |
+| Notifications des rappels et du rituel | celles de l'iPhone passent par iOS | `bureau.js` : notifications Windows (rappels, briefing, bilan, propositions) |
+| « Importer mes rappels Apple » | EventKit n'existe que sur l'iPhone | les rappels déjà importés gardent leur marque « importé » |
+| Capteur de localisation (visites, pause 2 h, nommer l'endroit où l'on est) | ni CoreLocation ni position sur un PC | Réglages › Localisation : lire, renommer, oublier, effacer l'historique |
+| Feuille de partage, Siri, réglages d'iOS | propres à iOS | coller ou déposer une image ou un texte dans Noter ; Réglages › Ordinateur pour les autorisations Windows |
+| Appui long, et sa durée réglable (Diagnostic) | geste tactile | clic droit, `Maj+F10`, touche Menu |
+| Vibrations | pas de moteur haptique | bandeaux et états des boutons |
+| Feuille « Sélectionner » (le texte d'une bulle) | contourne la sélection tactile d'iOS | sélection native ; « Copier » au clic droit |
+| Mesure de saisie (champ UIKit contre SwiftUI) | écran de mesure de la CI iOS, jamais montré | — |
+| Écran d'adresse de la tour | la coquille la demande à son premier lancement (1.2) | `desktop/ui/demarrage.html` |
+
+**Écarts choisis**, à revoir si l'usage dit le contraire : « Copier » sur
+une réponse (le texte en clair) réduit un lien à son texte (l'iPhone garde
+« texte (url) ») ; les
+gestes Étiquettes et Retirer d'un rappel ont un bandeau avec Annuler
+(silencieux sur l'iPhone) ; une tâche rangée s'ouvre dans Gérer même hors de
+la journée ; les Nouveautés du site ont leur propre catalogue, avec les
+seules entrées utiles sur un ordinateur.
+
+**Reste à faire** : lire le texte d'une image collée (l'iPhone le lit ; sur
+Windows, l'OCR du système — en attendant, l'aperçu le dit) ; essayer sur
+Windows réel le dépôt d'image, les notifications et leur clic ; une règle
+commune pour `dialog.feuille.large` à 720 px et moins (chaque lot corrige
+encore ses propres feuilles ; Noter y reste 32 px plus étroit que l'écran,
+collé à gauche) ; à 720 px et moins, Conversations › « Cette nuit » (et son
+« Me le rappeler ») est dans le panneau de droite sans sélection, que la
+mise en page étroite cache : la carte n'y est pas atteignable.
 
 ---
 

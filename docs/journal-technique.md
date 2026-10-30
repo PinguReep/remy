@@ -112,6 +112,215 @@ notes privées, sur la tour.
   `Object.assign(el.style, …)` les ignorait, la couleur de projet des blocs
   n'était jamais appliquée.
 
+## 2026-10-30 (intégration) — Parité du site avec l'iPhone : sept lots, une branche
+
+Le détail écran par écran, et ce qui reste volontairement absent sur
+ordinateur : `docs/bureau.md` 1.10.
+
+- **Sept lots aux fichiers disjoints, liés par des contrats** (A à H, cités
+  par leur lettre dans le code et décrits en 1.10) plutôt que par des
+  fichiers partagés : chaque lot a avancé seul, et les fusions n'ont eu que
+  trois conflits (deux entrées de ce journal, deux en-têtes de
+  `file-envoi.js`, l'index de Réglages). Les fichiers communs (`ui.js`,
+  `atelier.css`, `sw.js`) ne recevaient que des ajouts, chacun à son ancre.
+- **Un module d'un autre lot se charge par `import()` d'un chemin en
+  variable** (`MODULES_ACCUEIL`, `MODULES` du chat), jamais par un import
+  littéral : un module absent (lot pas encore fusionné, tour pas à jour)
+  laisse sa zone vide et le dit, sans casser la vue, et
+  `test/site-statique` (qui résout les imports littéraux) reste vrai.
+- **Une icône par nom** : dix noms étaient définis plusieurs fois dans
+  `ui.js` (la dernière définition l'emportait partout : le bouton de la
+  boîte montrait le plateau de Réglages). Le plateau de l'iPhone est
+  devenu quatre noms (`plateau`, `plateauPlein`, `plateauEnvoi`,
+  `plateauRanger`), un par symbole de l'iPhone.
+- **`menu.js` (le clic droit) copié à l'identique** dans les trois lots qui
+  en avaient besoin, vérifié par son empreinte avant chaque fusion : une
+  seule version, listée une fois dans `sw.js`.
+- **La file d'envoi a deux notions de « en vol »** : `enVol()` (l'envoi qui
+  part, pour « Part en ce moment… » de Réglages) et `enEnvoi(id)` (la coche
+  qui tourne d'Aujourd'hui). Le `Set` interne qui portait le même nom que
+  l'export est devenu `idsEnVol`.
+- **Nouveautés du site** : un catalogue à lui, de la forme de
+  `Nouveautes.swift`, avec les seules entrées utiles sur un ordinateur.
+  « ChatGPT, sans y penser » y est en série 5, dernière, pour que la
+  première feuille garde le bilan à 22 h 45 ; au premier lancement, seule
+  la dernière série est nouvelle.
+- **Fusions** : `--no-ff`, `npm test` complet après chacune ; `--cleanup=strip`
+  pour qu'un bloc « # Conflicts » ne reste pas dans le message.
+
+## 2026-10-30 (parité) — Boîte, briefing, À trancher : le rituel sans IA
+
+- **Le rituel se calcule sur le site** (`public/app/analyse/rituel.js`, port
+  de `Rituel.swift`, `ATrancher.swift`, `Nuit.estRecente`) : quel briefing
+  est celui du jour, sa fraîcheur, les sujets ouverts d'abord, la semaine.
+  `/api/rituel` est lu au plus une fois par minute, sauf Rafraîchir ; jamais
+  `/api/dashboard` (Aujourd'hui le passe).
+- **`nuitRecente(null)` vaut `false`**, comme `Nuit.estRecente` dans les tests
+  Swift : une nuit sans date n'est pas « récente ». La phrase d'un sujet
+  dit « cette nuit » ou la date (« le 27 oct. »), jamais une heure de nuit
+  pour une nuit ancienne.
+- **Réglages des notifications de l'app Windows** : seuls les choix sont
+  écrits (`v: 2`), un défaut qui change suit donc. Un ancien objet sans `v`
+  avec 21:30 est lu comme l'ancien défaut (le bilan passe à 22:45) ; toute
+  autre heure reste. L'ancien stockage ne distingue pas un 21:30 choisi.
+- **Propositions de Rémy notifiées** (`GET /api/propositions/attente`, au plus
+  chaque minute, seulement si la tour sait `propositions-attente-v1`) : une
+  notification par proposition jamais dite, la plus ancienne d'abord,
+  regroupées au-delà de 3 comme les rappels, marquée « dite » seulement une
+  fois prise par Windows. Le clic ouvre la conversation (une règle) ou le
+  sujet de nuit, jamais l'action : rien ne part sans un geste.
+- **Sans confirmation, avec Annuler** (comme l'iPhone) : « Abandonner » un
+  retard, « Laisser tomber » un sujet, supprimer un fil (qui ne part
+  qu'après 6 s). Un geste optimiste revient en arrière sur tout échec (500,
+  réseau coupé, non JSON, 401).
+- **Retards au retour** : seulement après une lecture réussie, jamais
+  par-dessus une feuille ouverte ; la visite n'est pas notée si la tour ne
+  répond pas (sinon un retour hors ligne ferait perdre la proposition).
+- **« Ton briefing chaque matin ? »** : seulement dans l'app Windows, jamais à
+  la première visite (la feuille d'accueil passe d'abord), et plus jamais
+  après « Non merci ». Si Windows refuse la notification d'essai, le réglage
+  est remis et le message dit où autoriser.
+- **Une carte ancienne d'À trancher** (plus de 7 jours, 409 de péremption) :
+  la boîte « Proposition ancienne » de la conversation (« Appliquer quand
+  même » renvoie avec `confirmer`) ; tout autre 409 dit sa raison avec
+  « Voir », jamais un « Réessayer » qui renverrait le même refus.
+
+## 2026-10-30 (parité) — Aujourd'hui : le conseil calculé ici, les cochées, les 7 jours
+
+- **Le conseil du moment se calcule sur le site** (`analyse/conseil.js`, port
+  de `Conseil.pour`) ; celui du modèle local n'est montré que s'il est à
+  jour ou a moins de 20 min, et la ligne source le dit. « Un autre
+  conseil » : POST puis lectures toutes les 1,5 s, 30 au plus ; un 202 ne
+  remplace jamais l'ancien conseil, chaque échec a sa phrase.
+- **Une coche attend 2 s avant d'écrire** (la fenêtre d'Annuler, comme
+  l'iPhone). Compromis assumé : fermer la page pendant ces 2 s perd la coche.
+  Ensuite, une **cochée locale** (`remy-cochees`, avec le `ledgerId` de son
+  écriture) la garde barrée : Motion montre encore ouverte une tâche cochée
+  pendant quelques secondes, et la journée relue la ferait réapparaître.
+- **Coche sans tour** : elle part dans la file d'envoi (genre « terminer ») ;
+  rejouée par son `idCommande`, elle retrouve son `ledgerId` pour Annuler.
+  Le bandeau dit la vraie raison (Motion limite, base indisponible, tour qui
+  répond mal) ; « Pas de réseau » seulement quand la tour ne répond pas.
+- **Relecture ~35 s après un geste** (comme `relireBientot` de l'iPhone) : la
+  tour relit Motion en tâche de fond, une seule lecture à 600 ms laissait
+  une tâche « de retour » invisible jusqu'aux 5 min.
+- **« Et maintenant ? »** suit la coche qui l'a ouverte (annulée, la carte
+  part) ; son délai de 15 s s'arrête tant qu'elle a le focus ou la souris.
+- **« À l'échelle »** : blocs d'au moins 44 px cliquables (une tâche de 5 min
+  reste cliquable), `/api/semaine` lu au plus une fois par minute ; un jour
+  hors des 7 jours lus n'est pas dit « rien de prévu ».
+- **Prolonger en deux gestes** (durée, puis la boîte d'impact avec le conflit
+  éventuel) : un « +15 » ne décale plus la journée sans qu'on voie ce qu'il
+  pousse.
+
+## 2026-10-30 (parité) — Rémy, la conversation : rien ne se perd
+
+- **Brouillons par fil** ; « nouvelle » et « nouvelle-privee » sont deux clés.
+  Le brouillon d'une privée quittée pour un fil ordinaire reste **en
+  mémoire seulement**, jamais dans `localStorage`. La file « Envoyer après »
+  d'un fil quitté rejoint son brouillon, et un bandeau le dit au retour.
+- **Contrat C** : une demande préparée (`remy-envoi`) n'est valable que
+  2 min : ouverte plus tard, elle ne part pas seule. Une question préparée
+  (`remy-question`) va dans le champ, jamais envoyée ; elle ne remplace un
+  brouillon qu'après « Le remplacer ».
+- **Reprise d'une réponse en cours** : relecture toutes les 4 s, 37 fois au
+  plus (≈ 2 min 30), arrêtée au changement de fil ; 5 échecs réseau de suite
+  le disent.
+- **Un seul menu du clic droit** (`menu.js`) : clic droit, `Maj+F10` et
+  touche Menu, sur une bulle, un tableau ou une ligne de la liste ; c'est
+  l'appui long de l'iPhone. « Copier » sur une réponse donne le texte en
+  clair et réduit un lien à son texte (l'iPhone garde « texte (url) ») :
+  écart choisi, à revoir à l'usage.
+- **Compactage** : relu 5 s après une réponse seulement si le panneau est
+  visible (pas de lecture pour rien).
+- **Erreur à code** : « Copier le diagnostic » lit `GET /api/incidents` ; tour
+  muette, il copie quand même le message et son code.
+
+## 2026-10-30 (parité) — Noter, dictée, appel
+
+- **Ranger le récapitulatif par lots de 6 écritures**, comme
+  `Rangement.swift` ; en échec partiel, seul ce qui a raté reste coché et le
+  texte reste. Le bilan et l'attente de Motion sont dans le pied fixe du
+  récapitulatif (un bandeau les cachait à 1440 px).
+- **Dictée** : un vocal qui ne part pas reste en attente **en mémoire
+  seulement** (Renvoyer ou Jeter), jamais écrit sur disque ; délai de
+  transcription selon la longueur ; 15 min au plus.
+- **Appel** : seulement les voix locales du système (`speechSynthesis`),
+  aucun service de voix ajouté ; la conversation n'est créée qu'à la
+  première phrase ; Espace « J'ai fini de parler », Échap raccroche.
+- **Image collée ou déposée** : `POST /api/capture/image` (la route de la
+  feuille de partage), PNG ou JPEG léger tel quel, sinon redessinée en JPEG
+  sous les 3 Mo de la tour. Pas de lecture du texte dans le navigateur ;
+  sans mot, l'image est seulement rangée (aucun appel IA). `depuis`
+  (`ordinateur`) dit l'appareil réel au modèle.
+- **Indices d'étiquette** (`analyse/etiquettes.js`) : la table de
+  `EtiquetteDevinee` (Rangement.swift) telle quelle, sans ses variantes
+  accentuées (la comparaison plie les accents et « œ ») : un même texte
+  reçoit la même étiquette sur l'iPhone et sur le site.
+
+## 2026-10-30 (parité) — Projets : rappels, tri, dossiers annulables
+
+- **Noms d'étiquettes** : la ligne de rappel les retrouve seule (cache relu
+  au plus une fois par minute) ; une étiquette inconnue n'est pas affichée,
+  jamais son identifiant.
+- **Supprimer un dossier s'annule** : avant le DELETE, le site copie le
+  dossier, tous ses descendants (jusqu'au point fixe), leurs notes et leurs
+  tâches rangées. La tour retire aussi les rattachements et n'a pas de
+  route pour défaire : cette copie est ce qui permet à Annuler de tout
+  remettre (PUT des dossiers, POST des notes, PUT des rattachements), puis
+  de relire.
+- **Tri des rappels** : l'analyse (`POST /api/rappels/analyser`, modèle local)
+  part à l'ouverture de la feuille, comme sur l'iPhone, et ne s'applique
+  qu'aux lignes que Sam n'a pas touchées. Les tâches partent par lots de 6
+  (`/api/motion/apply`, `idCommande`), puis les rappels convertis sont
+  retirés.
+- **Filtre des rappels** gardé sur ce poste (`filtreRappels`), appliqué avant
+  le groupement ; les compteurs du maître restent les totaux.
+
+## 2026-10-30 (parité) — Réglages : une recherche qui va droit à la ligne
+
+- **Index par ligne** (`analyse/recherche-reglages.js`, port de
+  `RechercheReglages.swift`, testé avec ses cas) : une entrée par ligne
+  avec sa capacité, au lieu de l'ancien index plat par section ; `Ctrl+K`
+  classe son groupe Réglages de la même façon.
+- **« Ce que tu utilises vraiment »** (`usage.js`) : des compteurs par jour,
+  gardés 60 jours sur ce poste, sans aucun contenu (méthode, chemin, type
+  d'action).
+- **Signe de vie** (`POST /api/activite/ping`) : tout de suite puis chaque
+  minute, page visible et session ouverte seulement ; jamais dans la
+  fenêtre Noter ; silencieux en cas d'échec.
+- **Mémoire** : relue juste avant d'écrire ; si Rémy l'a changée entre-temps,
+  le conflit est dit (« Garder ma version » ou « Voir la sienne »). **Ce qui
+  compte** : un 409 recharge la liste. Dans les deux, quitter avec des
+  changements demande confirmation.
+- **Nouveautés au lancement** : une fois, jamais par-dessus une feuille ni
+  pendant une saisie.
+
+## 2026-10-29 (parité) — Conversations externes : pourquoi 0, et ChatGPT sans y penser
+
+- **Pas de `CLAUDE_CODE_ENTRYPOINT` posé par Rémy** : le CLI la respecte, mais
+  l'envoie dans l'en-tête de facturation de chaque appel ; une valeur
+  inconnue pourrait faire compter les appels autrement. Les appels de Rémy
+  se reconnaissent à leur dossier (`remy-claude-*/vide`), et
+  `--no-session-persistence` n'en laisse pas de trace.
+- **Une règle d'exclusion versionnée** (`REGLE = 2`) : la changer fait relire
+  une fois, depuis le début, ce qui avait été écarté ou lu sans rien donner.
+  Les curseurs posés par l'ancienne règle gardaient ces sessions
+  « inchangées » pour toujours.
+- **T3** : « la base V2 l'emporte » jugé par dossier (une base de dev vide ne
+  cache plus l'ancienne) ; balayage borné (4 niveaux, 2000 dossiers, sans
+  worktrees ni caches). Les distributions WSL ne sont pas balayées : lister
+  `\\wsl.localhost` depuis la tâche planifiée peut démarrer la machine
+  virtuelle ; `REMY_T3_DIRS` le permet à la main.
+- **Téléchargements** : seulement les .zip du premier niveau, de moins de
+  90 jours ; l'annuaire central est lu avant tout. Jamais rien de déplacé
+  ni effacé ; les .zip déjà vus sont reconnus par des empreintes HMAC,
+  aucun nom gardé en clair. (L'import après un geste : entrée du 30/10.)
+- **La carte « Exporter ChatGPT »** n'existe que sur le site et le nouvel
+  iPhone : la tour ne sert aucune carte qu'un iPhone déjà installé sache
+  rendre avec un bouton qui ouvre un lien. Celui-ci voit l'`aide` de la
+  source, affichée telle quelle.
+
 ## 2026-10-29 (intégration) — #26 dans la branche de la nuit : trois rencontres
 
 - **Le planificateur demande chaque job à part** (`lib/planif.js`,
