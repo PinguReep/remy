@@ -1559,6 +1559,8 @@ dialog.trancher-revue .feuille-corps { flex: 1; }
   dialog > .bandeaux { top: calc(10px + var(--sa-haut)); bottom: auto; }
   .bandeau-reseau { padding: calc(10px + var(--sa-haut)) 16px 10px; }
   dialog.feuille { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 22px 22px 0 0; max-height: 92dvh; padding-bottom: var(--sa-bas); }
+  /* « large » est plus spécifique : sans ça, elle gardait 32 px de marge, collée à gauche. */
+  dialog.feuille.large, dialog.feuille-echelle { width: 100vw; }
   dialog.palette { top: 0; margin-top: calc(8px + var(--sa-haut)); border-radius: 22px; width: calc(100vw - 16px); margin-left: auto; margin-right: auto; }
   .actions-entete .lib-longue { display: none; }
   .composeur .aide-clavier { display: none; }
