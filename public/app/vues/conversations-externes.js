@@ -5,7 +5,8 @@
 // message trouvé. Visible seulement si la tour annonce
 // `conversations-externes-v1` (main.js). Les phrases et les chemins viennent
 // de analyse/conversations.js (les mêmes mots que l'iPhone, testés en node).
-import { api, ecrire, remplacer, supprimer, evenements } from "../api.js";
+import { api, ecrire, remplacer, supprimer, evenements, nouvelId, natureEchec, sait } from "../api.js";
+import * as fileEnvoi from "../file-envoi.js";
 import { h, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, confirmer, occupe, feuille, markdown, jourCourt } from "../ui.js";
 import * as C from "../analyse/conversations.js";
 
@@ -407,10 +408,41 @@ function digestNuit() {
       d.decisions?.length ? [sous("DÉCISIONS"), h("ul", { style: { margin: "6px 0 0 18px" } }, d.decisions.map((x) => h("li", null, x)))] : null,
       d.aFaire?.length ? [sous("À FAIRE"), h("ul", { class: "liste" }, d.aFaire.map((x) => h("li", { class: "ligne" },
         h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, x.texte), x.source ? h("div", { class: "meta" }, x.source) : null),
-        bouton("Noter", { classe: "papier petit", icone: "plus", onclick: () => ctx.noter(x.texte) }))))] : null,
+        // Le geste de l'iPhone (CarteNuitConversations) : un rappel sans heure, en un geste ;
+        // « Noter » reste pour en faire autre chose (contre-relecture du 30/10, tour 2).
+        h("div", { class: "rangee serree" },
+          sait("rappels-v1") ? bouton("Me le rappeler", { classe: "papier petit", icone: "cloche", titre: "Un rappel sans heure dans ton carnet", onclick: (e) => rappeler(x.texte, e.currentTarget) }) : null,
+          bouton("Noter", { classe: "texte petit", icone: "plus", titre: "Ouvrir Noter avec ce texte (tâche, rappel, liste…)", onclick: () => ctx.noter(x.texte) })))))] : null,
       h("p", { class: "aide", style: { marginTop: "8px" } }, "Des propositions, tirées par le modèle local : rien n'est fait seul."));
   }).catch(() => {});
   return zone;
+}
+
+/**
+ * « Me le rappeler » : une chose à faire tirée la nuit devient un rappel de
+ * ton carnet, sans heure (ConversationsExternes.rappeler sur l'iPhone, mêmes
+ * phrases). Tour injoignable : gardé ici, il part tout seul (même id).
+ */
+async function rappeler(texte, btn) {
+  const t = String(texte || "").trim().slice(0, 300);
+  if (!t) return;
+  const rappel = { id: nouvelId(), texte: t, quand: null };
+  await occupe(btn, async () => {
+    try {
+      const r = await ecrire("/api/rappels", { rappels: [rappel] });
+      const deja = r?.dejaLa?.[0];
+      if (deja) dire(`Déjà dans tes rappels : « ${deja.texte || t} ».`);
+      else dire(`Noté dans tes rappels : « ${t} ».`, { genre: "succes" });
+    } catch (err) {
+      if (natureEchec(err) !== "refus") {
+        fileEnvoi.ajouter({ id: rappel.id, resume: `Rappel « ${t.length > 60 ? `${t.slice(0, 57)}…` : t} »`, genre: "rappel", requetes: [{ chemin: "/api/rappels", corps: { rappels: [rappel] } }] });
+        ctx?.majCompteurs?.();
+        dire(`Noté dans tes rappels : « ${t} ». La tour ne répond pas : il est gardé ici et partira tout seul.`, { genre: "info" });
+        return;
+      }
+      direErreur(err, () => rappeler(t, null), "Rappel pas noté");
+    }
+  });
 }
 
 // --- Les gestes ---
