@@ -24,8 +24,9 @@ async function devineur() {
 }
 
 /**
- * Ouvre le tri. `apres()` : relire l'écran derrière ; `surFermeture()` :
- * appelée à la fermeture (Projets remet son adresse).
+ * Ouvre le tri. `apres()` : relire l'écran derrière, à la fermeture, quand le
+ * tri a écrit quelque chose (« Valider », ou les catégories de l'étape 1 puis
+ * « Plus tard ») ; `surFermeture()` : appelée à la fermeture.
  */
 export function ouvrirTri({ apres, surFermeture } = {}) {
   if (!sait("etiquettes-v1")) {
@@ -37,13 +38,27 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
   const pied = h("div", { class: "tri-pied" });
   const analyse = new AbortController();
   let touche = false;
+  let ecrit = false;
   const f = feuille({
     titre: "Rappels à traiter", large: true, classe: "tri-feuille", contenu: corps, pied: [pied],
     avantFermeture: (cause) => cause !== "fond" || !touche,
     surFermeture: () => {
       analyse.abort();
+      if (ecrit) apres?.();
       surFermeture?.();
     },
+  });
+  // Ctrl+1…5 (une autre vue) sous la feuille : des choix pas encore validés ne
+  // se perdent pas sans le demander. Confirmé, la touche repart vers main.js.
+  f.el.addEventListener("keydown", async (e) => {
+    if (!touche || e.shiftKey || !(e.ctrlKey || e.metaKey || e.altKey) || !/^[1-5]$/.test(e.key)) return;
+    e.preventDefault();
+    const touches = { key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, bubbles: true };
+    if (!(await confirmer("Quitter le tri ?", { detail: "Tes choix ne sont pas encore validés : ils seront perdus.", libelle: "Quitter sans valider", danger: true }))) return;
+    if (!f.el.isConnected) return;
+    touche = false;
+    f.fermer();
+    document.dispatchEvent(new KeyboardEvent("keydown", touches));
   });
   const titre = (t) => {
     f.el.querySelector(".feuille-tete h2").textContent = t;
@@ -118,6 +133,7 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
 
     async function envoyer() {
       const plan = C.planCategories(lignes, etiquettes);
+      if (plan.supprimer.length || plan.ecrire.length) ecrit = true;
       for (const e of plan.ecrire) {
         const l = lignes.find((x) => x.idNouveau === e.id);
         if (l && l.ordre == null) l.ordre = e.ordre;
@@ -180,7 +196,7 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
     const liste = h("ul", { class: "tri-liste", "aria-label": "Rappels à traiter" });
     const lignes = new Map();
 
-    const modifier = (id, f2) => {
+    const modifier = (id, f2, { surPlace = false } = {}) => {
       const c = { ...choix[id] };
       f2(c);
       // Toucher une date ou une catégorie, c'est vouloir ranger : « Rien » devient « Garder ».
@@ -188,49 +204,58 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
       choix[id] = c;
       touchees.add(id);
       touche = true;
-      redessiner(id);
+      if (!surPlace) return redessiner(id);
+      // Le champ date se règle segment par segment (chaque flèche est un « change ») :
+      // il reste en place, seuls Garder / Tâche Motion / Rien suivent.
+      for (const b of lignes.get(id)?.querySelectorAll(".tri-actions [role=radio]") || []) b.setAttribute("aria-checked", String(b.dataset.focus === `action:${c.action}`));
     };
     const ligne = (r) => {
       const c = choix[r.id];
       const date = c.quand != null
         ? (() => {
-            const champ = h("input", { class: "champ", type: "datetime-local", "aria-label": `Quand : ${r.texte}` });
+            const champ = h("input", { class: "champ", type: "datetime-local", "aria-label": `Quand : ${r.texte}`, dataset: { focus: "date" } });
             champ.value = versChampDate(new Date(c.quand));
             champ.addEventListener("change", () => {
               const d = depuisChampDate(champ.value);
-              if (d && !Number.isNaN(d.getTime())) modifier(r.id, (x) => { x.quand = d.getTime(); });
+              if (d && !Number.isNaN(d.getTime())) modifier(r.id, (x) => { x.quand = d.getTime(); }, { surPlace: true });
             });
-            return h("div", { class: "tri-date" }, champ,
-              bouton("", { classe: "texte icone", icone: "fermer", etiquette: "Retirer la date", titre: "Retirer la date", onclick: () => modifier(r.id, (x) => { x.quand = null; }) }));
+            const retirer = bouton("", { classe: "texte icone", icone: "fermer", etiquette: "Retirer la date", titre: "Retirer la date", onclick: () => modifier(r.id, (x) => { x.quand = null; }) });
+            retirer.dataset.focus = "retirer-date";
+            return h("div", { class: "tri-date" }, champ, retirer);
           })()
-        : h("button", { type: "button", class: "btn texte tri-ajouter-date", onclick: () => modifier(r.id, (x) => { x.quand = C.parDefautTri().getTime(); }) },
+        : h("button", { type: "button", class: "btn texte tri-ajouter-date", dataset: { focus: "ajouter-date" }, onclick: () => modifier(r.id, (x) => { x.quand = C.parDefautTri().getTime(); }) },
             icone("agenda"), h("span", { class: "lib" }, "Ajouter une date et une heure"));
       const puces = h("div", { class: "rangee serree tri-puces", role: "group", "aria-label": "Catégories" },
         etiquettes.map((e) => {
           const actif = c.etiquettes.includes(e.id);
-          return h("button", { type: "button", class: "puce", "aria-pressed": String(actif), onclick: () => modifier(r.id, (x) => {
+          return h("button", { type: "button", class: "puce", "aria-pressed": String(actif), dataset: { focus: `etiquette:${e.id}` }, onclick: () => modifier(r.id, (x) => {
             x.etiquettes = actif ? x.etiquettes.filter((y) => y !== e.id) : [...x.etiquettes, e.id];
           }) }, e.nom);
         }));
       const actions = h("div", { class: "tri-actions", role: "radiogroup", "aria-label": `Que faire de « ${r.texte} »` },
         [["garder", "Garder"], ["tache", "Tâche Motion"], ["rien", "Rien"]].map(([v, lib]) => h("button", {
-          type: "button", role: "radio", "aria-checked": String(c.action === v), onclick: () => {
+          type: "button", role: "radio", "aria-checked": String(c.action === v), dataset: { focus: `action:${v}` }, onclick: () => {
             choix[r.id] = { ...choix[r.id], action: v };
             touchees.add(r.id);
             touche = true;
-            redessiner(r.id);
-            lignes.get(r.id)?.querySelector(`.tri-actions [aria-checked="true"]`)?.focus();
+            redessiner(r.id, { focus: `action:${v}` });
           },
         }, lib)));
       return h("li", { class: "tri-ligne", dataset: { id: r.id } }, h("strong", { class: "tri-texte" }, r.texte), date, etiquettes.length ? puces : null, actions);
     };
-    const redessiner = (id) => {
+    // Au clavier, le focus reste sur le même contrôle de la ligne redessinée (deux
+    // catégories d'affilée, puis Tab vers la suite) ; « Ajouter une date » passe
+    // au champ qui apparaît, « Retirer la date » au bouton qui revient.
+    const SUIVANT = { "ajouter-date": "date", "retirer-date": "ajouter-date" };
+    const redessiner = (id, { focus } = {}) => {
       const r = aTrier.find((x) => x.id === id);
       const avant = lignes.get(id);
       if (!r || !avant) return;
+      const cle = focus || (avant.contains(document.activeElement) ? document.activeElement.dataset.focus : null);
       const neuve = ligne(r);
       lignes.set(id, neuve);
       avant.replaceWith(neuve);
+      if (cle) (neuve.querySelector(`[data-focus="${CSS.escape(SUIVANT[cle] || cle)}"]`) || neuve.querySelector("[data-focus]"))?.focus();
     };
     for (const r of aTrier) lignes.set(r.id, ligne(r));
     vider(liste, [...lignes.values()]);
@@ -264,12 +289,16 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
     async function appliquer() {
       const plan = C.planTri(aTrier, choix, etiquettes);
       if (plan.convertir.length && !(await confirmer("Convertir en tâches Motion ?", { detail: C.detailConversion(plan.convertir.length), libelle: "Convertir et valider" }))) return;
-      // Les rangés : une écriture pour tous (date et catégories). Un refus : rien n'est rangé, rien ne part.
-      if (plan.ranges.length) {
+      ecrit = true;
+      // Les rangés (date et catégories), par écritures que la tour prend en entier.
+      // Un refus : la suite ne part pas (ni les tâches Motion), le bandeau dit où on en est.
+      let ranges = 0;
+      for (const envoi of C.ecrituresTri(plan.ranges)) {
         try {
-          await ecrire("/api/rappels", { rappels: plan.ranges.map((r) => ({ id: r.id, texte: r.texte, quand: r.quand, fait: false, etiquettes: r.etiquettes })) });
+          const rep = await ecrire("/api/rappels", envoi);
+          ranges += typeof rep?.nombre === "number" ? rep.nombre : envoi.rappels.length;
         } catch (err) {
-          direErreur(err, null, "Rien n'est rangé");
+          direErreur(err, () => occupe(valider, appliquer), C.prefixeRefusTri(ranges, plan.ranges.length));
           return;
         }
       }
@@ -309,9 +338,10 @@ export function ouvrirTri({ apres, surFermeture } = {}) {
         restent = 0;
       }
       touche = false;
-      f.fermer();
-      dire(C.phraseBilanTri({ ranges: plan.ranges.length, convertis, echecs, restent }), { genre: echecs.length ? "erreur" : "succes", duree: echecs.length ? 12000 : 6000 });
-      apres?.();
+      // La fermeture relit l'écran derrière (`apres`) ; déjà fermée (« Réessayer » après « Plus tard ») : on relit ici.
+      if (f.el.isConnected) f.fermer();
+      else apres?.();
+      dire(C.phraseBilanTri({ ranges, convertis, echecs, restent }), { genre: echecs.length ? "erreur" : "succes", duree: echecs.length ? 12000 : 6000 });
     }
 
     vider(corps,

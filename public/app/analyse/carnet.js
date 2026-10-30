@@ -225,6 +225,15 @@ export function planTri(aTrier, choix, etiquettes) {
   return { ranges, convertir };
 }
 
+/** Ce que la tour prend en une écriture de rappels (ecrireRappels ne garde que les 500 premiers). */
+export const LOT_RAPPELS = 500;
+/** Les écritures des rappels rangés par le tri (date et catégories), chacune prise en entier par la tour. */
+export function ecrituresTri(ranges) {
+  return lots(ranges, LOT_RAPPELS).map((lot) => ({ rappels: lot.map((r) => ({ id: r.id, texte: r.texte, quand: r.quand, fait: false, etiquettes: r.etiquettes })) }));
+}
+/** Un refus en cours d'écriture : « Rien n'est rangé », ou « 500 rappels rangés sur 520, pas la suite ». */
+export const prefixeRefusTri = (ranges, total) => (ranges ? `${ranges} rappel${s(ranges)} rangé${s(ranges)} sur ${total}, pas la suite` : "Rien n'est rangé");
+
 /** « 3 rappels rangés, 1 devenu tâche Motion (pas fait : « X » : quota) ; encore 2 à traiter. » */
 export function phraseBilanTri({ ranges = 0, convertis = null, echecs = [], restent = 0 } = {}) {
   let p = `${ranges} rappel${s(ranges)} rangé${s(ranges)}`;
@@ -332,6 +341,23 @@ export function aRestaurer(dossiers, id) {
     vus.add(d.id);
     out.push({ ...d, notes: [...(d.notes || [])], taches: [...(d.taches || [])] });
     file.push(...(dossiers || []).filter((x) => x.parent === d.id && ids.has(x.id)));
+  }
+  return out;
+}
+
+/**
+ * Les idées à renvoyer après « Annuler » : la tour les garde avec le dossier
+ * supprimé, elles reviennent avec lui. Seules celles qui manquent à la relecture
+ * (`lus`, après la réécriture des dossiers) repartent, par envois de 100 : la
+ * tour en traite 100 par envoi et refuse de dépasser 500 par dossier.
+ */
+export function notesARemettre(copie, lus) {
+  const presentes = new Map((lus || []).map((d) => [d.id, new Set((d.notes || []).map((n) => n.id))]));
+  const out = [];
+  for (const d of copie || []) {
+    const deja = presentes.get(d.id) || new Set();
+    const manquent = (d.notes || []).filter((n) => !deja.has(n.id)).map((n) => ({ id: n.id, texte: n.texte, fait: Boolean(n.fait) }));
+    for (const lot of lots(manquent, 100)) out.push({ dossier: d.id, notes: lot });
   }
   return out;
 }

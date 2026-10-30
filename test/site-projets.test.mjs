@@ -174,6 +174,18 @@ test("le bilan du tri, mot pour mot (OnboardingRappels.appliquer)", () => {
     "2 rappels rangés, 0 devenu tâche Motion (pas fait : « Appeler le garage » : quota) ; encore 2 à traiter.");
 });
 
+test("Valider le tri : des écritures que la tour prend en entier (500 rappels chacune) ; un refus dit où on en est", () => {
+  const ranges = Array.from({ length: 1020 }, (_, i) => ({ id: `r${i}`, texte: `Rappel ${i}`, quand: null, etiquettes: ["perso"], source: "apple" }));
+  const corps = C.ecrituresTri(ranges);
+  assert.deepEqual(corps.map((c) => c.rappels.length), [500, 500, 20]);
+  assert.ok(corps.every((c) => c.rappels.length <= C.LOT_RAPPELS));
+  assert.deepEqual(corps[2].rappels[19], { id: "r1019", texte: "Rappel 1019", quand: null, fait: false, etiquettes: ["perso"] });
+  assert.deepEqual(C.ecrituresTri([]), [], "rien de rangé : aucune écriture");
+  assert.equal(C.prefixeRefusTri(0, 520), "Rien n'est rangé");
+  assert.equal(C.prefixeRefusTri(500, 520), "500 rappels rangés sur 520, pas la suite");
+  assert.equal(C.prefixeRefusTri(1, 2), "1 rappel rangé sur 2, pas la suite");
+});
+
 test("un rappel devenu tâche : l'action Motion, et le sort de chaque ligne d'un lot", () => {
   const iso = (d) => d.toISOString();
   assert.deepEqual(C.actionTache({ texte: "Appeler le garage", quand: null, etiquettes: [] }, iso), { type: "creer", nom: "Appeler le garage" });
@@ -223,6 +235,17 @@ test("dossiers : descendants au point fixe, à restaurer parents d'abord avec no
   const r = C.aRestaurer(DOSSIERS, "d-site");
   assert.deepEqual(r.map((d) => [d.id, d.notes.length, d.taches]), [["d-site", 3, []], ["d-pages", 0, ["t2", "t3"]]]);
   assert.notEqual(r[0].notes, DOSSIERS[2].notes, "une copie : la relecture ne la change pas");
+});
+
+test("« Annuler » une suppression : seules les idées absentes de la relecture repartent, par envois de 100", () => {
+  const notes = Array.from({ length: 270 }, (_, i) => ({ id: `n${i}`, texte: `Idée ${i}`, fait: i % 2 === 1, maj: 1 }));
+  const copie = [{ id: "d-bougies", notes }, { id: "d-cires", notes: [{ id: "c1", texte: "Cire de soja" }] }];
+  assert.deepEqual(C.notesARemettre(copie, [{ id: "d-bougies", notes }, { id: "d-cires", notes: [{ id: "c1" }] }]), [], "revenues avec le dossier : rien à renvoyer");
+  const sans = C.notesARemettre(copie, [{ id: "d-bougies", notes: notes.slice(0, 20) }]);
+  assert.deepEqual(sans.map((e) => [e.dossier, e.notes.length]), [["d-bougies", 100], ["d-bougies", 100], ["d-bougies", 50], ["d-cires", 1]]);
+  assert.deepEqual(sans[0].notes[0], { id: "n20", texte: "Idée 20", fait: false });
+  assert.deepEqual(sans[3].notes[0], { id: "c1", texte: "Cire de soja", fait: false });
+  assert.deepEqual(C.notesARemettre(copie, null).map((e) => e.notes.length), [100, 100, 70, 1], "relecture vide : tout repart");
 });
 
 test("ranger une tâche : la racine, puis tous ses sous-dossiers en largeur (NoeudView.rangements)", () => {
@@ -419,4 +442,56 @@ test("contrat : Aussi dans Motion sans Motion branché : un refus clair, le doss
   assert.match(C.phraseRefusMotion(r.corps.message), /^Motion n'a pas créé le projet : .+\.$/);
   const d = (await appel("/api/dossiers")).corps.dossiers.find((x) => x.id === "d-perso");
   assert.equal(d.projetMotion, null);
+});
+
+test("contrat : « Annuler » la suppression d'un dossier de 270 idées les remet toutes, sans dépasser ce que la tour accepte", async () => {
+  await appel("/api/dossiers/d-bougies", { methode: "PUT", corps: { nom: "Bougies", parent: null, ordre: 5 } });
+  await appel("/api/dossiers/d-meches", { methode: "PUT", corps: { nom: "Mèches", parent: "d-bougies", ordre: 0 } });
+  const idees = Array.from({ length: 270 }, (_, i) => ({ id: `nb-${i}`, texte: `Idée de bougie ${i}`, fait: false }));
+  for (const lot of C.lots(idees, 100)) assert.equal((await appel("/api/dossiers/d-bougies/notes", { methode: "POST", corps: { notes: lot } })).statut, 200);
+  await appel("/api/dossiers/d-meches/notes", { methode: "POST", corps: { notes: [{ id: "nm-1", texte: "Mèche en bois", fait: false }] } });
+  const avant = (await appel("/api/dossiers")).corps.dossiers;
+  const copie = C.aRestaurer(avant, "d-bougies");
+  assert.equal(copie[0].notes.length, 270);
+  assert.equal((await appel("/api/dossiers/d-bougies", { methode: "DELETE" })).corps.supprimes, 2);
+  // Entre-temps, une idée retirée ailleurs (l'iPhone) : elle doit revenir aussi.
+  assert.equal((await appel("/api/dossiers/d-bougies/notes/nb-7", { methode: "DELETE" })).statut, 200);
+  // Ce que fait « Annuler » : les dossiers, puis seules les idées absentes de la relecture.
+  for (const d of copie) assert.equal((await appel(`/api/dossiers/${d.id}`, { methode: "PUT", corps: { nom: d.nom, parent: d.parent, ordre: d.ordre ?? 0 } })).statut, 200);
+  const relus = (await appel("/api/dossiers")).corps.dossiers;
+  const envois = C.notesARemettre(copie, relus);
+  assert.deepEqual(envois.map((e) => [e.dossier, e.notes.map((n) => n.id)]), [["d-bougies", ["nb-7"]]], "les autres sont revenues avec leur dossier");
+  for (const e of envois) assert.equal((await appel(`/api/dossiers/${e.dossier}/notes`, { methode: "POST", corps: { notes: e.notes } })).statut, 200);
+  const apres = (await appel("/api/dossiers")).corps.dossiers;
+  assert.equal(apres.find((d) => d.id === "d-bougies").notes.length, 270);
+  assert.deepEqual(apres.find((d) => d.id === "d-meches").notes.map((n) => n.id), ["nm-1"]);
+  // Renvoyer toutes les idées (l'ancien « Annuler ») : la tour refuse de dépasser 500 par dossier.
+  assert.equal((await appel("/api/dossiers/d-bougies/notes", { methode: "POST", corps: { notes: copie[0].notes } })).statut, 409);
+});
+
+test("contrat : le tri range plus de 500 rappels ; chaque écriture est prise en entier, le compte de la tour fait le bilan", async () => {
+  await appel("/api/etiquettes/et-perso", { methode: "PUT", corps: { nom: "Personnel", ordre: 2 } });
+  const N = 520;
+  const neufs = Array.from({ length: N }, (_, i) => ({ id: `rx-${i}`, texte: `Acheter la bougie numéro ${i}`, quand: Date.now() + 3 * 86400e3 }));
+  for (const lot of C.lots(neufs, 200)) assert.equal((await appel("/api/rappels", { methode: "POST", corps: { rappels: lot } })).statut, 200);
+  const etiquettes = (await appel("/api/etiquettes")).corps.etiquettes;
+  const aTrier = C.aTraiter((await appel("/api/rappels")).corps.rappels, etiquettes).filter((r) => r.id.startsWith("rx-"));
+  assert.equal(aTrier.length, N);
+  const choix = Object.fromEntries(aTrier.map((r) => [r.id, { action: "garder", etiquettes: ["et-perso"], quand: r.quand }]));
+  const plan = C.planTri(aTrier, choix, etiquettes);
+  assert.equal(plan.ranges.length, N);
+  let ranges = 0;
+  for (const corps of C.ecrituresTri(plan.ranges)) {
+    const r = await appel("/api/rappels", { methode: "POST", corps });
+    assert.equal(r.statut, 200);
+    assert.equal(r.corps.nombre, corps.rappels.length, "la tour a tout pris");
+    ranges += r.corps.nombre;
+  }
+  assert.equal(ranges, N);
+  const relus = (await appel("/api/rappels")).corps.rappels.filter((r) => r.id.startsWith("rx-"));
+  assert.equal(relus.filter((r) => r.etiquettes.includes("et-perso")).length, N, "tout est rangé");
+  assert.equal(C.phraseBilanTri({ ranges, restent: 0 }), "520 rappels rangés.");
+  // Une seule écriture de 520 (l'ancien « Valider ») : la tour n'en garde que 500.
+  const trop = await appel("/api/rappels", { methode: "POST", corps: { rappels: plan.ranges.map((r) => ({ id: r.id, texte: r.texte, quand: r.quand, fait: false, etiquettes: [] })) } });
+  assert.equal(trop.corps.nombre, C.LOT_RAPPELS);
 });

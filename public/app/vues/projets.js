@@ -22,7 +22,7 @@ let donnees = vides();
 let selection = null; // { type, id }
 let filtre = "";
 let refs = {};
-let tri = null; // la feuille du tri des rappels, ouverte par #/projets/rappels/tri
+let tri = null; // la feuille du tri des rappels (#/projets/rappels/tri l'ouvre depuis une autre vue)
 let hist = null; // l'historique affiché (filtre, pages)
 
 function vides() {
@@ -65,10 +65,11 @@ export default {
     charger({ discret: true });
   },
   demonter() {
-    // La vue s'en va : le tri se ferme sans toucher à l'adresse (déjà ailleurs).
+    // La vue s'en va : le tri se ferme sans toucher à l'adresse (déjà ailleurs), ni relire.
     const t = tri;
     tri = null;
     selection = null;
+    racine = null;
     t?.fermer();
   },
 };
@@ -512,6 +513,7 @@ async function supprimerDossier(d) {
 }
 async function restaurer(copie) {
   const echecs = [];
+  const remis = [];
   for (const d of copie) {
     try {
       await remplacer(`/api/dossiers/${seg(d.id)}`, { nom: d.nom, parent: d.parent ?? null, ordre: d.ordre ?? 0 });
@@ -519,8 +521,18 @@ async function restaurer(copie) {
       echecs.push(err);
       continue;
     }
-    if (d.notes.length) await ecrire(`/api/dossiers/${seg(d.id)}/notes`, { notes: d.notes.map((n) => ({ id: n.id, texte: n.texte, fait: Boolean(n.fait) })) }).catch((err) => echecs.push(err));
+    remis.push(d);
     for (const t of d.taches) await remplacer(`/api/rattachements/${seg(t)}`, { dossier: d.id }).catch((err) => echecs.push(err));
+  }
+  // Les idées reviennent avec leur dossier (la tour les garde) : seules celles
+  // qui manquent à la relecture repartent, par envois de 100.
+  if (remis.some((d) => d.notes.length)) {
+    try {
+      const lus = (await api("/api/dossiers"))?.dossiers || [];
+      for (const e of C.notesARemettre(remis, lus)) await ecrire(`/api/dossiers/${seg(e.dossier)}/notes`, { notes: e.notes }).catch((err) => echecs.push(err));
+    } catch (err) {
+      echecs.push(err);
+    }
   }
   await recharger();
   if (echecs.length) direErreur(echecs[0], () => restaurer(copie), "Pas tout remis");
@@ -739,15 +751,16 @@ async function recreerListe(l) {
 
 function ouvrirTriRappels() {
   if (tri) return;
+  // L'adresse « tri » ne reste pas dans l'historique : « Précédent » ne rouvre
+  // pas le tri, ni l'analyse du modèle local (elle ne part qu'à l'ouverture voulue).
+  if (ouvert("rappels", "tri")) {
+    selection = { type: "rappels", id: null };
+    history.replaceState(null, "", "#/projets/rappels");
+  }
   tri = ouvrirTri({
-    apres: recharger,
-    surFermeture: () => {
-      tri = null;
-      if (selection?.type === "rappels" && selection.id === "tri") {
-        selection = { type: "rappels", id: null };
-        history.replaceState(null, "", "#/projets/rappels");
-      }
-    },
+    // Vue démontée (demonter remet `racine` à null avant de fermer) : rien à relire.
+    apres: () => { if (racine) recharger(); },
+    surFermeture: () => { tri = null; },
   });
 }
 
@@ -790,7 +803,7 @@ function detailRappels(id) {
   const menu = () => [
     { libelle: "Nouveau rappel", icone: "plus", faire: nouveau },
     capable ? { libelle: filtreActif.size ? `Filtré (${filtreActif.size})…` : "Filtrer…", icone: "entonnoir", faire: () => ouvrirFiltreRappels({ surChangement: () => dessinerDetail() }) } : null,
-    capable ? { libelle: "Organiser mes rappels…", icone: "plateau", faire: () => aller("rappels", "tri") } : null,
+    capable ? { libelle: "Organiser mes rappels…", icone: "plateau", faire: ouvrirTriRappels } : null,
   ];
   const plus = bouton("", { classe: "texte icone", icone: "points", etiquette: "Ajouter, filtrer, organiser", titre: "Ajouter, filtrer, organiser" });
   plus.addEventListener("click", () => ouvrirMenu(plus, menu(), { titre: "Rappels" }));
@@ -800,7 +813,7 @@ function detailRappels(id) {
     bouton("Nouveau rappel", { classe: "papier petit", icone: "plus", onclick: nouveau }),
     plus],
   h("div", { class: "ajout-ligne" }, champ, bouton("Ajouter", { classe: "plein", onclick: (e) => occupe(e.currentTarget, ajouter) })), lu,
-  nTraiter ? ligneTriRappels(nTraiter, { ouvrir: () => aller("rappels", "tri") }) : null,
+  nTraiter ? ligneTriRappels(nTraiter, { ouvrir: ouvrirTriRappels }) : null,
   !tous.length ? h("p", { class: "vide" }, "Aucun rappel pour l'instant.") : null,
   tous.length && !visibles.length ? h("p", { class: "vide" }, C.phraseMasques(tous.length, { duJour: false })) : null,
   groupes.map(section));
