@@ -151,16 +151,21 @@ async function monterModules() {
   if (boite?.carte) vider(zones.rituel, boite.carte);
   if (trancher?.carte) vider(zones.trancher, trancher.carte);
   if (rappels?.carte) vider(zones.rappels, rappels.carte);
-  if (donnees) majModules();
+  if (donnees || erreur) majModules({ erreur });
 }
 
-/** Chaque module reçoit le tableau (il ne lit jamais /api/dashboard lui-même). */
-function majModules({ frais = false, seulement = null } = {}) {
+/**
+ * Chaque module reçoit le tableau (il ne lit jamais /api/dashboard lui-même),
+ * après chaque lecture, ratée comprise : `erreur` dit pourquoi le tableau n'a
+ * pas pu être lu (avec `dashboard` null s'il n'y en a jamais eu), pour qu'il
+ * montre l'erreur et « Réessayer » plutôt qu'un squelette sans fin.
+ */
+function majModules({ frais = false, seulement = null, erreur = null } = {}) {
   const affiche = conseil?.affiche() || null;
   for (const [nom, m] of Object.entries(accueil)) {
     if (!m?.maj || (seulement && nom !== seulement)) continue;
     try {
-      m.maj(nom === "boite" ? { dashboard: donnees, conseil: affiche, frais } : { dashboard: donnees, frais });
+      m.maj(nom === "boite" ? { dashboard: donnees, conseil: affiche, frais, erreur } : { dashboard: donnees, frais, erreur });
     } catch (err) {
       console.warn(`Aujourd'hui : le module ${nom} n'a pas pu se mettre à jour.`, err);
     }
@@ -204,10 +209,9 @@ async function charger({ frais = false, discret = false } = {}) {
     }
     masquees = new Set();
     toutDessiner();
-    if (d.status === "fulfilled") {
-      majModules({ frais });
-      semaine?.maj({ frais });
-    }
+    // Les modules et les 7 jours suivent aussi une lecture ratée (contrat A) : jamais un squelette qui tourne sans fin.
+    majModules({ frais, erreur: d.status === "rejected" ? d.reason : null });
+    semaine?.maj({ frais });
     if (frais && d.status === "fulfilled" && !estPerimee(donnees?.journee)) {
       // « À jour. » seulement si Motion a vraiment été relu ; sinon, pourquoi.
       const m = donnees?.journee?.motion;
