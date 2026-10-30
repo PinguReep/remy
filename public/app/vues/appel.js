@@ -456,6 +456,10 @@ function appel({ ctx, conv, prive }) {
     e.preventDefault();
     fermer();
   });
+  // Fermé d'ailleurs (session perdue : fermerFeuilles) : le micro et la voix s'arrêtent aussi.
+  d.addEventListener("close", () => {
+    if (etat !== "arrete") fermer();
+  });
   // Espace = « J'ai fini » / « Couper la parole », où que soit le focus
   // (jamais « Raccrocher » par accident : l'activation au relâché est retenue).
   d.addEventListener("keydown", (e) => {

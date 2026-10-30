@@ -176,6 +176,9 @@ test("Jours actifs, déconnexion, connexion, nouveautés : les phrases", () => {
   assert.equal(phraseFile(0), null);
   assert.equal(phraseFile(1), "1 note tapée sur cet ordinateur : elle partira après la connexion.");
   assert.equal(phraseFile(2), "2 notes tapées sur cet ordinateur : elles partiront après la connexion.");
+  // Une coche gardée pendant une session expirée n'est pas « une note tapée ».
+  assert.equal(phraseFile(1, 1), "1 tâche cochée sur cet ordinateur : elle partira après la connexion.");
+  assert.equal(phraseFile(3, 1), "3 envois en attente sur cet ordinateur (1 tâche cochée) : ils partiront après la connexion.");
   assert.equal(V.sousTitreNouveautes(0), "Les tutoriels des mises à jour, à revoir");
   assert.equal(V.sousTitreNouveautes(2), "2 nouvelles à découvrir");
 });

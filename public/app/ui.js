@@ -270,6 +270,17 @@ Object.assign(CHEMINS, {
 // --- fin lot chat
 
 // --- Feuilles ---
+// Les feuilles ouvertes, pour les fermer toutes d'un coup (session perdue :
+// l'écran de connexion doit être visible et son champ utilisable).
+const feuillesOuvertes = new Set();
+/**
+ * Ferme toutes les feuilles ouvertes (leurs promesses `fini` se résolvent,
+ * sans valeur), puis les autres dialogues restés ouverts (la palette).
+ */
+export function fermerFeuilles() {
+  for (const fermer of [...feuillesOuvertes].reverse()) fermer();
+  for (const d of document.querySelectorAll("dialog[open]")) d.close();
+}
 /**
  * Ouvre une feuille (dialog modale) : Échap ou la croix la ferment, le focus
  * y reste. `contenu` : élément(s) ; `pied` : boutons. Rend { el, fermer, fini }.
@@ -284,8 +295,13 @@ export function feuille({ titre, sousTitre, contenu, pied, large = false, classe
     corps,
     pied ? h("div", { class: "feuille-pied" }, pied) : null);
   let resoudre;
+  let fermee = false;
   const fini = new Promise((r) => (resoudre = r));
   const fermer = (valeur) => {
+    // Une seule fois : la croix puis la session perdue ne rejouent pas surFermeture.
+    if (fermee) return;
+    fermee = true;
+    feuillesOuvertes.delete(fermer);
     if (d.open) d.close();
     placerBandeaux({ attendre: false }); // avant de retirer la feuille : la pile y est peut-être
     d.remove();
@@ -305,6 +321,7 @@ export function feuille({ titre, sousTitre, contenu, pied, large = false, classe
   });
   document.body.append(d);
   d.showModal();
+  feuillesOuvertes.add(fermer);
   placerBandeaux();
   const premier = d.querySelector("[autofocus]") || d.querySelector(".feuille-corps input, .feuille-corps textarea, .feuille-corps button, .feuille-pied button");
   premier?.focus();

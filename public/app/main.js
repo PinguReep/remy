@@ -3,7 +3,7 @@
 // bandeau « tour injoignable », pont vers l'app Windows, file d'envoi, signe
 // de vie au premier plan, nouveautés au lancement, compteurs d'usage.
 import { api, evenements, chargerVersion, versionTour, sait, sonder, tourJoignable } from "./api.js";
-import { h, vider, icone, bouton, dire, feuille, kbd, ctrl, squelette, appliquerTheme, themeChoisi, occupe } from "./ui.js";
+import { h, vider, icone, bouton, dire, feuille, fermerFeuilles, kbd, ctrl, squelette, appliquerTheme, themeChoisi, occupe } from "./ui.js";
 import * as bureau from "./bureau.js";
 import * as fileEnvoi from "./file-envoi.js";
 import { suivreFileCochees } from "./vues/gerer.js";
@@ -308,9 +308,11 @@ async function demarrerSession() {
   setTimeout(() => import("./nouveautes.js").then((m) => m.auLancement({ sait })).catch((err) => console.warn("Nouveautés :", err)), 1200);
 }
 
-async function ecranConnexion() {
+async function ecranConnexion({ sessionExpiree = false } = {}) {
   const m = await import("./vues/connexion.js");
-  m.monter(document.getElementById("app"), { surConnecte: () => location.reload() });
+  // Une feuille ouverte pendant le chargement du module (un clic de plus) : fermée aussi.
+  if (sessionExpiree) fermerFeuilles();
+  m.monter(document.getElementById("app"), { surConnecte: () => location.reload(), sessionExpiree });
 }
 
 function ecranTourInjoignable(err) {
@@ -355,9 +357,12 @@ function lancer() {
     if (document.querySelector(".connexion")) return;
     sessionOuverte = false;
     signeDeVie();
+    // Une feuille restée ouverte (Gérer, la palette…) couvrirait l'écran de
+    // connexion et rendrait son champ inerte : chaque clic y referait un 401 muet.
+    fermerFeuilles();
     vueCourante?.module?.demonter?.();
     vueCourante = null;
-    ecranConnexion();
+    ecranConnexion({ sessionExpiree: true });
   });
   let fermerMotion = null;
   evenements.addEventListener("motion-lent", async () => {
