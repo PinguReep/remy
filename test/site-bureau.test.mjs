@@ -6,7 +6,7 @@
 process.env.TZ = "Europe/Paris";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rappelsADire, rituelDu, texteRituel, cleRappel, REGLAGES_PAR_DEFAUT, DEUX_HEURES, OUBLI, estBureau } from "../public/app/bureau.js";
+import { rappelsADire, rituelDu, texteRituel, cleRappel, REGLAGES_PAR_DEFAUT, DEUX_HEURES, OUBLI, estBureau, choixNotifs, vueRituel, ANCIENNE_HEURE_BILAN, creerTic } from "../public/app/bureau.js";
 import { choixTache, choixActivite, arrondi, joursJusquaLundi, echeanceDans } from "../public/app/vues/gerer.js";
 import { indexProjet } from "../public/app/couleurs.js";
 
@@ -86,8 +86,43 @@ test("briefing et bilan : coupés par défaut, à l'heure choisie, une fois par 
   assert.deepEqual(rituelDu(r, { maintenant: a(10, 0) }), { nom: "briefing", cle: "briefing@2026-10-15" }, "PC allumé à 10 h : encore utile");
   assert.equal(rituelDu(r, { maintenant: a(11, 31) }), null, "plus de 4 h après : trop tard");
   assert.equal(rituelDu(r, { maintenant: a(8, 0), deja: new Set(["briefing@2026-10-15"]) }), null, "une fois par jour");
-  assert.deepEqual(rituelDu(r, { maintenant: a(21, 45) }), { nom: "bilan", cle: "bilan@2026-10-15" });
+  // Le bilan vient avant le coucher (29/10) : 22 h 45 par défaut, plus 21 h 30.
+  assert.equal(rituelDu(r, { maintenant: a(21, 45) }), null, "21:45 : pas encore");
+  assert.deepEqual(rituelDu(r, { maintenant: a(22, 45) }), { nom: "bilan", cle: "bilan@2026-10-15" });
   assert.deepEqual(rituelDu({ ...r, heureBilan: "18:00" }, { maintenant: a(18, 5) }), { nom: "bilan", cle: "bilan@2026-10-15" });
+});
+
+test("le bilan sonne à 22:45 par défaut ; une heure choisie reste la sienne", () => {
+  assert.equal(REGLAGES_PAR_DEFAUT.heureBilan, "22:45");
+  assert.equal(REGLAGES_PAR_DEFAUT.heureBriefing, "07:30");
+  assert.equal(REGLAGES_PAR_DEFAUT.propositions, true);
+  // Avant le 29/10, tout l'objet était écrit, défauts compris : 21:30 n'y était pas un choix.
+  assert.deepEqual(choixNotifs({ rappels: true, briefing: true, bilan: false, heureBriefing: "07:30", heureBilan: ANCIENNE_HEURE_BILAN }), { rappels: true, briefing: true, bilan: false, heureBriefing: "07:30" });
+  assert.equal(choixNotifs({ heureBilan: "23:00" }).heureBilan, "23:00", "une autre heure : choisie, gardée");
+  // Depuis : seuls les choix sont écrits (v: 2), et 21:30 choisi exprès reste 21:30.
+  assert.deepEqual(choixNotifs({ v: 2, heureBilan: "21:30" }), { heureBilan: "21:30" });
+  assert.deepEqual(choixNotifs(null), {});
+  assert.deepEqual(choixNotifs("illisible"), {});
+});
+
+test("la notification d'un rituel ouvre le briefing ou le bilan lui-même", async () => {
+  assert.equal(vueRituel("briefing"), "aujourdhui/briefing");
+  assert.equal(vueRituel("bilan"), "aujourdhui/bilan");
+  const vues = [];
+  const dites = new Set();
+  const horloge = { t: new Date(2026, 9, 15, 22, 50).getTime() };
+  const tic = creerTic({
+    horloge: () => horloge.t,
+    reglages: () => ({ ...REGLAGES_PAR_DEFAUT, rappels: false, briefing: true, bilan: true }),
+    memoire: { deja: () => new Set(dites), noter: (c) => c.forEach((x) => dites.add(x)) },
+    sait: () => false,
+    lire: async () => ({ soir: { phrase: "1 fait, 2 restent pour aujourd'hui." } }),
+    notif: async (titre, corps, cle, vue) => vues.push([titre, vue]),
+  });
+  await tic();
+  horloge.t = new Date(2026, 9, 16, 7, 35).getTime();
+  await tic();
+  assert.deepEqual(vues, [["Bilan du soir", "aujourdhui/bilan"], ["Briefing du matin", "aujourdhui/briefing"]]);
 });
 
 test("le texte des rituels vient de /api/rituel", () => {
