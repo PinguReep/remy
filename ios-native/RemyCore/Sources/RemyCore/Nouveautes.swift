@@ -31,7 +31,7 @@ public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
         Nouveaute(id: "chatgpt-automatique", serie: 6, date: "29 oct.", titre: "ChatGPT, sans y penser", capacite: "conversations-externes-v2", pages: [
             .init(symbole: "arrow.down.circle", titre: "L'export pris dans Téléchargements",
-                  texte: "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur l'ordinateur. Rémy prend le .zip dans Téléchargements, en lecture seule : il n'y déplace ni n'y efface rien."),
+                  texte: "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements, en lecture seule. Reçu sur l'iPhone ? « Importer le .zip » dans la carte."),
             .init(symbole: "bell.badge", titre: "Un rappel par mois",
                   texte: "Quand ton dernier export a plus de 30 jours, une carte « Exporter ChatGPT » dans Conversations ouvre la bonne page. Réglages › Sources des conversations pour la couper."),
             .init(symbole: "magnifyingglass", titre: "Claude Code et T3, bien trouvés",

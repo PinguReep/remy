@@ -84,7 +84,7 @@ struct ConversationsExternesVue: View {
                         resultats(r)
                     } else {
                         if let p = m.etat?.probleme { probleme(p) }
-                        if m.filtre == nil || m.filtre == "chatgpt", let c = m.carteExport { CarteExportChatGPTVue(carte: c) }
+                        if m.filtre == nil || m.filtre == "chatgpt", let c = m.carteExport { CarteExportChatGPTVue(carte: c, importer: { importOuvert = true }) }
                         if m.filtre == nil, let d = m.digest, !d.vide { CarteNuitConversations(digest: d) }
                         liste
                     }
@@ -949,7 +949,7 @@ struct SourcesConversationsVue: View {
             })) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Me rappeler d'exporter ChatGPT").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
-                    Text("Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail, Rémy fait le reste.")
+                    Text("Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail sur la tour, Rémy fait le reste.")
                         .font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -1032,6 +1032,9 @@ struct CarteExportChatGPTVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var ouvrirURL
     let carte: CarteExportChatGPT
+    /// Le lien du mail touché sur l'iPhone : le .zip est dans Fichiers, pas
+    /// dans les Téléchargements de la tour — il s'importe d'ici.
+    var importer: (() -> Void)? = nil
 
     var body: some View {
         let m = app.conversationsExternes
@@ -1055,6 +1058,14 @@ struct CarteExportChatGPTVue: View {
                 app.dire(carte.apresOuverture)
             }
             .accessibilityIdentifier("conversations.exporter")
+            if let importer {
+                BoutonA(titre: m.importEnCours ? m.libelleImport : carte.importer, symbole: "square.and.arrow.down", principal: false) {
+                    Haptique.leger()
+                    importer()
+                }
+                .disabled(m.importEnCours)
+                .accessibilityIdentifier("conversations.exporter.importer")
+            }
             LienTexte(titre: "Ne plus me le rappeler") {
                 Task { await m.reglerExportChatGPT(rappel: false) }
             }

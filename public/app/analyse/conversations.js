@@ -218,17 +218,25 @@ export const LIEN_EXPORT_CHATGPT = "https://chatgpt.com/#settings/DataControls";
 /** Téléchargements surveillé, sur cette tour : { actif, forceParLaTour, dossiers } ou null (tour plus ancienne). */
 export const telechargements = (etat) => etat?.chatgpt?.telechargements || null;
 
-/** Ce que l'interrupteur « Téléchargements » dit sous son titre. */
+/**
+ * Ce que l'interrupteur « Téléchargements » dit sous son titre : le dossier
+ * est celui de la TOUR (pas de l'ordinateur où l'on lit), et les .zip
+ * illisibles de la dernière lecture, nommés par la tour (`phraseIllisibles`).
+ */
 export function phraseTelechargements(t) {
   if (!t) return null;
   if (t.forceParLaTour) return "Coupé sur la tour (REMY_TELECHARGEMENTS=off).";
   const ou = (t.dossiers || []).map((d) => d.chemin).filter(Boolean).join(", ") || "Téléchargements";
-  return `Rémy regarde ${ou} en lecture seule : il n'y prend que les exports ChatGPT de moins de ${t.joursMax || 90} jours, sans jamais rien y déplacer ni effacer.`;
+  const phrase = `Rémy regarde ${ou} sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de ${t.joursMax || 90} jours, sans jamais rien y déplacer ni effacer.`;
+  return typeof t.phraseIllisibles === "string" && t.phraseIllisibles ? `${phrase} ${t.phraseIllisibles}` : phrase;
 }
 
 /**
  * La carte « Exporter ChatGPT », ou null : la tour dit quand la montrer
- * (dernier import de plus de 30 jours, ou jamais, la source allumée).
+ * (dernier import de plus de 30 jours, ou jamais, la source allumée). Le
+ * lien du mail se clique SUR LA TOUR (Rémy ne regarde que ses
+ * Téléchargements) ; reçu ailleurs (iPhone, autre ordinateur), le .zip
+ * s'importe depuis la carte (`importer`).
  */
 export function carteExportChatGPT(etat) {
   const r = etat?.chatgpt?.rappel;
@@ -239,14 +247,21 @@ export function carteExportChatGPT(etat) {
   return {
     titre: "Exporter ChatGPT",
     texte: dansTelechargements
-      ? "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements."
+      ? "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici."
       : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
     detail: r.dernierImport == null || !Number.isFinite(jours) ? "Aucun export importé pour l'instant." : `Dernier import il y a ${jours} jour${jours > 1 ? "s" : ""}.`,
     lien: typeof r.lien === "string" && /^https:\/\/chatgpt\.com\//.test(r.lien) ? r.lien : LIEN_EXPORT_CHATGPT,
     bouton: "Ouvrir ChatGPT",
+    importer: "Importer le .zip",
     apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.",
   };
 }
+
+/**
+ * La carte se montre-t-elle ? Comme l'iPhone (ConversationsExternesVues) :
+ * sur « Toutes » ou ChatGPT, et jamais à la place des résultats d'une recherche.
+ */
+export const carteExportVisible = ({ source = "", recherche = "" } = {}) => (!source || source === "chatgpt") && !String(recherche || "").trim();
 
 /** Un fichier que la tour sait importer : le .zip de l'export, ou conversations.json. */
 export const importable = (nom) => /\.(zip|json)$/i.test(String(nom || ""));

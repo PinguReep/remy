@@ -542,7 +542,7 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   await json("DELETE", "/api/conversations-externes/sources/chatgpt");
   e = (await json("PUT", "/api/conversations-externes/sources/chatgpt", { actif: true })).corps;
   assert.deepEqual([e.chatgpt.rappel.dernierImport, e.chatgpt.rappel.aMontrer], [null, true]);
-  assert.match(source(e, "chatgpt").aide.quoiFaire, /Rémy prend le \.zip dans Téléchargements/);
+  assert.match(source(e, "chatgpt").aide.quoiFaire, /clique son lien sur la tour : Rémy prend le \.zip dans ses Téléchargements\. Reçu ailleurs \(iPhone, autre ordinateur\) : envoie-le depuis l.app \(Importer\)/);
   // Effacée puis rallumée : l'export encore dans Téléchargements est repris
   // (comme Claude Code et T3 se relisent), et la carte se tait.
   const avant = empreinte(telechargements);
@@ -596,6 +596,17 @@ test("Téléchargements : un vieux .zip abîmé ne masque pas un export plus ré
   const { execFileSync } = await import("node:child_process");
   const sortie = execFileSync(process.execPath, ["--no-warnings", path.resolve("scripts/connaissances-etat.mjs")], { env: process.env, encoding: "utf8" });
   assert.match(sortie, /2 \.zip illisibles dans les Téléchargements de la tour : « export-decembre\.zip »/);
+  // Le bon export, reçu sur l'iPhone et envoyé depuis l'app : plus d'erreur,
+  // et les deux .zip abîmés restent dits (sans bloquer) jusqu'à la lecture suivante.
+  const envoi = await fetch(`${adresse}/api/conversations-externes/chatgpt`, { method: "POST", headers: { "Content-Type": "application/zip" }, body: fx.exportChatGPT([conv("6f1c0000-bbbb-4000-8000-000000000010", "Reçu sur l'iPhone", "Prix du calendrier ?")]) });
+  assert.equal(envoi.status, 200);
+  let e = await etat();
+  assert.equal(source(e, "chatgpt").erreur, null);
+  assert.deepEqual(e.chatgpt.telechargements.illisibles.map((x) => [x.nom, x.bloquant]), [["export-decembre.zip", false], ["export-octobre.zip", false]]);
+  assert.match(e.chatgpt.telechargements.phraseIllisibles, /^2 \.zip illisibles .* Un export plus récent est déjà importé : efface-les quand tu veux/);
+  r = await lire("chatgpt");
+  assert.equal(r.bilan.sources.chatgpt.ok, true, "l'import de l'app est plus récent que les deux");
+  assert.equal(r.etat.chatgpt.telechargements.illisibles.length, 2);
   // Effacés par Sam : plus rien à dire.
   fs.rmSync(decembre);
   fs.rmSync(octobre);

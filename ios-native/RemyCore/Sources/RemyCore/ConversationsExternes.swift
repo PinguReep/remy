@@ -201,19 +201,24 @@ public struct EtatConversations: Codable, Equatable, Sendable {
             public var forceParLaTour: Bool
             public var dossiers: [Dossier]
             public var joursMax: Int
-            public init(actif: Bool = true, forceParLaTour: Bool = false, dossiers: [Dossier] = [], joursMax: Int = 90) {
+            /// Les .zip illisibles de la dernière lecture, dits par la tour
+            /// (« 1 .zip illisible dans les Téléchargements de la tour : … »), ou nil.
+            public var phraseIllisibles: String?
+            public init(actif: Bool = true, forceParLaTour: Bool = false, dossiers: [Dossier] = [], joursMax: Int = 90, phraseIllisibles: String? = nil) {
                 self.actif = actif
                 self.forceParLaTour = forceParLaTour
                 self.dossiers = dossiers
                 self.joursMax = joursMax
+                self.phraseIllisibles = phraseIllisibles
             }
-            enum CodingKeys: String, CodingKey { case actif, forceParLaTour, dossiers, joursMax }
+            enum CodingKeys: String, CodingKey { case actif, forceParLaTour, dossiers, joursMax, phraseIllisibles }
             public init(from d: Decoder) throws {
                 let c = try d.container(keyedBy: CodingKeys.self)
                 actif = (try? c.decodeIfPresent(Bool.self, forKey: .actif)) ?? false
                 forceParLaTour = (try? c.decodeIfPresent(Bool.self, forKey: .forceParLaTour)) ?? false
                 dossiers = (try? c.decodeIfPresent([Dossier].self, forKey: .dossiers)) ?? []
                 joursMax = (try? c.decodeIfPresent(Int.self, forKey: .joursMax)) ?? 90
+                phraseIllisibles = try? c.decodeIfPresent(String.self, forKey: .phraseIllisibles)
             }
         }
         public struct Rappel: Codable, Equatable, Sendable {
@@ -542,6 +547,8 @@ public struct CarteExportChatGPT: Equatable, Sendable {
     public var detail: String
     public var lien: URL
     public var bouton: String
+    /// Le .zip reçu ailleurs que sur la tour (l'iPhone) : l'importer d'ici.
+    public var importer: String
     public var apresOuverture: String
 }
 
@@ -552,16 +559,21 @@ public enum ConversationsExternes {
     public static let sources = ["claude-code", "t3", "chatgpt"]
     public static let lienExportChatGPT = URL(string: "https://chatgpt.com/#settings/DataControls")!
 
-    /// Ce que l'interrupteur « Téléchargements » dit sous son titre.
+    /// Ce que l'interrupteur « Téléchargements » dit sous son titre : le
+    /// dossier est celui de la TOUR (pas de l'iPhone), et les .zip illisibles
+    /// de la dernière lecture, nommés par la tour.
     public static func phraseTelechargements(_ t: EtatConversations.ExportChatGPT.Telechargements?) -> String? {
         guard let t else { return nil }
         if t.forceParLaTour { return "Coupé sur la tour (REMY_TELECHARGEMENTS=off)." }
         let ou = t.dossiers.map(\.chemin).filter { !$0.isEmpty }.joined(separator: ", ")
-        return "Rémy regarde \(ou.isEmpty ? "Téléchargements" : ou) en lecture seule : il n'y prend que les exports ChatGPT de moins de \(t.joursMax) jours, sans jamais rien y déplacer ni effacer."
+        let phrase = "Rémy regarde \(ou.isEmpty ? "Téléchargements" : ou) sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de \(t.joursMax) jours, sans jamais rien y déplacer ni effacer."
+        guard let i = t.phraseIllisibles, !i.isEmpty else { return phrase }
+        return "\(phrase) \(i)"
     }
 
     /// La carte, ou nil : la tour dit quand la montrer (dernier import de plus
-    /// de 30 jours, ou jamais, la source allumée).
+    /// de 30 jours, ou jamais, la source allumée). Le lien du mail se clique
+    /// SUR LA TOUR : reçu sur l'iPhone, le .zip s'importe depuis la carte.
     public static func carteExportChatGPT(_ e: EtatConversations?) -> CarteExportChatGPT? {
         guard let r = e?.chatgpt?.rappel, r.aMontrer else { return nil }
         let t = e?.chatgpt?.telechargements
@@ -578,11 +590,12 @@ public enum ConversationsExternes {
         return CarteExportChatGPT(
             titre: "Exporter ChatGPT",
             texte: dansTelechargements
-                ? "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements."
+                ? "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici."
                 : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
             detail: detail,
             lien: lien,
             bouton: "Ouvrir ChatGPT",
+            importer: "Importer le .zip",
             apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.")
     }
 

@@ -381,7 +381,7 @@ final class ConversationsExternesTests: XCTestCase {
        "recensement":{"bases":2,"fils":1,"gardes":1,"phrase":"2 bases, 1 fil : 1 lu."}},
       {"id":"chatgpt","nom":"ChatGPT","actif":true,"disponible":true,"conversations":0,"messages":0,
        "emplacements":[{"origine":"dossier surveillé","chemin":"~\\\\Documents\\\\Rémy\\\\Imports","trouve":true},{"origine":"Téléchargements, lecture seule","chemin":"~\\\\Downloads","trouve":true}],
-       "aide":{"code":"rien-importe","message":"Aucun export ChatGPT importé.","quoiFaire":"Quand le mail arrive, clique le lien : Rémy prend le .zip dans Téléchargements."},"recensement":null}],
+       "aide":{"code":"rien-importe","message":"Aucun export ChatGPT importé.","quoiFaire":"Quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements."},"recensement":null}],
      "usage":{"chat":true,"nuit":true},"chiffre":true,
      "chatgpt":{"telechargements":{"actif":true,"forceParLaTour":false,"dossiers":[{"chemin":"~\\\\Downloads","trouve":true}],"joursMax":90},
                 "rappel":{"actif":true,"aMontrer":true,"dernierImport":null,"depuisJours":null,"seuilJours":30,"lien":"https://chatgpt.com/#settings/DataControls"}},
@@ -409,17 +409,27 @@ final class ConversationsExternesTests: XCTestCase {
         var e = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatExport.utf8))
         let c = try XCTUnwrap(ConversationsExternes.carteExportChatGPT(e))
         XCTAssertEqual(c.titre, "Exporter ChatGPT")
-        XCTAssertEqual(c.texte, "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements.")
+        // Le lien se clique sur la tour ; reçu sur l'iPhone, la carte importe le .zip (contre-relecture du 30/10).
+        XCTAssertEqual(c.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici.")
+        XCTAssertEqual(c.importer, "Importer le .zip")
         XCTAssertEqual(c.detail, "Aucun export importé pour l'instant.")
         XCTAssertEqual(c.lien.absoluteString, "https://chatgpt.com/#settings/DataControls")
         XCTAssertEqual(c.bouton, "Ouvrir ChatGPT")
         XCTAssertEqual(ConversationsExternes.phraseTelechargements(e.chatgpt?.telechargements),
-                       "Rémy regarde ~\\Downloads en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.")
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.")
+        // Un .zip illisible : la phrase de la tour, à la suite (tour plus ancienne : rien).
+        let illisible = "1 .zip illisible dans les Téléchargements de la tour : « export.zip » (du 9/10). Un export plus récent est déjà importé : efface-le quand tu veux (Rémy n'y touche jamais)."
+        let avecIllisible = try JSONDecoder().decode(EtatConversations.ExportChatGPT.Telechargements.self,
+                                                     from: Data(#"{"actif":true,"dossiers":[{"chemin":"~\\Downloads","trouve":true}],"joursMax":90,"phraseIllisibles":"\#(illisible)"}"#.utf8))
+        XCTAssertEqual(ConversationsExternes.phraseTelechargements(avecIllisible),
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer. \(illisible)")
+        XCTAssertNil(e.chatgpt?.telechargements?.phraseIllisibles)
         // Le dernier import a 45 jours, Téléchargements coupé : importer à la main.
         e.chatgpt?.rappel = .init(actif: true, aMontrer: true, dernierImport: 1_790_000_000_000, depuisJours: 45, lien: "https://ailleurs.example/")
         e.chatgpt?.telechargements?.actif = false
         let d = try XCTUnwrap(ConversationsExternes.carteExportChatGPT(e))
         XCTAssertEqual(d.texte, "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.")
+        XCTAssertEqual(d.importer, "Importer le .zip")
         XCTAssertEqual(d.detail, "Dernier import il y a 45 jours.")
         XCTAssertEqual(d.lien, ConversationsExternes.lienExportChatGPT, "un lien qui ne mène pas à ChatGPT n'est jamais suivi")
         e.chatgpt?.rappel?.aMontrer = false

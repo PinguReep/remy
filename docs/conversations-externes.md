@@ -135,9 +135,12 @@ Téléchargements).
 
 ChatGPT n'a pas d'API de l'historique, seulement son export par mail. Rémy ne
 pilote aucun navigateur et ne se connecte ni à ChatGPT ni à ta messagerie :
-tu demandes l'export, tu cliques le lien du mail sur l'ordinateur, le
-navigateur range le .zip dans **Téléchargements** — et Rémy l'y prend, au
-passage suivant (30 min, la nuit, ou « Lire maintenant »).
+tu demandes l'export, tu cliques le lien du mail **sur la tour**, le
+navigateur range le .zip dans ses **Téléchargements** — et Rémy l'y prend, au
+passage suivant (30 min, la nuit, ou « Lire maintenant »). Cliqué ailleurs
+(l'iPhone, un autre ordinateur du tailnet), le .zip arrive dans les
+Téléchargements de cet appareil, que Rémy ne voit pas : il s'envoie alors
+depuis « Importer le .zip » (dans la carte) ou « Importer ».
 
 - **Ce qu'il regarde** : `~\Downloads` (ou `REMY_TELECHARGEMENTS`), seulement
   les `.zip` du premier niveau, modifiés il y a moins de 90 jours, pas plus
@@ -163,8 +166,11 @@ passage suivant (30 min, la nuit, ou « Lire maintenant »).
   quand le dernier import a plus de 30 jours — ou jamais, la source allumée —,
   et qu'aucun export n'attend dans Imports. « Ouvrir ChatGPT » ouvre
   `https://chatgpt.com/#settings/DataControls` ; « Exporte tes données ;
-  quand le mail arrive, clique le lien : Rémy prend le fichier dans
-  Téléchargements. » Elle se coupe (« Ne plus me le rappeler », ou Réglages ›
+  quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier
+  dans ses Téléchargements. Ailleurs, importe le .zip ici. » ; « Importer le
+  .zip » envoie celui reçu sur l'iPhone ou sur un autre ordinateur. Comme sur
+  l'iPhone, le site ne la montre que sur « Toutes » ou ChatGPT, jamais à la
+  place des résultats d'une recherche. Elle se coupe (« Ne plus me le rappeler », ou Réglages ›
   Sources des conversations › « Me rappeler d'exporter ChatGPT ») ; la
   surveillance aussi (« Prendre l'export dans Téléchargements », allumée par
   défaut, son chemin affiché).

@@ -36,6 +36,7 @@ export default {
     refs.recherche.addEventListener("input", () => {
       clearTimeout(minuterieRecherche);
       minuterieRecherche = setTimeout(chercher, 300);
+      dessinerCarte();
     });
     refs.filtres = h("div", { class: "rangee serree", role: "radiogroup", "aria-label": "Source" });
     refs.jour = h("select", { class: "champ", "aria-label": "Aller à un jour", title: "Aller à un jour", style: { minHeight: "44px", marginTop: "8px" } }, h("option", { value: "" }, "Tous les jours"));
@@ -43,6 +44,7 @@ export default {
     refs.jour.addEventListener("change", () => {
       jour = refs.jour.value;
       refs.recherche.value = "";
+      dessinerCarte();
       chargerListe();
     });
     refs.etat = h("div", { class: "aide", role: "status" });
@@ -93,6 +95,7 @@ function dessinerFiltres() {
     b.addEventListener("click", () => {
       source = id;
       dessinerFiltres();
+      dessinerCarte();
       chargerJours();
       if (refs.recherche.value.trim()) chercher();
       else chargerListe();
@@ -120,14 +123,26 @@ function dessinerEtat() {
     // Les autres sources en échec (la première est déjà dite).
     (etat.sources || []).filter((s) => s.actif && s.erreur && s.erreur !== p).map((s) => h("span", { class: "risque", style: { display: "flex" } }, icone("alerte"), `${s.nom} : ${s.erreur.message}`)),
     enAttente ? h("span", { style: { display: "block", marginTop: "4px" } }, enAttente) : null);
-  if (refs.carte) vider(refs.carte, carteExport(() => dessinerEtat()));
+  dessinerCarte({ forcer: true });
 }
 
 // --- La carte « Exporter ChatGPT » (soir du 29/10) ---
 // La tour dit quand la montrer (dernier import de plus de 30 jours, ou
 // jamais) ; le bouton ouvre la page d'export de ChatGPT (dans l'app de
 // bureau : le navigateur par défaut). Rémy ne s'y connecte jamais : le mail
-// arrive, tu cliques son lien, Rémy prend le .zip dans Téléchargements.
+// arrive, tu cliques son lien sur la tour, Rémy prend le .zip dans ses
+// Téléchargements ; reçu ailleurs (autre ordinateur), « Importer le .zip ».
+// Comme l'iPhone, la carte ne se montre que sur « Toutes » ou ChatGPT, et
+// jamais à la place des résultats d'une recherche (contre-relecture du 30/10).
+function dessinerCarte({ forcer = false } = {}) {
+  if (!refs.carte || !refs.recherche) return;
+  const visible = C.carteExportVisible({ source, recherche: refs.recherche.value });
+  // Redessinée seulement quand elle apparaît ou disparaît (ou que l'état
+  // change) : un import en cours garde sa progression pendant la frappe.
+  if (!forcer && refs.carte.dataset.visible === String(visible)) return;
+  refs.carte.dataset.visible = String(visible);
+  vider(refs.carte, visible ? carteExport(() => dessinerCarte({ forcer: true })) : null);
+}
 function lienExport(libelle, { classe = "plein", lien = C.LIEN_EXPORT_CHATGPT, apres = null } = {}) {
   return h("a", {
     class: `btn ${classe}`,
@@ -142,6 +157,14 @@ function lienExport(libelle, { classe = "plein", lien = C.LIEN_EXPORT_CHATGPT, a
 function carteExport(dessiner) {
   const c = C.carteExportChatGPT(etat);
   if (!c) return null;
+  // Le .zip reçu ailleurs que sur la tour : envoyé d'ici, comme dans Sources.
+  const progression = h("div", { class: "aide envoi-export", role: "status", "aria-live": "polite", hidden: true, style: { marginTop: "8px" } },
+    h("progress", { max: "1", style: { width: "160px", marginRight: "8px", verticalAlign: "middle" } }), h("span"));
+  const fichier = h("input", { type: "file", accept: ".zip,.json,application/zip,application/json", class: "sr", id: "fichier-carte-export", tabindex: "-1" });
+  fichier.addEventListener("change", () => {
+    importer(fichier.files?.[0], { progression, apres: (r) => apres(null, r?.etat) });
+    fichier.value = "";
+  });
   return h("section", { class: "carte", "aria-label": c.titre, dataset: { carte: "export-chatgpt" }, style: { margin: "0 0 12px" } },
     h("div", { class: "sur-titre" }, "ChatGPT"),
     h("h3", { class: "carte-titre", style: { margin: "2px 0 6px" } }, c.titre),
@@ -149,7 +172,9 @@ function carteExport(dessiner) {
     h("p", { class: "aide", style: { margin: "0 0 10px" } }, c.detail),
     h("div", { class: "rangee serree" },
       lienExport(c.bouton, { lien: c.lien, apres: c.apresOuverture }),
-      bouton("Ne plus me le rappeler", { classe: "texte", titre: "Couper ce rappel (il se rallume dans Sources)", onclick: (e) => occupe(e.currentTarget, () => reglerChatGPT({ rappel: false }, "Plus de rappel d'export. Il se rallume dans Sources.", dessiner)) })));
+      h("label", { class: "btn papier", for: "fichier-carte-export", tabindex: "0", role: "button", title: "Envoyer à la tour le .zip reçu par mail", onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fichier.click(); } } }, icone("envoyer"), c.importer || "Importer le .zip"), fichier,
+      bouton("Ne plus me le rappeler", { classe: "texte", titre: "Couper ce rappel (il se rallume dans Sources)", onclick: (e) => occupe(e.currentTarget, () => reglerChatGPT({ rappel: false }, "Plus de rappel d'export. Il se rallume dans Sources.", dessiner)) })),
+    progression);
 }
 
 /** Un réglage de l'import ChatGPT (Téléchargements, rappel) : l'état revient, la vue suit. */
@@ -233,7 +258,7 @@ function dessinerListe() {
       ? [h("p", { class: "aide", style: { margin: "0 0 6px" } }, resultats.length === 1 ? "1 message trouvé" : `${resultats.length} messages trouvés`),
         resultats.map((r) => lienConv({ source: r.source, id: r.conversation, autour: r.message }, r.titre,
           `${C.nomSource(r.source)} · ${C.relatif(r.ts)}${r.projet ? ` · ${r.projet.nom}` : ""}`, r.extrait))]
-      : vide(null, "Aucun message ne contient ces mots.", source ? bouton("Chercher dans toutes les sources", { classe: "papier petit", onclick: () => { source = ""; dessinerFiltres(); chargerJours(); chercher(); } }) : null));
+      : vide(null, "Aucun message ne contient ces mots.", source ? bouton("Chercher dans toutes les sources", { classe: "papier petit", onclick: () => { source = ""; dessinerFiltres(); dessinerCarte(); chargerJours(); chercher(); } }) : null));
     return;
   }
   if (!pages) return;
@@ -529,7 +554,7 @@ function reglagesChatGPT(dessiner) {
   };
   return [
     t ? bascule("telechargements", "Prendre l'export dans Téléchargements", C.phraseTelechargements(t), t.actif, t.forceParLaTour) : null,
-    r ? bascule("rappel", "Me rappeler d'exporter ChatGPT", "Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail, Rémy fait le reste.", r.actif) : null,
+    r ? bascule("rappel", "Me rappeler d'exporter ChatGPT", "Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail sur la tour, Rémy fait le reste.", r.actif) : null,
     h("div", { class: "rangee serree", style: { marginTop: "6px" } }, lienExport("Demander un export à ChatGPT", { classe: "papier petit", lien: r?.lien || C.LIEN_EXPORT_CHATGPT })),
   ];
 }

@@ -122,7 +122,12 @@ test("le recensement : la phrase de la tour, sinon rien (tour plus ancienne)", (
 
 test("Téléchargements et la carte « Exporter ChatGPT » : les mêmes mots que l'iPhone", () => {
   const t = { actif: true, forceParLaTour: false, dossiers: [{ chemin: "~\\Downloads", trouve: true }], joursMax: 90 };
-  assert.equal(C.phraseTelechargements(t), "Rémy regarde ~\\Downloads en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.");
+  // Le dossier est celui de la tour, pas de l'ordinateur où l'on lit (contre-relecture du 30/10).
+  assert.equal(C.phraseTelechargements(t), "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.");
+  // Un .zip illisible : la phrase de la tour, à la suite.
+  const illisible = "1 .zip illisible dans les Téléchargements de la tour : « export.zip » (du 9/10). Un export plus récent est déjà importé : efface-le quand tu veux (Rémy n'y touche jamais).";
+  assert.equal(C.phraseTelechargements({ ...t, phraseIllisibles: illisible }), `${C.phraseTelechargements(t)} ${illisible}`);
+  assert.equal(C.phraseTelechargements({ ...t, phraseIllisibles: null }), C.phraseTelechargements(t), "tour plus ancienne, ou rien d'illisible");
   assert.equal(C.phraseTelechargements({ ...t, forceParLaTour: true, actif: false, dossiers: [] }), "Coupé sur la tour (REMY_TELECHARGEMENTS=off).");
   assert.equal(C.phraseTelechargements(null), null);
   // Pas de carte : la tour ne la demande pas, ou ne connaît pas encore ce réglage.
@@ -130,12 +135,22 @@ test("Téléchargements et la carte « Exporter ChatGPT » : les mêmes mots que
   assert.equal(C.carteExportChatGPT({ chatgpt: { rappel: { aMontrer: false } } }), null);
   const jamais = C.carteExportChatGPT({ chatgpt: { telechargements: t, rappel: { aMontrer: true, dernierImport: null, depuisJours: null, lien: C.LIEN_EXPORT_CHATGPT } } });
   assert.deepEqual([jamais.titre, jamais.bouton, jamais.lien], ["Exporter ChatGPT", "Ouvrir ChatGPT", "https://chatgpt.com/#settings/DataControls"]);
-  assert.equal(jamais.texte, "Exporte tes données ; quand le mail arrive, clique le lien : Rémy prend le fichier dans Téléchargements.");
+  // Où cliquer le lien : sur la tour ; reçu ailleurs, la carte importe le .zip.
+  assert.equal(jamais.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici.");
+  assert.equal(jamais.importer, "Importer le .zip");
   assert.equal(jamais.detail, "Aucun export importé pour l'instant.");
   const vieux = C.carteExportChatGPT({ chatgpt: { telechargements: { ...t, actif: false }, rappel: { aMontrer: true, dernierImport: 1, depuisJours: 45 } } });
   assert.equal(vieux.texte, "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.");
+  assert.equal(vieux.importer, "Importer le .zip");
   assert.equal(vieux.detail, "Dernier import il y a 45 jours.");
   assert.equal(vieux.lien, C.LIEN_EXPORT_CHATGPT, "sans lien de la tour : celui de ChatGPT");
+  // Comme l'iPhone : sur « Toutes » ou ChatGPT, jamais pendant une recherche (contre-relecture du 30/10).
+  assert.equal(C.carteExportVisible({ source: "", recherche: "" }), true);
+  assert.equal(C.carteExportVisible({ source: "chatgpt", recherche: "  " }), true);
+  assert.equal(C.carteExportVisible({ source: "claude-code", recherche: "" }), false);
+  assert.equal(C.carteExportVisible({ source: "t3", recherche: "" }), false);
+  assert.equal(C.carteExportVisible({ source: "", recherche: "bougie" }), false);
+  assert.equal(C.carteExportVisible({ source: "chatgpt", recherche: "bougie" }), false);
   // Un lien qui ne mène pas à ChatGPT n'est jamais suivi.
   assert.equal(C.carteExportChatGPT({ chatgpt: { rappel: { aMontrer: true, depuisJours: 40, dernierImport: 1, lien: "https://ailleurs.example/" } } }).lien, C.LIEN_EXPORT_CHATGPT);
 });
@@ -301,7 +316,7 @@ test("contrat : la carte « Exporter ChatGPT » et les deux réglages, joués co
   let e = (await appel(C.cheminEtat())).corps;
   assert.ok(e.chatgpt?.telechargements && e.chatgpt?.rappel, "la tour annonce les réglages que la vue montre");
   assert.equal(C.carteExportChatGPT(e), null, "un export vient d'être importé : pas de carte");
-  assert.match(C.phraseTelechargements(C.telechargements(e)), /Downloads en lecture seule/);
+  assert.match(C.phraseTelechargements(C.telechargements(e)), /Downloads sur la tour, en lecture seule/);
   // Coupée puis rallumée, par le chemin de la vue.
   e = (await appel(C.cheminSource("chatgpt"), { methode: "PUT", corps: { telechargements: false } })).corps;
   assert.equal(C.telechargements(e).actif, false);
@@ -358,7 +373,7 @@ test("le site : la vue, Réglages et Ctrl+K passent par ces chemins et ces phras
   const vue = fs.readFileSync(new URL("../public/app/vues/conversations-externes.js", import.meta.url), "utf8");
   assert.doesNotMatch(vue, /["'`]\/api\/conversations-externes/, "aucun chemin écrit à la main : analyse/conversations.js les tient");
   for (const f of ["cheminListe", "cheminRecherche", "cheminLecture", "cheminJours", "cheminNuit", "cheminSynchro", "cheminSource", "cheminUsage", "cheminToutEffacer", "cheminImport", "phraseImport", "phraseSource", "lireRoute", "route",
-    "phraseRecensement", "carteExportChatGPT", "phraseTelechargements", "telechargements"]) {
+    "phraseRecensement", "carteExportChatGPT", "carteExportVisible", "phraseTelechargements", "telechargements"]) {
     assert.match(vue, new RegExp(`C\\.${f}\\(`), f);
   }
   const reglages = fs.readFileSync(new URL("../public/app/vues/reglages.js", import.meta.url), "utf8");
