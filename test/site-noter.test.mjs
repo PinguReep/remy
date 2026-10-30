@@ -718,3 +718,39 @@ test("Retenir : extraire puis { choisis } (les routes de RetenirInfosVue)", asyn
   await assert.rejects(appel("/api/capture/extraire", { methode: "POST", corps: { texte: "Un long texte à retenir sur la boutique et ses projets pour l'hiver.", source: "note" } }), (e) => e.statut >= 400 && e.message.length > 0);
   await assert.rejects(appel("/api/capture/analyser", { methode: "POST", corps: { texte: "Jeudi soir chez Yanis, samedi studio." } }), (e) => e.statut >= 400 && e.message.length > 0, "l'analyse aussi : un message, pas un silence");
 });
+
+// --- Une image collée ou déposée dans Noter (la feuille de partage de l'iPhone) ---
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+test("RÉGRESSION : une capture d'écran collée dans Noter est une image ; un collage avec du texte reste du texte", () => {
+  const fichier = { name: "image.png", type: "image/png", size: 68 };
+  const presse = (texte, items) => ({ getData: (t) => (t === "text/plain" ? texte : ""), items, files: [] });
+  assert.equal(N.imageCollee(presse("", [{ kind: "file", type: "image/png", getAsFile: () => fichier }])), fichier);
+  assert.equal(N.imageCollee(presse("Facture 42", [{ kind: "file", type: "image/png", getAsFile: () => fichier }])), null, "une partie de page copiée : le texte");
+  assert.equal(N.imageCollee(presse("", [{ kind: "string", type: "text/html" }])), null);
+  assert.equal(N.imageCollee(null), null);
+  assert.equal(N.titreImage({ name: "Facture bougies.PNG" }), "Facture bougies");
+  assert.equal(N.titreImage(fichier, true), "Image collée", "un collage n'a pas de nom à lui");
+});
+
+test("l'image rangée se dit comme sur l'iPhone (RecuPartage), l'échec dit quoi faire (EchecPartage)", () => {
+  assert.deepEqual(N.recuImage({ ok: true, ajouts: [], memoire: false, message: "Image rangée dans ton coffre (Captures/Images).", image: "Captures/Images/x.png" }),
+    { titre: "Image rangée.", detail: "Image rangée dans ton coffre (Captures/Images)." });
+  assert.equal(N.recuImage({ ajouts: [], memoire: false, message: "Image reçue, mais cette tour ne garde pas les images." }).titre, "Image reçue.");
+  const classe = N.recuImage({ ajouts: ["La facture 42 est à payer"], memoire: true, image: "Captures/Images/y.jpg" });
+  assert.equal(classe.titre, "J'ai compris. Classé.");
+  assert.equal(classe.detail, "Image gardée sur ta tour. Retenu : La facture 42 est à payer");
+  assert.match(N.phraseEchecImage({ nature: "auth", statut: 401 }), /^Tu n'es plus connecté à la tour : l'image n'est pas partie/);
+  assert.match(N.phraseEchecImage({ nature: "reseau" }), /^La tour ne répond pas : l'image n'est pas partie\. Elle reste ici/);
+  assert.equal(N.phraseEchecImage({ nature: "serveur", statut: 413, message: "Image trop lourde pour la tour (3 Mo au plus) : réduis-la avant de l'envoyer." }),
+    "Pas rangée : Image trop lourde pour la tour (3 Mo au plus) : réduis-la avant de l'envoyer.");
+  assert.ok(N.IMAGE_MAX_OCTETS < 3_000_000, "sous la limite de la tour");
+});
+
+test("contrat : POST /api/capture/image, ce que Noter envoie : sans mot, l'image est rangée sans appel IA", async () => {
+  const r = await appel("/api/capture/image", { methode: "POST", corps: { image: PNG_1PX, titre: N.titreImage({ name: "capture.png" }) } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.ajouts, []);
+  assert.equal(N.recuImage(r).titre.startsWith("Image"), true, JSON.stringify(r));
+  await assert.rejects(appel("/api/capture/image", { methode: "POST", corps: { image: "R0lGODlhAQABAAAAACw=" } }), (err) => err.statut === 415 && /JPEG ou PNG/.test(N.phraseEchecImage(err)));
+});

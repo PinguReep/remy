@@ -903,6 +903,16 @@ body.mode-noter .app { display: block; }
 /* Le récapitulatif « Rémy a trouvé N choses » */
 .noter-recap { display: flex; flex-direction: column; gap: 12px; }
 .noter-recap[hidden] { display: none; }
+/* Une image collée ou déposée (la feuille de partage de l'iPhone) */
+.noter-image { display: flex; flex-direction: column; gap: 10px; }
+.noter-image[hidden] { display: none; }
+.noter-image-tete { display: flex; gap: 14px; align-items: flex-start; }
+.noter-image-tete img { width: 132px; max-height: 132px; object-fit: contain; border-radius: 10px; border: 1px solid var(--filet); background: var(--fond-2); flex: none; }
+.noter-image-textes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.noter-image-textes .aide { overflow-wrap: anywhere; }
+.noter-image .noter-pied > .aide { flex: 1; }
+.noter-zone.depot { outline: 2px dashed var(--signal); outline-offset: 6px; border-radius: 14px; }
+@media (max-width: 480px) { .noter-image-tete img { width: 96px; max-height: 96px; } }
 .noter-recap-tete { display: flex; align-items: center; gap: 6px; margin: -6px -8px 0; }
 .noter-recap-tete .espace { flex: 1; }
 .noter-recap-titre { font: 600 22px/1.25 var(--serif); }

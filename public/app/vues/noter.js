@@ -13,6 +13,9 @@
 // le récapitulatif (analyse/rangement.js) ; rien ne part avant. Ce qui existe
 // déjà (article, rappel, tâche Motion) est dit « déjà là », jamais « ajouté ».
 // Le micro dicte (../dictee.js) : le texte arrive dans le champ, jamais envoyé seul.
+// Une image collée (Ctrl+V) ou déposée : la feuille de partage de l'iPhone
+// (EnvoiPartage) sur ordinateur. Un aperçu, un mot facultatif, puis rangée
+// dans le coffre (POST /api/capture/image) ; rien ne part sans le bouton.
 import { api, nouvelId, seg, natureEchec, sait, versionTour, tourJoignable, evenements } from "../api.js";
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, quand, isoLocal, local, occupe, kbd, texteErreur } from "../ui.js";
 import { avantEcheance, echeanceLongue, plier } from "../analyse/dates.js";
@@ -227,6 +230,86 @@ async function defaire(prep, ledgerId, direIci, requetes = null) {
   }
 }
 
+// --- Une image (la feuille de partage de l'iPhone, RemyPartage) ---
+/** Sous les 3 Mo que la tour accepte (lireImage, lib/capture.js). */
+export const IMAGE_MAX_OCTETS = 2_900_000;
+const IMAGE_COTE_MAX = 2560;
+
+/**
+ * L'image d'un collage : seulement s'il n'y a pas de texte (copier une
+ * partie d'une page donne les deux : c'est le texte qu'on veut). Null sinon.
+ */
+export function imageCollee(donnees) {
+  if (!donnees) return null;
+  if (String(donnees.getData?.("text/plain") || "").trim()) return null;
+  for (const it of [...(donnees.items || [])]) {
+    if (it.kind === "file" && /^image\//.test(it.type)) return it.getAsFile?.() || null;
+  }
+  return [...(donnees.files || [])].find((f) => /^image\//.test(f.type)) || null;
+}
+
+/** Le titre de l'image : le nom du fichier déposé (sans son extension), sinon « Image collée ». */
+export const titreImage = (fichier, colle = false) => (colle ? "" : String(fichier?.name || "").replace(/\.[a-z0-9]{2,5}$/i, "").trim().slice(0, 120)) || "Image collée";
+
+const enBase64 = (blob) => new Promise((ok, ko) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ""));
+  r.onerror = () => ko(new Error("Cette image n'a pas pu être lue : enregistre-la, puis dépose le fichier."));
+  r.readAsDataURL(blob);
+});
+
+/**
+ * L'image prête pour la tour, en base64 : telle quelle si c'est un PNG ou un
+ * JPEG assez léger ; sinon redessinée en JPEG (fond blanc), réduite jusqu'à
+ * passer sous IMAGE_MAX_OCTETS. Rien n'est lu dessus ici (pas d'OCR).
+ */
+export async function preparerImage(fichier, { max = IMAGE_MAX_OCTETS } = {}) {
+  if ((fichier.type === "image/png" || fichier.type === "image/jpeg") && fichier.size <= max) return enBase64(fichier);
+  let source;
+  try {
+    source = await createImageBitmap(fichier);
+  } catch {
+    throw new Error("Ce format d'image n'est pas lisible ici : enregistre-la en PNG ou en JPEG, puis dépose le fichier.");
+  }
+  let echelle = Math.min(1, IMAGE_COTE_MAX / Math.max(source.width, source.height));
+  for (let essai = 0; essai < 6; essai++) {
+    const toile = document.createElement("canvas");
+    toile.width = Math.max(1, Math.round(source.width * echelle));
+    toile.height = Math.max(1, Math.round(source.height * echelle));
+    const c = toile.getContext("2d");
+    c.fillStyle = "#fff"; // un PNG transparent ne devient pas noir en JPEG
+    c.fillRect(0, 0, toile.width, toile.height);
+    c.drawImage(source, 0, 0, toile.width, toile.height);
+    for (const qualite of [0.85, 0.7]) {
+      const blob = await new Promise((r) => toile.toBlob(r, "image/jpeg", qualite));
+      if (blob && blob.size <= max) return enBase64(blob);
+    }
+    echelle *= 0.7;
+  }
+  throw new Error("Cette image reste trop lourde, même réduite : enregistre-la plus petite, puis dépose-la.");
+}
+
+/** Ce que dit Noter quand l'image est rangée (RecuPartage de l'iPhone). */
+export function recuImage(r) {
+  const ajouts = Array.isArray(r?.ajouts) ? r.ajouts : [];
+  const classe = ajouts.length > 0 || r?.memoire !== false;
+  const titre = classe ? "J'ai compris. Classé." : String(r?.message || "").startsWith("Image") ? (r?.image ? "Image rangée." : "Image reçue.") : "Gardé, pas encore classé.";
+  const phrase = ajouts.length
+    ? `Retenu : ${ajouts[0]}${ajouts.length > 1 ? ` — et ${ajouts.length - 1} autre${ajouts.length > 2 ? "s" : ""} chose${ajouts.length > 2 ? "s" : ""}.` : ""}`
+    : r?.memoire === false ? (r?.message ? `Gardé : ${r.message}` : "Gardé : Rémy le relira cette nuit.") : "Rien de nouveau : Rémy le savait déjà.";
+  let detail = ajouts.length || !r?.message ? phrase : r.message;
+  if (r?.image && !detail.startsWith("Image")) detail = `Image gardée sur ta tour. ${detail}`;
+  return { titre, detail };
+}
+
+/** Une image pas partie, en clair : quoi, et quoi faire (EchecPartage). Elle reste à l'écran. */
+export function phraseEchecImage(err) {
+  if (err?.nature === "auth") return "Tu n'es plus connecté à la tour : l'image n'est pas partie. Reconnecte-toi, puis colle-la de nouveau.";
+  if (err?.nature === "reseau" || err?.nature === "delai") return "La tour ne répond pas : l'image n'est pas partie. Elle reste ici ; réessaie quand la tour répond.";
+  if (err?.statut === 404 || err?.statut === 405) return "Ta tour ne sait pas encore ranger les images : mets-la à jour.";
+  return `Pas rangée : ${texteErreur(err).replace(/[.\s]+$/, "")}.`;
+}
+
 /** Ce qu'on dit quand la capture attend dans la file, selon pourquoi. */
 function phraseEnFile(err) {
   if (err?.nature === "auth") return "Tu n'es plus connecté à la tour : c'est gardé ici et ça partira quand tu te reconnecteras.";
@@ -336,7 +419,103 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
       compact ? h("span", { class: "aide" }) : h("span", { class: "aide" }, kbd("Entrée"), " envoie · ", kbd("Maj"), " ", kbd("Entrée"), " passe à la ligne · ", kbd("Échap"), " ferme"),
       extra || null, micro, envoyerBtn));
   const recap = h("div", { class: "noter-recap", hidden: true });
-  const racine = h("div", { class: "noter-zone" }, form, recap);
+  // L'image en attente (collée ou déposée) : à la place du formulaire, jusqu'à « Ranger » ou « Retirer ».
+  const panneauImage = h("div", { class: "noter-image", hidden: true, role: "group", "aria-label": "Image" });
+  const racine = h("div", { class: "noter-zone" }, form, recap, panneauImage);
+  let image = null; // { fichier, url, titre }
+  const retirerImage = () => {
+    if (image?.url) URL.revokeObjectURL(image.url);
+    image = null;
+    panneauImage.hidden = true;
+    vider(panneauImage);
+    form.hidden = false;
+    racine.focusChamp?.();
+  };
+  const prendreImage = (fichier, { colle = false } = {}) => {
+    if (!recap.hidden) {
+      dire("Termine d'abord le rangement en cours, puis dépose l'image.");
+      return;
+    }
+    if (image?.url) URL.revokeObjectURL(image.url);
+    image = { fichier, url: URL.createObjectURL(fichier), titre: titreImage(fichier, colle) };
+    const mot = h("input", { class: "champ", type: "text", maxlength: "500", autocomplete: "off", placeholder: "Pour le gâteau de Léa samedi…", id: `noter-mot-${id}`,
+      onkeydown: (e) => {
+        if (e.key === "Enter" && !e.isComposing) {
+          e.preventDefault();
+          ranger.click();
+        }
+      } });
+    const etat = h("p", { class: "noter-fait erreur", role: "alert", hidden: true });
+    const ranger = bouton("Ranger l'image", { classe: "plein", icone: "plateauRanger", kbd: "Entrée" });
+    ranger.addEventListener("click", () => occupe(ranger, async () => {
+      etat.hidden = true;
+      try {
+        const corps = { image: await preparerImage(image.fichier), titre: image.titre };
+        if (mot.value.trim()) corps.mot = mot.value.trim();
+        const r = await api("/api/capture/image", { methode: "POST", corps, delai: 90000 });
+        const recu = recuImage(r);
+        retirerImage();
+        annoncer(recu.titre, { genre: "succes", detail: recu.detail });
+        surEnvoye?.("image");
+      } catch (err) {
+        if (err?.nature === "annule") return;
+        vider(etat, icone("alerte"), h("span", { class: "msg" }, phraseEchecImage(err)));
+        etat.hidden = false;
+        // Session perdue dans la feuille : elle va se fermer, le bandeau reste lisible.
+        if (err?.nature === "auth") dire(phraseEchecImage(err), { genre: "erreur" });
+      }
+    }));
+    const octets = fichier.size >= 1e6 ? `${(fichier.size / 1e6).toFixed(1).replace(".", ",")} Mo` : `${Math.max(1, Math.round(fichier.size / 1e3))} ko`;
+    vider(panneauImage,
+      h("div", { class: "noter-image-tete" },
+        h("img", { src: image.url, alt: `Aperçu : ${image.titre}` }),
+        h("div", { class: "noter-image-textes" },
+          h("strong", null, "Image"),
+          h("span", { class: "aide" }, `${image.titre} · ${octets}`),
+          h("span", { class: "aide" }, "Rangée dans ton coffre (Captures/Images). Avec un mot, Rémy en retient l'essentiel."))),
+      h("label", { class: "etiquette-champ", for: mot.id }, "Un mot pour Rémy (facultatif)"), mot, etat,
+      h("div", { class: "noter-pied" }, h("span", { class: "aide" }, kbd("Échap"), " retire l'image"),
+        bouton("Retirer", { classe: "papier", onclick: retirerImage }), ranger));
+    form.hidden = true;
+    panneauImage.hidden = false;
+    mot.focus();
+  };
+  // Échap retire l'image d'abord (la feuille reste ouverte, le texte aussi).
+  panneauImage.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    retirerImage();
+  });
+  zone.addEventListener("paste", (e) => {
+    const f = imageCollee(e.clipboardData);
+    if (!f) return;
+    e.preventDefault();
+    prendreImage(f, { colle: true });
+  });
+  // Un fichier déposé : jamais ouvert par le navigateur à la place de Rémy.
+  const avecFichiers = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  racine.addEventListener("dragover", (e) => {
+    if (!avecFichiers(e)) return;
+    e.preventDefault();
+    racine.classList.add("depot");
+  });
+  racine.addEventListener("dragleave", (e) => {
+    if (!racine.contains(e.relatedTarget)) racine.classList.remove("depot");
+  });
+  racine.addEventListener("drop", (e) => {
+    racine.classList.remove("depot");
+    if (!avecFichiers(e)) return;
+    e.preventDefault();
+    const fichiers = [...(e.dataTransfer.files || [])];
+    const images = fichiers.filter((f) => /^image\//.test(f.type));
+    if (!images.length) {
+      dire("Seules les images (PNG, JPEG…) se rangent depuis Noter. Pour un texte, colle-le dans le champ.", { genre: "erreur" });
+      return;
+    }
+    if (fichiers.length > 1) dire("Une image à la fois : la première est prête à ranger.");
+    prendreImage(images[0]);
+  });
 
   const microVisible = () => dictee.disponible() && connu.transcription !== false && etatDictee === "repos";
 
@@ -742,6 +921,7 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     dessiner();
   };
   racine.texte = () => zone.value;
+  racine.imageEnAttente = () => Boolean(image);
   racine.ajouterDicte = ajouterDicte;
   racine.cleBrouillon = brouillon;
   /** La feuille se ferme pendant une dictée : rien ne part, rien n'est gardé. */
@@ -813,7 +993,7 @@ export function ouvrirNoter({ texte = "", contexte } = {}) {
   f = feuille({
     titre: "Noter", sousTitre: "Une tâche, une idée, une liste, un rappel… Rémy range.", contenu: form, classe: "feuille-noter", large: true,
     avantFermeture: (cause) => {
-      if (cause === "fond" && form.texte().trim()) {
+      if (cause === "fond" && (form.texte().trim() || form.imageEnAttente())) {
         form.focusChamp();
         return false;
       }
