@@ -34,6 +34,8 @@ export function avecJour(quand, jours, maintenant = new Date()) {
   const j = debutJour(maintenant);
   return new Date(j.getFullYear(), j.getMonth(), j.getDate() + jours, quand.getHours(), quand.getMinutes(), 0, 0);
 }
+/** Le raccourci « dans `jours` jours » est actif quand le jour choisi est le sien (AjusterAction). */
+export const raccourciActif = (quand, jours, maintenant = new Date()) => memeJour(quand, avecJour(quand, jours, maintenant));
 /** Une échéance « avant demain soir » devient un rappel à une heure où l'on est debout. */
 export const versRappel = (quand) => (quand.getHours() >= 21 ? new Date(quand.getFullYear(), quand.getMonth(), quand.getDate(), 9, 0, 0, 0) : quand);
 
@@ -171,6 +173,8 @@ export function ouvrirAjuster({ p, c, a, rang, versAgenda = false, apres, relire
   champDate.addEventListener("change", () => {
     const d = depuisChampDate(champDate.value);
     if (d && Number.isFinite(d.getTime())) e.quand = d;
+    // Les raccourcis suivent le jour tapé, sans redessiner : le champ garde la main.
+    for (const [, j] of RACCOURCIS) sections.querySelector(`[data-cle="jour-${j}"]`)?.setAttribute("aria-pressed", String(raccourciActif(e.quand, j)));
     maj();
   });
 
@@ -205,7 +209,7 @@ export function ouvrirAjuster({ p, c, a, rang, versAgenda = false, apres, relire
     if (e.avecDate) {
       champDate.value = versChampDate(e.quand);
       quand.push(h("label", { class: "etiquette-champ", for: "ajuster-quand" }, enRappel() ? "Le" : versAgenda ? "Début" : "Avant le"), champDate,
-        h("div", { class: "rangee serree ajuster-raccourcis" }, RACCOURCIS.map(([lib, j]) => puce(lib, memeJour(e.quand, avecJour(e.quand, j)), () => {
+        h("div", { class: "rangee serree ajuster-raccourcis" }, RACCOURCIS.map(([lib, j]) => puce(lib, raccourciActif(e.quand, j), () => {
           e.quand = avecJour(e.quand, j);
         }, { cle: `jour-${j}` }))));
     }
@@ -277,7 +281,10 @@ export function ouvrirAjuster({ p, c, a, rang, versAgenda = false, apres, relire
       envoi = false;
       const suite = direEchec(err, relire);
       if (suite === "auth" || suite === "relu") f.fermer(false);
-      else maj();
+      else {
+        maj();
+        principal.focus(); // désactivé pendant l'envoi, il avait perdu le focus
+      }
     }
   }
 
@@ -294,7 +301,10 @@ export function ouvrirAjuster({ p, c, a, rang, versAgenda = false, apres, relire
       envoi = false;
       const suite = direEchec(err, relire);
       if (suite === "auth" || suite === "relu") f.fermer(false);
-      else maj();
+      else {
+        maj();
+        principal.focus(); // désactivé pendant l'envoi, il avait perdu le focus
+      }
       return;
     }
     apres?.();

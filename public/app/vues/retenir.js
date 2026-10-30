@@ -4,9 +4,10 @@
 // texte entier n'est pas gardé. « Tout le texte, Rémy trie seul » reste
 // possible : c'est l'ancien « Retenir ». Les deux appels sont des gestes de
 // Sam (leur coût est journalisé par la tour, lib/analyses.js).
-// Contrat D : ouvrirRetenir({ texte, source = "note" }) → Promise<{ phrase } | null>.
+// Contrat D : ouvrirRetenir({ texte, source = "note", idCapture }) → Promise<{ phrase } | null>.
 // C'est l'appelant qui dit la phrase (bandeau) et vide son champ ; null : rien
-// n'est retenu, le texte reste où il est.
+// n'est retenu, le texte reste où il est. `idCapture` : l'identifiant de la
+// capture (Noter) ; chaque geste en tire le sien (idGeste), le même au renvoi.
 import { api, nouvelId } from "../api.js";
 import { h, vider, bouton, dire, feuille, texteErreur } from "../ui.js";
 
@@ -25,9 +26,23 @@ export const libelleRetenir = (n) => `Retenir ${n} info${n > 1 ? "s" : ""}`;
 /** La raison d'un échec, sans double point final. */
 const raisonDe = (err) => texteErreur(err).replace(/\s+$/, "");
 
+/**
+ * L'identifiant d'un envoi (capture-idempotente-v1) : celui de la capture,
+ * le geste (« t » : tout le texte, « c » : les infos cochées) et ce qui part.
+ * Le renvoi du même geste après un délai dépassé porte le même : la tour, qui
+ * a peut-être fini, rejoue sa réponse au lieu de retenir deux fois ; un autre
+ * texte ou d'autres cases en ont un autre.
+ */
+export function idGeste(base, geste, textes) {
+  let n = 0x811c9dc5; // FNV-1a sur 32 bits : court, stable, sans dépendance
+  for (const c of [].concat(textes).join("\n")) n = Math.imul(n ^ c.codePointAt(0), 0x01000193) >>> 0;
+  return `${base}-${geste}${n.toString(36)}`;
+}
+const baseValide = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(id);
+
 let ouverte = null;
 
-export function ouvrirRetenir({ texte, source = "note", prive = false } = {}) {
+export function ouvrirRetenir({ texte, source = "note", prive = false, idCapture = null } = {}) {
   if (prive) {
     dire(PAS_DE_MEMOIRE);
     return Promise.resolve(null);
@@ -36,6 +51,7 @@ export function ouvrirRetenir({ texte, source = "note", prive = false } = {}) {
   if (!t) return Promise.resolve(null);
   if (ouverte) return ouverte;
   const s = SOURCES.includes(source) ? source : "note";
+  const base = baseValide(idCapture) ? idCapture : nouvelId();
   let infos = [];
   let cochees = new Set();
   let chargement = true;
@@ -81,6 +97,11 @@ export function ouvrirRetenir({ texte, source = "note", prive = false } = {}) {
     vider(principal.querySelector(".lib") || principal, envoi ? "…" : libelleRetenir(cochees.size));
     tout.disabled = chargement || envoi;
     tout.classList.toggle("fort", !chargement && !infos.length);
+    // Pendant l'envoi, ni « Annuler » ni la croix : la mémoire s'écrit déjà,
+    // fermer ferait croire à une annulation (Échap et le clic à côté non plus).
+    annuler.disabled = envoi;
+    const croix = f.el.querySelector(".btn-fermer");
+    if (croix) croix.disabled = envoi;
   };
   const ajouter = (el, ...enfants) => el.append(...enfants);
 
@@ -106,13 +127,15 @@ export function ouvrirRetenir({ texte, source = "note", prive = false } = {}) {
     principal.focus();
   }
 
-  async function envoyer(corps, delai) {
+  async function envoyer(corps, delai, geste) {
     if (envoi) return;
     envoi = true;
     dessiner();
     try {
       const r = await api("/api/capture", { methode: "POST", corps, delai });
       resultat = { phrase: r?.phrase || "Rémy l'a lu et retenu l'essentiel." };
+      // Feuille déjà fermée (session perdue, vue quittée) : c'est retenu, on le dit quand même.
+      if (!f.el.isConnected) dire(resultat.phrase, { genre: "succes" });
       f.fermer(resultat);
     } catch (err) {
       envoi = false;
@@ -121,15 +144,19 @@ export function ouvrirRetenir({ texte, source = "note", prive = false } = {}) {
         return;
       }
       dire(`Pas retenu : ${raisonDe(err)} Ton texte est toujours là.`, { genre: "erreur" });
-      if (f.el.isConnected) dessiner();
+      if (f.el.isConnected) {
+        dessiner();
+        // Désactivé pendant l'envoi, le bouton du geste avait perdu le focus : il le retrouve.
+        geste?.focus();
+      }
     }
   }
 
   principal.addEventListener("click", () => {
     const choisis = infos.filter((_, i) => cochees.has(i)).map((x) => x.texte);
-    if (choisis.length) envoyer({ choisis, source: s }, 90000);
+    if (choisis.length) envoyer({ choisis, source: s, idCapture: idGeste(base, "c", choisis) }, 90000, principal);
   });
-  tout.addEventListener("click", () => envoyer({ texte: t, source: s, idCapture: nouvelId() }, 95000));
+  tout.addEventListener("click", () => envoyer({ texte: t, source: s, idCapture: idGeste(base, "t", t) }, 95000, tout));
   annuler.addEventListener("click", () => f.fermer(null));
 
   const f = feuille({

@@ -208,6 +208,8 @@ function preparer(a, texteBrut, id, { liste, etiquettes = [], parent = null } = 
   }
 }
 const court = (t) => (t.length > 60 ? t.slice(0, 57) + "…" : t);
+/** Le texte dicté s'ajoute à la suite, séparé d'une espace. */
+const coller = (v, t) => (v ? v + (/\s$/.test(v) ? "" : " ") + t : t);
 
 const envoyer = (prep) => fileEnvoi.envoyerElement(prep);
 
@@ -295,12 +297,27 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
   const micro = bouton("", { classe: "noter-micro", icone: "micro", etiquette: "Dicter", titre: "Dicter (le texte arrive dans le champ)" });
   const vocaux = h("div", { class: "dictee-attente", hidden: true });
   const ajouterDicte = (t) => {
-    const v = zone.value;
-    zone.value = v ? v + (/\s$/.test(v) ? "" : " ") + t : t;
+    if (!form?.isConnected) return dicteeApresFermeture(t);
+    zone.value = coller(zone.value, t);
     garderBrouillon();
     dessiner();
     zone.focus();
     zone.setSelectionRange(zone.value.length, zone.value.length);
+  };
+  // La feuille fermée pendant la transcription : le texte dicté n'est jamais
+  // perdu en silence (l'audio, lui, n'est pas gardé). Il rejoint la feuille
+  // rouverte entre-temps, sinon le brouillon ; sans brouillon (un texte venu
+  // d'une conversation), il se reprend d'un clic.
+  const dicteeApresFermeture = (t) => {
+    zone.value = coller(zone.value, t);
+    if (brouillon && noterOuvert?.cleBrouillon === brouillon && noterOuvert !== racine) return noterOuvert.ajouterDicte(t);
+    if (brouillon) {
+      local.ecrire(brouillon, coller(local.lire(brouillon, "") || "", t));
+      dire("Dictée ajoutée à ton brouillon : N pour le reprendre.", { genre: "succes" });
+      return;
+    }
+    const complet = zone.value;
+    dire(`Ta dictée est arrivée après la fermeture : « ${court(t)} ».`, { action: { libelle: "Reprendre", faire: () => ouvrirNoter({ texte: complet, contexte }) } });
   };
   dictee.monterAttente(vocaux, { surTexte: ajouterDicte });
   micro.addEventListener("click", () => {
@@ -435,7 +452,13 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     const majBouton = () => {
       const { choisis, possible } = R.etatRangement(elements, coches);
       ranger.querySelector(".lib").textContent = envoi ? "…" : R.libelleRanger(choisis.length);
-      ranger.disabled = envoi || !possible;
+      // Pendant l'envoi, aria-disabled (le clic est ignoré) plutôt que disabled,
+      // qui ferait perdre le focus : au clavier, Sam retrouve « Ranger » après un échec.
+      ranger.disabled = !envoi && !possible;
+      for (const a of ["aria-disabled", "aria-busy"]) {
+        if (envoi) ranger.setAttribute(a, "true");
+        else ranger.removeAttribute(a);
+      }
       ranger.title = choisis.length && !possible ? "Complète d'abord ce qui est coché et pas prêt (en rouge)." : "";
     };
     const dessinerLignes = (focus = null) => {
@@ -583,8 +606,10 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     }
     // Un long texte à retenir : Rémy propose les infos, Sam coche (sur la tour seulement).
     if (a.genre === "retenir" && [...brut].length >= SEUIL_RETENIR_CHOIX && sait("retenir-choix-v1") && tourJoignable()) {
-      const r = await ouvrirRetenir({ texte: brut, source: "note" });
+      // L'identifiant de la capture : un renvoi après un délai dépassé n'est pas retenu deux fois.
+      const r = await ouvrirRetenir({ texte: brut, source: "note", idCapture: id });
       if (!r) return zone.focus();
+      id = nouvelId();
       if (zone.value.trim() === brut) {
         zone.value = "";
         genreChoisi = null;
@@ -717,6 +742,8 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     dessiner();
   };
   racine.texte = () => zone.value;
+  racine.ajouterDicte = ajouterDicte;
+  racine.cleBrouillon = brouillon;
   /** La feuille se ferme pendant une dictée : rien ne part, rien n'est gardé. */
   racine.arreterDictee = () => dicteeEnCours?.arreter();
   return racine;
@@ -765,6 +792,9 @@ function phraseFaite(a, prep, r) {
   }
 }
 
+/** Le formulaire de la feuille « Noter » ouverte (une dictée arrivée après une fermeture l'y rejoint). */
+let noterOuvert = null;
+
 /**
  * La feuille « Noter » (N, le bouton du rail, le ＋ des onglets). Le texte pas
  * envoyé est gardé (CLE_BROUILLON) et revient à la réouverture ; un clic à
@@ -779,6 +809,7 @@ export function ouvrirNoter({ texte = "", contexte } = {}) {
   // Un texte imposé (« Noter » depuis une conversation) ne touche pas au brouillon.
   const form = formulaireNoter({ texte, contexte, confirmation: "ligne", brouillon: texte ? null : CLE_BROUILLON, fermer: () => f?.fermer(),
     surEnvoye: (g) => { if (g === "question" || g === "plusieurs") f?.fermer(); else form.focusChamp(); } });
+  noterOuvert = form;
   f = feuille({
     titre: "Noter", sousTitre: "Une tâche, une idée, une liste, un rappel… Rémy range.", contenu: form, classe: "feuille-noter", large: true,
     avantFermeture: (cause) => {
@@ -789,6 +820,7 @@ export function ouvrirNoter({ texte = "", contexte } = {}) {
       return true;
     },
     surFermeture: () => {
+      if (noterOuvert === form) noterOuvert = null;
       form.arreterDictee?.();
       if (!texte && form.texte().trim()) dire("Brouillon gardé : N pour le reprendre.", { duree: 3000 });
     },

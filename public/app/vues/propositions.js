@@ -63,6 +63,12 @@ export const echouee = (p) => p?.statut === "echec";
 export const versAgenda = (p) => p?.source === "agenda";
 export const nombreEchecs = (p) => p?.bilan?.echoues?.length || 0;
 export const rangeesEnRappels = (p) => Math.max(0, (p?.actionsOrigine?.length ?? p?.actions?.length ?? 0) - (p?.actions?.length || 0));
+/**
+ * La carte disparaît du fil : « Non merci », ou une proposition vide. Rangée
+ * en rappels (toutes ses lignes), elle reste : « Rangé dans tes rappels »
+ * (PropositionView, la cloche, sans pied).
+ */
+export const carteCachee = (p) => refusee(p) || (!p?.actions?.length && !convertie(p));
 /** Tout existait déjà : rien d'écrit, rien de raté. */
 export const toutDejaLaProp = (p) => appliquee(p) && Boolean(p.bilan?.dejaLa?.length) && !(p.bilan?.faits || []).length && nombreEchecs(p) === 0;
 const memeNom = (nom, a) => nom != null && (nom === libelleAction(a) || nom === a.nom || nom === a.titre);
@@ -285,7 +291,7 @@ async function agir(carte, etat, faire) {
 // --- Motion et l'agenda ---
 
 function dessinerPlanning(el, p, c, index, carte, etat, { relire, ctx }) {
-  if (refusee(p) || !p.actions?.length) {
+  if (carteCachee(p)) {
     // « Non merci » : la carte ne revient pas (ChatModel.carte).
     el.hidden = true;
     vider(el);
@@ -304,7 +310,7 @@ function dessinerPlanning(el, p, c, index, carte, etat, { relire, ctx }) {
   const blocs = [tete];
   if (ouverte && p.resume) blocs.push(h("p", { class: "prop-resume" }, p.resume));
   if (ouverte && p.perimee === true) blocs.push(h("p", { class: "prop-perimee" }, icone("horloge"), h("span", null, p.raisonPeremption || "Proposition ancienne : vérifie-la avant de dire oui.")));
-  p.actions.forEach((a, k) => {
+  (p.actions || []).forEach((a, k) => {
     const rang = a.rang ?? k;
     const decochee = partielle && etat.decoches.has(rang);
     const reglable = ajustable && peutAjuster(a) && !decochee;

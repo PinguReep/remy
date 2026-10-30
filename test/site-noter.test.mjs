@@ -25,6 +25,7 @@ const V = await import("../public/app/vues/appel.js");
 const T = await import("../public/app/vues/retenir.js");
 const N = await import("../public/app/vues/noter.js");
 const { apercu } = await import("../public/app/analyse/genre.js");
+const { plier } = await import("../public/app/analyse/dates.js");
 
 const date = (j, m, h, mi = 0, an = 2026) => new Date(an, m - 1, j, h, mi, 0, 0);
 const ms = (...a) => date(...a).getTime();
@@ -36,6 +37,17 @@ test("étiquette devinée : les cas de l'iPhone", () => {
   assert.equal(E.etiquetteDevinee("Contrôle technique de la Twingo", e), "v");
   assert.equal(E.etiquetteDevinee("Renouveler l'ordonnance", e), "s");
   assert.equal(E.etiquetteDevinee("Payer le loyer", e), null, "« Administratif » n'existe pas chez Sam : rien");
+  assert.equal(E.etiquetteDevinee("Rendez-vous Twingo samedi", [{ id: "v", nom: "Voiture" }]), "v", "« twingo » : un indice de l'iPhone");
+});
+
+test("étiquette devinée : la table du site est celle de l'iPhone (EtiquetteDevinee.indices)", () => {
+  const swift = fs.readFileSync(new URL("../ios-native/RemyCore/Sources/RemyCore/Rangement.swift", import.meta.url), "utf8");
+  const bloc = swift.slice(swift.indexOf("public enum EtiquetteDevinee"));
+  const pli = (m) => plier(m).replace(/œ/g, "oe");
+  const iphone = [...bloc.slice(0, bloc.indexOf("]\n")).matchAll(/\("([^"]+)", \[([^\]]*)\]\)/g)]
+    .map(([, nom, mots]) => [nom, [...new Set([...mots.matchAll(/"([^"]+)"/g)].map((x) => pli(x[1])))].sort()]);
+  assert.equal(iphone.length, 6, "les six domaines lus dans Rangement.swift");
+  assert.deepEqual(E.INDICES.map(([nom, mots]) => [nom, [...new Set(mots.map(pli))].sort()]), iphone, "mêmes domaines, mêmes mots, même ordre");
 });
 
 test("étiquette devinée : sans casse ni accents, seulement une étiquette qui existe", () => {
@@ -209,6 +221,14 @@ test("proposition : l'en-tête avant et après « Oui »", () => {
   assert.equal(P.entete({ actions: [], statut: "converti" }), "Rangé dans tes rappels");
 });
 
+test("proposition : rangée en rappels, la carte reste ; refusée ou vide, elle s'en va", () => {
+  assert.equal(P.carteCachee({ actions: [], statut: "converti" }), false, "« Rangé dans tes rappels », comme sur l'iPhone");
+  assert.equal(P.carteCachee({ statut: "converti" }), false);
+  assert.equal(P.carteCachee({ actions: [{ type: "creer", nom: "A" }], statut: "refuse" }), true, "« Non merci »");
+  assert.equal(P.carteCachee({ actions: [], statut: "en_attente" }), true, "rien à proposer");
+  assert.equal(P.carteCachee({ actions: [{ type: "creer", nom: "A" }], statut: "en_attente" }), false);
+});
+
 test("proposition : ligne par ligne, raté, écarté, défait", () => {
   const p = { statut: "applique", actions: [{ nom: "A" }, { nom: "B" }, { nom: "C" }], bilan: { faits: ["A"], echoues: [{ nom: "B", erreur: "quota Motion" }], ecartees: ["C"] } };
   assert.equal(P.erreurAffichee(p, p.actions[1]), "Pas fait : quota Motion");
@@ -319,6 +339,9 @@ test("ajuster : raccourcis de jour, rappel à une heure où l'on est debout", ()
   const now = date(15, 10, 10, 40);
   assert.equal(A.avecJour(date(20, 10, 18, 15), 1, now).getTime(), ms(16, 10, 18, 15), "« Demain » garde l'heure");
   assert.equal(A.avecJour(date(20, 10, 18, 15), 7, now).getTime(), ms(22, 10, 18, 15));
+  assert.equal(A.raccourciActif(date(16, 10, 18, 15), 1, now), true, "demain : « Demain »");
+  assert.equal(A.raccourciActif(date(18, 10, 9), 3, now), true, "J+3 : « Dans 3 jours »");
+  assert.deepEqual(A.RACCOURCIS.filter(([, j]) => A.raccourciActif(date(20, 10, 10), j, now)), [], "J+5 tapé à la main : aucun raccourci");
   assert.equal(A.versRappel(date(16, 10, 23)).getTime(), ms(16, 10, 9), "23 h → 9 h");
   assert.equal(A.versRappel(date(16, 10, 14)).getTime(), ms(16, 10, 14));
   assert.equal(A.phraseRangeEnRappel(date(16, 10, 9)), "Rangé en rappel, ven. 16 oct. 09:00.");
@@ -335,6 +358,19 @@ test("Retenir : les mots de la feuille", () => {
   assert.equal(T.nomSource("claude"), "cette réponse de Claude");
   assert.equal(T.libelleRetenir(1), "Retenir 1 info");
   assert.equal(T.libelleRetenir(3), "Retenir 3 infos");
+});
+
+test("Retenir : chaque geste a son idCapture, le même au renvoi (capture-idempotente-v1)", () => {
+  const base = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f8a9b0c";
+  const infos = ["Reprend la boutique à plein temps en janvier", "Ne travaille plus le dimanche"];
+  const choix = T.idGeste(base, "c", infos);
+  assert.equal(T.idGeste(base, "c", [...infos]), choix, "le renvoi des mêmes cases : le même");
+  assert.notEqual(T.idGeste(base, "c", infos.slice(0, 1)), choix, "d'autres cases : un autre");
+  assert.notEqual(T.idGeste(base, "t", infos.join("\n")), choix, "tout le texte n'est pas la sélection");
+  assert.notEqual(T.idGeste(base, "t", "Un autre texte"), T.idGeste(base, "t", "Un texte"), "un texte changé : un autre");
+  assert.notEqual(T.idGeste("autre-capture-1234", "c", infos), choix, "une autre capture : un autre");
+  // La forme que la tour reconnaît (cleCapture, lib/handlers.js) ; sinon elle retiendrait deux fois.
+  for (const id of [choix, T.idGeste(base, "t", "x".repeat(5000))]) assert.match(id, /^[A-Za-z0-9_-]{8,100}$/);
 });
 
 test("dictée : la barre, le plafond, trop court", () => {
@@ -653,6 +689,9 @@ test("ajuster : les clés du site acceptées par la tour, puis « Ranger en rapp
   assert.equal((await appel("/api/rappels")).rappels.filter((x) => x.texte === "Acheter du liquide").length, 1);
   const tout = await appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [], convertis: [0] } });
   assert.equal(tout.statut, "converti", "tout rangé en rappels");
+  const convertie = { id: "p-ca", statut: tout.statut, actions: tout.actions };
+  assert.equal(P.carteCachee(convertie), false, "la carte reste dans le fil…");
+  assert.equal(P.entete(convertie), "Rangé dans tes rappels", "… avec la cloche et son en-tête");
   await assert.rejects(appel("/api/conversations/ca/propositions/p-ca/ajuster", { methode: "POST", corps: { actions: [{ rang: 0, duree: 30 }] } }), (err) => err.statut === 409, "409 : la carte relit la conversation");
 });
 

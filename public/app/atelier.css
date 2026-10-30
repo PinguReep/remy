@@ -689,6 +689,8 @@ button.prop-ligne:hover { background: var(--fond-2); }
 .retenir-espace { flex: 1; }
 .retenir-tout { color: var(--encre-2); }
 .retenir-tout.fort { color: var(--encre); }
+/* Pendant l'envoi, la croix de la feuille Retenir attend (grisée). */
+.feuille-retenir .btn-fermer:disabled span { opacity: .45; }
 /* L'appel avec Rémy (plein écran) */
 dialog.appel { width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; margin: 0; padding: 0; border: 0; background: var(--fond); color: var(--encre); }
 dialog.appel[open] { display: flex; flex-direction: column; }

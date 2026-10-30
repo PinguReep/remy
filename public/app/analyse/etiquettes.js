@@ -5,9 +5,9 @@
 // gerer.js et tri-rappels.js, en import()).
 import { plier } from "./dates.js";
 
-/** Les mots qui désignent un domaine, dans l'ordre où on les essaie. */
+/** Les mots qui désignent un domaine, dans l'ordre où on les essaie : la table de l'iPhone (les variantes accentuées en moins). */
 export const INDICES = [
-  ["Voiture", ["garage", "voiture", "controle technique", "pneu", "vidange", "parking", "carte grise", "permis"]],
+  ["Voiture", ["garage", "voiture", "controle technique", "pneu", "vidange", "twingo", "parking", "carte grise", "permis"]],
   ["Santé", ["medecin", "docteur", "dentiste", "pharmacie", "ordonnance", "kine", "podologue", "vaccin", "analyse", "mutuelle"]],
   ["Administratif", ["impot", "caf", "banque", "declaration", "papiers", "passeport", "carte d'identite", "urssaf", "facture", "loyer", "assurance"]],
   ["Anniversaire", ["anniversaire", "anniv"]],
