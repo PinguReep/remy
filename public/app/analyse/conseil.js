@@ -146,6 +146,21 @@ function conseilMaintenant(j, { enCours: e, avenir, aFaire, enRetard, m }) {
   return { texte: "Plus rien de prévu aujourd'hui.", pourquoi: ["Journée terminée dans Motion et ton agenda"] };
 }
 
+/**
+ * Le conseil « maintenant » de la tour arrive par deux chemins : le tableau et
+ * GET /api/conseil. Chacun : { reponse, recuA } ou null. On garde le plus
+ * récemment généré ; à genereA égal, la réponse reçue en dernier, seule à dire
+ * si ce conseil est encore à jour (sinon un « aJour » d'il y a une heure le
+ * garderait « réfléchi » au-delà des 20 min).
+ */
+export function conseilLePlusRecent(tableau, lu) {
+  if (!tableau?.reponse || !lu?.reponse) return tableau?.reponse || lu?.reponse || null;
+  const gt = tableau.reponse.conseil?.genereA ?? 0;
+  const gl = lu.reponse.conseil?.genereA ?? 0;
+  if (gt !== gl) return gt > gl ? tableau.reponse : lu.reponse;
+  return (tableau.recuA ?? 0) >= (lu.recuA ?? 0) ? tableau.reponse : lu.reponse;
+}
+
 /** Le conseil de la tour s'il vaut encore : réfléchi par le modèle local, à jour, ou de moins de 20 min (ConseilAffiche.glm). */
 export function conseilReflechi(tour, m = Date.now()) {
   const c = tour?.conseil;

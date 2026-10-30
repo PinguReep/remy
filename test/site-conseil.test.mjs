@@ -12,7 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { conseilPour, conseilReflechi, ligneSource, faitsConseil, aProposer, TYPES_CONSEIL } = await import("../public/app/analyse/conseil.js");
+const { conseilPour, conseilReflechi, conseilLePlusRecent, ligneSource, faitsConseil, aProposer, TYPES_CONSEIL } = await import("../public/app/analyse/conseil.js");
 const { BROUILLONS } = await import("../public/app/analyse/journee.js");
 
 // Jeudi 15 octobre 2026, 10:40 à Paris (AccueilTests).
@@ -184,6 +184,28 @@ test("le conseil réfléchi : à jour, ou de moins de 20 min ; sinon le calcul d
   // La capture du soir (19:40) : un conseil de midi n'est plus affiché comme frais.
   const soir = new Date(2026, 9, 15, 19, 40).getTime();
   assert.equal(conseilReflechi(c(new Date(2026, 9, 15, 12, 5).getTime()), soir), null);
+});
+
+test("RÉGRESSION : un « aJour » ancien ne garde pas réfléchi un conseil que le tableau, plus récent, dit périmé", () => {
+  // Le conseil a été généré il y a 30 min. Le panneau l'a lu « à jour » (GET /api/conseil),
+  // puis la journée a changé et le modèle local ne répond plus : le tableau suivant, même
+  // genereA, dit aJour:false. C'est lui qu'on croit : le conseil n'est plus « réfléchi ».
+  const genereA = maintenant - 30 * 60e3;
+  const reponse = (aJour, extra = {}) => ({ type: "maintenant", conseil: { texte: "Avance sur « Trier la boîte mail ».", source: "glm", genereA }, aJour, enCours: false, disponible: true, ...extra });
+  const lu = { reponse: reponse(true), recuA: maintenant - 5 * 60e3 };
+  const tableau = { reponse: reponse(false, { disponible: false }), recuA: maintenant - 60e3 };
+  assert.equal(conseilLePlusRecent(tableau, lu), tableau.reponse, "à genereA égal : la réponse reçue en dernier");
+  assert.equal(conseilReflechi(conseilLePlusRecent(tableau, lu), maintenant), null, "plus « conseil réfléchi » : le calcul d'ici");
+  // Dans l'autre sens (le panneau relu après le tableau), la lecture l'emporte.
+  assert.equal(conseilLePlusRecent({ ...tableau, recuA: maintenant - 10 * 60e3 }, lu), lu.reponse);
+  // Un conseil plus récemment généré passe devant, d'où qu'il vienne.
+  const neuf = { reponse: { ...reponse(false), conseil: { ...reponse(false).conseil, genereA: maintenant - 60e3 } }, recuA: maintenant - 20 * 60e3 };
+  assert.equal(conseilLePlusRecent(neuf, lu), neuf.reponse);
+  assert.equal(conseilLePlusRecent(lu, neuf), neuf.reponse);
+  // Un seul des deux, ou aucun.
+  assert.equal(conseilLePlusRecent(null, lu), lu.reponse);
+  assert.equal(conseilLePlusRecent(tableau, null), tableau.reponse);
+  assert.equal(conseilLePlusRecent(null, null), null);
 });
 
 test("la ligne de source : réfléchi (à HH:MM, il réfléchit à nouveau…), ou calculé ici et pourquoi", () => {

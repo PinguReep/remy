@@ -9,7 +9,7 @@
 // la tour journalise ce calcul (kind conseil), déclenché par ce seul geste.
 import { api, ecrire, sait } from "../api.js";
 import { h, vider, icone, bouton, dire, feuille, local, texteErreur } from "../ui.js";
-import { conseilPour, conseilReflechi, ligneSource, faitsConseil, TYPES_CONSEIL } from "../analyse/conseil.js";
+import { conseilPour, conseilReflechi, conseilLePlusRecent, ligneSource, faitsConseil, TYPES_CONSEIL } from "../analyse/conseil.js";
 import { BROUILLONS, estRendezVous } from "../analyse/journee.js";
 
 const PAUSE = 1500;
@@ -25,10 +25,11 @@ const raisonDe = (err) => texteErreur(err).replace(/[.\s]+$/, "");
  */
 export function creerConseil(ctx, { journee, ouvrirGerer, surChange } = {}) {
   const carte = h("div", { class: "conseil-zone" });
-  const parType = new Map(); // type → dernière réponse de GET /api/conseil
+  const parType = new Map(); // type → { reponse, recuA } : la dernière réponse de GET /api/conseil, et quand
   const chargement = new Set();
   const renouvellement = new Set();
   let dashboard = null;
+  let tableauRecuA = 0; // quand le tableau affiché est arrivé
   let panneau = null;
   let vivant = true;
 
@@ -36,11 +37,10 @@ export function creerConseil(ctx, { journee, ouvrirGerer, surChange } = {}) {
   /** Le conseil de la tour pour ce type (« maintenant » arrive aussi avec le tableau : le plus récent des deux). */
   function tour(type) {
     const lu = parType.get(type) || null;
-    if (type !== "maintenant") return lu;
-    const d = dashboard?.conseil || null;
-    if (!lu || !d) return lu || d;
-    return (d.conseil?.genereA ?? 0) > (lu.conseil?.genereA ?? 0) ? d : lu;
+    if (type !== "maintenant") return lu?.reponse || null;
+    return conseilLePlusRecent(dashboard?.conseil ? { reponse: dashboard.conseil, recuA: tableauRecuA } : null, lu);
   }
+  const garder = (type, c) => parType.set(type, { reponse: c, recuA: Date.now() });
   function calcul(type, m = Date.now()) {
     const j = journee?.() || null;
     const localC = conseilPour(type, j, m);
@@ -106,14 +106,14 @@ export function creerConseil(ctx, { journee, ouvrirGerer, surChange } = {}) {
     try {
       let essais = 0;
       let c = await api(`/api/conseil?type=${encodeURIComponent(type)}`, { delai: 15000 });
-      parType.set(type, c);
+      garder(type, c);
       dessiner();
       while (c?.enCours === true && essais < 20 && enVie()) {
         await attendre(PAUSE);
         essais += 1;
         try {
           c = await api(`/api/conseil?type=${encodeURIComponent(type)}`, { delai: 15000 });
-          parType.set(type, c);
+          garder(type, c);
           dessiner();
         } catch (err) {
           if (err?.nature === "auth") break;
@@ -156,7 +156,7 @@ export function creerConseil(ctx, { journee, ouvrirGerer, surChange } = {}) {
           if (err?.nature === "auth") return;
           continue;
         }
-        parType.set(type, c);
+        garder(type, c);
         if ((c?.conseil?.genereA ?? 0) > avant || c?.enCours !== true) break;
       }
       if ((tour(type)?.conseil?.genereA ?? 0) <= avant && enVie()) {
@@ -246,6 +246,8 @@ export function creerConseil(ctx, { journee, ouvrirGerer, surChange } = {}) {
     carte,
     /** Après chaque lecture du tableau : le conseil de la journée, relu si le modèle local réfléchit encore. */
     maj({ dashboard: d } = {}) {
+      // Un tableau neuf (pas le même redessiné après une lecture ratée) : daté de son arrivée.
+      if (d && d !== dashboard) tableauRecuA = Date.now();
       dashboard = d || null;
       dessiner();
       if (dashboard?.conseil?.enCours === true) charger("maintenant");
