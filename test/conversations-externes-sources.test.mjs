@@ -400,7 +400,7 @@ const zipAbime = (id) => {
   return z;
 };
 
-test("Téléchargements : seul l'export ChatGPT est importé, une fois ; rien n'y est déplacé, renommé, effacé ni modifié", async () => {
+test("Téléchargements : seul l'export ChatGPT est PROPOSÉ, puis importé sur un geste, une fois ; rien n'y est déplacé, renommé, effacé ni modifié", async () => {
   fs.mkdirSync(telechargements, { recursive: true });
   const ecrire = (nom, contenu, jours = 1) => {
     const f = path.join(telechargements, nom);
@@ -421,15 +421,33 @@ test("Téléchargements : seul l'export ChatGPT est importé, une fois ; rien n'
   assert.equal(b.ok, true, JSON.stringify(b));
   assert.equal(b.telechargements.dossiers, 1);
   assert.equal(b.telechargements.zips, 5);
-  assert.equal(b.telechargements.importes, 1);
+  assert.equal(b.telechargements.importes, 0, "aucun compte accepté : rien n'entre sans un geste");
+  assert.equal(b.telechargements.proposes, 1);
   assert.equal(b.telechargements.tropVieux, 1);
   assert.equal(b.telechargements.autres, 3, "photos, dossier imbriqué, autre assistant");
   assert.equal(empreinte(telechargements), avant, "Téléchargements intact : présence, taille, date, contenu");
+  // La carte : le nom en clair à l'écran seulement, la taille et la date.
+  const [p] = r.etat.chatgpt.telechargements.propositions;
+  assert.equal(p.nom, "4d8e-export-2026-10-28.zip");
+  assert.match(p.id, /^f-[a-f0-9]{24}$/);
+  assert.ok(p.octets > 0 && p.date > 0 && p.autreCompte === true, JSON.stringify(p));
+  assert.equal(source(r.etat, "chatgpt").conversations, 0);
+  assert.equal(r.etat.chatgpt.rappel.aMontrer, false, "la carte de l'export trouvé parle à la place du rappel");
+  // Relu : toujours proposé, jamais importé seul.
+  const r1 = await lire("chatgpt");
+  assert.equal(r1.bilan.sources.chatgpt.telechargements.importes, 0);
+  assert.equal(r1.etat.chatgpt.telechargements.propositions.length, 1);
+  // Le geste : « Importer ».
+  const oui = await json("POST", "/api/conversations-externes/chatgpt/telechargements", { id: p.id, importer: true });
+  assert.equal(oui.status, 200, JSON.stringify(oui.corps));
+  assert.equal(oui.corps.bilan.nouvelles, 1);
+  assert.deepEqual(oui.corps.etat.chatgpt.telechargements.propositions, [], "la carte s'en va");
+  assert.equal(empreinte(telechargements), avant);
   assert.deepEqual(fs.readdirSync(telechargements).sort(), ["4d8e-export-2026-10-28.zip", "archive-dossier.zip", "export-ancien.zip", "export-autre-assistant.zip", "facture.pdf", "photos-vacances.zip"]);
-  const s = source(r.etat, "chatgpt");
+  const s = source(await etat(), "chatgpt");
   assert.equal(s.conversations, 1);
   assert.ok(s.emplacements.some((x) => x.origine === "Téléchargements, lecture seule" && x.trouve && /Downloads$/.test(x.chemin)), JSON.stringify(s.emplacements));
-  assert.equal(r.etat.imports.importes, 1, "l'autre assistant n'est pas compté comme un import");
+  assert.equal((await etat()).imports.importes, 1, "l'autre assistant n'est pas compté comme un import");
   // Le passage suivant : rien n'est relu ni réimporté.
   const r2 = await lire("chatgpt");
   assert.equal(r2.bilan.sources.chatgpt.telechargements.importes, 0);
@@ -543,12 +561,20 @@ test("carte « Exporter ChatGPT » : jamais importé (source allumée), ou plus 
   e = (await json("PUT", "/api/conversations-externes/sources/chatgpt", { actif: true })).corps;
   assert.deepEqual([e.chatgpt.rappel.dernierImport, e.chatgpt.rappel.aMontrer], [null, true]);
   assert.match(source(e, "chatgpt").aide.quoiFaire, /clique son lien sur la tour : Rémy prend le \.zip dans ses Téléchargements\. Reçu ailleurs \(iPhone, autre ordinateur\) : envoie-le depuis l.app \(Importer\)/);
-  // Effacée puis rallumée : l'export encore dans Téléchargements est repris
-  // (comme Claude Code et T3 se relisent), et la carte se tait.
+  // Effacée puis rallumée : les comptes acceptés sont oubliés aussi ; l'export
+  // encore dans Téléchargements est PROPOSÉ (un geste), et la carte du rappel se tait.
   const avant = empreinte(telechargements);
   const r = await lire("chatgpt");
-  assert.ok(r.bilan.sources.chatgpt.telechargements.importes >= 1, JSON.stringify(r.bilan.sources.chatgpt.telechargements));
+  const t = r.bilan.sources.chatgpt.telechargements;
+  assert.equal(t.importes, 0, JSON.stringify(t));
+  assert.ok(t.proposes >= 1, JSON.stringify(t));
   assert.equal(r.etat.chatgpt.rappel.aMontrer, false);
+  // « Importer » sur la plus récente : son compte redevient connu, les autres du même compte suivent seuls.
+  const plusRecente = r.etat.chatgpt.telechargements.propositions[0];
+  assert.equal((await json("POST", "/api/conversations-externes/chatgpt/telechargements", { id: plusRecente.id, importer: true })).status, 200);
+  const r2 = await lire("chatgpt");
+  assert.deepEqual(r2.etat.chatgpt.telechargements.propositions, [], JSON.stringify(r2.bilan.sources.chatgpt.telechargements));
+  assert.ok(r2.etat.imports.importes >= 1);
   assert.equal(empreinte(telechargements), avant);
 });
 

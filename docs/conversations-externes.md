@@ -136,24 +136,45 @@ Téléchargements).
 ChatGPT n'a pas d'API de l'historique, seulement son export par mail. Rémy ne
 pilote aucun navigateur et ne se connecte ni à ChatGPT ni à ta messagerie :
 tu demandes l'export, tu cliques le lien du mail **sur la tour**, le
-navigateur range le .zip dans ses **Téléchargements** — et Rémy l'y prend, au
+navigateur range le .zip dans ses **Téléchargements** — et Rémy l'y trouve, au
 passage suivant (30 min, la nuit, ou « Lire maintenant »). Cliqué ailleurs
 (l'iPhone, un autre ordinateur du tailnet), le .zip arrive dans les
 Téléchargements de cet appareil, que Rémy ne voit pas : il s'envoie alors
 depuis « Importer le .zip » (dans la carte) ou « Importer ».
 
+- **Un geste avant tout import** (revue du 30/10) : un site peut ranger un
+  .zip dans Téléchargements sans rien demander ; un faux export devenait la
+  mémoire de Sam. Un export trouvé est donc **proposé** : une carte « Un
+  export ChatGPT trouvé dans Téléchargements : « nom.zip » (12 Mo, du
+  30/10). L'importer ? » (écran Conversations et Sources), « Importer » ou
+  « Pas celui-là ». Seul l'export d'un **compte déjà accepté d'un geste**
+  s'importe seul : au premier import accepté (la carte, l'envoi depuis
+  l'app, le dossier Imports), la tour garde un HMAC de l'identifiant du
+  compte lu dans `user.json` ; un export suivant du même compte passe sans
+  carte. Sans `user.json`, ou d'un autre compte : la carte. Effacer ChatGPT
+  ou « Tout effacer » oublie aussi les comptes acceptés.
 - **Ce qu'il regarde** : `~\Downloads` (ou `REMY_TELECHARGEMENTS`), seulement
   les `.zip` du premier niveau, modifiés il y a moins de 90 jours, pas plus
   gros que `REMY_IMPORT_MAX_MO`. D'un .zip, il ne lit d'abord que l'annuaire
   central (les noms des entrées) : un export ChatGPT a `conversations.json`
   à sa racine ; seulement alors il l'ouvre. L'export d'un autre assistant
-  (même nom de fichier, autre forme) n'est pas compté comme un import.
+  (même nom de fichier, autre forme) n'est ni proposé ni compté comme un
+  import. Les .zip sont lus du plus ancien au plus récent, et une
+  conversation n'est réécrite que par une version plus récente (`update_time`).
+- **Une archive piégée** (bombe de décompression) : un `conversations.json`
+  qui annonce plus de 8 Go, ou plus de 100 fois sa taille compressée, est
+  écarté sans être ouvert (dit comme un .zip illisible) ; une entrée plus
+  longue que ce que l'annuaire annonce est coupée dès le dépassement.
+  « Effacer » et « Tout effacer » n'attendent jamais un import en cours :
+  il s'arrête au morceau suivant.
 - **Ce qu'il ne fait jamais** : déplacer, renommer, effacer ou modifier un
   fichier de Téléchargements — il est à toi, efface-le quand tu veux. Un
   même export n'est importé qu'une fois (son empreinte, comme pour Imports) ;
   un .zip déjà regardé n'est pas relu tant qu'il ne change pas (empreintes
   HMAC de son chemin, de sa taille et de sa date : aucun nom de fichier
-  gardé en clair).
+  gardé en clair, ni chemin : d'une erreur, seul le code est gardé). Un .zip
+  verrouillé un instant (antivirus, navigateur : `EBUSY`, `EPERM`…) n'est
+  pas une erreur : il est relu au passage suivant.
 - **Un .zip illisible** (téléchargement abîmé) : nommé à l'écran (« 1 .zip
   illisible dans les Téléchargements de la tour : « export.zip » (du 9/10)… »,
   sous « Prendre l'export dans Téléchargements » et dans
@@ -174,8 +195,9 @@ depuis « Importer le .zip » (dans la carte) ou « Importer ».
   Sources des conversations › « Me rappeler d'exporter ChatGPT ») ; la
   surveillance aussi (« Prendre l'export dans Téléchargements », allumée par
   défaut, son chemin affiché).
-- Effacer ChatGPT oublie aussi les .zip déjà vus : rallumée, la source
-  reprend l'export encore dans Téléchargements.
+- Effacer ChatGPT oublie aussi les .zip déjà vus et les comptes acceptés :
+  rallumée, la source **propose** de nouveau l'export encore dans
+  Téléchargements (elle ne le reprend pas seule).
 
 ### Réglages de la tour (`remy.env`)
 
@@ -266,15 +288,18 @@ rend `{ "error": "<code>", "message": "<phrase>", "quoiFaire": "<phrase>" }`.
 - `bilan` : les compteurs de la dernière lecture (jamais de contenu) ; pour
   T3, `detail` donne chaque base (chemin, fils, gardés, hors filtre…) ; pour
   ChatGPT, `telechargements` (dossiers, .zip vus, exports, importés, déjà
-  vus, autres, trop vieux, trop gros, illisibles).
+  vus, autres, trop vieux, trop gros, illisibles, `occupes` : verrouillés un
+  instant, `proposes` : en attente d'un geste, `ecartes` : refusés).
 - `recensement` : toutes les sessions (Claude Code) ou tous les fils (T3) vus
   à la dernière lecture, et `phrase`, à montrer telle quelle (`null` : rien
   lu encore, ou tour plus ancienne).
 - `chatgpt` : Téléchargements surveillé (`forceParLaTour` :
   `REMY_TELECHARGEMENTS=off` ; `illisibles` : les .zip illisibles de la
   dernière lecture, `{ nom, date, bloquant }`, et `phraseIllisibles`, à
-  montrer telle quelle) et la carte (`rappel.aMontrer`). Une erreur venue
-  de Téléchargements porte `origine: "telechargements"`.
+  montrer telle quelle ; `propositions` : les exports trouvés qui attendent
+  un geste, `{ id, nom, octets, date, autreCompte }`) et la carte
+  (`rappel.aMontrer`, qui se tait tant qu'une proposition attend). Une
+  erreur venue de Téléchargements porte `origine: "telechargements"`.
 - `cle.origine` : `fichier`, `remy.env` ou `a-creer` (rien lu encore).
 - `imports.enAttente` : les exports déposés pas encore importés (un .zip, un
   `conversations*.json`, un dossier qui en contient) ; `imports.originaux` :
@@ -390,6 +415,7 @@ des 7 derniers jours) : des **propositions**, rien n'est fait seul.
 | `DELETE /api/conversations-externes/sources/:id` | — | `{ ok, message, etat }` : tout ce qui vient de la source est effacé (et les résumés de nuit qui s'en servaient), la source coupée ; l'original n'est pas touché |
 | `DELETE /api/conversations-externes/tout` | — | `{ ok, message, etat }` : tout effacé (clé changée) |
 | `PUT /api/conversations-externes/usage` | `{ "chat": false }`, `{ "nuit": true }` | l'état |
+| `POST /api/conversations-externes/chatgpt/telechargements` | `{ "id": "f-…", "importer": true }` (la réponse à la carte d'un export trouvé dans Téléchargements ; `false` : « Pas celui-là », plus proposé tant qu'il ne change pas) | `{ ok, bilan, etat }` (importé : son compte devient connu) ou `{ ok, message, etat }` ; 400 sans `id` ni `importer` ; 404 `introuvable` (le fichier a bougé, `quoiFaire` : « Lire maintenant ») ; 422 `zip-invalide`, `json-invalide`, `sans-conversations`, `pas-chatgpt` |
 | `POST /api/conversations-externes/chatgpt` | **le fichier** (.zip de l'export ou `conversations.json`), en corps brut (`Content-Type: application/zip` ou `application/octet-stream`) | `{ bilan: { deja, conversations, nouvelles, misesAJour, inchangees, ignorees, messages, masques, tronquees }, etat }` ; 413 `trop-gros` (avec `quoiFaire` : n'envoyer que `conversations.json`) ; 422 `zip-invalide`, `json-invalide`, `sans-conversations` ; 400 `envoi-interrompu` (rien reçu pendant 2 min). Un envoi lent (4G) peut durer plus de 5 min : la tour allonge son délai de réception le temps des envois authentifiés |
 
 Un export déjà envoyé rend `bilan.deja: true` (reconnu à son empreinte) ; une

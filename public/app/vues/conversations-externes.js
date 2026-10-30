@@ -141,7 +141,35 @@ function dessinerCarte({ forcer = false } = {}) {
   // change) : un import en cours garde sa progression pendant la frappe.
   if (!forcer && refs.carte.dataset.visible === String(visible)) return;
   refs.carte.dataset.visible = String(visible);
-  vider(refs.carte, visible ? carteExport(() => dessinerCarte({ forcer: true })) : null);
+  const redessiner = () => dessinerCarte({ forcer: true });
+  vider(refs.carte, visible ? [cartesTelechargements(redessiner), carteExport(redessiner)] : null);
+}
+
+// --- Un export trouvé dans Téléchargements : « l'importer ? » (revue du 30/10) ---
+// Rien de ce qu'un site range dans Téléchargements n'entre sans ce geste.
+function cartesTelechargements(dessiner) {
+  const liste = C.propositionsTelechargements(etat);
+  if (!liste.length) return null;
+  return liste.map((p) => {
+    const c = C.carteProposition(p);
+    const repondre = (importer) => async (e) => occupe(e.currentTarget, async () => {
+      try {
+        const r = await ecrire(C.cheminReponseTelechargement(), { id: p.id, importer }, { delai: 300000 });
+        dire(importer ? `Import ChatGPT : ${C.phraseImport(r?.bilan || {})}` : r?.message || "Pas importé.", { genre: importer ? "succes" : "info", duree: importer ? 7000 : undefined });
+        apres(dessiner, r?.etat);
+      } catch (err) {
+        direErreur(err, importer ? () => repondre(true)({ currentTarget: null }) : null, importer ? "Pas importé" : "Pas enregistré", { rafraichir: () => synchroniser("chatgpt") });
+      }
+    });
+    return h("section", { class: "carte", "aria-label": c.titre, dataset: { carte: "export-trouve" }, style: { margin: "0 0 12px" } },
+      h("div", { class: "sur-titre" }, "ChatGPT"),
+      h("h3", { class: "carte-titre", style: { margin: "2px 0 6px" } }, c.titre),
+      h("p", { style: { margin: "0 0 4px", overflowWrap: "anywhere" } }, c.texte),
+      h("p", { class: "aide", style: { margin: "0 0 10px" } }, c.detail),
+      h("div", { class: "rangee serree" },
+        bouton(c.importer, { classe: "plein", icone: "envoyer", onclick: repondre(true) }),
+        bouton(c.refuser, { classe: "papier", onclick: repondre(false) })));
+  });
 }
 function lienExport(libelle, { classe = "plein", lien = C.LIEN_EXPORT_CHATGPT, apres = null } = {}) {
   return h("a", {
@@ -509,6 +537,7 @@ function blocSource(s, dessiner) {
       quoiFaire ? null : h("p", { class: "aide" }, "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Choisis ici le .zip reçu par mail (ou dépose-le dans le dossier Imports de ton coffre)."),
       originaux ? h("p", { class: "aide" }, originaux) : null,
       enAttente ? h("p", { class: "aide" }, enAttente) : null,
+      cartesTelechargements(dessiner),
       reglagesChatGPT(dessiner),
     ] : null,
     h("div", { class: "rangee serree", style: { marginTop: "6px" } },

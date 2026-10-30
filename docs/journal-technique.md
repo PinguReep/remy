@@ -4,6 +4,34 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 — Téléchargements : rien n'entre dans la mémoire sans un geste
+
+- **Le constat** (revue finale) : un site peut ranger un .zip dans
+  Téléchargements sans rien demander ; s'il imitait un export ChatGPT, il
+  était importé au passage suivant, cherchable, relu par le chat et la nuit,
+  et « Tout effacer » le réimportait.
+- **La décision** : la détection reste automatique, l'import devient un
+  geste. Un export trouvé est proposé (carte « Un export ChatGPT trouvé
+  dans Téléchargements : « nom.zip » (12 Mo, du 30/10). L'importer ? »,
+  `POST /api/conversations-externes/chatgpt/telechargements`). Pour garder le
+  « sans y penser » : au premier import fait d'un geste (la carte, l'envoi
+  depuis l'app, le dossier Imports), la tour garde un HMAC de l'identifiant
+  du compte lu dans `user.json` (`cleChemin`, meta `chatgpt_comptes`) ; un
+  export suivant du même compte s'importe seul. Sans `user.json` ou d'un
+  autre compte : la carte. Effacer ChatGPT ou tout oublie ces comptes.
+- **Bombes de décompression** : écartées sur l'annuaire (plus de 8 Go, ou un
+  rapport décompressé/compressé au-delà de 100 : un vrai export tourne
+  autour de 5 à 20), et une entrée plus longue que ce qu'annonce l'annuaire
+  est coupée au dépassement. « Effacer » et « Tout effacer » n'attendent
+  plus un import : un compteur d'abandons, vérifié à chaque morceau.
+- **Erreurs** : seul le code d'une erreur de CONTENU est gardé (un message
+  de Node cite le chemin, nom d'utilisateur Windows compris) ; une erreur
+  d'accès (`EBUSY`, `EPERM`…) n'est pas gardée, le fichier est relu au
+  passage suivant. Les .zip sont lus du plus ancien au plus récent, et une
+  conversation n'est réécrite que par une version plus récente.
+- **Pas fait ici** : la carte côté iPhone (`ConversationsExternes.swift`) —
+  l'iPhone voit l'état, la proposition attend un geste sur le site.
+
 ## 2026-10-30 — Conversations externes : contre-relecture du lot (curseurs, Téléchargements, carte)
 
 - **Curseurs Claude Code d'avant la mise à jour** : ils ne portent pas les

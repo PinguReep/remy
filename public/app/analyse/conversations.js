@@ -263,6 +263,26 @@ export function carteExportChatGPT(etat) {
  */
 export const carteExportVisible = ({ source = "", recherche = "" } = {}) => (!source || source === "chatgpt") && !String(recherche || "").trim();
 
+// --- Un export trouvé dans Téléchargements : il attend un geste (revue du 30/10) ---
+// Un site peut ranger n'importe quel .zip dans Téléchargements : la tour ne
+// l'importe pas sans Sam (sauf un export d'un compte déjà accepté).
+export const cheminReponseTelechargement = () => "/api/conversations-externes/chatgpt/telechargements";
+/** Les exports trouvés qui attendent un geste ({ id, nom, octets, date }), [] sur une tour plus ancienne. */
+export const propositionsTelechargements = (etat) => (Array.isArray(etat?.chatgpt?.telechargements?.propositions) ? etat.chatgpt.telechargements.propositions.filter((p) => p?.id && p?.nom) : []);
+const taille = (o) => (o >= 1e6 ? `${(o / 1e6).toFixed(o >= 1e7 ? 0 : 1).replace(".", ",")} Mo` : `${Math.max(1, Math.round((o || 0) / 1e3))} ko`);
+/** La carte d'un export trouvé : son titre, son texte (nom, taille, date) et ce qu'il faut savoir. */
+export function carteProposition(p) {
+  const d = p?.date ? new Date(p.date) : null;
+  const date = d ? ` du ${d.getDate()}/${d.getMonth() + 1}` : "";
+  return {
+    titre: "Un export ChatGPT trouvé dans Téléchargements",
+    texte: `« ${p.nom} » (${taille(p.octets)}${date ? `,${date}` : ""}) : l'importer ?`,
+    detail: "Rémy n'importe rien de Téléchargements sans toi : si c'est l'export que tu as demandé, importe-le ; sinon, laisse-le (un site peut y ranger n'importe quel fichier).",
+    importer: "Importer",
+    refuser: "Pas celui-là",
+  };
+}
+
 /** Un fichier que la tour sait importer : le .zip de l'export, ou conversations.json. */
 export const importable = (nom) => /\.(zip|json)$/i.test(String(nom || ""));
 /** Le type envoyé avec le fichier (le même que l'iPhone). */

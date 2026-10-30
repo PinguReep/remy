@@ -415,3 +415,20 @@ test("Réglages et Ctrl+K : les deux réglages de l'export ChatGPT se trouvent, 
     globalThis.fetch = vraiFetch;
   }
 });
+
+test("RÉGRESSION : un export trouvé dans Téléchargements se propose (nom, taille, date), il ne s'importe pas seul", () => {
+  const etat = { chatgpt: { telechargements: { propositions: [
+    { id: "f-0123456789abcdef01234567", nom: "telechargement-du-site.zip", octets: 12_400_000, date: new Date(2026, 9, 30, 9, 0).getTime(), autreCompte: true },
+    { id: null, nom: "sans-id.zip" },
+  ] } } };
+  const [p, ...reste] = C.propositionsTelechargements(etat);
+  assert.equal(reste.length, 0, "une proposition sans identifiant n'est pas montrée");
+  const c = C.carteProposition(p);
+  assert.equal(c.titre, "Un export ChatGPT trouvé dans Téléchargements");
+  assert.equal(c.texte, "« telechargement-du-site.zip » (12 Mo, du 30/10) : l'importer ?");
+  assert.match(c.detail, /^Rémy n'importe rien de Téléchargements sans toi/);
+  assert.deepEqual([c.importer, c.refuser], ["Importer", "Pas celui-là"]);
+  assert.equal(C.carteProposition({ ...p, octets: 830_000, date: null }).texte, "« telechargement-du-site.zip » (830 ko) : l'importer ?");
+  assert.deepEqual(C.propositionsTelechargements({}), [], "tour plus ancienne : rien");
+  assert.equal(C.cheminReponseTelechargement(), "/api/conversations-externes/chatgpt/telechargements");
+});
