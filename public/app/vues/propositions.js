@@ -131,8 +131,9 @@ export function rangsGardes(actions, decoches) {
 
 /** L'aide sous les boutons. */
 export function aideReglage({ partielle, ajustable }) {
-  if (partielle) return `Décoche ce que tu ne veux pas${ajustable ? " ; touche une ligne pour la régler." : "."}`;
-  return ajustable ? "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel." : "Pour changer un détail, réponds-le simplement à Rémy.";
+  // Les gestes du bureau (clic, Entrée), le sens de l'iPhone (contre-relecture du 30/10, tour 2).
+  if (partielle) return `Décoche ce que tu ne veux pas${ajustable ? " ; clique une ligne (ou Entrée) pour la régler." : "."}`;
+  return ajustable ? "Clique une ligne (ou Entrée) pour régler la date, la durée ou la catégorie, ou en faire un rappel." : "Pour changer un détail, réponds-le simplement à Rémy.";
 }
 
 /** Le bilan d'une réponse de /api/motion/apply ou /api/google/apply (ResultatApplication.bilan). */
@@ -390,7 +391,7 @@ function dessinerPlanning(el, p, c, index, carte, etat, { relire, ctx }) {
 export function confirmerPerimee(p, ajustable) {
   const f = feuille({
     titre: "Proposition ancienne",
-    contenu: h("p", null, `${p.raisonPeremption || "Elle date un peu."}${ajustable ? " Touche une ligne pour la régler d'abord." : ""}`),
+    contenu: h("p", null, `${p.raisonPeremption || "Elle date un peu."}${ajustable ? " Clique une ligne (ou Entrée) pour la régler d'abord." : ""}`),
     pied: [bouton("Pas maintenant", { classe: "papier", onclick: () => f.fermer(false) }), bouton("Appliquer quand même", { classe: "plein", onclick: () => f.fermer(true) })],
   });
   f.el.querySelector(".feuille-pied .btn:last-child")?.focus();

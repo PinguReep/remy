@@ -79,10 +79,10 @@ export function voixLocales(toutes) {
 /** Les mots de chaque état (AppelView). */
 export function textesEtat(etat, { parleDeja = false, statut = "", message = "" } = {}) {
   switch (etat) {
-    case "ecoute": return { titre: parleDeja ? "Je t'écoute…" : "Parle quand tu veux", sous: "Une pause, et je t'envoie la question. Ou touche le carré." };
+    case "ecoute": return { titre: parleDeja ? "Je t'écoute…" : "Parle quand tu veux", sous: "Une pause, et je t'envoie la question. Ou clique le carré (Espace)." };
     case "transcription": return { titre: "Je transcris…", sous: "Sur ta tour : l'audio n'est pas gardé." };
     case "reflexion": return { titre: "Je réfléchis…", sous: statut || "Réponse courte, à voix haute." };
-    case "parole": return { titre: "Je parle", sous: "Le micro est coupé. Touche le carré pour me couper." };
+    case "parole": return { titre: "Je parle", sous: "Le micro est coupé. Clique le carré (Espace) pour me couper." };
     case "erreur": return { titre: "Ça coince", sous: message };
     default: return { titre: "Appel terminé", sous: "" };
   }

@@ -254,9 +254,9 @@ test("proposition : une partie seulement (SelectionLignes) et l'aide", () => {
   const actions = [{ rang: 0 }, { rang: 3 }, {}];
   assert.equal(P.rangsGardes(actions, new Set()), null, "rien de décoché : tout part");
   assert.deepEqual(P.rangsGardes(actions, new Set([3])), [0, 2], "le rang d'origine, sinon la position");
-  assert.equal(P.aideReglage({ partielle: true, ajustable: true }), "Décoche ce que tu ne veux pas ; touche une ligne pour la régler.");
+  assert.equal(P.aideReglage({ partielle: true, ajustable: true }), "Décoche ce que tu ne veux pas ; clique une ligne (ou Entrée) pour la régler.");
   assert.equal(P.aideReglage({ partielle: true, ajustable: false }), "Décoche ce que tu ne veux pas.");
-  assert.equal(P.aideReglage({ partielle: false, ajustable: true }), "Touche une ligne pour régler la date, la durée ou la catégorie, ou en faire un rappel.");
+  assert.equal(P.aideReglage({ partielle: false, ajustable: true }), "Clique une ligne (ou Entrée) pour régler la date, la durée ou la catégorie, ou en faire un rappel.");
   assert.equal(P.aideReglage({}), "Pour changer un détail, réponds-le simplement à Rémy.");
 });
 
@@ -439,11 +439,14 @@ test("appel : la voix ne lit ni Markdown ni lien (ParoleTests), voix locales seu
   assert.deepEqual(V.voixLocales(voix).map((v) => v.name), ["Thomas", "Amélie"], "jamais une voix en ligne (aucun nouveau tiers), le français de France d'abord");
   assert.deepEqual(V.voixLocales([]), []);
   assert.equal(V.textesEtat("ecoute").titre, "Parle quand tu veux");
+  // Les gestes du bureau, pas ceux de l'iPhone (contre-relecture du 30/10, tour 2).
+  assert.equal(V.textesEtat("ecoute").sous, "Une pause, et je t'envoie la question. Ou clique le carré (Espace).");
+  for (const e of ["ecoute", "parole", "transcription", "reflexion"]) assert.doesNotMatch(V.textesEtat(e).sous, /[Tt]ouche /, e);
   assert.equal(V.textesEtat("ecoute", { parleDeja: true }).titre, "Je t'écoute…");
   assert.equal(V.textesEtat("transcription").sous, "Sur ta tour : l'audio n'est pas gardé.");
   assert.equal(V.textesEtat("reflexion").sous, "Réponse courte, à voix haute.");
   assert.equal(V.textesEtat("reflexion", { statut: "Je relis ton planning" }).sous, "Je relis ton planning");
-  assert.equal(V.textesEtat("parole").sous, "Le micro est coupé. Touche le carré pour me couper.");
+  assert.equal(V.textesEtat("parole").sous, "Le micro est coupé. Clique le carré (Espace) pour me couper.");
   assert.deepEqual(V.textesEtat("erreur", { message: "Micro refusé" }), { titre: "Ça coince", sous: "Micro refusé" });
 });
 
