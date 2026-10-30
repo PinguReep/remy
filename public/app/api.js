@@ -2,6 +2,10 @@
 // injoignable, session perdue, tour à mettre à jour, réponse non JSON, refus
 // expliqué par la tour), et un lecteur de flux SSE pour les réponses de Rémy.
 // Aucune donnée n'est gardée ici : /api n'est jamais mis en cache (sw.js).
+// Deux comptes, sans aucun contenu : chaque écriture est classée comme un
+// geste (usage.js, « Ce que tu utilises vraiment »), et quelques durées sont
+// mesurées en mémoire (Réglages › Diagnostic › Temps de réponse, « Sur ce poste »).
+import { noterRequete } from "./usage.js";
 
 export const evenements = new EventTarget();
 const signaler = (nom, detail) => evenements.dispatchEvent(new CustomEvent(nom, { detail }));
@@ -43,21 +47,59 @@ function messageDe(statut, corps) {
 
 /**
  * Appelle la tour et rend le JSON (ou `null` pour une réponse vide).
- * `corps` : objet envoyé en JSON. `delai` en ms.
+ * `corps` : objet envoyé en JSON. `delai` en ms. `compter: false` : un envoi
+ * que le site refait seul (la file d'envoi), pas un geste de Sam.
  */
-export async function api(chemin, { methode = "GET", corps, delai = 25000, signal } = {}) {
+export async function api(chemin, { methode = "GET", corps, delai = 25000, signal, compter = true } = {}) {
+  if (compter && methode !== "GET") noterRequete(methode, chemin, corps);
+  const serie = serieDe(methode, chemin);
+  const debut = serie ? Date.now() : 0;
+  const mesurer = (r) => {
+    if (serie) noterMesure(serie, Date.now() - debut);
+    return r;
+  };
   // Une écriture Motion qui tarde : la tour la fait attendre dans la file du
   // quota. Au bout de 4 s, le site le dit (« ça part tout seul »).
   if (chemin === "/api/motion/apply") {
     const suivi = setTimeout(() => signaler("motion-lent"), 4000);
     try {
-      return await appel(chemin, { methode, corps, delai, signal });
+      return mesurer(await appel(chemin, { methode, corps, delai, signal }));
     } finally {
       clearTimeout(suivi);
       signaler("motion-fini");
     }
   }
-  return appel(chemin, { methode, corps, delai, signal });
+  return mesurer(await appel(chemin, { methode, corps, delai, signal }));
+}
+
+// --- Les temps mesurés sur ce poste (en mémoire, les 100 dernières valeurs) ---
+const SERIES = new Map();
+/** La série d'une requête : la journée, un geste confirmé, le conseil, la dictée. */
+function serieDe(methode, chemin) {
+  const p = String(chemin).split("?")[0];
+  if (methode === "GET" && p === "/api/dashboard") return "app.journee";
+  if (methode === "GET" && p === "/api/conseil") return "app.conseil";
+  if (methode === "POST" && (p === "/api/motion/apply" || p === "/api/google/apply")) return "app.geste";
+  if (methode === "POST" && (p === "/api/transcribe" || p.startsWith("/api/dictee"))) return "app.dictee";
+  return null;
+}
+export function noterMesure(nom, ms) {
+  if (!Number.isFinite(ms) || ms < 0) return;
+  const s = SERIES.get(nom) || [];
+  s.push(ms);
+  if (s.length > 100) s.splice(0, s.length - 100);
+  SERIES.set(nom, s);
+}
+/** { serie: { n, p50, p95, max, dernier } } (Mesures.resume de l'iPhone). */
+export function mesuresPoste() {
+  const r = {};
+  for (const [nom, s] of SERIES) {
+    if (!s.length) continue;
+    const tri = [...s].sort((a, b) => a - b);
+    const q = (p) => Math.round(tri[Math.min(tri.length - 1, Math.floor(p * tri.length))]);
+    r[nom] = { n: s.length, p50: q(0.5), p95: q(0.95), max: Math.round(tri[tri.length - 1]), dernier: Math.round(s[s.length - 1]) };
+  }
+  return r;
 }
 
 async function appel(chemin, { methode, corps, delai, signal }) {
@@ -176,6 +218,7 @@ export const PLAFOND_FLUX = 30 * 60000;
  * tait `inactivite` ms (réarmé à chaque morceau reçu), ou au-delà de `plafond`.
  */
 export async function flux(chemin, corps, surEvenement, { signal, inactivite = INACTIVITE_FLUX, plafond = PLAFOND_FLUX } = {}) {
+  noterRequete("POST", chemin, corps);
   const ctrl = new AbortController();
   let silence = setTimeout(() => ctrl.abort("silence"), inactivite);
   const reveil = () => {

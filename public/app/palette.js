@@ -2,8 +2,8 @@
 // conversation, une liste, un dossier, un réglage. ↑ ↓ pour choisir, Entrée
 // pour lancer, Échap pour fermer. Rien n'est envoyé à la tour en tapant : les
 // listes sont lues une fois à l'ouverture.
-import { api } from "./api.js";
-import { h, vider, icone, appliquerTheme } from "./ui.js";
+import { api, sait } from "./api.js";
+import { h, vider, icone, appliquerTheme, local } from "./ui.js";
 
 const ORDRE = ["Aller à", "Actions", "Listes", "Dossiers", "Conversations", "Réglages"];
 const plier = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -33,12 +33,20 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
     { groupe: "Actions", titre: "Nouvelle conversation privée", icone: "cadenas", faire: () => { try { localStorage.setItem("remy-nouvelle-privee", "true"); } catch {} contexte.aller("remy/nouvelle"); } },
     { groupe: "Actions", titre: "Rafraîchir la vue", icone: "rafraichir", faire: () => vueCourante()?.module?.actualiser?.() },
     { groupe: "Actions", titre: "Rappels", icone: "cloche", faire: aller("projets/rappels") },
+    // Les feuilles d'Aujourd'hui (#/aujourdhui/<quoi>, contrat B) et la journée préparée pour Rémy (contrat C).
+    { groupe: "Actions", titre: "À voir avec Rémy", icone: "remy", mots: "boîte sujets nuit", faire: aller("aujourdhui/boite") },
+    sait("rituel-v1") ? { groupe: "Actions", titre: "Briefing du matin", icone: "soleil", mots: "rituel matin", faire: aller("aujourdhui/briefing") } : null,
+    sait("rituel-v1") ? { groupe: "Actions", titre: "Bilan du soir", icone: "lune", mots: "rituel soir", faire: aller("aujourdhui/bilan") } : null,
+    sait("a-trancher-v1") ? { groupe: "Actions", titre: "À trancher", icone: "liste", mots: "trier tri ménage", faire: aller("aujourdhui/trancher") } : null,
+    sait("a-trancher-v1") ? { groupe: "Actions", titre: "Revue de la semaine", icone: "calendrier", mots: "dimanche hebdo", faire: aller("aujourdhui/revue") } : null,
+    sait("semaine-v1") ? { groupe: "Actions", titre: "Les 7 jours à l'échelle", icone: "horloge", mots: "semaine demain échelle", faire: aller("aujourdhui/echelle/7jours") } : null,
+    { groupe: "Actions", titre: "Organiser ma journée avec Rémy", icone: "remy", mots: "journée planning organiser", faire: organiserLaJournee(contexte) },
     { groupe: "Actions", titre: "Thème clair", icone: "soleil", faire: () => appliquerTheme("light") },
     { groupe: "Actions", titre: "Thème sombre", icone: "lune", faire: () => appliquerTheme("dark") },
     { groupe: "Actions", titre: "Thème automatique", icone: "ecran", faire: () => appliquerTheme("auto") },
     { groupe: "Actions", titre: "Raccourcis clavier", icone: "clavier", detail: "?", faire: () => import("./main.js").then((m) => m.aideRaccourcis()) },
     { groupe: "Actions", titre: "Interface classique", icone: "externe", faire: () => { location.href = "/classique.html"; } },
-  ];
+  ].filter(Boolean);
   // Une souris immobile ne vole pas le choix du clavier : le navigateur
   // envoie un mousemove quand la liste se redessine sous le pointeur.
   let pointeur = null;
@@ -50,6 +58,10 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   let elements = [...base];
   let choisi = 0;
   let affiches = [];
+  // Le groupe Réglages : le même classement que la recherche de Réglages
+  // (rechercherReglages : accents, ordre des mots, fautes de frappe), limité
+  // à ce que la tour propose (indexVisible).
+  let reglagesModule = null;
 
   const dessiner = () => {
     const q = plier(champ.value.trim());
@@ -67,6 +79,10 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
       .slice(0, 40)
       .map((x) => x.e);
     if (!mots.length) affiches = affiches.filter((e) => e.groupe === "Aller à" || e.groupe === "Actions");
+    else if (reglagesModule?.rechercherReglages) {
+      affiches.push(...reglagesModule.rechercherReglages(champ.value, contexte).slice(0, 8)
+        .map((r) => ({ groupe: "Réglages", titre: r.titre, icone: "reglages", detail: r.chemin === "Réglages" ? null : r.chemin.replace(/^Réglages › /, ""), faire: r.faire })));
+    }
     choisi = Math.min(choisi, Math.max(0, affiches.length - 1));
     if (!affiches.length) {
       vider(liste, h("li", { class: "palette-vide" }, `Rien pour « ${champ.value} ». Entrée : noter ce texte.`));
@@ -117,11 +133,16 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   dessiner();
 
   // Ce qui se cherche par son nom : conversations, listes, dossiers, réglages.
+  // Recherche web, secours, circuits : la tour dit s'ils existent ; lus ici
+  // quand Réglages n'a pas encore été ouvert (un échec n'enlève que ces lignes).
   const [convs, listes, dossiers, reglages] = await Promise.allSettled([
     api("/api/conversations", { delai: 8000 }),
     api("/api/listes", { delai: 8000 }),
     api("/api/dossiers", { delai: 8000 }),
-    import("./vues/reglages.js"),
+    import("./vues/reglages.js").then(async (m) => {
+      await m.prechargerReglages?.().catch(() => {});
+      return m;
+    }),
   ]);
   if (!d.isConnected) return;
   if (convs.status === "fulfilled" && Array.isArray(convs.value)) {
@@ -129,6 +150,19 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   }
   if (listes.status === "fulfilled") elements.push(...(listes.value.listes || []).map((l) => ({ groupe: "Listes", titre: l.nom, icone: "liste", mots: "liste", faire: aller(`projets/liste/${encodeURIComponent(l.id)}`) })));
   if (dossiers.status === "fulfilled") elements.push(...(dossiers.value.dossiers || []).map((x) => ({ groupe: "Dossiers", titre: x.nom, icone: "dossier", mots: "dossier projet", faire: aller(`projets/dossier/${encodeURIComponent(x.id)}`) })));
-  if (reglages.status === "fulfilled") elements.push(...(reglages.value.indexVisible?.() ?? reglages.value.INDEX).map(([s, lib, mots]) => ({ groupe: "Réglages", titre: lib, icone: "reglages", mots: `réglage ${mots}`, faire: aller(`reglages/${s}`) })));
+  if (reglages.status === "fulfilled") reglagesModule = reglages.value;
   dessiner();
+}
+
+/**
+ * « Organiser ma journée avec Rémy » : le clic est le geste, la question part
+ * dans une conversation neuve titrée « JJ/MM/AAAA · Journée » (contrat C).
+ */
+function organiserLaJournee(contexte) {
+  return () => {
+    const d = new Date();
+    const titre = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()} · Journée`;
+    local.ecrire("remy-envoi", { texte: "Organise ma journée : regarde mon agenda et mes tâches, dis-moi par quoi commencer et ce qui est en retard. Pose tes questions d'un coup si tu en as.", a: Date.now(), titre });
+    contexte.aller("remy/nouvelle");
+  };
 }

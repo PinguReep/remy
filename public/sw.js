@@ -4,7 +4,7 @@
 // modules : ils sont tous gardés, pour que la page s'ouvre tour éteinte et que
 // « Noter » mette en file ce qui partira au retour.
 
-const CACHE = "remy-v5";
+const CACHE = "remy-v6";
 const STATIC_ASSETS = [
   "/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png",
   "/app/vues/boite.js", "/app/vues/trancher.js", "/app/analyse/rituel.js",
@@ -17,6 +17,7 @@ const STATIC_ASSETS = [
   "/app/vues/aujourdhui.js", "/app/vues/gerer.js", "/app/vues/remy.js", "/app/vues/noter.js", "/app/vues/projets.js", "/app/vues/rappels.js",
   "/app/vues/tri-rappels.js", "/app/analyse/carnet.js", "/app/menu.js",
   "/app/vues/reglages.js", "/app/vues/conversations-externes.js", "/app/vues/connexion.js",
+  "/app/menu.js", "/app/usage.js", "/app/nouveautes.js", "/app/analyse/recherche-reglages.js",
 ];
 
 self.addEventListener("install", (e) => {

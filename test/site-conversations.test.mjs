@@ -377,7 +377,7 @@ test("le site : la vue, Réglages et Ctrl+K passent par ces chemins et ces phras
     assert.match(vue, new RegExp(`C\\.${f}\\(`), f);
   }
   const reglages = fs.readFileSync(new URL("../public/app/vues/reglages.js", import.meta.url), "utf8");
-  assert.match(reglages, /\["conversations", "Sources des conversations", "[^"]*chatgpt[^"]*claude code[^"]*t3[^"]*import/);
+  assert.match(fs.readFileSync(new URL("../public/app/analyse/recherche-reglages.js", import.meta.url), "utf8"), /entree\("sourcesConversations", "Sources des conversations", [^\n]*\n[^\n]*"ChatGPT", "OpenAI", "Claude Code", "Claude", "T3", "T3 Code", "import"/, "la recherche de Réglages (index par ligne) les trouve");
   assert.match(reglages, /conversations: "conversations-externes-v1"/, "la section se cache sans la capacité");
   const palette = fs.readFileSync(new URL("../public/app/palette.js", import.meta.url), "utf8");
   assert.match(palette, /indexVisible/, "Ctrl+K ne propose pas une section cachée");
