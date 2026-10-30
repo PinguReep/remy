@@ -229,8 +229,12 @@ changée : la base devient illisible — l'état le dit (`cle.erreur`),
 « Tout effacer » puis « Lire maintenant » relit Claude Code et T3 ; un export
 ChatGPT se réenvoie. Les conversations de Rémy scellées avec elle (celles qui citaient ces
 passages, ou importées) restent alors « illisibles » — jamais réécrites :
-la bonne clé remise, elles reviennent. Garde-en une copie avec celle des sauvegardes si tu veux
-pouvoir restaurer la base telle quelle.
+la bonne clé remise, elles reviennent. Elle part dans chaque sauvegarde
+(`cles/conversations.cle`, dans l'archive chiffrée par `REMY_SAUVEGARDE_CLE`) :
+une seule clé à garder hors de la tour, celle des sauvegardes. Une restauration
+en place la remet avec la base qu'elle sait lire, et met de côté une autre
+clé trouvée sur la tour (`conversations.cle.avant-restauration-…`), jamais
+effacée.
 
 ## Le contrat de l'API
 

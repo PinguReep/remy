@@ -4,6 +4,42 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 — La clé des conversations voyage dans la sauvegarde
+
+`conversations.cle` vit hors du coffre (`%USERPROFILE%\.remy`) : elle ne
+partait dans aucune sauvegarde, et une tour perdue rendait illisible la base
+des conversations restaurée. Il fallait en garder une seconde copie à la main.
+
+- `sauvegarderRemy` ajoute `cles/conversations.cle` à l'archive (la clé dont
+  Rémy se sert : `REMY_CONVERSATIONS_CLE`, sinon le fichier ; jamais créée pour
+  l'occasion). L'archive est chiffrée par `REMY_SAUVEGARDE_CLE`, qui n'y est
+  jamais : quiconque lit l'archive lit déjà tout le coffre, la clé n'ouvre rien
+  de plus. Une seule clé reste à garder hors de la tour.
+- `lireArchive` n'admet sous `cles/` que ce chemin exact.
+- Restauration en place (`scripts/restaurer.mjs`) : la clé va avec la base
+  qu'elle sait lire ; une autre clé déjà sur la tour est mise de côté
+  (`.avant-restauration-<horodatage>`), comme la base, jamais effacée.
+
+## 2026-10-29 (après-midi) — Un moteur qui refuse le format imposé
+
+Le moteur qui sert DeepSeek-V4.1-Flash sur les Sparks répond **400**
+« structured output (response_format and the guided_* fields) is not supported
+by this engine yet » dès qu'on lui demande un format JSON. Tout ce qui passait
+un `schema` à `glmProvider.complete` tombait : le conseil du moment (l'iPhone
+affichait le JSON brut de l'erreur), l'analyse des captures, les rappels
+déduits, les sujets de la nuit, le résumé des conversations externes.
+
+- `formatRefuse(status, detail)` (`lib/glm.js`) reconnaît ce refus ; `complete`
+  repart **une fois** sans `response_format`, le schéma dit en clair à la fin de
+  la consigne système. Les appelants lisaient déjà le JSON avec tolérance (bloc
+  `json`, texte autour) : rien à changer chez eux.
+- Le refus est retenu **par modèle**, 6 h : les appels suivants ne repaient pas
+  l'aller-retour en 400 ; au-delà, un moteur mis à jour retrouve le format imposé.
+- Même chose pour les cerveaux déclarés à côté (`lib/cerveau.js`, Hermès, Qwen),
+  dont `analyser` reprend en plus l'objet au milieu d'un texte.
+- Les autres erreurs du modèle se lisent en clair (`detailLisible` : le
+  `error.message` d'un corps OpenAI), jamais un JSON brut sous les yeux de Sam.
+
 ## 2026-10-30 (soir) — Revue finale, tour 2 : les constats confirmés
 
 - **Taille 0xFFFFFFFF sans champ ZIP64** : c'est une taille INCONNUE, pas

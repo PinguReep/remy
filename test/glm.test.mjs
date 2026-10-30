@@ -21,7 +21,7 @@ const serveur = http.createServer((req, res) => {
     const tour = script.shift() || [];
     if (tour.status) {
       res.writeHead(tour.status, { "Content-Type": "application/json" });
-      return res.end("{}");
+      return res.end(tour.corps || "{}");
     }
     if (!b.stream) {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -40,6 +40,7 @@ process.env.MOTION_API_KEY = "cle"; // l'outil motion_proposer est proposé au m
 
 const { glmProvider, GlmError, verifierGlm } = await import("../lib/providers.js");
 const { memoireCredible } = await import("../lib/chat.js");
+const { _oublierFormatsRefuses } = await import("../lib/glm.js");
 
 test.after(() => serveur.close());
 
@@ -105,6 +106,46 @@ test("complete() coupe la réflexion et retire un <think> resté en clair", asyn
   const r = await glmProvider.complete({ system: "s", prompt: "p", maxTokens: 10 });
   assert.equal(r.text, "reflexe");
   assert.equal(recus[0].corps.chat_template_kwargs.enable_thinking, false);
+});
+
+// Le moteur qui sert DeepSeek-V4.1-Flash (29/10) refuse response_format en 400 :
+// le conseil, les captures et la nuit tombaient tous en erreur.
+const REFUS_FORMAT = JSON.stringify({ error: { message: "structured output (response_format and the guided_* fields) is not supported by this engine yet", type: "invalid_request_error" } });
+const reponse = (contenu) => ({ choices: [{ message: { content: contenu }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } });
+
+test("format imposé refusé : le schéma passe dans la consigne, et le refus est retenu", async () => {
+  _oublierFormatsRefuses();
+  const schema = { type: "object", properties: { texte: { type: "string" } }, required: ["texte"] };
+  script = [{ status: 400, corps: REFUS_FORMAT }, reponse('{"texte":"Fais la banque"}'), reponse('{"texte":"Pause"}')];
+  recus = [];
+  const r = await glmProvider.complete({ system: "Tu conseilles Sam.", prompt: "Situation", schema });
+  assert.equal(r.text, '{"texte":"Fais la banque"}');
+  assert.equal(recus.length, 2, "un seul nouvel essai");
+  assert.ok(recus[0].corps.response_format, "d'abord le format imposé");
+  assert.equal(recus[1].corps.response_format, undefined, "puis sans");
+  const consigne = recus[1].corps.messages[0].content;
+  assert.match(consigne, /^Tu conseilles Sam\./);
+  assert.match(consigne, /objet JSON valide/);
+  assert.ok(consigne.includes(JSON.stringify(schema)), "le schéma est dit en clair");
+  // L'appel suivant ne repaie pas le 400.
+  const r2 = await glmProvider.complete({ system: "s", prompt: "p", schema });
+  assert.equal(r2.text, '{"texte":"Pause"}');
+  assert.equal(recus.length, 3);
+  assert.equal(recus[2].corps.response_format, undefined);
+  // Sans schéma, rien ne change.
+  script = [reponse("ok")];
+  await glmProvider.complete({ system: "s", prompt: "p" });
+  assert.equal(recus[3].corps.messages[0].content, "s");
+  _oublierFormatsRefuses();
+});
+
+test("une autre erreur du modèle se lit en clair, jamais en JSON brut", async () => {
+  script = [{ status: 400, corps: JSON.stringify({ error: { message: "max_tokens is too large", type: "invalid_request_error" } }) }];
+  await assert.rejects(glmProvider.complete({ system: "s", prompt: "p" }), (err) => {
+    assert.match(err.message, /réponse 400 \(max_tokens is too large\)/);
+    assert.doesNotMatch(err.message, /[{}"]/);
+    return true;
+  });
 });
 
 test("la santé dit joignable avec l'identifiant servi", async () => {

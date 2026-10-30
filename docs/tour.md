@@ -179,9 +179,9 @@ ChatGPT, et rien ne repart vers Anthropic ou OpenAI. Détail et contrat :
    l'envoi depuis l'iPhone : dans Fichiers, touche le .zip pour le
    décompresser et envoie seulement `conversations.json`.
 3. **La clé** : `%USERPROFILE%\.remy\conversations.cle`, créée au premier
-   usage, hors du coffre. Garde-en une copie avec la clé des sauvegardes : sans
-   elle, une base restaurée est illisible (Claude Code et T3 se relisent, un
-   export ChatGPT se réenvoie).
+   usage, hors du coffre. Rien à faire : elle part dans chaque sauvegarde,
+   chiffrée avec le reste par `REMY_SAUVEGARDE_CLE` — la seule clé à garder
+   hors de la tour — et revient avec la base qu'elle sait lire.
 4. **Vérifier** depuis la tour, sans rien afficher du contenu :
    `node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\connaissances-etat.mjs --lire`
    (chaque source : allumée ou non, emplacements trouvés, comptes, erreur et
