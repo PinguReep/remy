@@ -7,7 +7,9 @@
 //   (fenêtre rechargée sur Rémy) se conclut quand même : le registre des
 //   envois garde son ledgerId, « sera rouverte » est tenu ;
 // - la vidange relit la file : un envoi retiré pendant qu'un autre est en vol
-//   ne part plus.
+//   ne part plus ;
+// - h() pose les propriétés personnalisées (--couleur) que les blocs de la
+//   frise attendent.
 // Un DOM minimal suffit : ces modules ne touchent la page que par h() et dire().
 process.env.TZ = "Europe/Paris";
 import test from "node:test";
@@ -101,6 +103,7 @@ const viderBandeaux = () => document.body.replaceChildren();
 
 const fileEnvoi = await import("../public/app/file-envoi.js");
 const G = await import("../public/app/vues/gerer.js");
+const { h } = await import("../public/app/ui.js");
 const { jourISO } = await import("../public/app/analyse/journee.js");
 
 // --- Une fausse tour : /api/motion/apply retenu à la demande, /api/motion/undo noté ---
@@ -250,4 +253,11 @@ test("une coche ni dans la file ni partie (retirée dans Réglages) revient dans
   fileEnvoi.retirer(c.idCommande); // Réglages › Envoi en attente › Retirer
   assert.ok(await attendreQue(() => !coche("t13")));
   assert.ok(!annulations().includes(`L-${c.idCommande}`));
+});
+
+test("RÉGRESSION : h() pose les propriétés personnalisées (la couleur de projet des blocs)", () => {
+  const bloc = h("div", { style: { top: "10px", "--couleur": "#3D6A8A", "--vide": null } });
+  assert.equal(bloc.style.getPropertyValue("--couleur"), "#3D6A8A", "Object.assign l'ignorait : bordure grise pour tous");
+  assert.equal(bloc.style.top, "10px");
+  assert.equal(bloc.style.getPropertyValue("--vide"), "");
 });

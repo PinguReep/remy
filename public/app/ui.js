@@ -13,7 +13,14 @@ export function h(tag, props, ...enfants) {
       else if (k === "text") el.textContent = v;
       else if (k === "html") el.innerHTML = v; // réservé au markdown déjà échappé
       else if (k === "dataset") Object.assign(el.dataset, v);
-      else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+      else if (k === "style" && typeof v === "object") {
+        // Une propriété personnalisée (« --couleur ») ne passe que par setProperty : Object.assign l'ignore.
+        for (const [p, val] of Object.entries(v)) {
+          if (p.startsWith("--")) {
+            if (val != null) el.style.setProperty(p, String(val));
+          } else el.style[p] = val;
+        }
+      }
       else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
       else if (v === true) el.setAttribute(k, "");
       else el.setAttribute(k, String(v));
