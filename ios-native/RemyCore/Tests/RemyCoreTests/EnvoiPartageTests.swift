@@ -107,6 +107,7 @@ final class EnvoiPartageTests: XCTestCase {
         let corps = EnvoiPartage.corpsImage(vente, vente.image!, mot: nil)
         XCTAssertEqual(corps["lien"] as? String, "https://exemple.org/produit/42")
         XCTAssertEqual(corps["joint"] as? String, "Lampe en laiton, 49 € — à offrir à Léa")
+        XCTAssertEqual(corps["depuis"] as? String, "iphone", "la tour dit l'appareil réel")
     }
 
     // MARK: Ce qui revient

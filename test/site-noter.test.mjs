@@ -162,8 +162,8 @@ test("Noter : l'aperçu et le bouton parlent comme l'iPhone (CaptureView)", () =
   const now = date(15, 10, 10, 40);
   const ap = (t, genre = null) => apercu(t, { maintenant: now, genre });
   const phrase = (t, o = {}) => N.phraseApercu(ap(t, o.genre), t, { maintenant: now, ...o });
-  assert.equal(phrase("", { micro: true }), "Écris ou dicte : Rémy devine où le ranger.");
-  assert.equal(phrase(""), "Écris, Rémy devine où le ranger.");
+  assert.equal(phrase("", { micro: true }), "Écris, dicte ou colle une image : Rémy devine où le ranger.");
+  assert.equal(phrase(""), "Écris ou colle une image : Rémy devine où le ranger.");
   assert.equal(phrase("Appeler le comptable"), "Tâche → Motion lui trouvera un créneau");
   assert.equal(phrase("Finir le devis vendredi"), "Tâche « Finir le devis » → Motion lui trouvera un créneau avant l'échéance : vendredi 16 octobre");
   assert.equal(phrase("Idée : un atelier bougies"), "Idée → gardée dans « Idées » (Projets), rien n'est planifié");

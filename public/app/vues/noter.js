@@ -105,7 +105,8 @@ const decrireDate = (a, maintenant = new Date()) => {
  */
 export function phraseApercu(a, brut, { carnet = true, dossiers = true, micro = false, nomListe = null, nomParent = null, maintenant = new Date() } = {}) {
   const propre = String(brut || "").trim();
-  if (!propre) return micro ? "Écris ou dicte : Rémy devine où le ranger." : "Écris, Rémy devine où le ranger.";
+  // Le champ vide dit aussi qu'une image se colle ici (contre-relecture du 30/10, tour 2).
+  if (!propre) return micro ? "Écris, dicte ou colle une image : Rémy devine où le ranger." : "Écris ou colle une image : Rémy devine où le ranger.";
   switch (a.genre) {
     case "tache": {
       const d = a.date;
@@ -450,7 +451,8 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
     ranger.addEventListener("click", () => occupe(ranger, async () => {
       etat.hidden = true;
       try {
-        const corps = { image: await preparerImage(image.fichier), titre: image.titre };
+        // L'appareil réel : la tour ne la dit plus « partagée depuis son iPhone » (contre-relecture du 30/10, tour 2).
+        const corps = { image: await preparerImage(image.fichier), titre: image.titre, depuis: "ordinateur" };
         if (mot.value.trim()) corps.mot = mot.value.trim();
         const r = await api("/api/capture/image", { methode: "POST", corps, delai: 90000 });
         const recu = recuImage(r);
@@ -472,7 +474,9 @@ export function formulaireNoter({ texte = "", id: idImpose, compact = false, sur
         h("div", { class: "noter-image-textes" },
           h("strong", null, "Image"),
           h("span", { class: "aide" }, `${image.titre} · ${octets}`),
-          h("span", { class: "aide" }, "Rangée dans ton coffre (Captures/Images). Avec un mot, Rémy en retient l'essentiel."))),
+          h("span", { class: "aide" }, "Rangée dans ton coffre (Captures/Images)."),
+          // Pas de lecture du texte de l'image ici (l'iPhone, lui, la lit) : le mot est ce que Rémy en retiendra.
+          h("span", { class: "aide noter-image-pas-lu" }, "Le texte de l'image n'est pas lu ici : ajoute un mot pour que Rémy en retienne quelque chose."))),
       h("label", { class: "etiquette-champ", for: mot.id }, "Un mot pour Rémy (facultatif)"), mot, etat,
       h("div", { class: "noter-pied" }, h("span", { class: "aide" }, kbd("Échap"), " retire l'image"),
         bouton("Retirer", { classe: "papier", onclick: retirerImage }), ranger));
