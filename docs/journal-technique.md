@@ -4,6 +4,22 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-10-30 — La clé des conversations voyage dans la sauvegarde
+
+`conversations.cle` vit hors du coffre (`%USERPROFILE%\.remy`) : elle ne
+partait dans aucune sauvegarde, et une tour perdue rendait illisible la base
+des conversations restaurée. Il fallait en garder une seconde copie à la main.
+
+- `sauvegarderRemy` ajoute `cles/conversations.cle` à l'archive (la clé dont
+  Rémy se sert : `REMY_CONVERSATIONS_CLE`, sinon le fichier ; jamais créée pour
+  l'occasion). L'archive est chiffrée par `REMY_SAUVEGARDE_CLE`, qui n'y est
+  jamais : quiconque lit l'archive lit déjà tout le coffre, la clé n'ouvre rien
+  de plus. Une seule clé reste à garder hors de la tour.
+- `lireArchive` n'admet sous `cles/` que ce chemin exact.
+- Restauration en place (`scripts/restaurer.mjs`) : la clé va avec la base
+  qu'elle sait lire ; une autre clé déjà sur la tour est mise de côté
+  (`.avant-restauration-<horodatage>`), comme la base, jamais effacée.
+
 ## 2026-10-29 (après-midi) — Un moteur qui refuse le format imposé
 
 Le moteur qui sert DeepSeek-V4.1-Flash sur les Sparks répond **400**
