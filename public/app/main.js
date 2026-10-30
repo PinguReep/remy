@@ -58,7 +58,12 @@ async function afficher() {
   majNavigation(def.id);
   // Même vue, autre argument (une autre conversation, un autre réglage) : la vue suit.
   if (vueCourante?.def.id === def.id && vueCourante.module?.suivre) {
-    vueCourante.module.suivre(args);
+    // Refusé (Annuler devant des changements pas enregistrés) : la vue a remis
+    // son adresse, la route mémorisée la reprend (sinon un Annuler suivant
+    // ramènerait à la section refusée, et un clic sur elle resterait muet).
+    Promise.resolve(vueCourante.module.suivre(args)).then((suivie) => {
+      if (suivie === false) routeCourante = lireRoute().brut;
+    }, (err) => console.error(err));
     return;
   }
   vueCourante?.module?.demonter?.();

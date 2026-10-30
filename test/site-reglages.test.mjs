@@ -273,3 +273,22 @@ test("contrat : Activité du PC — exclusions et Compter de nouveau rendent la 
   assert.equal(coupe.corps.circuits.nuit.actif, false, "la réponse redessine la section");
   assert.equal((await appel("/api/reglages", { methode: "PUT", corps: { circuits: { inconnu: true } } })).statut, 400);
 });
+
+test("Ctrl+K sans passage par Réglages : recherche web, secours et circuits se trouvent (réglages lus à l'ouverture de la palette)", async () => {
+  const { chargerVersion } = await import("../public/app/api.js");
+  const vraiFetch = globalThis.fetch;
+  // api.js parle à la tour par des chemins relatifs (même origine) : ici, vers la tour de test.
+  globalThis.fetch = (chemin, init = {}) => vraiFetch(String(chemin).startsWith("/") ? base + chemin : chemin, { ...init, headers: { ...(init.headers || {}), Origin: base } });
+  try {
+    await chargerVersion();
+    const titres = (q) => V.rechercherReglages(q, { aller: () => {} }).map((r) => r.titre);
+    const attendus = { secours: "Secours Claude si la tour ne répond pas", "recherche web": "Recherche web", "réflexion de la nuit": "Réflexion de la nuit", compacter: "Compacter les longues conversations" };
+    for (const q of Object.keys(attendus)) assert.ok(!titres(q).includes(attendus[q]), `avant la lecture, « ${q} » ne peut pas savoir`);
+    const r = await V.prechargerReglages();
+    assert.equal(typeof r?.circuits, "object", "GET /api/reglages lu");
+    for (const [q, titre] of Object.entries(attendus)) assert.ok(titres(q).includes(titre), `Ctrl+K « ${q} » → ${titre} (${JSON.stringify(titres(q))})`);
+    assert.equal(await V.prechargerReglages(), r, "une seule lecture : la seconde ouverture reprend la première");
+  } finally {
+    globalThis.fetch = vraiFetch;
+  }
+});

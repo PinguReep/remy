@@ -103,3 +103,53 @@ test("un envoi sans réponse le note ; répété, il attend Sam comme « peut-ê
   assert.deepEqual(F.liste().map((e) => e.id), ["r2"]);
   assert.equal(F.enVol(), null);
 });
+
+test("Retirer pendant qu'une autre part : la ligne retirée ne part jamais ; Annuler la remet une seule fois ; la liste sait ce qui part", async () => {
+  magasin.clear();
+  const recues = [];
+  let relacher = null;
+  globalThis.fetch = async (url, init = {}) => {
+    const id = JSON.parse(init.body || "{}").rappels?.[0]?.id;
+    recues.push(id);
+    // La première ligne reste en route tant que le test ne la relâche pas.
+    if (id === "a") await new Promise((r) => (relacher = r));
+    return new Response(JSON.stringify({ ok: true, nombre: 1 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const rappel = (id, texte) => ({ id, resume: `Rappel « ${texte} »`, genre: "rappel", requetes: [{ chemin: "/api/rappels", corps: { rappels: [{ id, texte }] } }] });
+  const attendre = async (cond) => { for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 5)); };
+  F.ajouter(rappel("a", "Arroser le ficus"));
+  F.ajouter(rappel("b", "Commander la cire"));
+  F.ajouter(rappel("c", "Appeler Léa"));
+  const vus = [];
+  const desabonner = F.surChangement(() => vus.push(F.enVol()));
+  const envoi = F.vider({ sansAttendre: true });
+  assert.equal(F.enVol(), "a");
+  assert.ok(vus.includes("a"), "la liste est prévenue que « a » part (« Part en ce moment… »)");
+  await attendre(() => relacher);
+  const b = F.liste().find((e) => e.id === "b");
+  assert.equal(F.retirer("b"), 1, "« Retirer » pendant que « a » part");
+  relacher();
+  const r = await envoi;
+  assert.deepEqual(recues, ["a", "c"], "la ligne retirée ne part jamais");
+  assert.deepEqual(r.envoyes, ["Rappel « Arroser le ficus »", "Rappel « Appeler Léa »"]);
+  assert.deepEqual(F.liste(), []);
+  assert.equal(F.enVol(), null);
+  assert.equal(vus.at(-1), null, "la fin de l'envoi est dite aussi (plus de « Part en ce moment… » figé)");
+
+  // Retirée puis remise (« Annuler ») pendant que « a » part : elle part une seule fois, telle qu'elle est.
+  recues.length = 0;
+  relacher = null;
+  F.ajouter(rappel("a", "Arroser le ficus"));
+  F.ajouter(b);
+  const deux = F.vider({ sansAttendre: true });
+  await attendre(() => relacher);
+  const place = F.retirer("b");
+  assert.equal(F.remettre(b, place), true);
+  assert.equal(F.remettre(b, place), true, "un second Annuler ne la double pas");
+  assert.deepEqual(F.liste().map((e) => e.id), ["a", "b"]);
+  relacher();
+  await deux;
+  desabonner();
+  assert.deepEqual(recues, ["a", "b"], "remise une fois, partie une fois");
+  assert.deepEqual(F.liste(), []);
+});

@@ -38,6 +38,9 @@ let garde = () => null;
 let minuteurRepere = null;
 /** Le contrôle qui avait le focus au début d'un geste : il le retrouve une fois la section redessinée. */
 let focusApres = null;
+/** La file d'envoi suivie tant que Réglages est ouvert (pastille du maître, section « Envoi en attente »). */
+let desabonnerFile = null;
+let minuteurFile = null;
 
 // Une section dont la tour ne connaît pas encore la fonction est cachée
 // (comme sur l'iPhone), et la recherche dit que l'entrée en dépend.
@@ -69,6 +72,17 @@ export const indexVisible = () => R.entreesVisibles(contexteRecherche());
  */
 export function rechercherReglages(q, contexte) {
   return R.chercher(q, contexteRecherche()).entrees.map((e) => ({ id: e.id, titre: e.titre, chemin: R.chemin(e), sous: e.sous, faire: () => ouvrirEntree(e, contexte) }));
+}
+
+/**
+ * Ctrl+K avant tout passage par Réglages : les réglages de la tour (recherche
+ * web, secours, circuits) sont lus à l'ouverture de la palette, sinon ces
+ * lignes resteraient introuvables. Une seule lecture ; un échec ne dit rien
+ * (la palette garde le reste).
+ */
+export function prechargerReglages() {
+  if (reglagesTour || !sait("reglages")) return Promise.resolve(reglagesTour);
+  return lireReglages();
 }
 
 /** Ouvre la section d'une entrée, sa ligne mise en évidence (recherche, Ctrl+K). */
@@ -113,17 +127,28 @@ export default {
     // Les réglages de la tour : la recherche en a besoin pour savoir ce qui s'affiche.
     if (sait("reglages")) lireReglages().then(() => recherche.trim() && dessinerMaitre()).catch(() => {});
     window.addEventListener("beforeunload", avantDeFermer);
+    desabonnerFile?.();
+    desabonnerFile = fileEnvoi.surChangement(fileChangee);
     await dessinerSection();
   },
+  /** Une autre section (ou la même, par la recherche ou Ctrl+K). Rend false si Sam a gardé ses changements. */
   async suivre(args) {
     const voulue = sectionsVisibles().some((s) => s.id === args[0]) ? args[0] : null;
+    if (voulue === section && garde()) {
+      // Déjà ouverte, avec des changements pas enregistrés : la ligne visée
+      // est mise en évidence sur place, rien n'est relu ni perdu.
+      dessinerMaitre();
+      appliquerRepere();
+      return true;
+    }
     if (voulue !== section && !(await peutQuitterSection())) {
       history.replaceState(null, "", `#/reglages${section ? `/${section}` : ""}`);
-      return;
+      return false;
     }
     section = voulue;
     dessinerMaitre();
     await dessinerSection();
+    return true;
   },
   /** main.js le demande avant de changer de vue : des changements non enregistrés se confirment. */
   peutQuitter: () => peutQuitterSection(),
@@ -137,9 +162,50 @@ export default {
   demonter() {
     window.removeEventListener("beforeunload", avantDeFermer);
     clearTimeout(minuteurRepere);
+    desabonnerFile?.();
+    desabonnerFile = null;
+    clearTimeout(minuteurFile);
+    minuteurFile = null;
     garde = () => null;
   },
 };
+
+/**
+ * La file d'envoi a changé (une note part, revient, est retirée) : la pastille
+ * du maître, le rail et la section « Envoi en attente » la suivent, comme
+ * FileEnvoiVue. Les changements d'un même envoi se redessinent une fois.
+ */
+function fileChangee() {
+  if (minuteurFile) return;
+  minuteurFile = setTimeout(() => redessinerFile(), 0);
+}
+async function redessinerFile() {
+  clearTimeout(minuteurFile);
+  minuteurFile = null;
+  ctx?.majCompteurs?.();
+  majPastilleFile();
+  if (section !== "file" || !refs.detail?.isConnected) return;
+  // Le focus reste sur le même bouton de la même ligne ; si la ligne est partie, sur le titre.
+  const avant = document.activeElement;
+  const dedans = refs.detail.contains(avant);
+  const cle = dedans ? avant.dataset?.cle : null;
+  await dessinerSection(null);
+  if (!dedans || section !== "file") return;
+  const el = cle ? [...refs.detail.querySelectorAll("[data-cle]")].find((x) => x.dataset.cle === cle && !x.disabled) : null;
+  (el || refs.detail.querySelector("h2"))?.focus();
+}
+/** La pastille « Envoi en attente » du maître, mise à jour sur place (le focus du maître ne bouge pas). */
+function majPastilleFile() {
+  const a = refs.maitre?.querySelector('a.element-maitre[href="#/reglages/file"]');
+  if (!a) return;
+  const n = fileEnvoi.compte();
+  const p = a.querySelector(".pastille-compte");
+  if (n && p) p.textContent = String(n);
+  else if (n) a.append(h("span", { class: "pastille-compte" }, String(n)));
+  else p?.remove();
+  if (n) a.setAttribute("aria-label", `${R.titreSection("file")}, ${n}`);
+  else a.removeAttribute("aria-label");
+}
 
 function avantDeFermer(e) {
   if (!garde()) return;
@@ -746,58 +812,73 @@ const SECTIONS_RENDU = {
   },
 
   async file() {
+    // Lue au moment du dessin : la section se redessine à chaque changement de la file (fileChangee).
     const l = fileEnvoi.liste();
     const vol = fileEnvoi.enVol();
-    const apres = () => {
-      ctx.majCompteurs();
-      dessinerMaitre();
-      return dessinerSection(null);
-    };
+    const apres = () => redessinerFile();
     const enRoute = (e) => {
       if (fileEnvoi.enVol() !== e.id) return false;
       dire(`« ${court(fileEnvoi.decrire(e).texte)} » part en ce moment : attends la réponse de Rémy.`);
       return true;
     };
+    // Une ligne déjà partie (la file a bougé entre le dessin et le clic) : rien à retirer ni à renvoyer.
+    const dejaPartie = (e, d) => {
+      if (fileEnvoi.liste().some((x) => x.id === e.id)) return false;
+      dire(`« ${court(d.texte)} » n'est plus en attente : elle est déjà partie vers Rémy.`);
+      apres();
+      return true;
+    };
     const lignes = l.map((e) => {
       const d = fileEnvoi.decrire(e);
       const et = fileEnvoi.etat(e);
+      const renvoyer = et.aRevoir ? bouton("Renvoyer", { classe: "papier petit", etiquette: `Renvoyer « ${court(d.texte)} »`, onclick: (ev) => {
+        if (enRoute(e) || dejaPartie(e, d)) return;
+        return occupe(ev.currentTarget, async () => {
+          const r = await fileEnvoi.renvoyer(e.id);
+          if (r.envoyes.length) dire(`Envoyé : « ${court(d.texte)} ».`, { genre: "succes" });
+          else if (fileEnvoi.liste().some((x) => x.id === e.id && !x.refus)) dire("Toujours pas de réponse : elle repartira seule dès que Rémy sera joignable.");
+          else dire(fileEnvoi.liste().find((x) => x.id === e.id)?.refus || "Pas envoyée.", { genre: "erreur" });
+          await apres();
+        });
+      } }) : null;
+      const retirer = bouton("Retirer", { classe: "texte petit reglages-danger", etiquette: `Retirer « ${court(d.texte)} »`, onclick: () => {
+        if (enRoute(e) || dejaPartie(e, d)) return;
+        // Telle qu'elle est maintenant (ses essais) : la phrase et « Annuler » partent de là.
+        const actuelle = fileEnvoi.liste().find((x) => x.id === e.id);
+        const place = fileEnvoi.retirer(e.id);
+        dire(fileEnvoi.phraseRetiree(actuelle), { action: { libelle: "Annuler", faire: () => {
+          fileEnvoi.remettre(actuelle, place);
+          dire(`« ${court(d.texte)} » est de retour dans la file.`, { genre: "succes", duree: 2000 });
+          return apres();
+        } }, duree: 8000 });
+        apres();
+      } });
+      if (renvoyer) renvoyer.dataset.cle = `renvoyer:${e.id}`;
+      retirer.dataset.cle = `retirer:${e.id}`;
       return h("li", { class: `reglages-envoi ${et.aRevoir ? "a-revoir" : ""}`.trim() },
         h("div", { class: "rangee reglages-envoi-tete" }, icone(d.icone),
           h("div", { class: "corps" },
             h("div", { class: "titre-ligne reglages-quatre-lignes" }, d.texte),
             h("div", { class: "meta" }, `${d.libelle} · ${d.detail}`),
-            h("div", { class: et.aRevoir ? "reglages-a-revoir" : "meta" }, vol === e.id ? "Part en ce moment…" : et.texte))),
-        h("div", { class: "rangee reglages-envoi-actions" },
-          et.aRevoir ? bouton("Renvoyer", { classe: "papier petit", etiquette: `Renvoyer « ${court(d.texte)} »`, onclick: (ev) => {
-            if (enRoute(e)) return;
-            return occupe(ev.currentTarget, async () => {
-              const r = await fileEnvoi.renvoyer(e.id);
-              if (r.envoyes.length) dire(`Envoyé : « ${court(d.texte)} ».`, { genre: "succes" });
-              else if (fileEnvoi.liste().some((x) => x.id === e.id && !x.refus)) dire("Toujours pas de réponse : elle repartira seule dès que Rémy sera joignable.");
-              else dire(fileEnvoi.liste().find((x) => x.id === e.id)?.refus || "Pas envoyée.", { genre: "erreur" });
-              await apres();
-            });
-          } }) : null,
-          bouton("Retirer", { classe: "texte petit reglages-danger", etiquette: `Retirer « ${court(d.texte)} »`, onclick: () => {
-            if (enRoute(e)) return;
-            const place = fileEnvoi.retirer(e.id);
-            dire(fileEnvoi.phraseRetiree(e), { action: { libelle: "Annuler", faire: () => {
-              fileEnvoi.remettre(e, place);
-              dire(`« ${court(d.texte)} » est de retour dans la file.`, { genre: "succes", duree: 2000 });
-              return apres();
-            } }, duree: 8000 });
-            apres();
-          } })));
+            h("div", { class: et.aRevoir && vol !== e.id ? "reglages-a-revoir" : "meta" }, vol === e.id ? "Part en ce moment…" : et.texte))),
+        h("div", { class: "rangee reglages-envoi-actions" }, renvoyer, retirer));
     });
     const peutPartir = l.some(fileEnvoi.partSeul);
-    return carte("Envoi en attente", l.length ? "Notées sans réseau, telles que le site les a comprises. Elles partent seules dès que Rémy répond, une seule fois chacune." : "Tout est parti : rien n'attend plus Rémy.",
-      l.length ? h("ul", { class: "liste reglages-envois" }, lignes) : null,
-      peutPartir ? h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton("Envoyer maintenant", { classe: "plein", icone: "envoyer", onclick: (ev) => occupe(ev.currentTarget, async () => {
+    // Pendant un envoi (ce bouton, le retour de la tour, la relance seule) : « Envoi… », comme l'iPhone.
+    const envoyer = bouton(vol ? "Envoi…" : "Envoyer maintenant", { classe: "plein", icone: "envoyer", onclick: (ev) => {
+      if (fileEnvoi.enVol()) return dire("Envoi en cours : attends la réponse de Rémy.");
+      return occupe(ev.currentTarget, async () => {
         const r = await fileEnvoi.vider({ sansAttendre: true });
         if (r.envoyes.length) dire(`${r.envoyes.length === 1 ? "Envoyé" : `${r.envoyes.length} envoyés`} : ${r.envoyes.join(" ; ")}.`, { genre: "succes" });
         if (fileEnvoi.liste().some(fileEnvoi.partSeul)) dire("Rémy est toujours injoignable : elles partiront dès qu'il répond.");
         await apres();
-      }) })) : null);
+      });
+    } });
+    envoyer.dataset.cle = "envoyer";
+    if (vol) envoyer.setAttribute("aria-busy", "true");
+    return carte("Envoi en attente", l.length ? "Notées sans réseau, telles que le site les a comprises. Elles partent seules dès que Rémy répond, une seule fois chacune." : "Tout est parti : rien n'attend plus Rémy.",
+      l.length ? h("ul", { class: "liste reglages-envois" }, lignes) : null,
+      peutPartir ? h("div", { class: "rangee", style: { marginTop: "12px" } }, envoyer) : null);
   },
 
   async remy(donnees) {

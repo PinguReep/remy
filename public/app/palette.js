@@ -133,11 +133,16 @@ export async function ouvrir({ contexte, vues, vueCourante }) {
   dessiner();
 
   // Ce qui se cherche par son nom : conversations, listes, dossiers, réglages.
+  // Recherche web, secours, circuits : la tour dit s'ils existent ; lus ici
+  // quand Réglages n'a pas encore été ouvert (un échec n'enlève que ces lignes).
   const [convs, listes, dossiers, reglages] = await Promise.allSettled([
     api("/api/conversations", { delai: 8000 }),
     api("/api/listes", { delai: 8000 }),
     api("/api/dossiers", { delai: 8000 }),
-    import("./vues/reglages.js"),
+    import("./vues/reglages.js").then(async (m) => {
+      await m.prechargerReglages?.().catch(() => {});
+      return m;
+    }),
   ]);
   if (!d.isConnected) return;
   if (convs.status === "fulfilled" && Array.isArray(convs.value)) {

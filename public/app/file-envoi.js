@@ -27,6 +27,7 @@ const prevenir = () => abonnes.forEach((f) => f(lireFile()));
 
 export const liste = () => lireFile();
 export const compte = () => lireFile().length;
+/** `f(file)` à chaque changement de la file, et quand un envoi part ou s'arrête (enVol) ; rend de quoi se désabonner. */
 export const surChangement = (f) => {
   abonnes.add(f);
   return () => abonnes.delete(f);
@@ -131,9 +132,15 @@ export function vider({ force = false, sansAttendre = false } = {}) {
   if (enCours) return enCours;
   enCours = (async () => {
     const envoyes = [];
-    for (const e of lireFile()) {
+    for (const { id } of lireFile()) {
+      // Relue avant chaque envoi : une ligne retirée pendant que la précédente
+      // partait ne part pas (« ne partira pas » a été dit) ; remise par
+      // « Annuler », elle part telle qu'elle est (EnvoiCaptures.envoyerCapture).
+      const e = lireFile().find((x) => x.id === id);
+      if (!e) continue;
       if (!force && (e.refus || (!sansAttendre && e.prochain > Date.now()))) continue;
       enVolId = e.id;
+      prevenir(); // la liste d'attente dit « Part en ce moment… »
       try {
         const r = await envoyerElement(e, { rejeu: true });
         if (r && r.ok === false && Array.isArray(r.results)) {
@@ -159,10 +166,11 @@ export function vider({ force = false, sansAttendre = false } = {}) {
         maj(e.id, { refus: err.message || "Refusé par la tour.", tentatives: t, sansReponse, peutEtreRecue: nature === "incertain" });
       }
     }
-    enVolId = null;
     return { envoyes, restants: compte() };
   })().finally(() => {
     enCours = null;
+    enVolId = null;
+    prevenir(); // plus rien ne part : la liste le dit
     programmer();
   });
   return enCours;
