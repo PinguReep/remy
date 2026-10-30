@@ -84,6 +84,11 @@ struct ConversationsExternesVue: View {
                         resultats(r)
                     } else {
                         if let p = m.etat?.probleme { probleme(p) }
+                        if m.filtre == nil || m.filtre == "chatgpt" {
+                            // Un export trouvé dans Téléchargements attend ton geste (sa carte cache le rappel).
+                            ForEach(m.propositions) { p in CartePropositionTelechargementVue(proposition: p) }
+                            if let c = m.carteExport { CarteExportChatGPTVue(carte: c, importer: { importOuvert = true }) }
+                        }
                         if m.filtre == nil, let d = m.digest, !d.vide { CarteNuitConversations(digest: d) }
                         liste
                     }
@@ -756,6 +761,7 @@ struct ChoixJourConversations: View {
 struct SourcesConversationsVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
+    @Environment(\.openURL) private var ouvrirURL
     /// Ouverte depuis Réglages : sa propre pile et un bouton « OK ».
     var dansFeuille = false
     @State private var aEffacer: SourceConversations?
@@ -844,6 +850,11 @@ struct SourcesConversationsVue: View {
             .frame(minHeight: 60)
             .disabled(s.forceParLaTour || m.enCours)
             .accessibilityIdentifier("sources.\(s.id)")
+            // Ce que la dernière lecture a vu (« 312 sessions : 280 lues… »).
+            if let r = s.phraseRecensement {
+                Text(r).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sources.recensement.\(s.id)")
+            }
             if let q = (s.erreur ?? s.aide)?.quoiFaire {
                 Text(q).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
             }
@@ -886,6 +897,7 @@ struct SourcesConversationsVue: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("sources.originaux")
                 }
+                reglagesExport(m.etat?.chatgpt)
             }
             if s.actif {
                 Button {
@@ -908,6 +920,57 @@ struct SourcesConversationsVue: View {
             }
         } header: {
             Text(s.nom)
+        }
+    }
+
+    /// Les deux réglages de l'import ChatGPT (soir du 29/10), et la page
+    /// d'export. Une tour plus ancienne ne les connaît pas : rien.
+    @ViewBuilder
+    private func reglagesExport(_ e: EtatConversations.ExportChatGPT?) -> some View {
+        let m = app.conversationsExternes
+        if let t = e?.telechargements {
+            Toggle(isOn: Binding(get: { t.actif }, set: { oui in
+                Haptique.leger()
+                Task { await m.reglerExportChatGPT(telechargements: oui) }
+            })) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Prendre l'export dans Téléchargements").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    if let p = ConversationsExternes.phraseTelechargements(t) {
+                        Text(p).font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .tint(Palette.signal)
+            .frame(minHeight: 60)
+            .disabled(t.forceParLaTour || m.enCours)
+            .accessibilityIdentifier("sources.telechargements")
+            .repere("Prendre l'export dans Téléchargements", dans: .sourcesConversations)
+        }
+        if let r = e?.rappel {
+            Toggle(isOn: Binding(get: { r.actif }, set: { oui in
+                Haptique.leger()
+                Task { await m.reglerExportChatGPT(rappel: oui) }
+            })) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Me rappeler d'exporter ChatGPT").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    Text("Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail sur la tour, Rémy fait le reste.")
+                        .font(Police.texte(13)).foregroundStyle(Palette.encre2).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.signal)
+            .frame(minHeight: 60)
+            .disabled(m.enCours)
+            .accessibilityIdentifier("sources.rappel-export")
+            .repere("Me rappeler d'exporter ChatGPT", dans: .sourcesConversations)
+        }
+        if e != nil {
+            Button {
+                ouvrirURL(ConversationsExternes.lienExportChatGPT)
+                app.dire("Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.")
+            } label: {
+                Label("Demander un export à ChatGPT", systemImage: "arrow.up.right.square").frame(minHeight: 44)
+            }
+            .accessibilityIdentifier("sources.demander-export")
         }
     }
 
@@ -961,6 +1024,117 @@ struct SourcesConversationsVue: View {
         } header: {
             Text("Vie privée")
         }
+    }
+}
+
+/// Un export ChatGPT trouvé dans les Téléchargements de la tour (contre-relecture
+/// du 30/10, tour 2) : rien n'entre dans ta mémoire sans ce geste. Les mêmes
+/// mots et les mêmes gestes que le site ; les deux boutons attendent la réponse
+/// (« Pas celui-là » pendant un import importait quand même).
+struct CartePropositionTelechargementVue: View {
+    @Environment(AppModel.self) private var app
+    let proposition: PropositionTelechargement
+    /// Le geste en cours sur cette carte : true « Importer », false « Pas celui-là ».
+    @State private var geste: Bool?
+
+    var body: some View {
+        let m = app.conversationsExternes
+        let c = ConversationsExternes.carteProposition(proposition)
+        VStack(alignment: .leading, spacing: 10) {
+            Label("ChatGPT", systemImage: ConversationsExternes.symbole("chatgpt"))
+                .font(Police.mono(12, .medium))
+                .foregroundStyle(Palette.encre2)
+            Text(c.titre)
+                .font(Police.titre(20))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(c.texte)
+                .font(Police.texte(15))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(c.detail)
+                .font(Police.texte(13))
+                .foregroundStyle(Palette.encre3)
+                .fixedSize(horizontal: false, vertical: true)
+            BoutonA(titre: geste == true ? "Import en cours sur la tour…" : c.importer, symbole: "square.and.arrow.down") {
+                repondre(true)
+            }
+            .accessibilityIdentifier("conversations.trouve.importer")
+            BoutonA(titre: c.refuser, symbole: "xmark", principal: false) {
+                repondre(false)
+            }
+            .accessibilityIdentifier("conversations.trouve.refuser")
+        }
+        .disabled(m.enCours || geste != nil)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .carte(rayon: 18)
+        .padding(.horizontal, 16)
+    }
+
+    private func repondre(_ importer: Bool) {
+        Haptique.leger()
+        geste = importer
+        Task {
+            await app.conversationsExternes.repondre(proposition, importer: importer)
+            geste = nil
+        }
+    }
+}
+
+/// La carte « Exporter ChatGPT » (soir du 29/10) : la tour dit quand la
+/// montrer (dernier import de plus de 30 jours, ou jamais). Le bouton ouvre
+/// la page d'export de ChatGPT ; Rémy ne s'y connecte jamais : le mail
+/// arrive, tu cliques son lien sur l'ordinateur, Rémy trouve le .zip dans
+/// Téléchargements et te demande ton accord (la carte ci-dessus).
+struct CarteExportChatGPTVue: View {
+    @Environment(AppModel.self) private var app
+    @Environment(\.openURL) private var ouvrirURL
+    let carte: CarteExportChatGPT
+    /// Le lien du mail touché sur l'iPhone : le .zip est dans Fichiers, pas
+    /// dans les Téléchargements de la tour — il s'importe d'ici.
+    var importer: (() -> Void)? = nil
+
+    var body: some View {
+        let m = app.conversationsExternes
+        VStack(alignment: .leading, spacing: 10) {
+            Label("ChatGPT", systemImage: ConversationsExternes.symbole("chatgpt"))
+                .font(Police.mono(12, .medium))
+                .foregroundStyle(Palette.encre2)
+            Text(carte.titre)
+                .font(Police.titre(20))
+                .foregroundStyle(Palette.encre)
+            Text(carte.texte)
+                .font(Police.texte(15))
+                .foregroundStyle(Palette.encre)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(carte.detail)
+                .font(Police.texte(13))
+                .foregroundStyle(Palette.encre3)
+            BoutonA(titre: carte.bouton, symbole: "arrow.up.right.square") {
+                Haptique.leger()
+                ouvrirURL(carte.lien)
+                app.dire(carte.apresOuverture)
+            }
+            .accessibilityIdentifier("conversations.exporter")
+            if let importer {
+                BoutonA(titre: m.importEnCours ? m.libelleImport : carte.importer, symbole: "square.and.arrow.down", principal: false) {
+                    Haptique.leger()
+                    importer()
+                }
+                .disabled(m.importEnCours)
+                .accessibilityIdentifier("conversations.exporter.importer")
+            }
+            LienTexte(titre: "Ne plus me le rappeler") {
+                Task { await m.reglerExportChatGPT(rappel: false) }
+            }
+            .disabled(m.enCours)
+            .accessibilityIdentifier("conversations.exporter.couper")
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .carte(rayon: 18)
+        .padding(.horizontal, 16)
     }
 }
 

@@ -5,7 +5,8 @@
 // message trouvé. Visible seulement si la tour annonce
 // `conversations-externes-v1` (main.js). Les phrases et les chemins viennent
 // de analyse/conversations.js (les mêmes mots que l'iPhone, testés en node).
-import { api, ecrire, remplacer, supprimer, evenements } from "../api.js";
+import { api, ecrire, remplacer, supprimer, evenements, nouvelId, natureEchec, sait } from "../api.js";
+import * as fileEnvoi from "../file-envoi.js";
 import { h, vider, icone, bouton, dire, direErreur, squelette, blocErreur, vide, confirmer, occupe, feuille, markdown, jourCourt } from "../ui.js";
 import * as C from "../analyse/conversations.js";
 
@@ -36,6 +37,7 @@ export default {
     refs.recherche.addEventListener("input", () => {
       clearTimeout(minuterieRecherche);
       minuterieRecherche = setTimeout(chercher, 300);
+      dessinerCarte();
     });
     refs.filtres = h("div", { class: "rangee serree", role: "radiogroup", "aria-label": "Source" });
     refs.jour = h("select", { class: "champ", "aria-label": "Aller à un jour", title: "Aller à un jour", style: { minHeight: "44px", marginTop: "8px" } }, h("option", { value: "" }, "Tous les jours"));
@@ -43,22 +45,24 @@ export default {
     refs.jour.addEventListener("change", () => {
       jour = refs.jour.value;
       refs.recherche.value = "";
+      dessinerCarte();
       chargerListe();
     });
     refs.etat = h("div", { class: "aide", role: "status" });
+    refs.carte = h("div");
     refs.liste = h("div", null, squelette([0.8, 0.6, 0.7]));
     refs.detail = h("section", { class: "detail" });
     refs.grille = h("div", { class: "maitre-detail" },
       h("div", { class: "maitre" },
         h("div", { class: "recherche-champ", style: { marginBottom: "10px" } }, icone("recherche"), refs.recherche, h("span", { class: "kbd" }, "/")),
-        refs.filtres, refs.jour, h("div", { style: { margin: "8px 0" } }, refs.etat), refs.liste),
+        refs.filtres, refs.jour, h("div", { style: { margin: "8px 0" } }, refs.etat), refs.carte, refs.liste),
       refs.detail);
     vider(el,
       h("header", { class: "entete-ecran" },
         h("div", { class: "titres" }, h("div", { class: "sur-titre" }, "Claude Code · T3 Code · ChatGPT"), h("h1", { class: "titre-ecran" }, "Conversations")),
         h("div", { class: "actions-entete" },
           bouton("Sources", { classe: "papier", icone: "curseurs", titre: "Sources des conversations : lire, couper, importer, effacer", onclick: () => ouvrirSources() }),
-          bouton("Lire maintenant", { classe: "plein", icone: "rafraichir", titre: "Relire Claude Code et T3 sur la tour", onclick: (e) => occupe(e.currentTarget, () => synchroniser(source)) }))),
+          bouton("Lire maintenant", { classe: "plein", icone: "rafraichir", titre: "Relire Claude Code, T3 et les exports ChatGPT sur la tour", onclick: (e) => occupe(e.currentTarget, () => synchroniser(source)) }))),
       refs.grille);
     dessinerFiltres();
     await Promise.all([chargerEtat(), chargerListe(), chargerJours()]);
@@ -92,6 +96,7 @@ function dessinerFiltres() {
     b.addEventListener("click", () => {
       source = id;
       dessinerFiltres();
+      dessinerCarte();
       chargerJours();
       if (refs.recherche.value.trim()) chercher();
       else chargerListe();
@@ -119,6 +124,116 @@ function dessinerEtat() {
     // Les autres sources en échec (la première est déjà dite).
     (etat.sources || []).filter((s) => s.actif && s.erreur && s.erreur !== p).map((s) => h("span", { class: "risque", style: { display: "flex" } }, icone("alerte"), `${s.nom} : ${s.erreur.message}`)),
     enAttente ? h("span", { style: { display: "block", marginTop: "4px" } }, enAttente) : null);
+  dessinerCarte({ forcer: true });
+}
+
+// --- La carte « Exporter ChatGPT » (soir du 29/10) ---
+// La tour dit quand la montrer (dernier import de plus de 30 jours, ou
+// jamais) ; le bouton ouvre la page d'export de ChatGPT (dans l'app de
+// bureau : le navigateur par défaut). Rémy ne s'y connecte jamais : le mail
+// arrive, tu cliques son lien sur la tour, Rémy trouve le .zip dans ses
+// Téléchargements et te demande ton accord (la carte ci-dessus) ; reçu
+// ailleurs (autre ordinateur), « Importer le .zip ».
+// Comme l'iPhone, la carte ne se montre que sur « Toutes » ou ChatGPT, et
+// jamais à la place des résultats d'une recherche (contre-relecture du 30/10).
+function dessinerCarte({ forcer = false } = {}) {
+  if (!refs.carte || !refs.recherche) return;
+  const visible = C.carteExportVisible({ source, recherche: refs.recherche.value });
+  // Redessinée seulement quand elle apparaît ou disparaît (ou que l'état
+  // change) : un import en cours garde sa progression pendant la frappe.
+  if (!forcer && refs.carte.dataset.visible === String(visible)) return;
+  refs.carte.dataset.visible = String(visible);
+  const redessiner = () => dessinerCarte({ forcer: true });
+  vider(refs.carte, visible ? [cartesTelechargements(redessiner), carteExport(redessiner)] : null);
+}
+
+// --- Un export trouvé dans Téléchargements : « l'importer ? » (revue du 30/10) ---
+// Rien de ce qu'un site range dans Téléchargements n'entre sans ce geste.
+function cartesTelechargements(dessiner) {
+  const liste = C.propositionsTelechargements(etat);
+  if (!liste.length) return null;
+  return liste.map((p) => {
+    const c = C.carteProposition(p);
+    const boutons = [];
+    // Les DEUX boutons attendent la réponse : « Pas celui-là » pendant un
+    // « Importer » en cours importait quand même, puis disait « Pas importé »
+    // (contre-relecture du 30/10, tour 2).
+    const repondre = (importer) => async (e) => {
+      const autres = boutons.filter((b) => b !== e.currentTarget);
+      for (const b of autres) b.disabled = true;
+      try {
+        await occupe(e.currentTarget, async () => {
+          try {
+            const r = await ecrire(C.cheminReponseTelechargement(), { id: p.id, importer }, { delai: 300000 });
+            dire(importer ? `Import ChatGPT : ${C.phraseImport(r?.bilan || {})}` : r?.message || "Pas importé.", { genre: importer ? "succes" : "info", duree: importer ? 7000 : undefined });
+            apres(dessiner, r?.etat);
+          } catch (err) {
+            // Déjà importé (la tour l'a fait juste avant) : dit tel quel, et la carte s'en va.
+            if (!importer && err?.statut === 409) {
+              dire(err.message, { genre: "info", duree: 9000 });
+              apres(dessiner);
+              return;
+            }
+            direErreur(err, importer ? () => repondre(true)({ currentTarget: null }) : null, importer ? "Pas importé" : "Pas enregistré", { rafraichir: () => synchroniser("chatgpt") });
+          }
+        });
+      } finally {
+        for (const b of autres) b.disabled = false;
+      }
+    };
+    boutons.push(bouton(c.importer, { classe: "plein", icone: "envoyer", onclick: repondre(true) }), bouton(c.refuser, { classe: "papier", onclick: repondre(false) }));
+    return h("section", { class: "carte", "aria-label": c.titre, dataset: { carte: "export-trouve" }, style: { margin: "0 0 12px" } },
+      h("div", { class: "sur-titre" }, "ChatGPT"),
+      h("h3", { class: "carte-titre", style: { margin: "2px 0 6px" } }, c.titre),
+      h("p", { style: { margin: "0 0 4px", overflowWrap: "anywhere" } }, c.texte),
+      h("p", { class: "aide", style: { margin: "0 0 10px" } }, c.detail),
+      h("div", { class: "rangee serree" }, boutons));
+  });
+}
+function lienExport(libelle, { classe = "plein", lien = C.LIEN_EXPORT_CHATGPT, apres = null } = {}) {
+  return h("a", {
+    class: `btn ${classe}`,
+    href: lien,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    title: "Ouvre ChatGPT › Réglages › Contrôle des données",
+    onclick: () => dire(apres || "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.", { duree: 9000 }),
+  }, icone("externe"), h("span", { class: "lib" }, libelle));
+}
+
+function carteExport(dessiner) {
+  const c = C.carteExportChatGPT(etat);
+  if (!c) return null;
+  // Le .zip reçu ailleurs que sur la tour : envoyé d'ici, comme dans Sources.
+  const progression = h("div", { class: "aide envoi-export", role: "status", "aria-live": "polite", hidden: true, style: { marginTop: "8px" } },
+    h("progress", { max: "1", style: { width: "160px", marginRight: "8px", verticalAlign: "middle" } }), h("span"));
+  const fichier = h("input", { type: "file", accept: ".zip,.json,application/zip,application/json", class: "sr", id: "fichier-carte-export", tabindex: "-1" });
+  fichier.addEventListener("change", () => {
+    importer(fichier.files?.[0], { progression, apres: (r) => apres(null, r?.etat) });
+    fichier.value = "";
+  });
+  return h("section", { class: "carte", "aria-label": c.titre, dataset: { carte: "export-chatgpt" }, style: { margin: "0 0 12px" } },
+    h("div", { class: "sur-titre" }, "ChatGPT"),
+    h("h3", { class: "carte-titre", style: { margin: "2px 0 6px" } }, c.titre),
+    h("p", { style: { margin: "0 0 4px" } }, c.texte),
+    h("p", { class: "aide", style: { margin: "0 0 10px" } }, c.detail),
+    h("div", { class: "rangee serree" },
+      lienExport(c.bouton, { lien: c.lien, apres: c.apresOuverture }),
+      h("label", { class: "btn papier", for: "fichier-carte-export", tabindex: "0", role: "button", title: "Envoyer à la tour le .zip reçu par mail", onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fichier.click(); } } }, icone("envoyer"), c.importer || "Importer le .zip"), fichier,
+      bouton("Ne plus me le rappeler", { classe: "texte", titre: "Couper ce rappel (il se rallume dans Sources)", onclick: (e) => occupe(e.currentTarget, () => reglerChatGPT({ rappel: false }, "Plus de rappel d'export. Il se rallume dans Sources.", dessiner)) })),
+    progression);
+}
+
+/** Un réglage de l'import ChatGPT (Téléchargements, rappel) : l'état revient, la vue suit. */
+async function reglerChatGPT(changement, phrase, dessiner) {
+  try {
+    apres(dessiner, await remplacer(C.cheminSource("chatgpt"), changement));
+    dire(phrase, { genre: "succes" });
+    return true;
+  } catch (err) {
+    direErreur(err, null, "Réglage pas enregistré");
+    return false;
+  }
 }
 
 // --- Les jours (« Aller à un jour », comme l'iPhone) ---
@@ -190,7 +305,7 @@ function dessinerListe() {
       ? [h("p", { class: "aide", style: { margin: "0 0 6px" } }, resultats.length === 1 ? "1 message trouvé" : `${resultats.length} messages trouvés`),
         resultats.map((r) => lienConv({ source: r.source, id: r.conversation, autour: r.message }, r.titre,
           `${C.nomSource(r.source)} · ${C.relatif(r.ts)}${r.projet ? ` · ${r.projet.nom}` : ""}`, r.extrait))]
-      : vide(null, "Aucun message ne contient ces mots.", source ? bouton("Chercher dans toutes les sources", { classe: "papier petit", onclick: () => { source = ""; dessinerFiltres(); chargerJours(); chercher(); } }) : null));
+      : vide(null, "Aucun message ne contient ces mots.", source ? bouton("Chercher dans toutes les sources", { classe: "papier petit", onclick: () => { source = ""; dessinerFiltres(); dessinerCarte(); chargerJours(); chercher(); } }) : null));
     return;
   }
   if (!pages) return;
@@ -198,7 +313,7 @@ function dessinerListe() {
   if (!convs.length) {
     const s = source ? (etat?.sources || []).find((x) => x.id === source) : null;
     const aide = s?.erreur || s?.aide || (etat?.sources || []).map((x) => x.aide).find(Boolean);
-    const texte = jour ? "Rien ce jour-là." : aide ? `${aide.message}${aide.quoiFaire ? ` ${aide.quoiFaire}` : ""}` : "« Lire maintenant » relit Claude Code et T3 sur la tour ; un export ChatGPT s'envoie depuis « Sources ».";
+    const texte = jour ? "Rien ce jour-là." : aide ? `${aide.message}${aide.quoiFaire ? ` ${aide.quoiFaire}` : ""}` : "« Lire maintenant » relit Claude Code, T3 et les exports ChatGPT sur la tour ; un export ChatGPT s'envoie aussi depuis « Sources ».";
     vider(refs.liste, vide("Rien pour l'instant", texte, bouton("Sources", { classe: "papier", onclick: () => ouvrirSources() })));
     return;
   }
@@ -293,10 +408,41 @@ function digestNuit() {
       d.decisions?.length ? [sous("DÉCISIONS"), h("ul", { style: { margin: "6px 0 0 18px" } }, d.decisions.map((x) => h("li", null, x)))] : null,
       d.aFaire?.length ? [sous("À FAIRE"), h("ul", { class: "liste" }, d.aFaire.map((x) => h("li", { class: "ligne" },
         h("div", { class: "corps" }, h("div", { class: "titre-ligne" }, x.texte), x.source ? h("div", { class: "meta" }, x.source) : null),
-        bouton("Noter", { classe: "papier petit", icone: "plus", onclick: () => ctx.noter(x.texte) }))))] : null,
+        // Le geste de l'iPhone (CarteNuitConversations) : un rappel sans heure, en un geste ;
+        // « Noter » reste pour en faire autre chose (contre-relecture du 30/10, tour 2).
+        h("div", { class: "rangee serree" },
+          sait("rappels-v1") ? bouton("Me le rappeler", { classe: "papier petit", icone: "cloche", titre: "Un rappel sans heure dans ton carnet", onclick: (e) => rappeler(x.texte, e.currentTarget) }) : null,
+          bouton("Noter", { classe: "texte petit", icone: "plus", titre: "Ouvrir Noter avec ce texte (tâche, rappel, liste…)", onclick: () => ctx.noter(x.texte) })))))] : null,
       h("p", { class: "aide", style: { marginTop: "8px" } }, "Des propositions, tirées par le modèle local : rien n'est fait seul."));
   }).catch(() => {});
   return zone;
+}
+
+/**
+ * « Me le rappeler » : une chose à faire tirée la nuit devient un rappel de
+ * ton carnet, sans heure (ConversationsExternes.rappeler sur l'iPhone, mêmes
+ * phrases). Tour injoignable : gardé ici, il part tout seul (même id).
+ */
+async function rappeler(texte, btn) {
+  const t = String(texte || "").trim().slice(0, 300);
+  if (!t) return;
+  const rappel = { id: nouvelId(), texte: t, quand: null };
+  await occupe(btn, async () => {
+    try {
+      const r = await ecrire("/api/rappels", { rappels: [rappel] });
+      const deja = r?.dejaLa?.[0];
+      if (deja) dire(`Déjà dans tes rappels : « ${deja.texte || t} ».`);
+      else dire(`Noté dans tes rappels : « ${t} ».`, { genre: "succes" });
+    } catch (err) {
+      if (natureEchec(err) !== "refus") {
+        fileEnvoi.ajouter({ id: rappel.id, resume: `Rappel « ${t.length > 60 ? `${t.slice(0, 57)}…` : t} »`, genre: "rappel", requetes: [{ chemin: "/api/rappels", corps: { rappels: [rappel] } }] });
+        ctx?.majCompteurs?.();
+        dire(`Noté dans tes rappels : « ${t} ». La tour ne répond pas : il est gardé ici et partira tout seul.`, { genre: "info" });
+        return;
+      }
+      direErreur(err, () => rappeler(t, null), "Rappel pas noté");
+    }
+  });
 }
 
 // --- Les gestes ---
@@ -353,7 +499,7 @@ export async function dessinerSources(conteneur) {
 
 function apres(dessiner, nouvelEtat) {
   if (nouvelEtat) etat = nouvelEtat;
-  dessiner();
+  dessiner?.();
   rafraichirVue();
 }
 
@@ -425,9 +571,11 @@ function blocSource(s, dessiner) {
   });
   const originaux = s.id === "chatgpt" ? C.phraseOriginaux(etat?.imports?.originaux) : null;
   const enAttente = s.id === "chatgpt" ? C.phraseEnAttente(etat?.imports) : null;
+  const recensement = C.phraseRecensement(s);
   return h("div", { class: "reglage", dataset: { source: s.id } },
     h("label", { class: "bascule" }, h("span", { class: "textes" }, h("strong", null, s.nom),
       h("span", { style: s.erreur ? { color: "var(--danger)" } : null }, C.phraseSource(s))), i),
+    recensement && recensement !== C.phraseSource(s) ? h("p", { class: "aide", dataset: { recensement: s.id } }, recensement) : null,
     quoiFaire ? h("p", { class: "aide" }, quoiFaire) : null,
     s.emplacements?.length ? h("div", { class: "aide mono", "aria-label": "Où la tour cherche", style: { fontSize: "11px", margin: "4px 0" } },
       s.emplacements.map((l) => h("div", { style: { overflowWrap: "anywhere" } }, `${l.trouve ? "✓" : "–"} ${l.chemin}  (${l.origine})`))) : null,
@@ -439,9 +587,11 @@ function blocSource(s, dessiner) {
       quoiFaire ? null : h("p", { class: "aide" }, "Dans ChatGPT : Réglages › Contrôle des données › Exporter. Choisis ici le .zip reçu par mail (ou dépose-le dans le dossier Imports de ton coffre)."),
       originaux ? h("p", { class: "aide" }, originaux) : null,
       enAttente ? h("p", { class: "aide" }, enAttente) : null,
+      cartesTelechargements(dessiner),
+      reglagesChatGPT(dessiner),
     ] : null,
     h("div", { class: "rangee serree", style: { marginTop: "6px" } },
-      s.actif && s.id !== "chatgpt" ? bouton("Lire maintenant", { classe: "papier petit", icone: "rafraichir", titre: `Relire ${s.nom} sur la tour`, onclick: (e) => occupe(e.currentTarget, async () => {
+      s.actif ? bouton("Lire maintenant", { classe: "papier petit", icone: "rafraichir", titre: s.id === "chatgpt" ? "Relire le dossier Imports et Téléchargements sur la tour" : `Relire ${s.nom} sur la tour`, onclick: (e) => occupe(e.currentTarget, async () => {
         // synchroniser rafraîchit déjà la vue ; ici, la source elle-même.
         if (await synchroniser(s.id)) dessiner();
       }) }) : null,
@@ -457,6 +607,36 @@ function blocSource(s, dessiner) {
           }
         });
       } }) : null));
+}
+
+// Les deux réglages de l'import ChatGPT, et le lien vers son export. Une tour
+// plus ancienne ne les connaît pas (pas de `chatgpt` dans l'état) : rien.
+function reglagesChatGPT(dessiner) {
+  const t = C.telechargements(etat);
+  const r = etat?.chatgpt?.rappel;
+  if (!t && !r) return null;
+  const bascule = (cle, titre, detail, actif, force = false) => {
+    const i = h("input", { type: "checkbox", role: "switch", disabled: force, "aria-label": titre });
+    i.checked = Boolean(actif);
+    i.addEventListener("change", async () => {
+      i.disabled = true;
+      const oui = i.checked;
+      const phrase = cle === "telechargements"
+        ? (oui ? "Rémy prend de nouveau l'export ChatGPT dans Téléchargements." : "Téléchargements n'est plus surveillé : envoie l'export depuis « Importer ».")
+        : (oui ? "Rappel d'export allumé : une carte quand ton dernier export a plus de 30 jours." : "Plus de rappel d'export.");
+      if (!(await reglerChatGPT({ [cle]: oui }, phrase, dessiner))) {
+        i.checked = !oui;
+        i.disabled = force;
+      }
+    });
+    return h("label", { class: "bascule reglage", dataset: { reglage: cle } }, h("span", { class: "textes" }, h("strong", null, titre), h("span", null, detail)), i);
+  };
+  return [
+    t ? bascule("telechargements", "Prendre l'export dans Téléchargements", C.phraseTelechargements(t), t.actif, t.forceParLaTour) : null,
+    r ? bascule("rappel", "Me rappeler d'exporter ChatGPT", "Une carte quand ton dernier export a plus de 30 jours : un bouton ouvre ChatGPT ; tu cliques le lien du mail sur la tour, Rémy fait le reste.", r.actif) : null,
+    // Suivi de la rangée « Lire maintenant » : 10 px entre les deux, sinon leurs zones de 46 px se chevauchent (42 px).
+    h("div", { class: "rangee serree", style: { marginTop: "6px", paddingBottom: "4px" } }, lienExport("Demander un export à ChatGPT", { classe: "papier petit", lien: r?.lien || C.LIEN_EXPORT_CHATGPT })),
+  ];
 }
 
 /**

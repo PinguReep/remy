@@ -180,7 +180,8 @@ public enum EnvoiPartage {
 
     /// Le corps de POST /api/capture/image.
     static func corpsImage(_ c: ContenuPartage, _ image: ImagePartagee, mot m: String?) -> [String: Any] {
-        var corps: [String: Any] = ["image": image.donnees.base64EncodedString(), "source": source]
+        // `depuis` : l'appareil, dit tel quel à la tour (le site envoie « ordinateur »).
+        var corps: [String: Any] = ["image": image.donnees.base64EncodedString(), "source": source, "depuis": "iphone"]
         if let t = image.texteLu { corps["texte"] = t }
         if let m = mot(m) { corps["mot"] = String(m.prefix(motMax)) }
         if let n = c.titre { corps["titre"] = n }

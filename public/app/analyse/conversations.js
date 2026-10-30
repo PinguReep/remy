@@ -79,6 +79,13 @@ export function phraseSource(s, maintenant = Date.now()) {
   return `Lue ${depuis(s.derniereLecture, maintenant)} · ${nb}`;
 }
 
+/**
+ * Ce que la dernière lecture a vu, toutes sessions confondues : « 312
+ * sessions : 280 lues, 30 d'un seul échange… » (la phrase vient de la tour,
+ * la même pour l'iPhone), ou null (tour plus ancienne, rien lu encore).
+ */
+export const phraseRecensement = (s) => (typeof s?.recensement?.phrase === "string" && s.recensement.phrase) || null;
+
 /** Quoi faire pour une source en erreur, ou sans rien (erreur.quoiFaire, aide.quoiFaire). */
 export const quoiFaireSource = (s) => (s?.erreur || (Number(s?.conversations) ? null : s?.aide))?.quoiFaire || null;
 
@@ -173,8 +180,11 @@ export const cheminUsage = () => "/api/conversations-externes/usage";
 export const cheminToutEffacer = () => "/api/conversations-externes/tout";
 export const cheminImport = () => "/api/conversations-externes/chatgpt";
 
-/** Le corps de « Lire maintenant » : une source qui se relit (pas ChatGPT, qui s'envoie). */
-export const corpsSynchro = (source) => (source && source !== "chatgpt" ? { source } : {});
+/**
+ * Le corps de « Lire maintenant » : une source, ou toutes. ChatGPT aussi : la
+ * tour relit alors le dossier Imports et Téléchargements (soir du 29/10).
+ */
+export const corpsSynchro = (source) => (source ? { source } : {});
 
 // --- Les adresses du site (#/conversations/<source>/<id>[/<message>]) ---
 
@@ -199,6 +209,81 @@ export function lireRoute(args = []) {
 }
 
 // --- L'import ChatGPT ---
+
+// L'export ChatGPT automatique (soir du 29/10) : Rémy prend l'export dans
+// Téléchargements, et une carte rappelle de le demander quand le dernier a
+// plus de 30 jours. Les mêmes phrases que l'iPhone (ConversationsExternes.swift).
+export const LIEN_EXPORT_CHATGPT = "https://chatgpt.com/#settings/DataControls";
+
+/** Téléchargements surveillé, sur cette tour : { actif, forceParLaTour, dossiers } ou null (tour plus ancienne). */
+export const telechargements = (etat) => etat?.chatgpt?.telechargements || null;
+
+/**
+ * Ce que l'interrupteur « Téléchargements » dit sous son titre : le dossier
+ * est celui de la TOUR (pas de l'ordinateur où l'on lit), et les .zip
+ * illisibles de la dernière lecture, nommés par la tour (`phraseIllisibles`).
+ */
+export function phraseTelechargements(t) {
+  if (!t) return null;
+  if (t.forceParLaTour) return "Coupé sur la tour (REMY_TELECHARGEMENTS=off).";
+  const ou = (t.dossiers || []).map((d) => d.chemin).filter(Boolean).join(", ") || "Téléchargements";
+  const phrase = `Rémy regarde ${ou} sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de ${t.joursMax || 90} jours, avec ton accord, sans jamais rien y déplacer ni effacer.`;
+  return typeof t.phraseIllisibles === "string" && t.phraseIllisibles ? `${phrase} ${t.phraseIllisibles}` : phrase;
+}
+
+/**
+ * La carte « Exporter ChatGPT », ou null : la tour dit quand la montrer
+ * (dernier import de plus de 30 jours, ou jamais, la source allumée). Le
+ * lien du mail se clique SUR LA TOUR (Rémy ne regarde que ses
+ * Téléchargements) ; reçu ailleurs (iPhone, autre ordinateur), le .zip
+ * s'importe depuis la carte (`importer`).
+ */
+export function carteExportChatGPT(etat) {
+  const r = etat?.chatgpt?.rappel;
+  // Un export trouvé attend ton accord : c'est sa carte qui parle (la tour
+  // garde `aMontrer` pour un iPhone plus ancien, qui n'a pas cette carte).
+  if (!r?.aMontrer || propositionsTelechargements(etat).length) return null;
+  const t = telechargements(etat);
+  const dansTelechargements = Boolean(t?.actif && (t.dossiers || []).length);
+  const jours = Number(r.depuisJours);
+  return {
+    titre: "Exporter ChatGPT",
+    texte: dansTelechargements
+      ? "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements et te demande ton accord. Ailleurs, importe le .zip ici."
+      : "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.",
+    detail: r.dernierImport == null || !Number.isFinite(jours) ? "Aucun export importé pour l'instant." : `Dernier import il y a ${jours} jour${jours > 1 ? "s" : ""}.`,
+    lien: typeof r.lien === "string" && /^https:\/\/chatgpt\.com\//.test(r.lien) ? r.lien : LIEN_EXPORT_CHATGPT,
+    bouton: "Ouvrir ChatGPT",
+    importer: "Importer le .zip",
+    apresOuverture: "Dans ChatGPT : Contrôle des données › Exporter les données, puis confirme. Le mail arrive en quelques minutes.",
+  };
+}
+
+/**
+ * La carte se montre-t-elle ? Comme l'iPhone (ConversationsExternesVues) :
+ * sur « Toutes » ou ChatGPT, et jamais à la place des résultats d'une recherche.
+ */
+export const carteExportVisible = ({ source = "", recherche = "" } = {}) => (!source || source === "chatgpt") && !String(recherche || "").trim();
+
+// --- Un export trouvé dans Téléchargements : il attend un geste (revue du 30/10) ---
+// Un site peut ranger n'importe quel .zip dans Téléchargements : la tour ne
+// l'importe pas sans Sam (sauf un export d'un compte déjà accepté).
+export const cheminReponseTelechargement = () => "/api/conversations-externes/chatgpt/telechargements";
+/** Les exports trouvés qui attendent un geste ({ id, nom, octets, date }), [] sur une tour plus ancienne. */
+export const propositionsTelechargements = (etat) => (Array.isArray(etat?.chatgpt?.telechargements?.propositions) ? etat.chatgpt.telechargements.propositions.filter((p) => p?.id && p?.nom) : []);
+const taille = (o) => (o >= 1e6 ? `${(o / 1e6).toFixed(o >= 1e7 ? 0 : 1).replace(".", ",")} Mo` : `${Math.max(1, Math.round((o || 0) / 1e3))} ko`);
+/** La carte d'un export trouvé : son titre, son texte (nom, taille, date) et ce qu'il faut savoir. */
+export function carteProposition(p) {
+  const d = p?.date ? new Date(p.date) : null;
+  const date = d ? ` du ${d.getDate()}/${d.getMonth() + 1}` : "";
+  return {
+    titre: "Un export ChatGPT trouvé dans Téléchargements",
+    texte: `« ${p.nom} » (${taille(p.octets)}${date ? `,${date}` : ""}) : l'importer ?`,
+    detail: "Rémy n'importe rien de Téléchargements sans toi : si c'est l'export que tu as demandé, importe-le ; sinon, laisse-le (un site peut y ranger n'importe quel fichier).",
+    importer: "Importer",
+    refuser: "Pas celui-là",
+  };
+}
 
 /** Un fichier que la tour sait importer : le .zip de l'export, ou conversations.json. */
 export const importable = (nom) => /\.(zip|json)$/i.test(String(nom || ""));

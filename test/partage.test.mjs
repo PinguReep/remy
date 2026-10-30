@@ -41,7 +41,32 @@ test("« partage » est une source connue, annoncée au modèle", () => {
   assert.ok(SOURCES.includes("partage"));
   const { capture } = nettoyerCapture("Lien partagé : https://exemple.org/bougies — la boutique de bougies de Léa", { source: "partage" });
   assert.equal(capture.source, "partage");
-  assert.match(promptCapture("", capture), /partage de Sam depuis son iPhone/);
+  // L'appareil n'est dit que s'il est connu (contre-relecture du 30/10, tour 2).
+  assert.match(promptCapture("", capture), /provenance : un partage de Sam, /);
+  const iphone = nettoyerCapture("Lien partagé : https://exemple.org/bougies — la boutique de bougies de Léa", { source: "partage", depuis: "iphone" }).capture;
+  assert.match(promptCapture("", iphone), /provenance : un partage de Sam depuis son iPhone, /);
+  const ordinateur = nettoyerCapture("Le devis du plombier pour la cuisine de la boutique, 120 euros", { source: "partage", depuis: "ordinateur" }).capture;
+  assert.match(promptCapture("", ordinateur), /provenance : un partage de Sam depuis son ordinateur, /);
+  assert.equal(nettoyerCapture("Le devis du plombier pour la cuisine de la boutique, 120 euros", { source: "partage", depuis: "grille-pain" }).capture.depuis, undefined, "une origine inconnue n'est pas gardée");
+});
+
+test("RÉGRESSION : une image dit l'appareil d'où elle vient, ou rien quand il est inconnu", () => {
+  const mot = "Le devis du plombier pour la cuisine, 120 euros";
+  assert.match(texteImage({ mot, titre: "Image collée", depuis: "ordinateur" }), /^Image partagée par Sam depuis son ordinateur \(« Image collée »\)\./);
+  assert.match(texteImage({ mot, depuis: "iphone" }), /^Image partagée par Sam depuis son iPhone\./);
+  assert.match(texteImage({ mot }), /^Image partagée par Sam\.\nCe que Sam en dit/);
+  for (const depuis of [undefined, "ordinateur"]) assert.doesNotMatch(texteImage({ mot, texte: "Total 120 €", depuis }), /iPhone/, String(depuis));
+  assert.match(texteImage({ texte: "Total 120 €", depuis: "iphone" }), /reconnaissance sur l'iPhone/);
+  assert.match(texteImage({ texte: "Total 120 €", depuis: "ordinateur" }), /reconnaissance sur l'ordinateur/);
+});
+
+test("RÉGRESSION : une image collée depuis l'ordinateur n'est jamais rangée « depuis son iPhone »", async () => {
+  const r = await envoyer({ image: PNG, titre: "Image collée", mot: "Le devis du plombier pour la cuisine, 120 euros", depuis: "ordinateur" });
+  assert.equal(r.status, 200, JSON.stringify(r.corps));
+  const brut = JSON.parse(fs.readFileSync(path.join(process.env.REMY_DATA_DIR, "captures.json"), "utf8"));
+  assert.match(brut[0].extrait, /^Image partagée par Sam depuis son ordinateur \(« Image collée »\)\./);
+  assert.doesNotMatch(brut[0].extrait, /iPhone/);
+  assert.equal(brut[0].depuis, "ordinateur");
 });
 
 test("l'image : JPEG et PNG reconnus à leurs octets, le reste refusé avec sa raison", () => {

@@ -1,14 +1,32 @@
 // La connexion : le mot de passe de la tour, avec une erreur claire pour
-// chaque cas (mauvais mot de passe, trop d'essais, tour injoignable).
+// chaque cas (mauvais mot de passe, trop d'essais, tour injoignable). Ce qui
+// attend dans la file d'envoi est dit (le nombre seulement, jamais le texte) :
+// gardé dans ce navigateur, il partira après la connexion (main.js vide la file).
 import { api, ErreurAPI } from "../api.js";
-import { h, vider, bouton, occupe } from "../ui.js";
+import { h, vider, bouton, occupe, icone } from "../ui.js";
+import * as fileEnvoi from "../file-envoi.js";
 
-export function monter(racine, { surConnecte }) {
+/**
+ * « 2 notes tapées sur cet ordinateur : elles partiront après la connexion. » ;
+ * null sans rien en attente. `coches` : combien de ces envois sont des tâches
+ * cochées (une session expirée pendant l'envoi d'une coche la garde ici).
+ */
+export function phraseFile(n, coches = 0) {
+  if (!n) return null;
+  const c = Math.min(n, Math.max(0, coches));
+  if (!c) return n === 1 ? "1 note tapée sur cet ordinateur : elle partira après la connexion." : `${n} notes tapées sur cet ordinateur : elles partiront après la connexion.`;
+  if (c === n) return n === 1 ? "1 tâche cochée sur cet ordinateur : elle partira après la connexion." : `${n} tâches cochées sur cet ordinateur : elles partiront après la connexion.`;
+  return `${n} envois en attente sur cet ordinateur (${c} tâche${c > 1 ? "s" : ""} cochée${c > 1 ? "s" : ""}) : ils partiront après la connexion.`;
+}
+
+export function monter(racine, { surConnecte, sessionExpiree = false }) {
   racine.className = "connexion";
   racine.removeAttribute("aria-busy");
   const champ = h("input", { class: "champ", id: "mot-de-passe", type: "password", autocomplete: "current-password", required: true, "aria-describedby": "erreur-connexion" });
   const erreur = h("p", { class: "erreur-champ", id: "erreur-connexion", role: "alert" });
   const envoyer = bouton("Se connecter", { classe: "plein large", type: "submit" });
+  const file = fileEnvoi.liste();
+  const enAttente = phraseFile(file.length, file.filter((e) => e.genre === "terminer").length);
   const form = h("form", {
     onsubmit: async (e) => {
       e.preventDefault();
@@ -30,11 +48,12 @@ export function monter(racine, { surConnecte }) {
     },
   },
   h("label", { class: "etiquette-champ", for: "mot-de-passe" }, "Mot de passe"),
-  champ, erreur, envoyer);
+  champ, erreur, envoyer,
+  enAttente ? h("p", { class: "aide connexion-file" }, icone("plateauEnvoi"), h("span", null, enAttente)) : null);
   vider(racine, h("div", { class: "carte" },
     h("span", { class: "marque-r", "aria-hidden": "true", style: { width: "44px", height: "44px", fontSize: "24px", borderRadius: "13px" } }, "R"),
-    h("h1", null, "Bonjour"),
-    h("p", { class: "aide" }, `Connecte-toi à ta tour (${location.host}).`),
+    h("h1", null, sessionExpiree ? "Session expirée" : "Bonjour"),
+    h("p", { class: "aide" }, sessionExpiree ? `Reconnecte-toi à ta tour (${location.host}) : tu reviendras là où tu étais.` : `Connecte-toi à ta tour (${location.host}).`),
     form,
     h("p", { class: "aide", style: { marginTop: "14px" } }, "Mot de passe oublié : il est dans le fichier de réglages de la tour (remy.env).")));
   champ.focus();

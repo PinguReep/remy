@@ -150,6 +150,10 @@ pub fn creer_principale(app: &AppHandle, etat: &Etat, cachee: bool) -> tauri::Re
         .visible(!cachee)
         .focused(!cachee)
         .zoom_hotkeys_enabled(true)
+        // Le site gère lui-même le dépôt d'une image (HTML5, Noter) : le
+        // gestionnaire de Tauri, actif par défaut, remplace celui de WebView2
+        // et le site ne recevait jamais le fichier (contre-relecture du 30/10).
+        .disable_drag_drop_handler()
         .initialization_script(SCRIPT_CONTROLE)
         .on_navigation(politique_navigation(app.clone(), etat.adresse_partagee.clone()))
         .on_new_window(nouvelle_fenetre_refusee(app.clone()))
@@ -176,6 +180,8 @@ pub fn creer_noter(app: &AppHandle, etat: &Etat) -> tauri::Result<WebviewWindow>
         .visible(false)
         .focused(false)
         .zoom_hotkeys_enabled(false)
+        // Même raison que la fenêtre principale : le dépôt reste au site (HTML5).
+        .disable_drag_drop_handler()
         .initialization_script(SCRIPT_CONTROLE)
         .on_navigation(politique_navigation(app.clone(), etat.adresse_partagee.clone()))
         .on_new_window(nouvelle_fenetre_refusee(app.clone()))
