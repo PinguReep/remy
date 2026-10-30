@@ -169,6 +169,26 @@ export function conflitQuestion({ brouillon, texte, file = [] }) {
   return (Boolean(b) && b !== String(texte || "").trim()) || file.length > 0;
 }
 
+/**
+ * Relire un fil sans perdre ce qui n'existe qu'à l'écran (l'iPhone ne relit
+ * pas le fil au retour : ses lignes locales restent). Les lignes locales de la
+ * fin (une question que la tour a retirée, sa réponse en erreur et
+ * « Réessayer ») se recollent après les messages de la tour. Une erreur seule,
+ * dont la question est sur la tour, s'efface si la tour a écrit depuis : la
+ * réponse est peut-être arrivée.
+ */
+export function garderFinLocale(avant, tour) {
+  const a = Array.isArray(avant) ? avant : [];
+  const t = Array.isArray(tour) ? tour : [];
+  let i = a.length;
+  while (i > 0 && a[i - 1]?._local) i -= 1;
+  const fin = a.slice(i);
+  if (!fin.length) return t;
+  const connus = a.slice(0, i).filter((m) => !m?._local).length;
+  if (!fin.some((m) => m.role === "user") && t.length > connus) return t;
+  return [...t, ...fin];
+}
+
 /** « remy-envoi » : un texte, écrit il y a 2 min au plus (contrat C). */
 export function envoiValable(e, maintenant = Date.now()) {
   if (!e || typeof e.texte !== "string" || !e.texte.trim()) return false;

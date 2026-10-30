@@ -30,6 +30,11 @@ const OCCUPE = "Rémy finit sa réponse, réessaie dans un instant.";
 const IMPORTEE = "Conversation importée : touche « Continuer avec Rémy » pour lui en parler.";
 const PAS_DE_MEMOIRE = "Conversation privée : rien n'entre dans la mémoire. Ouvre une conversation ordinaire pour noter une idée.";
 const REVENU = "Ton message n'est pas parti : tu as changé de conversation. Il est revenu dans le champ.";
+const REVENU_QUITTE = "Ton message n'est pas parti : tu as quitté Rémy. Il est revenu dans le champ.";
+const REVENU_ICI = "Ton message n'est pas parti : il est revenu dans le champ.";
+const FIL_ABSENT = "Cette conversation n'existe plus : ouvre-en une nouvelle, ton message t'y attendra.";
+const FIL_ILLISIBLE = "Cette conversation n'a pas pu se charger : touche « Réessayer ». Ton message reste dans le champ.";
+const TRANSCRIPTION = "Je transcris ta voix sur la tour…";
 // La relecture d'une réponse qui s'écrit encore sur la tour (ChatModel.recuperer).
 const PAS_RECUPERATION = 4000;
 const ESSAIS_RECUPERATION = 37;
@@ -50,7 +55,7 @@ let arretEnCours = false;
 // va à part, en mémoire seulement (jamais dans localStorage).
 const brouillons = new Map();
 let brouillonPrive = "";
-const revenus = new Set(); // fils où un message est revenu dans le champ (bandeau au retour)
+const revenus = new Map(); // fils où un message est revenu dans le champ → la phrase du bandeau au retour
 let modeRetenir = false;
 let enCapture = false;
 let miseEnPrive = false;
@@ -62,6 +67,8 @@ let setupDemande = false;
 let modProps; // le module des propositions (null : absent)
 let modDictee = null;
 let dicteeEnCours = null;
+let etatDictee = "repos"; // surEtat du module : « enregistrement », « transcription », « repos »
+let transcriptionDispo = null; // GET /api/transcribe : false si aucun moteur sur la tour
 const groupesOuverts = new Set();
 let activite = null; // le dernier geste sur le fil ouvert (ouvert, message envoyé)
 let derniereQuitte = null;
@@ -79,6 +86,8 @@ const panneauVisible = () => matchMedia("(min-width: 1361px)").matches || refs.r
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 const signalerSujets = (detail) => evenements.dispatchEvent(new CustomEvent("remy:sujets", { detail }));
 const messagesTour = (c) => (c?.messages || []).filter((m) => !m._local);
+// Le champ à l'écran : une vue démontée garde ses refs, détachées du document.
+const champVivant = () => Boolean(refs.champ?.isConnected);
 
 // Ce que la conversation privée peut promettre (Privee.swift) et si le résumé
 // automatique est allumé : lus sur la tour à l'ouverture et au retour.
@@ -107,6 +116,7 @@ export default {
     envoi = null;
     file = [];
     modeRetenir = false;
+    etatDictee = "repos";
     construire();
     lireReglages();
     // Les cartes de proposition (lot « noter ») : chargées une fois.
@@ -139,8 +149,12 @@ export default {
     quitterFil({ versPrive: true });
     derniereQuitte = courante?.id ? { id: courante.id, a: activite } : null;
     arreterFlux();
+    // Plus aucun fil à l'écran : ce qui finit après (une création de
+    // conversation, une dictée) rend son texte aux brouillons, pas au champ détaché.
+    courante = null;
     dicteeEnCours?.arreter?.();
     dicteeEnCours = null;
+    etatDictee = "repos";
     clearInterval(tic);
     tic = null;
     suiviComposeur?.disconnect();
@@ -161,7 +175,7 @@ export default {
     }
     chargerListe();
     lireReglages();
-    if (courante?.id && !envoi) recharger(courante.id);
+    if (courante?.id && !envoi) recharger(courante.id, { fond: true });
   },
 };
 
@@ -254,7 +268,7 @@ function construire() {
   refs.envoyer.addEventListener("click", soumettre);
   refs.retenir.addEventListener("click", retenir);
   refs.stop.addEventListener("click", () => interrompre());
-  refs.micro.addEventListener("click", dicter);
+  refs.micro.addEventListener("click", (e) => occupe(e.currentTarget, dicter));
   refs.corriger.addEventListener("mousedown", (e) => e.preventDefault()); // la sélection reste
   refs.corriger.addEventListener("click", () => {
     const s = selectionDictee || selectionChamp();
@@ -421,14 +435,15 @@ async function supprimerConversation(c) {
 /** Quitter le fil ouvert : son champ (et sa file d'attente) reste attaché à lui. */
 function quitterFil({ versPrive = false } = {}) {
   if (!refs.champ) return;
-  const cle = cleDe(courante);
+  // Un fil supprimé ailleurs : ce qui est tapé suit vers la prochaine conversation neuve.
+  const cle = courante?.absente ? "nouvelle" : cleDe(courante);
   const prive = composeurPrive(courante);
   let texte = refs.champ.value;
   if (file.length) {
     // La file revient au champ du fil où elle a été écrite, jamais jetée.
     texte = R.joindre(texte, file.join("\n\n"));
     file = [];
-    if (!(prive && !versPrive)) revenus.add(cle);
+    if (!(prive && !versPrive)) revenus.set(cle, REVENU);
   }
   if (prive && !versPrive) {
     // Vers un fil ordinaire : le brouillon privé est mis de côté.
@@ -451,8 +466,9 @@ function entrerFil() {
   }
   mettreAuChamp(texte);
   if (revenus.has(cle)) {
+    const phrase = revenus.get(cle);
     revenus.delete(cle);
-    if (texte.trim()) dire(REVENU);
+    if (texte.trim()) dire(phrase);
   }
   monterVocaux();
 }
@@ -466,22 +482,25 @@ function rendreBrouillonPrive() {
 
 /**
  * Un message qui n'est pas parti revient au champ du fil où il a été écrit ;
- * privé et le fil à l'écran est ordinaire : au brouillon privé.
+ * privé et le fil à l'écran est ordinaire : au brouillon privé. Vue quittée
+ * (le champ n'est plus à l'écran) : au brouillon du fil, dit au retour.
+ * Rend true quand le texte est dans le champ à l'écran.
  */
 function rendreAuChamp(texte, { cle, prive = false }) {
-  const ici = cleDe(courante) === cle;
+  const ici = champVivant() && cleDe(courante) === cle;
   if (ici) {
     const deja = refs.champ.value.trim();
     mettreAuChamp(!deja ? texte : deja === texte ? deja : R.joindre(deja, texte));
-    return;
+    return true;
   }
   if (prive && !composeurPrive(courante)) {
     brouillonPrive = R.joindre(brouillonPrive, texte);
     dire("Ton message privé n'est pas parti : il est gardé pour ta prochaine conversation privée.");
-    return;
+    return false;
   }
   brouillons.set(cle, R.joindre(brouillons.get(cle), texte));
-  revenus.add(cle);
+  revenus.set(cle, champVivant() ? REVENU : REVENU_QUITTE);
+  return false;
 }
 
 /** La réponse en cours continue sur la tour : on la relira en revenant sur ce fil. */
@@ -571,12 +590,18 @@ function garderAnnotations(avant, apres) {
   });
 }
 
-async function recharger(id) {
+/**
+ * Relit le fil sur la tour. `fond` : relecture au retour au premier plan ou de
+ * la tour ; si elle échoue (hors 404), le fil affiché reste tel quel.
+ */
+async function recharger(id, { fond = false } = {}) {
   try {
     const c = await api(`/api/conversations/${seg(id)}`);
     if (courante?.id !== id) return false;
     if (!Array.isArray(c.messages)) c.messages = [];
     garderAnnotations(courante, c);
+    // Un message raté reste à l'écran avec « Réessayer » (la tour l'a retiré).
+    c.messages = R.garderFinLocale(courante.messages, c.messages);
     courante = c;
     rendreBrouillonPrive();
     const l = liste?.find((x) => x.id === id);
@@ -594,9 +619,12 @@ async function recharger(id) {
     return true;
   } catch (err) {
     if (courante?.id !== id) return false;
-    courante = { id, introuvable: true, messages: [] };
+    if (fond && err.statut !== 404 && !courante.chargement && !courante.introuvable) return false;
+    // Fil absent ou illisible : rien ne part tant qu'il n'est pas affiché.
+    courante = { id, introuvable: true, absente: err.statut === 404, messages: [] };
     dessinerEnTete();
     majComposeur();
+    dessinerPanneau();
     if (err.statut === 404) {
       vider(refs.messages, h("div", { class: "colonne" }, vide("Conversation introuvable", "Elle a peut-être été supprimée.", bouton("Nouvelle conversation", { classe: "plein", onclick: () => ctx.aller("remy/nouvelle") }))));
       return false;
@@ -841,9 +869,10 @@ async function nouveauFil(texte, { titre = null } = {}) {
     dire(OCCUPE);
     return;
   }
-  // Depuis un écran vide privé, la conversation neuve reste privée.
+  // Depuis un écran vide privé (même celui d'un fil privé resté vide), la
+  // conversation neuve reste privée : un geste ne fait jamais quitter le privé.
   if (courante?.id) {
-    const prive = false;
+    const prive = composeurPrive(courante);
     quitterFil({ versPrive: prive });
     arreterFlux();
     courante = { nouvelle: true, prive, messages: [] };
@@ -1153,13 +1182,18 @@ function majComposeur() {
   refs.envoyer.hidden = modeRetenir;
   refs.retenir.hidden = !modeRetenir;
   majBoutonRetenir();
-  refs.envoyer.disabled = Boolean(c?.chargement);
+  majEnvoyer();
   const lib = envoi ? "Envoyer (Rémy répond encore)" : "Envoyer (Entrée)";
   refs.envoyer.title = lib;
   refs.envoyer.setAttribute("aria-label", lib);
   refs.aideEnvoi.textContent = modeRetenir ? " retient" : " envoie";
   majCorrection();
   placerBandeauxRemy();
+}
+/** Rien ne part vers un fil pas affiché (en chargement, absent, illisible), ni pendant la transcription. */
+function majEnvoyer() {
+  if (!refs.envoyer) return;
+  refs.envoyer.disabled = Boolean(courante?.chargement || courante?.introuvable) || etatDictee === "transcription";
 }
 function majBoutonRetenir() {
   if (!refs.retenir) return;
@@ -1191,6 +1225,13 @@ async function soumettre() {
   if (!texte) return refs.champ.focus();
   if (courante?.origine) return dire(IMPORTEE);
   if (courante?.chargement) return;
+  // Fil pas affiché : le texte reste dans le champ (fil absent : il suivra
+  // vers la prochaine conversation neuve, voir quitterFil).
+  if (courante?.introuvable) {
+    dire(courante.absente ? FIL_ABSENT : FIL_ILLISIBLE, { genre: "erreur" });
+    return refs.champ.focus();
+  }
+  if (etatDictee === "transcription") return dire(TRANSCRIPTION);
   const lien = R.contientLien(texte);
   if (envoi) {
     // Rémy répond encore : Sam choisit ; le lien est dit dans la même question.
@@ -1238,6 +1279,7 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
   }
   const gen = generation;
   activite = Date.now();
+  let redessiner = false;
   // Pas de fil ouvert : une conversation naît avec le premier message (privée
   // si l'écran l'est), renommée AVANT le message si un titre est voulu.
   if (!courante?.id) {
@@ -1251,10 +1293,14 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
       if (generation === gen) majComposeur();
     };
     let c;
+    let existante = false;
     try {
       c = await ecrire("/api/conversations", { ...(prive ? { prive: true } : {}), ...(session ? { session } : {}) });
+      // Une étape « Faire connaissance » n'a qu'UNE conversation : la tour rend
+      // celle qui existe, avec ses messages (ni renommée, ni retouchée ici).
+      existante = Boolean(session) && Array.isArray(c?.messages) && c.messages.length > 0;
       // Le cadenas ne croit que la tour : pas née privée, elle l'est rendue avant le message, ou rien ne part.
-      if (prive && c?.prive !== true) {
+      if (!existante && prive && c?.prive !== true) {
         try {
           await api(`/api/conversations/${seg(c.id)}`, { methode: "PATCH", corps: { prive: true } });
           c.prive = true;
@@ -1266,7 +1312,7 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
           return;
         }
       }
-      if (titre && generation === gen) {
+      if (!existante && titre && generation === gen) {
         try {
           const r = await api(`/api/conversations/${seg(c.id)}`, { methode: "PATCH", corps: { title: titre.slice(0, 80) } });
           c.title = r?.title || titre.slice(0, 80);
@@ -1279,10 +1325,18 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
       return;
     }
     if (generation !== gen) {
-      // Sam a changé de fil pendant la création : le fil vide s'en va, le message revient.
+      // Sam a changé de fil (ou quitté Rémy) pendant la création : le fil vide
+      // s'en va, le message revient (dans le champ, ou dit au retour).
       if (envoi === moi) envoi = null;
-      rendreAuChamp(texte, { cle, prive });
+      if (rendreAuChamp(texte, { cle, prive })) dire(REVENU_ICI);
       if (!c.messages?.length) api(`/api/conversations/${seg(c.id)}`, { methode: "DELETE" }).catch(() => {});
+      return;
+    }
+    if (existante) {
+      // On l'ouvre, sans renvoyer l'amorce (AppModel.lancerSession).
+      if (envoi === moi) envoi = null;
+      history.replaceState(null, "", `#/remy/${seg(c.id)}`);
+      await ouvrir(c.id);
       return;
     }
     envoi = null;
@@ -1295,12 +1349,14 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
     dessinerListe();
     dessinerEnTete();
     dessinerSession();
+    redessiner = true;
   }
   const c = courante;
   const demandeEnAttente = c.messages.some((m) => m.autorisation?.statut === "en_attente");
   const msg = { role: "user", content: texte };
   c.messages.push(msg);
-  if (c.messages.length === 1 || !colonne()) dessinerFil();
+  // Un fil qui vient de remplacer l'écran vide se dessine en entier.
+  if (redessiner || c.messages.length === 1 || !colonne()) dessinerFil();
   else colonne().append(blocSam(msg));
   defilerEnBas(true);
   await lancerFlux(`/api/conversations/${seg(c.id)}/messages`, { text: texte, call: false }, { question: texte, msgSam: msg, demandeEnAttente });
@@ -1425,7 +1481,7 @@ async function lancerFlux(chemin, corps, { question = null, msgSam = null, deman
       } else echec(erreurServeur.message || "Erreur côté serveur.", erreurServeur.code);
     } else if (!fini) {
       // Le flux s'est fermé sans fin : la tour a peut-être fini, on relit.
-      await recuperer(c, l, moi, { question, apresDemande: autorisation?.a.id, remettreEnAttente, statut: recu ? "Connexion coupée, je récupère la réponse…" : "Connexion difficile, j'essaie de joindre Rémy…" });
+      await recuperer(c, l, moi, { question, msgSam, apresDemande: autorisation?.a.id, remettreEnAttente, statut: recu ? "Connexion coupée, je récupère la réponse…" : "Connexion difficile, j'essaie de joindre Rémy…" });
     }
   } catch (err) {
     if (err.nature === "annule" || generation !== gen) return;
@@ -1443,7 +1499,7 @@ async function lancerFlux(chemin, corps, { question = null, msgSam = null, deman
         dire("La tour ne répond pas : touche à nouveau la carte pour réessayer.", { genre: "erreur" });
       }
     } else if (err.nature === "reseau") {
-      await recuperer(c, l, moi, { question, apresDemande: autorisation?.a.id, remettreEnAttente, statut: recu ? "Connexion coupée, je récupère la réponse…" : "Connexion difficile, j'essaie de joindre Rémy…" });
+      await recuperer(c, l, moi, { question, msgSam, apresDemande: autorisation?.a.id, remettreEnAttente, statut: recu ? "Connexion coupée, je récupère la réponse…" : "Connexion difficile, j'essaie de joindre Rémy…" });
     } else if (err.nature === "delai") {
       // Silence de 3 min (ou réponse de plus de 30 min) : la tour écrit
       // peut-être encore. Le message de Sam reste ; on relit sur un geste.
@@ -1481,7 +1537,7 @@ async function lancerFlux(chemin, corps, { question = null, msgSam = null, deman
  * coupée) : on relit la conversation toutes les 4 s, 37 fois au plus, jusqu'à
  * la retrouver. Lecture seule, aucun appel IA. Changer de fil l'arrête.
  */
-async function recuperer(c, l, moi, { question, apresDemande = null, remettreEnAttente = () => {}, statut }) {
+async function recuperer(c, l, moi, { question, msgSam = null, apresDemande = null, remettreEnAttente = () => {}, statut }) {
   const gen = moi.gen;
   const bloc = moi.bloc;
   Object.assign(l, { _enCours: true, _recup: true, _statut: statut });
@@ -1519,7 +1575,11 @@ async function recuperer(c, l, moi, { question, apresDemande = null, remettreEnA
       debut = k + 1;
     } else {
       const iq = messages.findLastIndex((m) => m.role === "user" && m.content === question);
-      if (iq < 0) return finir("Ton message n'est pas arrivé jusqu'à Rémy.");
+      if (iq < 0) {
+        // Pas sur la tour : la question reste à l'écran avec son erreur et « Réessayer ».
+        if (msgSam) msgSam._local = true;
+        return finir("Ton message n'est pas arrivé jusqu'à Rémy.");
+      }
       debut = iq + 1;
     }
     const k = messages.findIndex((m, i) => i >= debut && m.role !== "user");
@@ -1657,7 +1717,7 @@ function ajouterDictee(texte, cle, prive) {
   const t = String(texte || "").trim();
   if (!t) return;
   // Le texte va au champ du fil où la dictée a commencé, jamais ailleurs.
-  if (cleDe(courante) === cle) {
+  if (champVivant() && cleDe(courante) === cle) {
     mettreAuChamp(R.ajouterDictee(refs.champ.value, t));
     refs.champ.focus();
   } else rendreAuChamp(t, { cle, prive });
@@ -1672,6 +1732,15 @@ function monterVocaux() {
   } catch (err) {
     console.warn("Vocaux en attente :", err);
   }
+}
+/** La tour sait-elle transcrire ? (GET /api/transcribe, sans appel IA) ; muette : ce qu'on savait. */
+async function sonderTranscription() {
+  if (transcriptionDispo === true) return true;
+  try {
+    const t = await api("/api/transcribe", { delai: 8000 });
+    transcriptionDispo = t?.available !== false;
+  } catch {}
+  return transcriptionDispo;
 }
 async function dicter() {
   if (!modDictee) {
@@ -1688,14 +1757,20 @@ async function dicter() {
       dire("La dictée n'est pas disponible ici (micro non accessible).", { genre: "erreur" });
       return;
     }
+    const gen = generation;
+    const transcription = await sonderTranscription();
+    if (generation !== gen || !champVivant()) return; // Sam est parti entre-temps : rien ne s'enregistre
     const cle = cleDe(courante);
     const prive = composeurPrive(courante);
     dicteeEnCours = await modDictee.demarrerDictee?.({
       ancre: refs.boite,
       prive,
+      // false : aucun moteur sur la tour, le module le dit AVANT d'enregistrer.
+      transcription: transcription !== false,
       // Pendant la transcription, rien ne part (le texte arrive dans le champ).
-      transcription: (enCours) => {
-        if (typeof enCours === "boolean" && refs.envoyer) refs.envoyer.disabled = enCours || Boolean(courante?.chargement);
+      surEtat: (e) => {
+        etatDictee = e;
+        majEnvoyer();
       },
       surTexte: (t) => ajouterDictee(t, cle, prive),
     });
@@ -1738,10 +1813,14 @@ function corrigerDictee(s) {
     envoyer.disabled = !v || v === s.entendu;
   };
   let f;
+  let enCours = false;
   const valider = (e) => {
     e?.preventDefault();
+    // Une seule correction à la fois : Entrée soumet le formulaire même bouton désactivé.
+    if (enCours) return;
     const voulu = champ.value.trim();
     if (!voulu || voulu === s.entendu) return champ.focus();
+    enCours = true;
     occupe(envoyer, async () => {
       try {
         await ecrire("/api/dictee/correction", { entendu: s.entendu, voulu });
@@ -1751,7 +1830,10 @@ function corrigerDictee(s) {
       } catch (err) {
         if (err.nature !== "auth") dire(`Pas envoyé à Dictée Locale : ${texteErreur(err)}`, { genre: "erreur" });
       }
-    }).then(maj);
+    }).then(() => {
+      enCours = false;
+      maj();
+    });
   };
   champ.addEventListener("input", maj);
   envoyer.addEventListener("click", valider);
@@ -1855,7 +1937,8 @@ function dessinerPanneau() {
   const j = R.jauge(c?.messages);
   const avecJauge = jaugeVisible() && c && !c.origine && (c.messages?.length || envoi);
   if (avecJauge) blocs.push(sectionPlace(j));
-  if (c?.id && !c.origine && sait("compactage-v1")) blocs.push(sectionCompacter(j, c));
+  // Compacter : seulement un fil affiché (ni en chargement, ni absent, ni illisible).
+  if (c?.id && !c.origine && !c.chargement && !c.introuvable && sait("compactage-v1")) blocs.push(sectionCompacter(j, c));
   if (avecJauge) blocs.push(...sectionsDetail(j));
   const source = envoi?.ligne || [...(c?.messages || [])].reverse().find((m) => m.role !== "user" && m._etapes?.length);
   const etapes = source?._etapes || [];

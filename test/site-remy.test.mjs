@@ -289,6 +289,29 @@ test("question préparée : jamais par-dessus un autre message en cours", () => 
   assert.ok(R.conflitQuestion({ brouillon: "", texte: "x", file: ["en attente"] }), "un message en file compte comme un brouillon");
 });
 
+test("RÉGRESSION : une relecture du fil garde la question ratée, son erreur et « Réessayer »", () => {
+  const tour = [{ role: "user", content: "Un créneau pour Léa ?" }, { role: "assistant", content: "Jeudi 10 h." }];
+  const question = { role: "user", content: "Question importante qui va échouer", _local: true };
+  const erreur = { role: "assistant", content: "", _erreur: "Le modèle local ne répond pas.", _code: "R-7KQ2M", _local: true, _question: question.content };
+  // La tour a retiré la question (event: error) : elle revient après ses messages.
+  const relu = R.garderFinLocale([...tour, question, erreur], tour.map((m) => ({ ...m })));
+  assert.deepEqual(relu.map((m) => m.content), ["Un créneau pour Léa ?", "Jeudi 10 h.", "Question importante qui va échouer", ""]);
+  assert.equal(relu[3], erreur, "la même ligne : son code et « Réessayer » restent");
+  // Un autre appareil a écrit depuis : la question ratée n'est toujours pas sur la tour, elle reste.
+  const ailleurs = [...tour, { role: "user", content: "Depuis l'iPhone" }, { role: "assistant", content: "Noté." }];
+  assert.equal(R.garderFinLocale([...tour, question, erreur], ailleurs).length, 6);
+  // Une erreur seule (la question est arrivée) : elle reste tant que la tour n'a rien de plus…
+  const arrivee = { role: "user", content: "Et demain ?" };
+  const coupee = { role: "assistant", content: "", _erreur: "Impossible de récupérer la réponse.", _local: true, _question: "Et demain ?" };
+  assert.equal(R.garderFinLocale([...tour, arrivee, coupee], [...tour, arrivee]).at(-1), coupee);
+  // … et s'efface quand la réponse est arrivée entre-temps.
+  const repondu = [...tour, arrivee, { role: "assistant", content: "Demain, rien de prévu." }];
+  assert.equal(R.garderFinLocale([...tour, arrivee, coupee], repondu), repondu);
+  // Rien de local en fin de fil : la tour fait foi, telle quelle.
+  assert.equal(R.garderFinLocale(tour, repondu), repondu);
+  assert.deepEqual(R.garderFinLocale(undefined, undefined), []);
+});
+
 test("remy-envoi : valable 2 min, avec un texte", () => {
   const t = 1_800_000_000_000;
   assert.ok(R.envoiValable({ texte: "Organise ma journée", a: t - 60000 }, t));
@@ -353,7 +376,7 @@ test("modèle, secours, autorisations, étape « Faire connaissance »", () => {
 // --- Le contrat, contre les vraies routes de la tour ---
 
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), "remy-site-remy-"));
-for (const v of ["REMY_VAULT", "UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "APP_PASSWORD", "APP_PASSWORD_HASH", "VERCEL", "REMY_GLM_URL", "ANTHROPIC_API_KEY", "DICTEE_LOCALE_URL"]) delete process.env[v];
+for (const v of ["REMY_VAULT", "UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "APP_PASSWORD", "APP_PASSWORD_HASH", "VERCEL", "REMY_GLM_URL", "ANTHROPIC_API_KEY", "DICTEE_LOCALE_URL", "OPENAI_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "TRANSCRIBE_PROVIDER"]) delete process.env[v];
 process.env.REMY_DATA_DIR = path.join(dossier, "data");
 process.env.REMY_CLES_DIR = path.join(dossier, "cles");
 process.env.HOME = path.join(dossier, "maison");
@@ -468,4 +491,60 @@ test("contrat : l'étape « Faire connaissance » et le circuit du résumé auto
   const g = await appel("/api/reglages");
   assert.equal(g.statut, 200);
   assert.equal(typeof g.corps.circuits?.compactage?.actif, "boolean", "phraseCompactage lit circuits.compactage.actif");
+});
+
+test("contrat : un message raté est retiré par la tour ; la relecture le garde à l'écran", async () => {
+  // Un faux modèle local en panne, secours Claude coupé : rien ne part ailleurs.
+  const panne = http.createServer((req, res) => {
+    res.writeHead(503, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "panne" }));
+  });
+  await new Promise((r) => panne.listen(0, "127.0.0.1", r));
+  const avant = { glm: process.env.REMY_GLM_URL, secours: process.env.REMY_SECOURS_CLOUD, cerveau: process.env.REMY_CERVEAU };
+  process.env.REMY_GLM_URL = `http://127.0.0.1:${panne.address().port}/v1`;
+  delete process.env.REMY_SECOURS_CLOUD;
+  delete process.env.REMY_CERVEAU;
+  const c = await appel("/api/conversations", { methode: "POST", corps: {} });
+  const id = encodeURIComponent(c.corps.id);
+  let brut;
+  try {
+    const r = await fetch(`${base}/api/conversations/${id}/messages`, { method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ text: "Question importante qui va échouer", call: false }) });
+    brut = await r.text();
+  } finally {
+    panne.close();
+    for (const [v, x] of [["REMY_GLM_URL", avant.glm], ["REMY_SECOURS_CLOUD", avant.secours], ["REMY_CERVEAU", avant.cerveau]]) {
+      if (x === undefined) delete process.env[v];
+      else process.env[v] = x;
+    }
+  }
+  const erreur = brut.split("\n\n").find((b) => /^event: error$/m.test(b));
+  assert.ok(erreur, `un event: error (${brut.slice(0, 200)})`);
+  const d = JSON.parse(erreur.match(/^data: (.+)$/m)[1]);
+  assert.ok(d.message, "un message à dire");
+  const tour = (await appel(`/api/conversations/${id}`)).corps.messages;
+  assert.ok(!tour.some((m) => m.role === "user" && m.content === "Question importante qui va échouer"), "la tour n'a plus la question");
+  // Ce que fait la vue en relisant (retour au premier plan, tour revenue) :
+  const q = { role: "user", content: "Question importante qui va échouer", _local: true };
+  const l = { role: "assistant", content: "", _erreur: d.message, _code: d.code || null, _local: true, _question: q.content };
+  assert.deepEqual(R.garderFinLocale([q, l], tour).slice(-2), [q, l]);
+});
+
+test("contrat : une étape « Faire connaissance » déjà commencée revient avec ses messages (la vue l'ouvre sans renvoyer l'amorce)", async () => {
+  const s = (await appel("/api/setup")).corps.sessions[0];
+  const neuve = await appel("/api/conversations", { methode: "POST", corps: { session: s.id } });
+  assert.equal(neuve.statut, 201);
+  assert.deepEqual(neuve.corps.messages, [], "neuve : la vue envoie l'amorce");
+  const conv = await store.getConversation(neuve.corps.id);
+  conv.messages = [{ role: "user", content: "Mes projets : la boutique de bougies." }, { role: "assistant", content: "Lequel passe devant ?" }];
+  await store.putConversation(conv);
+  const reprise = await appel("/api/conversations", { methode: "POST", corps: { session: s.id } });
+  assert.equal(reprise.corps.id, neuve.corps.id, "une étape n'a qu'UNE conversation");
+  assert.equal(reprise.corps.messages.length, 2, "déjà commencée : la vue l'ouvre, rien ne part");
+});
+
+test("contrat : sans moteur de transcription, GET /api/transcribe le dit (le micro prévient avant d'enregistrer)", async () => {
+  const t = await appel("/api/transcribe");
+  assert.equal(t.statut, 200);
+  assert.equal(t.corps.available, false, "la vue passe transcription: false au module de dictée");
+  assert.ok(t.corps.raison);
 });
