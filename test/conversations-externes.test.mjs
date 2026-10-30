@@ -614,14 +614,27 @@ test("REMY_SOURCE_T3=off coupe la lecture, même allumée dans l'app ; REMY_CONN
   } finally {
     delete process.env.REMY_SOURCE_T3;
   }
+  const lues = source((await json("GET", "/api/conversations-externes")).corps, "claude-code").recensement.gardees;
   process.env.REMY_CONNAISSANCES_PROJETS = "autre-projet";
   try {
     fx.ecrireSessionClaude(racineClaude, { dossier: "C--code-hors", session: "5e551011-0000-4000-8000-000000000077", cwd: "C:\\code\\hors-filtre", messages: [{ role: "user", texte: "rien à voir", ts: iso(HIER) }] });
-    const b = (await lireTout()).bilan.sources["claude-code"];
-    assert.equal(b.horsFiltre, 1);
+    const r = await lireTout();
+    const b = r.bilan.sources["claude-code"];
+    // La nouvelle session ET celles déjà lues : un projet retiré du filtre
+    // sort de la base (soir du 29/10), et le diagnostic dit pourquoi.
+    assert.equal(b.horsFiltre, lues + 1);
+    const s = source(r.etat, "claude-code");
+    assert.equal(s.conversations, 0);
+    assert.equal(s.aide.code, "hors-filtre");
+    assert.match(s.aide.message, /aucune gardée : \d+ hors du filtre REMY_CONNAISSANCES_PROJETS \(« autre-projet »\)/);
+    assert.match(s.aide.quoiFaire, /Retire REMY_CONNAISSANCES_PROJETS/);
   } finally {
     delete process.env.REMY_CONNAISSANCES_PROJETS;
   }
+  // Le filtre retiré : tout revient, relu depuis le début.
+  const r = await lireTout();
+  assert.equal(source(r.etat, "claude-code").recensement.gardees, lues + 1);
+  assert.equal(source(r.etat, "claude-code").recensement.ecartees.horsFiltre, 0);
 });
 
 test("réglages : Rémy s'en inspire (réponses, nuit), coupable ; REMY_CONVERSATIONS_USAGE=off l'emporte", async () => {

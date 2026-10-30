@@ -6,7 +6,8 @@
 //   node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\connaissances-etat.mjs [--lire]
 //
 // --lire : lit tout de suite les sources allumées (sinon, Rémy le fait seul
-// toutes les 30 minutes).
+// toutes les 30 minutes), et dit le bilan complet : fichiers lus, inchangés,
+// écartés (et pourquoi), bases de T3 trouvées, Téléchargements.
 
 import * as sync from "../lib/connaissances/sync.js";
 
@@ -27,9 +28,30 @@ if (process.argv.includes("--lire")) {
   }
   for (const [id, b] of Object.entries(r.sources)) {
     const nom = sync.SOURCES[id]?.nom || id;
-    if (!b.ok) console.log(`${nom} : ÉCHEC — ${b.erreur.message}\n  À faire : ${b.erreur.quoiFaire}`);
-    else if (id === sync.SOURCE_CHATGPT) console.log(`${nom} : ${b.importes} export(s) importé(s), ${b.deja} déjà vu(s), ${b.enAttente} en attente — ${b.duree} ms`);
-    else console.log(`${nom} : ${b.messages} message(s) ajouté(s), ${b.masques} secret(s) masqué(s), ${b.erreurs} erreur(s) — ${b.duree} ms`);
+    if (!b.ok) {
+      console.log(`${nom} : ÉCHEC — ${b.erreur.message}\n  À faire : ${b.erreur.quoiFaire}`);
+      continue;
+    }
+    if (id === sync.SOURCE_CHATGPT) {
+      console.log(`${nom} : ${b.importes} export(s) importé(s), ${b.deja} déjà vu(s), ${b.enAttente} en attente — ${b.duree} ms`);
+      const t = b.telechargements;
+      if (t?.coupe) console.log("  Téléchargements : surveillance coupée (Réglages › Sources des conversations, ou REMY_TELECHARGEMENTS=off)");
+      else if (t) console.log(`  Téléchargements : ${t.dossiers} dossier(s), ${t.zips} .zip, ${t.importes} importé(s), ${t.deja} déjà vu(s), ${t.autres} autre(s) que ChatGPT, ${t.tropVieux} de plus de ${sync.TELECHARGEMENTS_JOURS} j, ${t.tropGros} trop gros, ${t.erreurs} illisible(s)`);
+      continue;
+    }
+    console.log(`${nom} : ${b.messages} message(s) ajouté(s), ${b.masques} secret(s) masqué(s), ${b.erreurs} erreur(s) — ${b.duree} ms`);
+    // Le bilan complet : la vraie raison d'un « 0 conversation » se lit ici.
+    if (id === sync.SOURCE_CLAUDE) {
+      console.log(`  Lecture : ${b.fichiers} fichier(s), ${b.lus} lu(s), ${b.inchanges} inchangé(s), ${b.relus} relu(s) du début, ${b.exclus} écarté(s), ${b.horsFiltre} hors filtre, ${b.illisibles} ligne(s) illisible(s)${b.aRelire ? `, ${b.aRelire} à relire (règle changée)` : ""}`);
+      const rc = b.recensement;
+      if (rc) console.log(`  Plus profond : ${rc.sousAgents} fichier(s) de sous-agents (jamais lus), ${rc.ailleurs} autre(s) .jsonl hors de projects\\<dossier>\\<session>.jsonl`);
+    } else if (id === sync.SOURCE_T3) {
+      if (!b.detail?.length) console.log("  Aucune base trouvée (où Rémy a cherché : plus bas)");
+      for (const d of b.detail || []) {
+        console.log(`  ${d.chemin} (${d.version === 2 ? "base V2" : "ancienne base"}) : ${d.erreur ? `ÉCHEC — ${d.erreur}` : `${d.fils} fil(s), ${d.gardes} gardé(s), ${d.horsFiltre} hors filtre, ${d.supprimes} supprimé(s), ${d.sousAgents} sous-agent(s), ${d.sansMessage} sans message lisible`}`);
+      }
+    }
+    if (b.filtre) console.log(`  Filtre REMY_CONNAISSANCES_PROJETS : « ${b.filtre.join(", ")} »`);
   }
 }
 
@@ -40,10 +62,17 @@ console.log(`Rémy s'en sert : réponses ${e.usage.chat ? "oui" : "non"}, nuit $
 for (const s of e.sources) {
   console.log(`\n${s.nom} : ${s.actif ? "allumée" : "COUPÉE"}${s.forceParLaTour ? " (réglée dans remy.env)" : ""}`);
   console.log(`  ${s.conversations} conversation(s), ${s.messages} message(s) ; dernière lecture : ${date(s.derniereLecture)}`);
-  for (const l of s.emplacements) console.log(`  ${l.trouve ? "trouvé" : "absent"} : ${l.chemin} (${l.origine})`);
+  for (const l of s.emplacements) console.log(`  ${l.trouve ? "trouvé" : "cherché"} : ${l.chemin} (${l.origine})`);
+  if (s.recensement?.phrase) console.log(`  ${s.recensement.phrase}`);
   const p = s.erreur || s.aide;
   if (p) console.log(`  ${s.erreur ? "ERREUR" : "Rien encore"} : ${p.message}${p.quoiFaire ? `\n  À faire : ${p.quoiFaire}` : ""}`);
 }
 console.log(`\nExports ChatGPT à déposer dans : ${e.imports.dossier} (${e.imports.enAttente} en attente, ${e.imports.importes} déjà importé(s))`);
+const dl = e.chatgpt?.telechargements;
+if (dl?.actif) for (const d of dl.dossiers) console.log(`  Téléchargements surveillé (lecture seule) : ${d.chemin}${d.trouve ? "" : " — absent"}`);
+else if (dl) console.log(`  Téléchargements : non surveillé${dl.forceParLaTour ? " (REMY_TELECHARGEMENTS=off)" : " (coupé dans l'app)"}`);
+if (dl?.phraseIllisibles) console.log(`  ${dl.phraseIllisibles}`);
+const rp = e.chatgpt?.rappel;
+if (rp) console.log(`  Dernier import : ${rp.dernierImport ? `${date(rp.dernierImport)} (il y a ${rp.depuisJours} j)` : "jamais"} ; carte « Exporter ChatGPT » : ${!rp.actif ? "coupée" : rp.aMontrer ? "montrée" : "pas maintenant"}`);
 const o = e.imports.originaux;
 if (o?.fichiers) console.log(`  ${o.fichiers} export(s) importé(s) encore en clair hors du coffre : ${o.dossier} (effacé(s) ${o.gardeJours} jour(s) après l'import)`);

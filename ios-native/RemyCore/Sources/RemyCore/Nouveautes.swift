@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "chatgpt-automatique", serie: 6, date: "29 oct.", titre: "ChatGPT, sans y penser", capacite: "conversations-externes-v2", pages: [
+            .init(symbole: "arrow.down.circle", titre: "L'export pris dans Téléchargements",
+                  texte: "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements, en lecture seule. Reçu sur l'iPhone ? « Importer le .zip » dans la carte."),
+            .init(symbole: "bell.badge", titre: "Un rappel par mois",
+                  texte: "Quand ton dernier export a plus de 30 jours, une carte « Exporter ChatGPT » dans Conversations ouvre la bonne page. Réglages › Sources des conversations pour la couper."),
+            .init(symbole: "magnifyingglass", titre: "Claude Code et T3, bien trouvés",
+                  texte: "Les sessions de l'app Claude de bureau et de Remote Control sont lues. Sources dit combien Rémy en a vu, et pourquoi il en écarte : ses propres appels, les « claude -p » d'un seul échange."),
+        ]),
         Nouveaute(id: "conversations-externes", serie: 5, date: "29 oct.", titre: "Tes conversations d'ailleurs, ici", capacite: "conversations-externes-v1", pages: [
             .init(symbole: "bubble.left.and.bubble.right", titre: "Claude Code, T3, ChatGPT",
                   texte: "Projets › Conversations : tes sessions Claude Code et tes fils T3 Code (ordinateur ou téléphone), lus par ta tour. Par source, par jour (« Aller à un jour »), ou cherche un mot : la conversation s'ouvre au message trouvé."),

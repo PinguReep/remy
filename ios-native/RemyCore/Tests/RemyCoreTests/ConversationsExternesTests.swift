@@ -369,4 +369,101 @@ final class ConversationsExternesTests: XCTestCase {
         b.chat.marquerPrivee("c1")
         XCTAssertFalse(b.chat.privee)
     }
+
+    // Soir du 29/10 : le recensement, Téléchargements et la carte « Exporter
+    // ChatGPT », tels que la tour les rend (docs/conversations-externes.md).
+    static let etatExport = """
+    {"sources":[
+      {"id":"claude-code","nom":"Claude Code","actif":true,"disponible":true,"conversations":0,"messages":0,"derniereLecture":1793235865350,
+       "aide":{"code":"hors-filtre","message":"312 sessions trouvées, aucune gardée : 300 hors du filtre REMY_CONNAISSANCES_PROJETS (« essai »), 12 d'un seul échange lancées par un programme (claude -p).","quoiFaire":"Retire REMY_CONNAISSANCES_PROJETS de remy.env."},
+       "recensement":{"sessions":312,"gardees":0,"ecartees":{"horsFiltre":300,"programme":12},"phrase":"312 sessions : aucune lue, 300 hors du filtre REMY_CONNAISSANCES_PROJETS (« essai »), 12 d'un seul échange lancées par un programme (claude -p)."}},
+      {"id":"t3","nom":"T3 Code","actif":true,"disponible":true,"conversations":1,"messages":2,"derniereLecture":1793235865350,
+       "recensement":{"bases":2,"fils":1,"gardes":1,"phrase":"2 bases, 1 fil : 1 lu."}},
+      {"id":"chatgpt","nom":"ChatGPT","actif":true,"disponible":true,"conversations":0,"messages":0,
+       "emplacements":[{"origine":"dossier surveillé","chemin":"~\\\\Documents\\\\Rémy\\\\Imports","trouve":true},{"origine":"Téléchargements, lecture seule","chemin":"~\\\\Downloads","trouve":true}],
+       "aide":{"code":"rien-importe","message":"Aucun export ChatGPT importé.","quoiFaire":"Quand le mail arrive, clique son lien sur la tour : Rémy prend le .zip dans ses Téléchargements."},"recensement":null}],
+     "usage":{"chat":true,"nuit":true},"chiffre":true,
+     "chatgpt":{"telechargements":{"actif":true,"forceParLaTour":false,"dossiers":[{"chemin":"~\\\\Downloads","trouve":true}],"joursMax":90},
+                "rappel":{"actif":true,"aMontrer":true,"dernierImport":null,"depuisJours":null,"seuilJours":30,"lien":"https://chatgpt.com/#settings/DataControls"}},
+     "total":{"conversations":1,"messages":2}}
+    """
+
+    func testLeRecensementEtLaVraieRaisonSeLisent() async throws {
+        let e = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatExport.utf8))
+        let claude = try XCTUnwrap(e.source("claude-code"))
+        // L'ancien champ suffit à un iPhone déjà installé : il dit la vraie raison.
+        XCTAssertEqual(claude.phrase(), "312 sessions trouvées, aucune gardée : 300 hors du filtre REMY_CONNAISSANCES_PROJETS (« essai »), 12 d'un seul échange lancées par un programme (claude -p).")
+        XCTAssertEqual(claude.aide?.code, "hors-filtre")
+        XCTAssertEqual(claude.phraseRecensement, "312 sessions : aucune lue, 300 hors du filtre REMY_CONNAISSANCES_PROJETS (« essai »), 12 d'un seul échange lancées par un programme (claude -p).")
+        XCTAssertEqual(e.source("t3")?.phraseRecensement, "2 bases, 1 fil : 1 lu.")
+        XCTAssertNil(e.source("chatgpt")?.phraseRecensement)
+        XCTAssertTrue(e.source("chatgpt")?.emplacements.contains { $0.origine == "Téléchargements, lecture seule" && $0.chemin == "~\\Downloads" } == true)
+        // Une tour plus ancienne : aucun des nouveaux champs, rien ne casse.
+        let ancien = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etat.utf8))
+        XCTAssertNil(ancien.chatgpt)
+        XCTAssertNil(ancien.source("claude-code")?.recensement)
+        XCTAssertNil(ConversationsExternes.carteExportChatGPT(ancien))
+    }
+
+    func testLaCarteExporterChatGPTDitLesMemesMotsQueLeSite() async throws {
+        var e = try JSONDecoder().decode(EtatConversations.self, from: Data(Self.etatExport.utf8))
+        let c = try XCTUnwrap(ConversationsExternes.carteExportChatGPT(e))
+        XCTAssertEqual(c.titre, "Exporter ChatGPT")
+        // Le lien se clique sur la tour ; reçu sur l'iPhone, la carte importe le .zip (contre-relecture du 30/10).
+        XCTAssertEqual(c.texte, "Exporte tes données ; quand le mail arrive, clique son lien sur la tour : Rémy prend le fichier dans ses Téléchargements. Ailleurs, importe le .zip ici.")
+        XCTAssertEqual(c.importer, "Importer le .zip")
+        XCTAssertEqual(c.detail, "Aucun export importé pour l'instant.")
+        XCTAssertEqual(c.lien.absoluteString, "https://chatgpt.com/#settings/DataControls")
+        XCTAssertEqual(c.bouton, "Ouvrir ChatGPT")
+        XCTAssertEqual(ConversationsExternes.phraseTelechargements(e.chatgpt?.telechargements),
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer.")
+        // Un .zip illisible : la phrase de la tour, à la suite (tour plus ancienne : rien).
+        let illisible = "1 .zip illisible dans les Téléchargements de la tour : « export.zip » (du 9/10). Un export plus récent est déjà importé : efface-le quand tu veux (Rémy n'y touche jamais)."
+        let avecIllisible = try JSONDecoder().decode(EtatConversations.ExportChatGPT.Telechargements.self,
+                                                     from: Data(#"{"actif":true,"dossiers":[{"chemin":"~\\Downloads","trouve":true}],"joursMax":90,"phraseIllisibles":"\#(illisible)"}"#.utf8))
+        XCTAssertEqual(ConversationsExternes.phraseTelechargements(avecIllisible),
+                       "Rémy regarde ~\\Downloads sur la tour, en lecture seule : il n'y prend que les exports ChatGPT de moins de 90 jours, sans jamais rien y déplacer ni effacer. \(illisible)")
+        XCTAssertNil(e.chatgpt?.telechargements?.phraseIllisibles)
+        // Le dernier import a 45 jours, Téléchargements coupé : importer à la main.
+        e.chatgpt?.rappel = .init(actif: true, aMontrer: true, dernierImport: 1_790_000_000_000, depuisJours: 45, lien: "https://ailleurs.example/")
+        e.chatgpt?.telechargements?.actif = false
+        let d = try XCTUnwrap(ConversationsExternes.carteExportChatGPT(e))
+        XCTAssertEqual(d.texte, "Exporte tes données ; quand le mail arrive, clique le lien, puis importe le .zip ici.")
+        XCTAssertEqual(d.importer, "Importer le .zip")
+        XCTAssertEqual(d.detail, "Dernier import il y a 45 jours.")
+        XCTAssertEqual(d.lien, ConversationsExternes.lienExportChatGPT, "un lien qui ne mène pas à ChatGPT n'est jamais suivi")
+        e.chatgpt?.rappel?.aMontrer = false
+        XCTAssertNil(ConversationsExternes.carteExportChatGPT(e))
+        e.chatgpt?.telechargements = .init(actif: false, forceParLaTour: true)
+        XCTAssertEqual(ConversationsExternes.phraseTelechargements(e.chatgpt?.telechargements), "Coupé sur la tour (REMY_TELECHARGEMENTS=off).")
+    }
+
+    func testLesReglagesDeLExportPartentEtSeDisent() async {
+        FauxServeur.reponses = [
+            "PUT /api/conversations-externes/sources/chatgpt": [(200, Self.etatExport), (200, Self.etatExport), (500, "<h1>Erreur interne</h1>")],
+            "POST /api/conversations-externes/synchroniser": [(200, #"{"bilan":{"ok":true,"sources":{}},"etat":\#(Self.etatExport)}"#)],
+            "GET /api/conversations-externes/liste": [(200, Self.liste)],
+        ]
+        let a = app(capacites: ["conversations-externes-v1", ConversationsExternes.capaciteExport])
+        let m = a.conversationsExternes
+        let ok1 = await m.reglerExportChatGPT(rappel: false)
+        XCTAssertTrue(ok1)
+        XCTAssertEqual(FauxServeur.corps["PUT /api/conversations-externes/sources/chatgpt"]?["rappel"] as? Bool, false)
+        XCTAssertNil(FauxServeur.corps["PUT /api/conversations-externes/sources/chatgpt"]?["actif"], "jamais la source elle-même")
+        XCTAssertEqual(a.toast, "Plus de rappel d'export. Il se rallume dans Sources.")
+        XCTAssertNotNil(m.carteExport, "l'état revenu de la tour fait foi")
+        let ok2 = await m.reglerExportChatGPT(telechargements: true)
+        XCTAssertTrue(ok2)
+        XCTAssertEqual(FauxServeur.corps["PUT /api/conversations-externes/sources/chatgpt"]?["telechargements"] as? Bool, true)
+        XCTAssertEqual(a.toast, "Rémy prend de nouveau l'export ChatGPT dans Téléchargements.")
+        // La tour en panne : le geste échoue, et le dit.
+        let ok3 = await m.reglerExportChatGPT(telechargements: false)
+        XCTAssertFalse(ok3)
+        XCTAssertNotNil(a.toast)
+        // « Lire maintenant » sur ChatGPT : Imports et Téléchargements.
+        let ok4 = await m.lireMaintenant("chatgpt")
+        XCTAssertTrue(ok4)
+        XCTAssertEqual(FauxServeur.corps["POST /api/conversations-externes/synchroniser"]?["source"] as? String, "chatgpt")
+        XCTAssertEqual(a.toast, "Lu : Aucun export ChatGPT importé.")
+    }
 }
