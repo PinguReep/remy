@@ -1073,6 +1073,135 @@ dialog.appel::backdrop { background: var(--fond); }
 .ajout-ligne { display: flex; gap: 8px; margin-top: 12px; }
 .ajout-ligne .champ { flex: 1; }
 
+/* --- lot projets : rappels (ligne, Quand ?, étiquettes, filtre, à traiter), tri, listes en tuiles, dossiers, historique --- */
+.auj-zone:has(> .projets-rappels-jour[hidden]) { display: none; }
+.rappels-tete { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+.rappels-tete .titre-section { margin: 0; flex: 1 1 auto; }
+.rappels-tete .lien-titre { margin-left: 0; }
+.rappels-bouton-filtre { color: var(--encre-2); font-weight: 500; }
+.rappels-bouton-filtre.actif { color: var(--signal-texte); font-weight: 600; }
+.rappels-puces { display: contents; }
+.rappels-puces .puce, .rappels-ligne .meta .puce { min-height: 22px; padding: 0 8px; font: 600 11px/1.2 var(--texte); }
+.rappels-sans-date { color: var(--encre-3); font-size: 12px; }
+.rappels-importe { color: var(--encre-3); font: 600 11px/1.2 var(--texte); }
+.rappels-a-traiter {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 4px 8px; margin: 0 -8px 4px; width: calc(100% + 16px);
+  border: 0; border-radius: 12px; background: none; color: var(--encre); text-align: left;
+  transition: background-color 120ms ease-out;
+}
+.rappels-a-traiter:hover { background: var(--fond-2); }
+.rappels-a-traiter .boite-icone { width: 32px; height: 32px; border-radius: 9px; background: var(--fond-2); display: grid; place-items: center; color: var(--encre-2); flex: none; }
+.rappels-a-traiter:hover .boite-icone { background: var(--fond-3); }
+.rappels-a-traiter .textes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rappels-a-traiter .textes strong { font-weight: 600; font-size: 16px; }
+.rappels-a-traiter .textes span { color: var(--encre-2); font-size: 13px; }
+.rappels-a-traiter > svg.ic:last-child { width: 14px; height: 14px; color: var(--encre-3); }
+.rappels-pastille { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: var(--surface); font: 600 12px/1 var(--mono); }
+.rappels-masques { padding: 10px 0 4px; }
+.rappels-cases { display: flex; flex-direction: column; }
+.rappels-case {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 4px; border: 0; border-top: 1px solid var(--filet);
+  background: none; color: var(--encre); text-align: left; font-size: 15px;
+}
+.rappels-case:first-child { border-top: 0; }
+.rappels-case:hover { background: var(--fond-2); }
+.rappels-case .t { flex: 1; min-width: 0; }
+.rappels-case.discret .t { color: var(--encre-2); }
+.rappels-case .rond { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--encre-3); flex: none; position: relative; }
+.rappels-case[aria-checked="true"] .rond { background: var(--signal); border-color: var(--signal); }
+.rappels-case[aria-checked="true"] .rond::after { content: ""; position: absolute; left: 6px; top: 6px; width: 8px; height: 5px; border-left: 2px solid var(--sur-signal); border-bottom: 2px solid var(--sur-signal); transform: rotate(-45deg); }
+.rappels-gerer { margin-top: 10px; }
+.rappels-pied-filtre { margin-top: 10px; }
+.rappels-quand .feuille-tete .sous { font: 400 12px/1.4 var(--mono); color: var(--encre-2); }
+.rappels-quand .titre-section { margin-top: 4px; }
+.rappels-choisir { display: grid; gap: 10px; margin-top: 12px; }
+.rappels-choisir .etiquette-champ { display: grid; gap: 6px; }
+.rappels-retirer { color: var(--danger); margin-top: 8px; }
+.rappels-retirer:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.rappels-moment { display: grid; gap: 6px; margin-top: 4px; }
+.rappels-nouveau .bascule { margin-top: 6px; }
+
+/* Le tri des rappels */
+.tri-pied { display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap; flex: 1; }
+.tri-categories { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.tri-categorie { display: flex; align-items: center; gap: 6px; }
+.tri-categorie .champ { flex: 1; }
+.tri-retirer { color: var(--danger); }
+.tri-aide { margin-top: 12px; }
+.tri-etat { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--encre-2); font-size: 14px; margin-bottom: 10px; }
+.tri-etat:empty { display: none; }
+.tri-roue { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: tourne 700ms linear infinite; flex: none; }
+.tri-liste { list-style: none; }
+.tri-ligne { display: grid; gap: 10px; padding: 14px 0; border-top: 1px solid var(--filet); }
+.tri-ligne:first-child { border-top: 0; padding-top: 4px; }
+.tri-texte { font-weight: 500; font-size: 16px; overflow-wrap: anywhere; }
+.tri-date { display: flex; align-items: center; gap: 6px; }
+.tri-date .champ { max-width: 280px; }
+.tri-ajouter-date { justify-self: start; padding: 0 8px; margin-left: -8px; color: var(--signal-texte); font-size: 14px; }
+.tri-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 12px; background: var(--fond-2); }
+.tri-actions button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--encre-2); font-weight: 600; font-size: 14px; padding: 0 6px; }
+.tri-actions button:hover { color: var(--encre); }
+.tri-actions button[aria-checked="true"] { background: var(--surface); color: var(--encre); box-shadow: 0 1px 3px var(--ombre), inset 0 0 0 1px var(--filet); }
+
+/* Projets : le maître, les détails */
+.element-maitre.projets-deux-lignes { min-height: 52px; padding-top: 6px; padding-bottom: 6px; }
+.projets-textes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.projets-textes .t { flex: none; }
+.projets-textes small { font-size: 12px; line-height: 1.3; color: var(--encre-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.projets-textes .risque { font-size: 11px; }
+.projets-statut { flex: none; font-size: 11px; }
+.projets-note { padding: 4px 12px 0; }
+.projets-etat { padding: 0 12px 6px; display: grid; gap: 8px; justify-items: start; }
+.projets-section { margin-top: 20px; }
+.projets-section.danger, .projets-section.danger .compte { color: var(--danger); }
+.projets-tete-projet { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.projets-ajout { justify-content: flex-start; padding: 0 8px; margin-left: -8px; color: var(--encre-2); }
+.projets-icone { width: 32px; height: 32px; border-radius: 9px; background: var(--fond-2); display: grid; place-items: center; color: var(--encre-2); flex: none; }
+.projets-plus { opacity: 0; transition: opacity 120ms ease-out; }
+.projets-tache:hover .projets-plus, .projets-tache:focus-within .projets-plus, .projets-plus:focus-visible { opacity: 1; }
+@media (hover: none) { .projets-plus { opacity: 1; } }
+.projets-tuiles { display: grid; grid-template-columns: repeat(var(--colonnes, 2), minmax(0, 1fr)); gap: 10px; }
+.projets-tuile {
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; min-height: 104px; min-width: 0;
+  border: 1px solid var(--filet); border-radius: 18px; background: var(--surface); color: var(--encre); text-decoration: none;
+  transition: background-color 120ms ease-out;
+}
+.projets-tuile:hover { background: var(--fond-2); }
+.projets-tuile.large { flex-direction: row; align-items: center; gap: 14px; min-height: 64px; }
+.projets-tuile.large > svg.ic:last-child { width: 14px; height: 14px; color: var(--encre-3); }
+.projets-tuile-icone { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+.projets-tuile-textes { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.projets-tuile.large .projets-tuile-textes { flex: 1; }
+.projets-tuile-textes strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.projets-tuile-textes span { font-size: 12px; color: var(--encre-2); }
+.projets-tuile-vide { min-height: 72px; display: flex; align-items: center; padding: 14px 16px; border: 1.5px dashed var(--filet); border-radius: 18px; color: var(--encre-2); font-size: 14px; }
+.projets-ajout-article { align-items: center; margin-top: 16px; }
+.projets-ajout-article > svg.ic { color: var(--signal); width: 22px; height: 22px; }
+.projets-filtres { margin-bottom: 10px; }
+.projets-entree { align-items: flex-start; padding-top: 10px; padding-bottom: 10px; }
+.projets-entree-tete { display: flex; align-items: baseline; gap: 8px; }
+.projets-entree-tete .mono { font-size: 13px; font-weight: 500; color: var(--encre); }
+.projets-entree-tete .origine { flex: 1; min-width: 0; font-size: 13px; color: var(--encre-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projets-entree-tete svg.ic { width: 14px; height: 14px; color: var(--encre-3); align-self: center; }
+.projets-element { margin-top: 4px; }
+.projets-element .quoi { font-weight: 500; overflow-wrap: anywhere; }
+.projets-element .changement { font-size: 12px; color: var(--encre-2); }
+.projets-element.erreur .quoi { color: var(--danger); }
+.projets-element.deja .quoi { color: var(--encre-2); }
+.projets-element.annulee .quoi { text-decoration: line-through; }
+.projets-annulee { font: 600 12px/1.4 var(--texte); color: var(--encre-3); margin-top: 4px; }
+.projets-plus-ancien { color: var(--signal-texte); margin-top: 8px; }
+.projets-lecture { display: grid; gap: 10px; }
+@media (max-width: 720px) {
+  /* Au doigt, toucher le texte ouvre « Quand ? » (reporter, étiquettes, retirer) : comme l'iPhone. */
+  .rappels-ligne .rappels-geste { display: none; }
+  .tri-date .champ { max-width: none; flex: 1; }
+  .tri-pied { justify-content: space-between; }
+  /* Une feuille large monte aussi du bas sur toute la largeur. */
+  dialog.feuille.large.tri-feuille { width: 100vw; max-width: 100vw; }
+}
+/* --- fin lot projets */
+
 /* ---------- Réglages ---------- */
 .reglages-grille { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
 .reglages-grille .maitre .recherche-champ { margin-bottom: 12px; }
