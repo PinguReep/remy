@@ -101,6 +101,7 @@ export default {
   demonter() {
     clearInterval(minuteurHorloge);
     clearInterval(minuteurLecture);
+    clearTimeout(relectureBientot);
     conseil?.arreter();
     evenements.removeEventListener("remy:sujets", surSujets);
     desabonnerCochees?.();
@@ -228,10 +229,25 @@ async function charger({ frais = false, discret = false } = {}) {
   return enLecture;
 }
 
-// Relire après un geste, seulement si Aujourd'hui est affiché (une coche peut aboutir ailleurs, sur Rémy).
-const apres = () => setTimeout(() => {
-  if (racine?.isConnected) charger({ discret: true });
-}, 600);
+// Relire après un geste, seulement si Aujourd'hui est affiché (une coche peut
+// aboutir ailleurs, sur Rémy) : tout de suite (la tour a déjà mis sa liste à
+// jour), puis une seconde fois, discrètement, ~35 s plus tard. Motion
+// recalcule le planning derrière, et une annulation n'est relue par la tour
+// qu'en tâche de fond : sans cette seconde lecture, la tâche « de retour »
+// n'apparaissait qu'à la relecture des 5 min. Chaque geste la reprogramme
+// (TableauModel.apresGeste → relireBientot de l'iPhone).
+const RELIRE_BIENTOT = 35e3;
+let relectureBientot = null;
+const apres = () => {
+  setTimeout(() => {
+    if (racine?.isConnected) charger({ discret: true });
+  }, 600);
+  clearTimeout(relectureBientot);
+  relectureBientot = setTimeout(() => {
+    relectureBientot = null;
+    if (racine?.isConnected && document.visibilityState === "visible") charger({ discret: true });
+  }, RELIRE_BIENTOT);
+};
 
 function toutDessiner() {
   if (!racine?.isConnected) return;

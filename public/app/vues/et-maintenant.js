@@ -2,22 +2,48 @@
 // tâche du moment, une petite carte en bas à droite propose discrètement la
 // suivante (« Commencer « X » », « Continuer », « Ouvrir ») ou « Choisir… »
 // parmi aujourd'hui, en retard et cette semaine. Elle ne prend pas le focus
-// (Tab l'atteint), part seule après 15 s, Échap ou la croix la ferment.
+// (Tab l'atteint), part seule après 15 s (pas tant qu'elle a le focus ou la
+// souris), Échap ou la croix la ferment. La coche qui l'a ouverte annulée,
+// elle disparaît : la tâche est de nouveau la tienne.
 // Rien ne démarre sans un clic.
 import { api, sait } from "../api.js";
 import { h, vider, icone, bouton, feuille, squelette, texteErreur } from "../ui.js";
 import { suivante, candidatsChoix, etatMoment } from "../analyse/journee.js";
-import { gerer, commencer } from "./gerer.js";
+import { gerer, commencer, cochees } from "./gerer.js";
 
+const DUREE = 15e3;
 let carte = null;
 let minuteur = null;
+let idTerminee = null; // la coche qui a ouvert la carte
+let desabonner = null;
+let focusAvant = null; // d'où venait le focus quand il est entré dans la carte
 
 function fermer() {
   clearTimeout(minuteur);
   document.removeEventListener("keydown", surTouche);
-  carte?.remove();
+  desabonner?.();
+  desabonner = null;
+  idTerminee = null;
+  if (!carte) return;
+  // Le focus était dans la carte : il revient d'où il venait (ou au contenu), jamais au body.
+  const avaitLeFocus = carte.contains(document.activeElement);
+  carte.remove();
   carte = null;
+  if (avaitLeFocus) {
+    const cible = focusAvant?.isConnected ? focusAvant : document.getElementById("contenu-principal");
+    cible?.focus({ preventScroll: true });
+  }
+  focusAvant = null;
 }
+/** Ferme la proposition ouverte par la coche `id` (toutes si `id` est absent). */
+export function fermerSuite(id) {
+  if (!carte || (id != null && id !== idTerminee)) return;
+  fermer();
+}
+const armer = () => {
+  clearTimeout(minuteur);
+  minuteur = setTimeout(fermer, DUREE);
+};
 function surTouche(ev) {
   if (ev.key !== "Escape" || document.querySelector("dialog[open]")) return;
   fermer();
@@ -34,7 +60,7 @@ const ouvrirTache = (c, { ouvrir, apres, contexte }) => {
  * Propose la suite après « « T » terminée ». `journee()` : la journée affichée
  * (sans les cochées) ; `ouvrir(e)` : « Gérer » ; `apres()` : relire.
  */
-export function proposerSuite(terminee, { journee, ouvrir, apres, contexte } = {}) {
+export function proposerSuite(terminee, { id = null, journee, ouvrir, apres, contexte } = {}) {
   fermer();
   const m = Date.now();
   const j = typeof journee === "function" ? journee() : journee;
@@ -56,7 +82,32 @@ export function proposerSuite(terminee, { journee, ouvrir, apres, contexte } = {
     h("div", { class: "rangee serree" }, principal, choisir));
   (document.querySelector(".contenu") || document.body).append(carte);
   document.addEventListener("keydown", surTouche);
-  minuteur = setTimeout(fermer, 15e3);
+  // Pas de départ sous les yeux : le focus ou la souris dans la carte suspendent le minuteur.
+  let survolee = false;
+  carte.addEventListener("focusin", (ev) => {
+    if (!carte?.contains(ev.relatedTarget) && ev.relatedTarget instanceof HTMLElement) focusAvant = ev.relatedTarget;
+    clearTimeout(minuteur);
+  });
+  carte.addEventListener("focusout", (ev) => {
+    if (carte && !carte.contains(ev.relatedTarget) && !survolee) armer();
+  });
+  carte.addEventListener("pointerenter", () => {
+    survolee = true;
+    clearTimeout(minuteur);
+  });
+  carte.addEventListener("pointerleave", () => {
+    survolee = false;
+    if (carte && !carte.contains(document.activeElement)) armer();
+  });
+  // La coche annulée (sa ligne, le bandeau) : la proposition n'a plus lieu d'être.
+  idTerminee = id;
+  if (id != null) {
+    desabonner = cochees.surChangement(() => {
+      const c = cochees.liste().find((x) => x.id === id);
+      if (!c || c.enCours || c.defaire) fermer();
+    });
+  }
+  armer();
   return carte;
 }
 

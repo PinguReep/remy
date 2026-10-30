@@ -78,6 +78,10 @@ class FauxNoeud {
   addEventListener(t, f) {
     (this.ecouteurs[t] ||= []).push(f);
   }
+  contains(n) {
+    for (let x = n; x; x = x.parentElement) if (x === this) return true;
+    return false;
+  }
   replaceChildren(...n) {
     for (const x of this.children) x.parentElement = null;
     this.children = [];
@@ -93,6 +97,11 @@ globalThis.document = {
   createElementNS: (_ns, t) => new FauxNoeud(t),
   createTextNode: (d) => Object.assign(new FauxNoeud("#text"), { data: String(d) }),
   querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: () => null,
+  addEventListener() {},
+  removeEventListener() {},
+  activeElement: null,
   body: new FauxNoeud("body"),
   documentElement: { dataset: {} },
 };
@@ -112,11 +121,13 @@ const recues = [];
 let retenir = false;
 let enAttente = []; // les « apply » retenus : (réponse) → void
 let numero = 0;
+let forcer = null; // () => Response : la réponse de /api/motion/apply (401, 429…)
 globalThis.fetch = async (url, init = {}) => {
   const chemin = String(url);
   const corps = init.body ? JSON.parse(init.body) : null;
   recues.push({ chemin, corps });
   const repondre = (json) => new Response(JSON.stringify(json), { status: 200, headers: { "Content-Type": "application/json" } });
+  if (chemin === "/api/motion/apply" && forcer) return forcer();
   if (chemin === "/api/motion/apply") {
     const r = { ok: true, results: [{ ok: true }], echecs: 0, ledgerId: `L-${corps.idCommande}` };
     if (!retenir) return repondre(r);
@@ -260,4 +271,66 @@ test("RÉGRESSION : h() pose les propriétés personnalisées (la couleur de pro
   assert.equal(bloc.style.getPropertyValue("--couleur"), "#3D6A8A", "Object.assign l'ignorait : bordure grise pour tous");
   assert.equal(bloc.style.top, "10px");
   assert.equal(bloc.style.getPropertyValue("--vide"), "");
+});
+
+test("RÉGRESSION : session expirée pendant l'envoi d'une coche : elle attend la reconnexion dans la file, et c'est dit", async () => {
+  magasin.clear();
+  viderBandeaux();
+  forcer = () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  G.terminer({ type: "tache", id: "t20", titre: "Préparer la facture Ondine" }, {});
+  await pause(2100);
+  assert.ok(await attendreQue(() => coche("t20")?.envoi === "attente" && !coche("t20").enCours), JSON.stringify(coche("t20")));
+  const enFile = fileEnvoi.liste().find((x) => x.id === coche("t20").idCommande);
+  assert.ok(enFile, "la coche est dans la file d'envoi (avant : perdue sans un mot)");
+  assert.ok(bandeaux().includes("Tu n'es plus connecté à la tour : « Préparer la facture Ondine » est gardée ici et partira quand tu te reconnecteras."), bandeaux().join(" | "));
+  // Reconnecté : la file part (main.js la vide au démarrage), la coche se conclut.
+  forcer = null;
+  G.suivreFileCochees();
+  await fileEnvoi.vider({ sansAttendre: true });
+  assert.ok(await attendreQue(() => coche("t20")?.envoi === "fait"), JSON.stringify(coche("t20")));
+});
+
+test("RÉGRESSION : une coche gardée dit pourquoi : « Pas de réseau » seulement quand la tour ne répond pas", () => {
+  const T = "Relire le contrat de Hugo";
+  const erreur = (statut, nature = "serveur") => Object.assign(new Error("x"), { statut, nature });
+  assert.equal(G.phraseCocheGardee(T, erreur(429)), "Motion limite les requêtes (429) : « Relire le contrat de Hugo » repartira toute seule.");
+  assert.equal(G.phraseCocheGardee(T, erreur(503)), "Base de la tour indisponible (503) : « Relire le contrat de Hugo » repartira toute seule.");
+  assert.equal(G.phraseCocheGardee(T, erreur(500)), "La tour a mal répondu : « Relire le contrat de Hugo » est gardée ici et repartira toute seule, sans doublon.");
+  assert.equal(G.phraseCocheGardee(T, erreur(200, "illisible")), "La tour a mal répondu : « Relire le contrat de Hugo » est gardée ici et repartira toute seule, sans doublon.");
+  assert.equal(G.phraseCocheGardee(T, erreur(0, "reseau")), "Pas de réseau : « Relire le contrat de Hugo » partira dès que Rémy sera joignable.");
+  assert.equal(G.phraseCocheGardee(T, erreur(0, "delai")), "Pas de réseau : « Relire le contrat de Hugo » partira dès que Rémy sera joignable.");
+  assert.equal(G.phraseCocheGardee(T, null), "Pas de réseau : « Relire le contrat de Hugo » partira dès que Rémy sera joignable.");
+  assert.equal(G.phraseCocheGardee(T, erreur(502, "reseau")), "Rémy ne répond pas derrière Tailscale (502) : « Relire le contrat de Hugo » partira dès qu'il répondra.");
+  assert.match(G.phraseCocheGardee(T, erreur(401, "auth")), /^Tu n'es plus connecté à la tour/);
+  assert.equal(G.phraseCocheGardee(T, erreur(500), { defaire: true }), "« Relire le contrat de Hugo » sera rouverte dès que Rémy sera joignable.");
+});
+
+test("RÉGRESSION : un 429 à l'envoi direct d'une coche ne dit pas « Pas de réseau »", async () => {
+  magasin.clear();
+  viderBandeaux();
+  forcer = () => new Response(JSON.stringify({ error: "quota", message: "Motion limite les requêtes" }), { status: 429, headers: { "Content-Type": "application/json" } });
+  G.terminer({ type: "tache", id: "t21", titre: "Relire le contrat de Hugo" }, {});
+  await pause(2100);
+  assert.ok(await attendreQue(() => bandeaux().some((t) => /repartira toute seule/.test(t))), bandeaux().join(" | "));
+  assert.ok(!bandeaux().some((t) => /Pas de réseau/.test(t)), bandeaux().join(" | "));
+  forcer = null;
+});
+
+test("RÉGRESSION : « Et maintenant ? » disparaît dès que la coche qui l'a ouverte est annulée", async () => {
+  magasin.clear();
+  viderBandeaux();
+  const carteSuite = () => document.body.children.find((n) => n.className === "maintenant-suite") || null;
+  const journee = () => ({ items: [], aFaire: [{ id: "t6", titre: "Trier la boîte mail" }] });
+  G.terminer({ type: "tache", id: "t22", titre: "Finaliser la démo de la boutique" }, { journee });
+  await pause(2100);
+  assert.ok(await attendreQue(() => coche("t22")?.envoi === "fait" && carteSuite()), "la carte « Et maintenant ? » est ouverte");
+  assert.match(carteSuite().texte, /« Finaliser la démo de la boutique » terminée\. Et maintenant \?/);
+  // Une autre coche ne la ferme pas.
+  cocheEnFile("t23", "Arroser les plantes");
+  assert.ok(carteSuite(), "une autre coche ne ferme pas la carte");
+  // « Annuler » (sa ligne ou le bandeau) : la proposition de suite n'a plus lieu d'être, tout de suite.
+  const annulation = G.annulerCoche("t22");
+  assert.equal(carteSuite(), null, "fermée dès le début de l'annulation");
+  await annulation;
+  assert.ok(bandeaux().includes("Annulé : « Finaliser la démo de la boutique » est de retour."), bandeaux().join(" | "));
 });

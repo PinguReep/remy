@@ -223,7 +223,7 @@ export async function renvoyer(id) {
 export const PEUT_ETRE_RECUE = "Pas de réponse de Rémy pendant l'envoi : il l'a peut-être déjà reçue. Renvoie-la seulement si elle n'est pas arrivée.";
 
 /** La raison d'un échec passager, courte (le prochain essai se fait seul). */
-function raisonCourte(err) {
+export function raisonCourte(err) {
   if (err?.nature === "reseau" && !err.statut) return "la tour ne répond pas";
   if (err?.nature === "delai") return "la tour a mis trop de temps";
   if (err?.nature === "illisible") return "réponse illisible";

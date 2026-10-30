@@ -322,7 +322,7 @@ export function terminer(e, { retirer, remettre, apres, journee, ouvrir, context
       if (defaireLa) await defaireArrivee(e.id, e.titre, { apres });
       else {
         dire(`« ${e.titre} » est marqué fait dans Motion.`, { genre: "succes", duree: 5000, action: r?.ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(e.id, { apres }) } : null });
-        if (journee) import("./et-maintenant.js").then((m) => m.proposerSuite(e.titre, { journee, ouvrir, apres, contexte })).catch((err) => console.warn("Et maintenant ?", err));
+        if (journee) import("./et-maintenant.js").then((m) => m.proposerSuite(e.titre, { id: e.id, journee, ouvrir, apres, contexte })).catch((err) => console.warn("Et maintenant ?", err));
       }
       apres?.();
     } catch (err) {
@@ -330,34 +330,58 @@ export function terminer(e, { retirer, remettre, apres, journee, ouvrir, context
       const nature = natureEchec(err);
       // Pas de réponse nette (réseau, délai, 500…) ou un refus passager (502, 503, 429) :
       // la tâche reste retirée, la commande repart plus tard avec la même clé.
-      if (nature === "incertain" || nature === "passager") {
-        majCochee(e.id, { envoi: nature === "incertain" ? "tentee" : "attente" });
-        return garder({ ...c, envoi: nature === "incertain" ? "tentee" : "attente" }, { remettre, apres });
+      // Une session perdue (401) non plus : rien n'est parti, la coche attend la
+      // reconnexion dans la file (au rechargement qui suit, main.js la vide).
+      if (nature === "incertain" || nature === "passager" || nature === "auth") {
+        const envoi = nature === "incertain" ? "tentee" : "attente";
+        majCochee(e.id, { envoi });
+        return garder({ ...c, envoi }, { remettre, apres, err });
       }
       retirerCochee(e.id);
       aDefaire.delete(e.id);
       remettre?.();
-      if (nature === "auth") return;
       direErreur(err, () => terminer(e, { retirer, remettre, apres, journee, ouvrir, contexte }), `Motion n'a pas pu marquer « ${e.titre} » comme fait`, { rafraichir: apres });
     }
   }, DELAI_ANNULATION);
 }
 
-/** Sans réponse de la tour : la coche va dans la file d'envoi, ou revient si le navigateur ne peut rien garder. */
-function garder(c, { remettre, apres }) {
+/**
+ * Pourquoi une coche attend, selon l'échec (phraseGarde de Noter) : « Pas de
+ * réseau » seulement quand la tour ne répond pas ; une tour qui répond mal,
+ * Motion qui fait la queue ou une session perdue se disent tels quels.
+ */
+export function phraseCocheGardee(titre, err, { defaire = false } = {}) {
+  const t = `« ${titre} »`;
+  if (err?.nature === "auth") return defaire
+    ? `Tu n'es plus connecté à la tour : ${t} sera rouverte quand tu te reconnecteras.`
+    : `Tu n'es plus connecté à la tour : ${t} est gardée ici et partira quand tu te reconnecteras.`;
+  if (defaire) return `${t} sera rouverte dès que Rémy sera joignable.`;
+  const nature = err ? natureEchec(err) : "incertain";
+  if (nature === "passager" && err.nature !== "reseau") {
+    const raison = fileEnvoi.raisonCourte(err);
+    return `${raison.charAt(0).toUpperCase()}${raison.slice(1)} : ${t} repartira toute seule.`;
+  }
+  if (nature === "incertain" && err && err.nature !== "reseau" && err.nature !== "delai") return `La tour a mal répondu : ${t} est gardée ici et repartira toute seule, sans doublon.`;
+  if (err?.nature === "reseau" && err.statut) return `Rémy ne répond pas derrière Tailscale (${err.statut}) : ${t} partira dès qu'il répondra.`;
+  return `Pas de réseau : ${t} partira dès que Rémy sera joignable.`;
+}
+
+/** Sans réponse nette de la tour : la coche va dans la file d'envoi, ou revient si le navigateur ne peut rien garder. */
+function garder(c, { remettre, apres, err = null }) {
   if (!mettreEnFile(c)) {
     retirerCochee(c.id);
     remettre?.();
-    dire(`Pas de réseau : « ${c.titre} » n'est pas marqué fait. Il est de retour.`, { genre: "erreur" });
+    dire(`${err?.nature === "auth" ? "Tu n'es plus connecté à la tour" : "Pas de réseau"} : « ${c.titre} » n'est pas marqué fait. Il est de retour.`, { genre: "erreur" });
     return;
   }
   // « Annuler » touché pendant l'envoi raté : elle repartira, puis sera défaite.
   const defaireLa = aDefaire.has(c.id) || Boolean(lireCochees().find((x) => x.id === c.id)?.defaire);
-  dire(defaireLa ? `« ${c.titre} » sera rouverte dès que Rémy sera joignable.` : `Pas de réseau : « ${c.titre} » partira dès que Rémy sera joignable.`);
+  dire(phraseCocheGardee(c.titre, err, { defaire: defaireLa }), { duree: err?.nature === "auth" ? 0 : undefined });
   prevenirCochees();
   apres?.();
   // La tour répond mais mal (500…) : un nouvel essai dans un moment, la file espace les suivants.
-  if (tourJoignable()) setTimeout(() => fileEnvoi.vider().catch(() => {}), 15e3);
+  // Session perdue : la file attend la reconnexion (une requête de plus ne ferait qu'un 401).
+  if (tourJoignable() && err?.nature !== "auth") setTimeout(() => fileEnvoi.vider().catch(() => {}), 15e3);
 }
 
 /** Une activité à soi faite (ou pas) : gardé dans Rémy, l'agenda ne change pas. À l'écran tout de suite, remis si la tour refuse. */
