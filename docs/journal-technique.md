@@ -22,6 +22,20 @@ notes privées, sur la tour.
 - **« Pas celui-là » après « Importer »** : la tour répond 409 `deja-importe`
   (et dit comment effacer) au lieu de « Pas importé » ; le site occupe les
   deux boutons de la carte, l'iPhone passe par `geste` (un à la fois).
+- **Coche défaite dans l'Historique** : la cochée locale (`remy-cochees`)
+  porte le `ledgerId` de son écriture ; l'Historique l'oublie
+  (`oublierCocheeAnnulee`) et Aujourd'hui la remontre ouverte. Un 409 « déjà
+  annulé » sur l'« Annuler » d'une cochée vaut « fait ». Pas de garde « la
+  tâche est ouverte dans un tableau lu après la coche » : Motion montre
+  encore ouverte une tâche cochée pendant quelques secondes (c'est la raison
+  d'être des cochées), elle ferait réapparaître des coches justes.
+- **App Windows et dépôt de fichier** : `disable_drag_drop_handler()` sur les
+  deux fenêtres ; le site garde son dépôt HTML5. Non vérifié sur Windows ici.
+- **Provenance d'un partage** : `depuis` (iphone, ordinateur) dans le corps
+  de POST /api/capture/image ; inconnu, rien n'est deviné (« Image partagée
+  par Sam »). Un texte « partage » de /api/capture vient de la feuille de
+  partage de l'iPhone. La lecture du texte de l'image sur l'ordinateur (OCR
+  Windows, WinRT) reste à faire : l'aperçu le dit en attendant.
 
 ## 2026-10-30 — Téléchargements : rien n'entre dans la mémoire sans un geste
 
