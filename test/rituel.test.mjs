@@ -11,7 +11,7 @@ const racine = fs.mkdtempSync(path.join(os.tmpdir(), "remy-rituel-"));
 for (const v of ["UPSTASH_REDIS_REST_URL", "KV_REST_API_URL", "MOTION_API_KEY", "VERCEL", "ANTHROPIC_API_KEY"]) delete process.env[v];
 process.env.REMY_DATA_DIR = racine;
 
-const { menacees, briefingMatin, bilanSoir, faitsDepuis, texteBilan, tempsLibre, quand } = await import("../lib/rituel.js");
+const { menacees, briefingMatin, bilanSoir, faitsDepuis, texteBilan, tempsLibre, quand, premierRendezVous } = await import("../lib/rituel.js");
 const { journee } = await import("../lib/dashboard.js");
 
 const H = 3600_000;
@@ -165,4 +165,22 @@ test("routes : /api/rituel rend le briefing, le bilan et les menaces ; le bilan 
   } finally {
     serveur.close();
   }
+});
+
+// Sam, 11/11 : « j'avais un rendez-vous à 10 h, il faudrait que le soir on me
+// dise de mettre un réveil ». Le bilan du soir le dit quand demain commence tôt.
+test("bilan du soir : demain commence tôt → la phrase le dit, pour le réveil", () => {
+  const soir = a(21);
+  const rdv = (id, titre, h, m = 0, jour = 1) => ({ id, summary: titre, start: { dateTime: iso(a(h, m, jour)) }, end: { dateTime: iso(a(h + 1, m, jour)) } });
+  const evenements = [rdv("e2", "Déjeuner avec Léa", 12, 30), rdv("e1", "Dentiste", 10), rdv("e0", "Ce soir", 22, 0, 0), { id: "e9", summary: "Anniversaire", start: { date: "2026-10-24" } }];
+  const b = bilanSoir({ evenements, maintenant: soir });
+  assert.deepEqual(b.demain, { titre: "Dentiste", debut: a(10, 0, 1), phrase: "Demain commence à 10:00 (« Dentiste ») : pense à ton réveil." });
+  assert.equal(b.phrase, "Journée sans échéance : rien à pousser. Demain commence à 10:00 (« Dentiste ») : pense à ton réveil.");
+  // Rien avant midi : pas de ligne (un déjeuner ne demande pas de réveil).
+  const tard = bilanSoir({ evenements: [rdv("e2", "Déjeuner avec Léa", 12, 30)], maintenant: soir });
+  assert.equal(tard.demain, undefined);
+  assert.equal(tard.phrase, "Journée sans échéance : rien à pousser.");
+  // Un rendez-vous d'aujourd'hui ou d'après-demain ne compte pas ; sans titre, la phrase reste lisible.
+  assert.equal(premierRendezVous({ evenements: [rdv("x", "Hier", 9, 0, 0), rdv("y", "Plus tard", 9, 0, 2)], depuis: a(0, 0, 1) }), null);
+  assert.match(premierRendezVous({ evenements: [rdv("z", "", 8, 15)], depuis: a(0, 0, 1) }).phrase, /^Demain commence à 08:15 \(un rendez-vous\)/);
 });

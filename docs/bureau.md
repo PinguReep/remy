@@ -216,7 +216,12 @@ seulement (cachée, elle tourne encore ; WebView2 ralentit alors ses minuteries
   rappel pas fait dont `quand` vient de passer est notifié une fois (clé
   `rappel:<id>@<quand>`, gardée en `localStorage`). Au lancement, ceux passés
   depuis plus de 2 h sont regroupés en une seule notification (« 3 rappels
-  passés pendant ton absence »). Allumé par défaut.
+  passés pendant ton absence »). Allumé par défaut. Un rappel **à venir** dit
+  aussi ses alertes (`rappels-declencheurs-v1` : la veille, le matin, N h
+  avant), chacune une fois (clé `alerte:<id>@<quand>~<rang>`), dans les 2 h
+  qui suivent son heure. La note, les alertes et le lieu se règlent sur
+  l'iPhone (c'est lui qui sonne sur place) ; le site les montre et ne les
+  envoie jamais — une clé absente laisse la tour inchangée.
 - **Briefing du matin / bilan du soir** — `GET /api/rituel` **une fois**, à
   l'heure choisie (7 h 30 et 21 h 30 par défaut, comme l'iPhone), pour le
   texte de la notification. **Coupés par défaut**, comme sur l'iPhone ; la

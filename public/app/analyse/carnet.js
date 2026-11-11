@@ -72,8 +72,57 @@ const idsDe = (etiquettes) => new Set([...(etiquettes || [])].map((e) => (typeof
 export function aTraiter(rappels, etiquettes) {
   const ids = idsDe(etiquettes);
   return trierRappels((rappels || []).filter((r) => r && !r.fait && !r.supprime
-    && (typeof r.quand !== "number" || (ids.size > 0 && !(r.etiquettes || []).some((e) => ids.has(e))))));
+    && ((typeof r.quand !== "number" && !r.lieu) || (ids.size > 0 && !(r.etiquettes || []).some((e) => ids.has(e))))));
 }
+
+// --- La note, les alertes, le lieu (rappels-declencheurs-v1 ; réglés sur l'iPhone, dits ici) ---
+
+const deux = (n) => String(n).padStart(2, "0");
+const dureeAlerte = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${deux(m % 60)}` : `${m / 60} h`);
+
+/** « la veille à 20:00 », « le matin à 08:00 », « 2 h avant » (AlerteRappel.libelle) ; "" si illisible. */
+export function libelleAlerte(a) {
+  const m = Number(a?.minutes);
+  if (!Number.isInteger(m) || m < 0) return "";
+  const heure = `${deux(Math.floor(m / 60) % 24)}:${deux(m % 60)}`;
+  if (a.type === "veille") return `la veille à ${heure}`;
+  if (a.type === "matin") return `le matin à ${heure}`;
+  if (a.type === "avant" && m > 0) return `${dureeAlerte(m)} avant`;
+  return "";
+}
+
+/** « la veille à 20:00, 2 h avant » ; "" sans alerte (Rappel.resumeAlertes). */
+export const resumeAlertes = (alertes) => (Array.isArray(alertes) ? alertes.map(libelleAlerte).filter(Boolean).join(", ") : "");
+
+/** « En arrivant : Maison », « En partant : Bureau » ; "" sans lieu (LieuRappel.libelle). */
+export const libelleLieu = (lieu) => (lieu && typeof lieu.nom === "string" && lieu.nom.trim() ? `${lieu.sens === "depart" ? "En partant" : "En arrivant"} : ${lieu.nom.trim()}` : "");
+
+/**
+ * Quand sonne chaque alerte d'un rappel daté (AlerteRappel.date) : la veille
+ * ou le matin à la minute du jour dite, ou tant de minutes avant. Une alerte
+ * qui ne tombe pas avant l'heure du rappel ne sert à rien : écartée.
+ * Rend `[{ rang, quand }]`, de la plus proche à la plus lointaine.
+ */
+export function momentsAlertes(r) {
+  if (!r || typeof r.quand !== "number" || !Array.isArray(r.alertes)) return [];
+  const d = new Date(r.quand);
+  const out = [];
+  r.alertes.forEach((a, rang) => {
+    const m = Number(a?.minutes);
+    if (!Number.isInteger(m) || m < 0) return;
+    let t = null;
+    if (a.type === "avant" && m > 0) t = r.quand - m * 60000;
+    else if ((a.type === "veille" || a.type === "matin") && m < 1440) {
+      t = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (a.type === "veille" ? 1 : 0), Math.floor(m / 60), m % 60).getTime();
+    }
+    if (t != null && t < r.quand && !out.some((x) => x.quand === t)) out.push({ rang, quand: t });
+  });
+  return out.sort((a, b) => a.quand - b.quand);
+}
+
+/** « Prévu demain 09:00 », sinon son lieu, sinon « Sans date » (le sous-titre de « Quand ? »). */
+export const sousTitreRappel = (r, maintenant = new Date()) =>
+  (typeof r?.quand === "number" ? `Prévu ${quandRappel(r.quand, maintenant)}` : libelleLieu(r?.lieu) || "Sans date");
 
 // --- Le filtre par étiquettes (FiltreRappels) ---
 
@@ -99,7 +148,7 @@ export const phraseMasques = (n, { duJour = true } = {}) => `Aucun rappel${duJou
 
 /**
  * Les groupes de Projets › Rappels (RappelsView) : En retard, Aujourd'hui,
- * Plus tard, Sans date, Faits ; un groupe vide n'est pas rendu.
+ * Plus tard, Dans un lieu, Sans date, Faits ; un groupe vide n'est pas rendu.
  */
 export function groupesRappels(rappels, maintenant = Date.now()) {
   const m = new Date(maintenant);
@@ -111,7 +160,8 @@ export function groupesRappels(rappels, maintenant = Date.now()) {
     { id: "retard", titre: "En retard", danger: true, rappels: tous.filter((r) => !r.fait && date(r) && r.quand < t) },
     { id: "aujourdhui", titre: "Aujourd'hui", rappels: tous.filter((r) => !r.fait && date(r) && r.quand >= t && r.quand < fin) },
     { id: "plus-tard", titre: "Plus tard", rappels: tous.filter((r) => !r.fait && date(r) && r.quand >= fin) },
-    { id: "sans-date", titre: "Sans date", rappels: tous.filter((r) => !r.fait && !date(r)) },
+    { id: "lieu", titre: "Dans un lieu", rappels: tous.filter((r) => !r.fait && !date(r) && libelleLieu(r.lieu)) },
+    { id: "sans-date", titre: "Sans date", rappels: tous.filter((r) => !r.fait && !date(r) && !libelleLieu(r.lieu)) },
     { id: "faits", titre: "Faits", rappels: tous.filter((r) => r.fait) },
   ].filter((g) => g.rappels.length);
 }

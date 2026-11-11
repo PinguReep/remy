@@ -352,10 +352,24 @@ final class NouveautesTests: XCTestCase {
     func testLaSerie7AttendLaTour() {
         let serie7 = Nouveautes.catalogue.filter { $0.serie == 7 }
         XCTAssertEqual(serie7.map(\.id), ["telechargements-accord"])
-        let a = app(["conversations-externes-v1", ConversationsExternes.capaciteExport, ConversationsExternes.capaciteAccord], reglages: suite())
+        let a = jusqua(7, ["conversations-externes-v1", ConversationsExternes.capaciteExport, ConversationsExternes.capaciteAccord])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["telechargements-accord"])
+        let b = jusqua(7, ["conversations-externes-v1", ConversationsExternes.capaciteExport])
+        b.verifier()
+        XCTAssertNil(b.affichees, "une tour pas encore à jour : rien à présenter")
+    }
+
+    /// Série 8 (11/11) : la fiche d'un rappel (note, alertes, lieu), seulement
+    /// quand la tour sait les garder (rappels-declencheurs-v1).
+    func testLaSerie8AttendLaTour() {
+        let serie8 = Nouveautes.catalogue.filter { $0.serie == 8 }
+        XCTAssertEqual(serie8.map(\.id), ["rappels-declencheurs"])
+        XCTAssertLessThanOrEqual(serie8.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
+        let a = app(["rappels-declencheurs-v1"], reglages: suite())
         a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["telechargements-accord"])
-        let b = app(["conversations-externes-v1", ConversationsExternes.capaciteExport], reglages: suite())
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["rappels-declencheurs"])
+        let b = app(["rituel-v1"], reglages: suite())
         b.nouveautes.verifier()
         XCTAssertNil(b.nouveautes.affichees, "une tour pas encore à jour : rien à présenter")
     }

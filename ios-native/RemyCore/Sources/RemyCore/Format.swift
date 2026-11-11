@@ -97,6 +97,15 @@ public enum Format {
         return String(format: "%.2f", v).replacingOccurrences(of: ".", with: ",") + " $"
     }
 
+    /// « aujourd'hui 18:00 », « demain 09:00 », « jeu. 22 oct. 09:00 »
+    public static func quandRelatif(_ ms: Millis, maintenant: Date = Date()) -> String {
+        let d = ms.date
+        let ecart = Int((debutDuJour(d).timeIntervalSince(debutDuJour(maintenant)) / 86_400).rounded())
+        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier"
+            : jourSemaineCourt(d) + anneeSiAutre(d, maintenant: maintenant)
+        return j + " " + heure(d)
+    }
+
     /// « 2 h 50 », « 40 min »
     public static func duree(minutes: Int) -> String {
         let m = max(0, minutes)

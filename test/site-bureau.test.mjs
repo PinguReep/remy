@@ -6,9 +6,11 @@
 process.env.TZ = "Europe/Paris";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rappelsADire, rituelDu, texteRituel, cleRappel, REGLAGES_PAR_DEFAUT, DEUX_HEURES, OUBLI, estBureau, choixNotifs, vueRituel, ANCIENNE_HEURE_BILAN, creerTic } from "../public/app/bureau.js";
-import { choixTache, choixActivite, arrondi, joursJusquaLundi, echeanceDans } from "../public/app/vues/gerer.js";
-import { indexProjet } from "../public/app/couleurs.js";
+// Chargés APRÈS le fuseau : les formats d'heure du site sont créés au
+// chargement du module (un `import` statique passerait avant `TZ`).
+const { rappelsADire, rituelDu, texteRituel, cleRappel, cleAlerte, REGLAGES_PAR_DEFAUT, DEUX_HEURES, OUBLI, estBureau, choixNotifs, vueRituel, ANCIENNE_HEURE_BILAN, creerTic } = await import("../public/app/bureau.js");
+const { choixTache, choixActivite, arrondi, joursJusquaLundi, echeanceDans } = await import("../public/app/vues/gerer.js");
+const { indexProjet } = await import("../public/app/couleurs.js");
 
 const M = 60e3;
 const H = 3600e3;
@@ -36,6 +38,33 @@ test("un rappel dû est notifié une fois, avec sa clé", () => {
   // Reporté (nouveau « quand ») : c'est un nouveau rappel dû, notifié à son heure.
   const reporte = [{ ...rappels[0], quand: maintenant + 30 * M }];
   assert.equal(rappelsADire(reporte, { maintenant: maintenant + 31 * M, deja: new Set(a.cles) }).notifications.length, 1);
+});
+
+test("les alertes avant l'échéance : la veille au soir, une fois ; passée de 2 h ou rappel fait, plus rien", () => {
+  // Jeudi 15 octobre, 20:05. Dentiste demain 10:00, alerte la veille à 20:00 et 2 h avant.
+  const soir = new Date(2026, 9, 15, 20, 5).getTime();
+  const rdv = { id: "d", texte: "Dentiste", quand: new Date(2026, 9, 16, 10, 0).getTime(), note: "Carte Vitale", alertes: [{ type: "veille", minutes: 1200 }, { type: "avant", minutes: 120 }] };
+  const a = rappelsADire([rdv], { maintenant: soir });
+  assert.equal(a.notifications.length, 1);
+  assert.equal(a.notifications[0].titre, "Dentiste");
+  assert.equal(a.notifications[0].corps, "Demain 10:00 · Carte Vitale");
+  assert.deepEqual(a.notifications[0].cles, [cleAlerte(rdv, 0)]);
+  assert.deepEqual(a.cles, [], "le rappel lui-même n'est pas dû");
+  // Dite : plus rien à la minute suivante.
+  assert.equal(rappelsADire([rdv], { maintenant: soir + M, deja: new Set(a.notifications[0].cles) }).notifications.length, 0);
+  // Le lendemain 08:01 : « 2 h avant », une autre clé.
+  const matin = new Date(2026, 9, 16, 8, 1).getTime();
+  const b = rappelsADire([rdv], { maintenant: matin, deja: new Set(a.notifications[0].cles) });
+  assert.deepEqual(b.notifications.map((n) => [n.corps, n.cles]), [["Aujourd'hui 10:00 · Carte Vitale", [cleAlerte(rdv, 1)]]]);
+  // PC rallumé à 23:30 : la veille de 20:00 est passée de plus de 2 h, elle ne sert plus.
+  assert.equal(rappelsADire([rdv], { maintenant: new Date(2026, 9, 15, 23, 30).getTime() }).notifications.length, 0);
+  // Fait, ou reporté (nouvelle clé) : l'alerte suit le rappel.
+  assert.equal(rappelsADire([{ ...rdv, fait: true }], { maintenant: soir }).notifications.length, 0);
+  const reporte = { ...rdv, quand: new Date(2026, 9, 17, 10, 0).getTime() };
+  assert.equal(rappelsADire([reporte], { maintenant: soir, deja: new Set(a.notifications[0].cles) }).notifications.length, 0, "reporté au surlendemain : sa veille est demain");
+  assert.equal(rappelsADire([reporte], { maintenant: soir + 24 * H, deja: new Set(a.notifications[0].cles) }).notifications.length, 1);
+  // Une app d'avant, ou un rappel sans alerte : rien de plus qu'avant.
+  assert.equal(rappelsADire([{ id: "x", texte: "Sans alerte", quand: rdv.quand }], { maintenant: soir }).notifications.length, 0);
 });
 
 test("une longue absence : les rappels passés depuis plus de 2 h sont regroupés", () => {

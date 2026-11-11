@@ -62,6 +62,68 @@ test("rappels : datés d'abord, import Apple rejouable", () => {
   assert.ok(!c.lireRappels().some((x) => x.id === "r2"));
 });
 
+// Ce qui déclenche un rappel en plus de sa date (rappels-declencheurs-v1) :
+// une note, des alertes avant l'échéance, un lieu (arrivée ou départ).
+test("rappel : note, alertes et lieu gardés ; clé absente = inchangé, clé présente = remplacé", () => {
+  const jeudi = Date.now() + 3 * 86_400_000;
+  const boulangerie = { id: "l-boul", nom: "  Boulangerie  du coin ", lat: 48.8566, lon: 2.3522, rayon: 30, sens: "arrivee" };
+  c.ecrireRappels([{
+    id: "d1", texte: "Rendez-vous chez le dentiste", quand: jeudi,
+    note: "  Apporter la   carte vitale\net la radio ",
+    alertes: [{ type: "veille", minutes: 1200 }, { type: "matin", minutes: 480 }, { type: "avant", minutes: 120 }, { type: "avant", minutes: 120 }],
+    lieu: null,
+  }]);
+  c.ecrireRappels([{ id: "d2", texte: "Acheter du pain", lieu: boulangerie }]);
+  const lire = (id) => c.lireRappels().find((r) => r.id === id);
+  assert.equal(lire("d1").note, "Apporter la carte vitale\net la radio", "espaces réduits, retours gardés");
+  assert.deepEqual(lire("d1").alertes, [{ type: "veille", minutes: 1200 }, { type: "matin", minutes: 480 }, { type: "avant", minutes: 120 }], "le doublon est écarté");
+  assert.equal(lire("d1").lieu, null);
+  assert.deepEqual(lire("d2").lieu, { id: "l-boul", nom: "Boulangerie du coin", lat: 48.8566, lon: 2.3522, rayon: 100, sens: "arrivee" }, "rayon d'au moins 100 m (iOS)");
+  assert.deepEqual(lire("d2").alertes, []);
+  assert.equal(lire("d2").note, null);
+
+  // Une app d'avant (ou le site) réécrit le rappel sans ces clés : rien ne se perd.
+  c.ecrireRappels([{ id: "d1", texte: "Rendez-vous chez le dentiste", quand: jeudi + 3600_000, fait: false, etiquettes: [] }]);
+  c.ecrireRappels([{ id: "d2", texte: "Acheter du pain", fait: true }]);
+  assert.equal(lire("d1").quand, jeudi + 3600_000);
+  assert.equal(lire("d1").alertes.length, 3);
+  assert.match(lire("d1").note, /carte vitale/);
+  assert.equal(lire("d2").lieu.sens, "arrivee");
+
+  // Clés présentes : remplacé, ou retiré.
+  c.ecrireRappels([{ id: "d1", texte: "Rendez-vous chez le dentiste", quand: jeudi, note: "", alertes: [], lieu: { ...boulangerie, sens: "depart", rayon: 9000 } }]);
+  assert.equal(lire("d1").note, null);
+  assert.deepEqual(lire("d1").alertes, []);
+  assert.equal(lire("d1").lieu.sens, "depart");
+  assert.equal(lire("d1").lieu.rayon, 2000);
+  c.ecrireRappels([{ id: "d1", texte: "Rendez-vous chez le dentiste", quand: jeudi, lieu: null }]);
+  assert.equal(lire("d1").lieu, null);
+
+  // Refusé proprement, rien d'écrit à moitié.
+  assert.throws(() => c.ecrireRappels([{ id: "d3", texte: "x", alertes: [{ type: "lundi", minutes: 10 }] }]), /alerte invalide/);
+  assert.throws(() => c.ecrireRappels([{ id: "d3", texte: "x", alertes: [{ type: "veille", minutes: 1440 }] }]), /alerte invalide/);
+  assert.throws(() => c.ecrireRappels([{ id: "d3", texte: "x", alertes: [{ type: "avant", minutes: 0 }] }]), /alerte invalide/);
+  assert.throws(() => c.ecrireRappels([{ id: "d3", texte: "x", lieu: { nom: "Ici", lat: 91, lon: 0, sens: "arrivee" } }]), /lieu invalide/);
+  assert.throws(() => c.ecrireRappels([{ id: "d3", texte: "x", lieu: { nom: "Ici", lat: 1, lon: 1, sens: "passage" } }]), /lieu invalide/);
+  assert.ok(!c.lireRappels().some((r) => r.id === "d3"));
+  for (const id of ["d1", "d2"]) c.supprimerRappel(id);
+});
+
+test("rappel redit avec un lieu : l'existant le prend, sans rien écraser", () => {
+  const gare = { nom: "Gare", lat: 45.76, lon: 4.86, rayon: 200, sens: "depart" };
+  c.ecrireRappels([{ id: "g1", texte: "Composter le billet" }]);
+  const r = c.ecrireRappels([{ id: "g2", texte: "composter le billet !", lieu: gare, note: "Voie B", alertes: [{ type: "avant", minutes: 30 }] }]);
+  assert.deepEqual(r.dejaLa.map((d) => d.existant), ["g1"]);
+  const g1 = c.lireRappels().find((x) => x.id === "g1");
+  assert.equal(g1.lieu.nom, "Gare");
+  assert.equal(g1.note, "Voie B");
+  assert.deepEqual(g1.alertes, [{ type: "avant", minutes: 30 }]);
+  // Redit encore, avec un autre lieu : celui déjà posé reste.
+  c.ecrireRappels([{ id: "g3", texte: "Composter le billet", lieu: { ...gare, nom: "Aéroport" } }]);
+  assert.equal(c.lireRappels().find((x) => x.id === "g1").lieu.nom, "Gare");
+  c.supprimerRappel("g1");
+});
+
 test("tâche bloquée : posée sur la journée, levée ensuite", () => {
   c.marquerTache("t7", { bloquee: true, raison: "J'attends le devis" });
   const j = c.avecEtats({ items: [{ type: "tache", id: "t7", titre: "A" }, { type: "rdv", id: "t7", titre: "RDV" }], aFaire: [{ id: "t8" }], retard: { total: 0, items: [] } });

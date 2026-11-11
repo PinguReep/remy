@@ -363,6 +363,7 @@ struct LigneRappel: View {
     let rappel: Rappel
     @State private var etiquetter = false
     @State private var quand = false
+    @State private var fiche = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -393,6 +394,7 @@ struct LigneRappel: View {
         .contentShape(Rectangle())
         .contextMenu {
             Button { quand = true } label: { Label("Reporter…", systemImage: "clock.arrow.circlepath") }
+            Button { fiche = true } label: { Label("Détails…", systemImage: "square.and.pencil") }
             if app.organisation.etiquettesDisponibles {
                 Button { etiquetter = true } label: { Label("Étiquettes…", systemImage: "tag") }
             }
@@ -400,6 +402,7 @@ struct LigneRappel: View {
         }
         .sheet(isPresented: $etiquetter) { EtiquetterRappel(rappel: rappel) }
         .sheet(isPresented: $quand) { QuandRappel(rappel: rappel) }
+        .sheet(isPresented: $fiche) { FicheRappel(rappel: rappel) }
     }
 
     private var details: some View {
@@ -409,14 +412,32 @@ struct LigneRappel: View {
                     .strikethrough(rappel.fait)
                     .foregroundStyle(rappel.fait ? Palette.encre3 : Palette.encre)
                     .fixedSize(horizontal: false, vertical: true)
+                if let note = rappel.note, !note.isEmpty {
+                    Text(note)
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .lineLimit(2)
+                }
                 HStack(spacing: 6) {
                     if let q = rappel.quand {
                         let enRetard = !rappel.fait && q < Date().millis
                         Text(Self.quand(q))
                             .font(Police.mono(12))
                             .foregroundStyle(enRetard ? Palette.danger : Palette.encre2)
-                    } else {
+                    } else if rappel.lieu == nil {
                         Text("sans date").font(Police.texte(12)).foregroundStyle(Palette.encre3)
+                    }
+                    if let lieu = rappel.lieu {
+                        Label(lieu.libelle, systemImage: "location")
+                            .font(Police.texte(12))
+                            .foregroundStyle(Palette.encre2)
+                            .lineLimit(1)
+                    }
+                    if let alertes = rappel.resumeAlertes, rappel.quand != nil {
+                        Image(systemName: "bell")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.encre3)
+                            .accessibilityLabel("Alertes : \(alertes)")
                     }
                     if rappel.source == "apple" {
                         Text("importé").font(Police.texte(11, .semibold)).foregroundStyle(Palette.encre3)
@@ -448,6 +469,7 @@ struct QuandRappel: View {
     @State private var choisir = false
     @State private var date = Date().addingTimeInterval(3600)
     @State private var etiquetter = false
+    @State private var fiche = false
 
     var body: some View {
         // Défile sur petit iPhone (demi-feuille) : « Retirer » reste atteignable.
@@ -460,7 +482,7 @@ struct QuandRappel: View {
                         .foregroundStyle(Palette.encre)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                    Text(rappel.quand.map { "Prévu " + LigneRappel.quand($0) } ?? "Sans date")
+                    Text(rappel.quand.map { "Prévu " + LigneRappel.quand($0) } ?? rappel.lieu?.libelle ?? "Sans date")
                         .font(Police.mono(12))
                         .foregroundStyle(Palette.encre2)
                 }
@@ -488,6 +510,25 @@ struct QuandRappel: View {
                 }
             }
             Rectangle().fill(Palette.filet).frame(height: 1)
+            // La fiche entière : texte, note, alertes avant (la veille, le matin…), lieu.
+            Button {
+                Haptique.leger()
+                fiche = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.and.pencil").foregroundStyle(Palette.encre2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Détails").font(Police.texte(15, .medium)).foregroundStyle(Palette.encre)
+                        Text(resumeDetails).font(Police.texte(12)).foregroundStyle(Palette.encre2).lineLimit(2)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.encre3)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Texte, note, alertes avant l'échéance, lieu")
             HStack(spacing: 10) {
                 if app.organisation.etiquettesDisponibles {
                     BoutonA(titre: "Étiquettes", symbole: "tag", principal: false, hauteur: 46) { etiquetter = true }
@@ -520,6 +561,16 @@ struct QuandRappel: View {
         .presentationDetents(choisir ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $etiquetter) { EtiquetterRappel(rappel: rappel) }
+        .sheet(isPresented: $fiche, onDismiss: { fermer() }) { FicheRappel(rappel: app.carnet.rappels.first { $0.id == rappel.id } ?? rappel) }
+    }
+
+    /// « La veille à 20:00 · En arrivant : Maison », ou ce que la fiche permet.
+    private var resumeDetails: String {
+        let r = app.carnet.rappels.first { $0.id == rappel.id } ?? rappel
+        let alertes: String? = r.quand == nil ? nil : r.resumeAlertes
+        let note: String? = r.note == nil ? nil : "Note"
+        let dits: [String] = [note, alertes, r.lieu?.libelle].compactMap { $0 }
+        return dits.isEmpty ? "Note, alertes avant (la veille, le matin…), lieu" : dits.joined(separator: " · ")
     }
 
     private func reporter(_ d: Date) {
@@ -573,7 +624,8 @@ struct RappelsView: View {
             ("En retard", rappels.filter { !$0.fait && ($0.quand ?? .infinity) < maintenant }),
             ("Aujourd'hui", rappels.filter { !$0.fait && ($0.quand ?? -1) >= maintenant && ($0.quand ?? .infinity) < finJour }),
             ("Plus tard", rappels.filter { !$0.fait && ($0.quand ?? -1) >= finJour }),
-            ("Sans date", rappels.filter { !$0.fait && $0.quand == nil }),
+            ("Dans un lieu", rappels.filter { !$0.fait && $0.quand == nil && $0.lieu != nil }),
+            ("Sans date", rappels.filter { !$0.fait && !$0.place }),
             ("Faits", rappels.filter(\.fait)),
         ]
         let aTrier = app.organisation.etiquettesDisponibles ? app.rappelsATraiter.count : 0
@@ -649,57 +701,8 @@ struct RappelsView: View {
     }
 }
 
-/// Un rappel : le texte, la date devinée pendant la frappe, ou choisie.
+/// Un nouveau rappel : la fiche (texte, note, date devinée pendant la frappe
+/// ou choisie, alertes, lieu). Voir `FicheRappel`.
 struct NouveauRappel: View {
-    @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var fermer
-    @State private var texte = ""
-    @State private var avecDate = true
-    @State private var date = Date().addingTimeInterval(3600)
-    @State private var dateTouchee = false
-    @FocusState private var focus: Bool
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Appeler le garage demain à 9h", text: $texte, axis: .vertical)
-                    .focused($focus)
-                    .onChange(of: texte) {
-                        guard !dateTouchee, let r = AnalyseDate.extraire(texte) else { return }
-                        avecDate = true
-                        date = r.quand
-                    }
-                Toggle("À une date", isOn: $avecDate)
-                if avecDate {
-                    DatePicker("Quand", selection: Binding(get: { date }, set: { date = $0; dateTouchee = true }))
-                        .environment(\.locale, Format.locale)
-                        .environment(\.timeZone, Format.fuseau)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Palette.fond)
-            .navigationTitle("Nouveau rappel")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Ajouter") {
-                        // Le texte du rappel comme au « + » : la date n'en part que si
-                        // elle était au bout (« Payer la facture de fin octobre à Hugo »
-                        // reste entier, jamais « Payer la facture de à Hugo »).
-                        let lue = dateTouchee ? nil : AnalyseDate.extraire(texte)
-                        let t = lue.map { GenreCapture.texte(texte, date: $0, genre: .rappel) } ?? AnalyseDate.sansFormule(texte)
-                        if app.carnet.creerRappel(t, quand: avecDate ? date : nil) != nil {
-                            Haptique.succes()
-                            if avecDate { Task { await Notifications.demander() } }
-                            fermer()
-                        }
-                    }
-                    .disabled(texte.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-        .presentationDetents([.medium])
-        .onAppear { focus = true }
-    }
+    var body: some View { FicheRappel(rappel: nil) }
 }
