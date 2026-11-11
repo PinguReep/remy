@@ -50,6 +50,12 @@ const remy = http.createServer(async (req, res) => {
     res.end("{}");
   }
 });
+// Une connexion inactive n'est pas fermée pendant les essais : par défaut le
+// serveur la ferme au bout de 6 s (5 s + 1 s de marge), et une préparation
+// synchrone plus longue entre deux requêtes (les bases T3, 6,2 s un jour sur
+// le Windows de la CI) faisait partir la suivante sur une connexion en train
+// de se fermer — « fetch failed », sans rapport avec ce qui est essayé.
+remy.keepAliveTimeout = 10 * 60_000;
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const adresse = `http://127.0.0.1:${remy.address().port}`;
 test.after(() => {
