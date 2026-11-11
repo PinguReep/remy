@@ -183,6 +183,8 @@ jobs:
           capture 3j-liste-clair light liste
           capture 3k-rappels-sombre dark rappels
           capture 3k2-rappel-quand-clair light rappel-quand
+          capture 3k3-rappel-fiche-clair light rappel-fiche
+          capture 3k4-rappel-fiche-lieu-sombre dark rappel-fiche-lieu
           capture 3l-capture-liste-clair light capture-liste
           capture 3m-capture-rappel-sombre dark capture-rappel
           capture 3n-modifier-clair light modifier

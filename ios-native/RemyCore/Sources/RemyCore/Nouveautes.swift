@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "rappels-declencheurs", serie: 8, date: "11 nov.", titre: "Des rappels qui préviennent à temps", capacite: "rappels-declencheurs-v1", pages: [
+            .init(symbole: "square.and.pencil", titre: "Une fiche par rappel",
+                  texte: "Le « + » de Rappels ouvre une fiche : le texte, une note, la date et l'heure. Pour un rappel déjà là : appui long › « Détails… », ou « Détails » sous ses dates."),
+            .init(symbole: "bell.badge", titre: "La veille, le matin, un peu avant",
+                  texte: "« Me prévenir aussi » : la veille à l'heure que tu choisis, le matin même, ou quelques heures avant. La fiche écrit quand ça sonnera, et retient tes heures pour la prochaine fois."),
+            .init(symbole: "location", titre: "En arrivant, en partant",
+                  texte: "« Dans un lieu » : choisis un lieu nommé, ou nomme l'endroit où tu es. Le rappel sonne quand tu y arrives ou quand tu en pars, même app fermée. Et si demain commence tôt, le bilan du soir te dit de penser au réveil."),
+        ]),
         Nouveaute(id: "telechargements-accord", serie: 7, date: "30 oct.", titre: "Un export ChatGPT attend ton accord", capacite: "telechargements-accord-v1", pages: [
             .init(symbole: "checkmark.shield", titre: "Rien n'entre sans toi",
                   texte: "Un .zip trouvé dans les Téléchargements de la tour attend sur une carte de Conversations : « Importer » si c'est ton export, « Pas celui-là » sinon. Les exports suivants du même compte entrent seuls."),

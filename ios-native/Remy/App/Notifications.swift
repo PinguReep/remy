@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import UserNotifications
 import RemyCore
@@ -17,9 +18,13 @@ enum Notifications {
                                  icon: UNNotificationActionIcon(systemImageName: symboles[a] ?? "bell"))
         }
         let categorie = UNNotificationCategory(identifier: ActionRappel.categorie, actions: actions, intentIdentifiers: [], options: [])
+        // Une alerte avant l'échéance (la veille, le matin…) : « Fait » seul —
+        // « Dans 1 h » y déplacerait le rendez-vous lui-même.
+        let alerte = UNNotificationCategory(identifier: ActionRappel.categorieAlerte, actions: actions.filter { $0.identifier == ActionRappel.fait.rawValue },
+                                            intentIdentifiers: [], options: [])
         // Toutes les catégories de l'app, en une fois (iOS remplace l'ensemble) :
         // les rappels et les propositions qui attendent (Oui, Plus tard).
-        UNUserNotificationCenter.current().setNotificationCategories([categorie, NotificationsPropositions.categorieNotification])
+        UNUserNotificationCenter.current().setNotificationCategories([categorie, alerte, NotificationsPropositions.categorieNotification])
     }
 
     /// Demande la permission (une fois) ; rend vrai si les rappels peuvent sonner.
@@ -40,7 +45,12 @@ enum Notifications {
         return r.authorizationStatus == .denied
     }
 
-    /// Reprogramme les rappels à venir (iOS en garde 64 au plus : les plus proches).
+    /// iOS surveille 20 lieux par app au plus.
+    static let lieuxMax = 20
+
+    /// Reprogramme ce qui doit sonner (iOS garde 64 notifications au plus) :
+    /// les rappels qui attendent un lieu, puis les sonneries les plus proches —
+    /// l'heure dite de chaque rappel et ses alertes (la veille, le matin, N h avant).
     static func planifier(_ rappels: [Rappel]) async {
         let centre = UNUserNotificationCenter.current()
         let r = await centre.notificationSettings()
@@ -48,23 +58,45 @@ enum Notifications {
         let anciens = await centre.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefixe) }
         centre.removePendingNotificationRequests(withIdentifiers: anciens)
         let maintenant = Date()
-        let aVenir = rappels
-            .filter { !$0.fait && ($0.quand.map { $0.date > maintenant } ?? false) }
-            .sorted { ($0.quand ?? 0) < ($1.quand ?? 0) }
-            .prefix(54) // iOS en garde 64 : la place du rendez-vous quotidien reste libre
-        for rappel in aVenir {
-            guard let q = rappel.quand else { continue }
-            let contenu = UNMutableNotificationContent()
-            contenu.title = "Rappel"
-            contenu.body = rappel.texte
-            contenu.sound = .default
-            // « Fait », « Dans 1 h », « Demain » sous la notification (24/10).
-            contenu.categoryIdentifier = ActionRappel.categorie
-            let quand = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: q.date)
-            let requete = UNNotificationRequest(identifier: prefixe + rappel.id, content: contenu,
+        // « En arrivant », « en partant » : iOS déclenche lui-même, app fermée,
+        // et le redit à chaque passage tant que le rappel n'est pas fait.
+        let surPlace = Array(rappels.filter { !$0.fait && $0.lieu != nil }.prefix(lieuxMax))
+        for rappel in surPlace {
+            guard let lieu = rappel.lieu else { continue }
+            let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: lieu.lat, longitude: lieu.lon),
+                                          radius: lieu.rayonSurveille, identifier: prefixe + rappel.id)
+            region.notifyOnEntry = lieu.arrivee
+            region.notifyOnExit = !lieu.arrivee
+            let contenu = contenuRappel(rappel.corpsNotification)
+            contenu.subtitle = lieu.libelle
+            let requete = UNNotificationRequest(identifier: prefixe + rappel.id + Rappel.suffixeLieu, content: contenu,
+                                                trigger: UNLocationNotificationTrigger(region: region, repeats: true))
+            try? await centre.add(requete)
+        }
+        // La place du rendez-vous quotidien reste libre (54 au plus pour les rappels).
+        var toutes: [(id: String, sonnerie: SonnerieRappel)] = []
+        for rappel in rappels {
+            for sonnerie in rappel.sonneries(apres: maintenant) { toutes.append((id: rappel.id, sonnerie: sonnerie)) }
+        }
+        toutes.sort { $0.sonnerie.date < $1.sonnerie.date }
+        for s in toutes.prefix(max(0, 54 - surPlace.count)) {
+            let quand = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: s.sonnerie.date)
+            let contenu = contenuRappel(s.sonnerie.corps, alerte: !s.sonnerie.suffixe.isEmpty)
+            let requete = UNNotificationRequest(identifier: prefixe + s.id + s.sonnerie.suffixe, content: contenu,
                                                 trigger: UNCalendarNotificationTrigger(dateMatching: quand, repeats: false))
             try? await centre.add(requete)
         }
+    }
+
+    private static func contenuRappel(_ corps: String, alerte: Bool = false) -> UNMutableNotificationContent {
+        let contenu = UNMutableNotificationContent()
+        contenu.title = "Rappel"
+        contenu.body = corps
+        contenu.sound = .default
+        // « Fait », « Dans 1 h », « Demain » sous la notification (24/10) ;
+        // « Fait » seul sous une alerte avant l'échéance.
+        contenu.categoryIdentifier = alerte ? ActionRappel.categorieAlerte : ActionRappel.categorie
+        return contenu
     }
 
     // MARK: Le rendez-vous quotidien (24/10)

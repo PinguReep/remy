@@ -819,6 +819,104 @@ final class CarnetTests: XCTestCase {
         XCTAssertTrue(CarnetModel.aTraiter(a.carnet.rappels, etiquettes: etiquettes).isEmpty, "un rappel fait n'attend plus rien")
     }
 
+    // MARK: Note, alertes, lieu (rappels-declencheurs-v1)
+
+    /// Sam, 11/11 : « un rappel la veille, à l'heure que je choisis, un autre
+    /// plusieurs heures avant, ou le matin ».
+    func testAlertesLaVeilleLeMatinEtAvant() {
+        let rdv = date(16, 10, 10) // vendredi 16 octobre, 10:00
+        XCTAssertEqual(AlerteRappel.veille(20 * 60).date(pour: rdv, calendrier: cal), date(15, 10, 20))
+        XCTAssertEqual(AlerteRappel.matin(8 * 60).date(pour: rdv, calendrier: cal), date(16, 10, 8))
+        XCTAssertEqual(AlerteRappel.avant(120).date(pour: rdv, calendrier: cal), date(16, 10, 8))
+        XCTAssertNil(AlerteRappel.matin(11 * 60).date(pour: rdv, calendrier: cal), "« le matin » après l'heure du rappel ne sert à rien")
+        XCTAssertNil(AlerteRappel(type: "lundi", minutes: 10).date(pour: rdv, calendrier: cal), "type inconnu : ignoré, pas d'erreur")
+        XCTAssertNil(AlerteRappel.avant(0).date(pour: rdv, calendrier: cal))
+        XCTAssertEqual(AlerteRappel.veille(20 * 60).libelle, "la veille à 20:00")
+        XCTAssertEqual(AlerteRappel.matin(8 * 60 + 5).libelle, "le matin à 08:05")
+        XCTAssertEqual(AlerteRappel.avant(120).libelle, "2 h avant")
+        XCTAssertEqual(AlerteRappel.avant(30).libelle, "30 min avant")
+    }
+
+    func testSonneriesDUnRappel() {
+        let rdv = date(16, 10, 10)
+        let r = Rappel(id: "r1", texte: "Dentiste", quand: rdv.millis, note: "Apporter la radio",
+                       alertes: [.veille(20 * 60), .matin(8 * 60), .avant(120), .avant(60)])
+        // Jeudi 15 octobre, 10:40 : tout est à venir. « 2 h avant » tombe à la
+        // même minute que « le matin à 08:00 » : une seule sonnerie.
+        let s = r.sonneries(apres: maintenant, calendrier: cal)
+        XCTAssertEqual(s.map(\.date), [date(15, 10, 20), date(16, 10, 8), date(16, 10, 9), rdv])
+        XCTAssertEqual(s.map(\.suffixe), ["~a0", "~a1", "~a3", ""])
+        XCTAssertEqual(s[0].corps, "Demain 10:00 : Dentiste\nApporter la radio")
+        XCTAssertEqual(s[1].corps, "Aujourd'hui 10:00 : Dentiste\nApporter la radio")
+        XCTAssertEqual(s[3].corps, "Dentiste\nApporter la radio")
+        // Le matin même, 08:30 : la veille et le matin sont passés.
+        XCTAssertEqual(r.sonneries(apres: date(16, 10, 8, 30), calendrier: cal).map(\.suffixe), ["~a3", ""])
+        // Fait, ou sans date : rien ne sonne.
+        var fait = r
+        fait.fait = true
+        XCTAssertTrue(fait.sonneries(apres: maintenant, calendrier: cal).isEmpty)
+        XCTAssertTrue(Rappel(texte: "Un jour", alertes: [.avant(60)]).sonneries(apres: maintenant, calendrier: cal).isEmpty)
+        // L'identifiant du rappel se retrouve dans celui de chaque notification.
+        XCTAssertEqual(ActionRappel.rappel(dansNotification: "rappel-r1"), "r1")
+        XCTAssertEqual(ActionRappel.rappel(dansNotification: "rappel-r1~a0"), "r1")
+        XCTAssertEqual(ActionRappel.rappel(dansNotification: "rappel-apple:x1~lieu"), "apple:x1")
+        XCTAssertNil(ActionRappel.rappel(dansNotification: "rituel-matin-0"))
+        XCTAssertEqual(r.resumeAlertes, "la veille à 20:00, le matin à 08:00, 2 h avant, 1 h avant")
+    }
+
+    func testRappelEnvoyeAvecNoteAlertesEtLieuToujoursDits() throws {
+        func corps(_ r: Rappel) throws -> [String: Any] {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(r)) as? [String: Any])
+        }
+        // Rien de posé : les trois clés partent quand même (null, []), pour
+        // que la tour retire ce qui l'a été sur l'iPhone.
+        let nu = try corps(Rappel(id: "r1", texte: "Payer le loyer"))
+        XCTAssertTrue(nu["note"] is NSNull)
+        XCTAssertEqual((nu["alertes"] as? [Any])?.count, 0)
+        XCTAssertTrue(nu["lieu"] is NSNull)
+        XCTAssertNil(nu["etiquettes"], "non envoyées : la tour garde celles déjà posées")
+        let plein = try corps(Rappel(id: "r2", texte: "Pain", note: "Tradition", alertes: [.avant(30)],
+                                     lieu: LieuRappel(id: "l1", nom: "Boulangerie", lat: 48.85, lon: 2.35, rayon: 80, sens: "arrivee")))
+        XCTAssertEqual(plein["note"] as? String, "Tradition")
+        XCTAssertEqual(((plein["alertes"] as? [[String: Any]])?.first?["type"]) as? String, "avant")
+        XCTAssertEqual((plein["lieu"] as? [String: Any])?["sens"] as? String, "arrivee")
+        // Relu de la tour : « aucune » se dit nil, une alerte ou un lieu illisible ne fait pas perdre le rappel.
+        let json = #"{"rappels":[{"id":"a","texte":"A","fait":false,"note":"","alertes":[],"lieu":null},{"id":"b","texte":"B","fait":false,"alertes":[{"type":"veille","minutes":1200}],"lieu":{"nom":"Maison","lat":1,"lon":2,"sens":"depart"}},{"id":"c","texte":"C","fait":false,"alertes":"?","lieu":{"nom":"x"}}]}"#
+        let lus = try JSONDecoder().decode(ReponseRappels.self, from: Data(json.utf8)).rappels
+        XCTAssertEqual(lus.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(lus[0], Rappel(id: "a", texte: "A"))
+        XCTAssertEqual(lus[1].alertes, [.veille(1200)])
+        XCTAssertEqual(lus[1].lieu?.libelle, "En partant : Maison")
+        XCTAssertEqual(lus[1].lieu?.rayonSurveille, 150)
+        XCTAssertNil(lus[2].alertes)
+        XCTAssertNil(lus[2].lieu)
+    }
+
+    func testFicheDUnRappelUneEcritureEtUnLieuLeRange() {
+        neuf()
+        let a = app(capable: false)
+        let maison = LieuRappel(id: "l1", nom: "Maison", lat: 48.85, lon: 2.35, rayon: 60, sens: "arrivee")
+        let r = try! XCTUnwrap(a.carnet.creerRappel("Sortir les poubelles", quand: nil, lieu: maison))
+        XCTAssertEqual(r.lieu?.rayonSurveille, 100, "iOS n'est pas fiable sous 100 m")
+        XCTAssertTrue(CarnetModel.aTraiter(a.carnet.rappels, etiquettes: []).isEmpty, "un lieu le range : il n'attend pas de date")
+        // Redit avec une date, une note et une alerte : le même rappel prend ce qui lui manquait, son lieu reste.
+        let redit = a.carnet.noterRappel("sortir les poubelles", quand: date(16, 10, 19), note: "  Bac jaune  ", alertes: [.avant(30)],
+                                         lieu: LieuRappel(nom: "Bureau", lat: 1, lon: 1, sens: "depart"))
+        XCTAssertEqual(redit?.dejaLa, true)
+        XCTAssertEqual(a.carnet.rappels.count, 1)
+        XCTAssertEqual(a.carnet.rappels[0].note, "Bac jaune")
+        XCTAssertEqual(a.carnet.rappels[0].alertes, [.avant(30)])
+        XCTAssertEqual(a.carnet.rappels[0].lieu?.nom, "Maison")
+        // La fiche : tout change en une écriture, « Annuler » remet tout.
+        let avant = a.carnet.rappels[0]
+        XCTAssertTrue(a.carnet.modifier(avant, texte: " Sortir le bac jaune ", quand: date(17, 10, 7), note: "", alertes: [.veille(21 * 60)], lieu: nil))
+        XCTAssertEqual(a.carnet.rappels[0], Rappel(id: avant.id, texte: "Sortir le bac jaune", quand: date(17, 10, 7).millis, source: "remy",
+                                                   alertes: [.veille(21 * 60)]))
+        a.message?.annuler?()
+        XCTAssertEqual(a.carnet.rappels[0], avant)
+        XCTAssertFalse(a.carnet.modifier(avant, texte: "   ", quand: nil, note: nil, alertes: [], lieu: nil), "texte vide : refusé")
+    }
+
     func testDeconnexionEffaceLeCarnet() async {
         neuf()
         let a = app(capable: false)

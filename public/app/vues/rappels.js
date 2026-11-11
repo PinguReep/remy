@@ -111,6 +111,24 @@ const versCategories = (f) => {
   location.hash = "#/projets/categories";
 };
 
+/**
+ * La note entière, les alertes avant l'échéance et le lieu d'un rappel
+ * (rappels-declencheurs-v1) : réglés dans la fiche du rappel, sur l'iPhone
+ * (c'est lui qui sonne sur place), dits ici. Rien à dire : rien n'est rendu.
+ */
+function detailsRappel(r) {
+  const note = typeof r.note === "string" ? r.note.trim() : "";
+  const alertes = typeof r.quand === "number" ? C.resumeAlertes(r.alertes) : "";
+  const lieu = C.libelleLieu(r.lieu);
+  if (!note && !alertes && !lieu) return null;
+  const ligne = (ic, texte) => h("div", { class: "rappels-details-ligne" }, icone(ic), h("span", null, texte));
+  return h("div", { class: "rappels-details" },
+    note ? ligne("crayon", note) : null,
+    alertes ? ligne("cloche", `Me prévenir aussi : ${alertes}`) : null,
+    lieu ? ligne("lieu", lieu) : null,
+    h("div", { class: "rappels-details-pied" }, "Note, alertes et lieu se règlent dans la fiche du rappel, sur l'iPhone."));
+}
+
 // --- « Quand ? » ---
 
 /**
@@ -153,12 +171,13 @@ export function ouvrirQuand(r, gestes = {}) {
   } }, icone("agenda"), "Choisir…");
   f = feuille({
     titre: r.texte,
-    sousTitre: typeof r.quand === "number" ? `Prévu ${C.quandRappel(r.quand)}` : "Sans date",
+    sousTitre: C.sousTitreRappel(r),
     classe: "rappels-quand",
     contenu: [
       h("h3", { class: "titre-section" }, "Quand ?"),
       h("div", { class: "rangee serree" }, C.choixRappel().map((c) => h("button", { type: "button", class: "puce", onclick: () => reporter(c.date) }, c.libelle)), puceChoisir),
       choisir,
+      detailsRappel(r),
       h("hr", { class: "separateur" }),
       h("div", { class: "rangee" },
         sait("etiquettes-v1") ? bouton("Étiquettes", { classe: "papier extensible", icone: "etiquette", onclick: () => { f.fermer(); ouvrirEtiquettes(r, gestes); } }) : null,
@@ -324,7 +343,8 @@ export function actionsRappel(r, gestes = {}) {
 
 /**
  * Une ligne de rappel : la case (fait) ; le texte, qui ouvre « Quand ? » ;
- * l'heure (en rouge si passée) ou « sans date », « importé », les noms de ses
+ * sa note ; l'heure (en rouge si passée), son lieu (« En arrivant : … ») ou
+ * « sans date », une cloche s'il a des alertes, « importé », les noms de ses
  * étiquettes (une étiquette inconnue n'est pas montrée) ; Quand ?,
  * Étiquettes, Retirer ; le clic droit et Maj+F10. `retirer()` / `remettre()` :
  * l'écran tout de suite ; `apres()` : relire ; `nomEtiquette(id)` : le nom
@@ -333,6 +353,8 @@ export function actionsRappel(r, gestes = {}) {
 export function ligneRappel(r, { apres, retirer, remettre, nomEtiquette } = {}) {
   const gestes = { apres, retirer, remettre };
   const passe = typeof r.quand === "number" && r.quand < Date.now() && !r.fait;
+  const lieu = C.libelleLieu(r.lieu);
+  const alertes = C.resumeAlertes(r.alertes);
   const caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": String(Boolean(r.fait)), "aria-label": r.fait ? `« ${r.texte} » : fait` : `Marquer « ${r.texte} » comme fait` });
   caseB.addEventListener("click", () => basculerFait(r, gestes));
   const puces = h("span", { class: "rappels-puces" });
@@ -349,8 +371,12 @@ export function ligneRappel(r, { apres, retirer, remettre, nomEtiquette } = {}) 
   const corps = h("div", { class: "corps cliquable", role: "button", tabindex: "0", "aria-haspopup": "dialog", title: "Quand ? Reporter, étiquettes, fait, retirer",
     onclick: ouvrir, onkeydown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ouvrir(); } } },
     h("div", { class: "titre-ligne" }, r.texte),
+    typeof r.note === "string" && r.note.trim() ? h("div", { class: "rappels-note" }, r.note.trim()) : null,
     h("div", { class: "meta" },
-      typeof r.quand === "number" ? h("span", { class: passe ? "risque" : "mono" }, passe ? icone("alerte") : null, C.quandRappel(r.quand)) : h("span", { class: "rappels-sans-date" }, "sans date"),
+      typeof r.quand === "number" ? h("span", { class: passe ? "risque" : "mono" }, passe ? icone("alerte") : null, C.quandRappel(r.quand))
+        : lieu ? null : h("span", { class: "rappels-sans-date" }, "sans date"),
+      lieu ? h("span", { class: "rappels-lieu" }, icone("lieu"), lieu) : null,
+      alertes && typeof r.quand === "number" ? h("span", { class: "rappels-alertes", title: `Alertes : ${alertes}`, role: "img", "aria-label": `Alertes : ${alertes}` }, icone("cloche")) : null,
       r.source === "apple" ? h("span", { class: "rappels-importe" }, "importé") : null,
       puces));
   const li = h("li", { class: `ligne rappels-ligne${r.fait ? " faite" : ""}` }, caseB, corps,

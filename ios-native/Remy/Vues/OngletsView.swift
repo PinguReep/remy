@@ -312,7 +312,7 @@ extension OngletsView {
             if let t = j?.retard?.items.first ?? j?.aFaire?.first {
                 ui.gerer = ElementJour.sansCreneau(t, retard: j?.retard?.items.first != nil)
             }
-        case "rappel-quand":
+        case "rappel-quand", "rappel-fiche", "rappel-fiche-lieu":
             ui.cheminProjets = [.rappels]
         case "journee-etendue", "semaine", "demain": ui.journeeEtendue = true
         case "nouveautes": app.nouveautes.montrerPourCapture(["hors-app"])

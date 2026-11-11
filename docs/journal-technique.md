@@ -4,6 +4,43 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-11 — Des rappels qui préviennent avant, et sur place
+
+Un rappel n'avait qu'un texte et une date. Il gagne une **note**, des
+**alertes avant l'échéance** et un **lieu qui le déclenche** — capacité
+`rappels-declencheurs-v1`, migration 10 (trois colonnes sur `rappels`).
+
+- **Le contrat.** `note` (1000 caractères) ; `alertes` : au plus 6
+  `{ type, minutes }` — `veille` et `matin` portent la minute du jour (1200 =
+  20:00), `avant` un nombre de minutes (jusqu'à deux semaines) ; `lieu` :
+  `{ id?, nom, lat, lon, rayon, sens }`, `sens` valant `arrivee` ou `depart`.
+- **Clé absente = inchangé, clé présente = remplacé** (`null`, `""`, `[]` :
+  retiré). Une app d'avant et le site n'envoient pas ces clés : ils ne peuvent
+  rien effacer en cochant « fait » ou en reportant. L'iPhone à jour les envoie
+  toujours (encodage explicite de `Rappel`), donc ce qu'il retire l'est.
+- **Les alertes sont relatives** à la date : reporter le rappel les déplace
+  avec lui, rien à recalculer ni à stocker. Une alerte qui ne tombe pas avant
+  l'heure du rappel (« le matin à 8 h » pour un rappel de 7 h) ne sonne pas, et
+  la fiche le dit avant d'enregistrer.
+- **Qui sonne.** L'iPhone, en notifications locales : `rappel-<id>` à l'heure
+  dite, `rappel-<id>~a<rang>` pour une alerte, `rappel-<id>~lieu` pour le lieu
+  (`UNLocationNotificationTrigger`, répété à chaque passage jusqu'à « Fait »).
+  iOS surveille 20 lieux et garde 64 notifications : les lieux d'abord, puis
+  les sonneries les plus proches. Une alerte n'offre que « Fait » : « Dans
+  1 h » y déplacerait le rendez-vous lui-même. L'app Windows dit aussi les
+  alertes (clé `alerte:<id>@<quand>~<rang>`), dans les 2 h et tant que le
+  rappel est à venir.
+- **Le lieu ne quitte pas la tour** : iOS compare la position sur l'appareil ;
+  la permission « pendant l'utilisation » suffit, et elle est demandée à
+  l'enregistrement d'un rappel de lieu, jamais au lancement.
+- **« Quand j'envoie un message à quelqu'un »** n'existe pas pour une app
+  tierce : iOS ne dit à personne qu'un message part. Pas simulé.
+- **Le réveil.** Le bilan du soir ajoute une ligne quand le premier
+  rendez-vous du lendemain commence avant midi (`premierRendezVous`,
+  `lib/rituel.js`) — sans IA, sur l'agenda déjà lu.
+- Un rappel sans date mais avec un lieu est **rangé** : il sort de « Sans
+  date », des rappels à traiter et d'« À trancher », sous « Dans un lieu ».
+
 ## 2026-10-30 — La clé des conversations voyage dans la sauvegarde
 
 `conversations.cle` vit hors du coffre (`%USERPROFILE%\.remy`) : elle ne

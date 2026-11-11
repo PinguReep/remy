@@ -116,6 +116,8 @@ public enum ActionRappel: String, CaseIterable, Sendable {
     case demain = "rappel.demain"
 
     public static let categorie = "rappel"
+    /// Une alerte avant l'échéance : « Fait » seul (reporter déplacerait le rendez-vous).
+    public static let categorieAlerte = "rappel-alerte"
     public static let prefixe = "rappel-"
 
     public var libelle: String {
@@ -135,9 +137,12 @@ public enum ActionRappel: String, CaseIterable, Sendable {
         }
     }
 
-    /// L'identifiant du rappel caché dans celui de la notification.
+    /// L'identifiant du rappel caché dans celui de la notification (sans la
+    /// sonnerie : « rappel-<id>~a0 » pour une alerte, « ~lieu » pour un lieu).
     public static func rappel(dansNotification id: String) -> String? {
-        id.hasPrefix(prefixe) ? String(id.dropFirst(prefixe.count)) : nil
+        guard id.hasPrefix(prefixe) else { return nil }
+        let reste = id.dropFirst(prefixe.count)
+        return String(reste.split(separator: Character(Rappel.separateurSonnerie), maxSplits: 1, omittingEmptySubsequences: false).first ?? reste)
     }
 }
 

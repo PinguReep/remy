@@ -7,6 +7,8 @@
 // - rappels dus : GET /api/rappels au plus une fois par minute ; un rappel
 //   pas fait dont l'heure vient de passer est notifié une fois (clé
 //   `rappel:<id>@<quand>`) ; ceux passés depuis plus de 2 h sont regroupés ;
+//   un rappel à venir dit aussi ses alertes (la veille, le matin, N h avant),
+//   chacune une fois (clé `alerte:<id>@<quand>~<rang>`) ;
 // - briefing du matin et bilan du soir : GET /api/rituel une fois, à l'heure
 //   choisie (coupés par défaut, comme sur l'iPhone) ; le clic ouvre le
 //   briefing ou le bilan (#/aujourdhui/briefing, #/aujourdhui/bilan) ;
@@ -18,6 +20,7 @@
 import { api, ecrire, sait as saitTour } from "./api.js";
 import { h, ajouterA, dire, feuille, bouton, local, heure } from "./ui.js";
 import { texteHeure } from "./analyse/rituel.js";
+import { momentsAlertes, quandRappel } from "./analyse/carnet.js";
 
 const T = () => (typeof window !== "undefined" ? window.__TAURI__ : undefined);
 export const estBureau = () => Boolean(T()?.core?.invoke);
@@ -65,6 +68,8 @@ export const DEUX_HEURES = 2 * 3600e3;
 /** Au-delà de 3 jours, un rappel pas fait relève d'« À trancher », plus d'une notification. */
 export const OUBLI = 3 * 86400e3;
 export const cleRappel = (r) => `rappel:${r.id}@${r.quand}`;
+/** Une alerte avant l'échéance (la veille, le matin, N h avant) : une clé par rappel, par date et par alerte. */
+export const cleAlerte = (r, rang) => `alerte:${r.id}@${r.quand}~${rang}`;
 const borner = (s, n) => {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
   return t.length > n ? t.slice(0, n - 1) + "…" : t;
@@ -76,7 +81,8 @@ const borner = (s, n) => {
  * rappel dû depuis moins de 2 h a sa notification (3 au plus, le reste
  * regroupé) ; plus vieux (tour éteinte, PC en veille), ils sont regroupés en
  * une seule. `cles` d'une notification : les rappels qu'elle couvre (marqués
- * dits seulement quand Windows l'a prise).
+ * dits seulement quand Windows l'a prise). Un rappel à venir dit aussi ses
+ * alertes (la veille, le matin, N h avant), chacune une fois.
  */
 export function rappelsADire(rappels, { maintenant = Date.now(), deja = new Set() } = {}) {
   const dus = (rappels || [])
@@ -97,6 +103,18 @@ export function rappelsADire(rappels, { maintenant = Date.now(), deja = new Set(
       cle: `rappels-groupes@${regroupes.map(cleRappel).join(",")}`.slice(0, 200),
       cles: regroupes.map(cleRappel),
     });
+  }
+  // Les alertes avant l'échéance (rappels-declencheurs-v1) : « Demain 10:00 »
+  // la veille au soir, le matin même, ou N heures avant. Seulement tant que le
+  // rappel est à venir, et dans les 2 h : passée, elle ne sert plus à rien.
+  for (const r of rappels || []) {
+    if (!r || r.fait || r.supprime || typeof r.quand !== "number" || r.quand <= maintenant) continue;
+    const dues = momentsAlertes(r).filter((a) => a.quand <= maintenant && maintenant - a.quand <= DEUX_HEURES && !deja.has(cleAlerte(r, a.rang)));
+    if (!dues.length) continue;
+    // Plusieurs alertes dues ensemble (PC rallumé) : une seule notification les couvre.
+    const moment = quandRappel(r.quand, new Date(maintenant));
+    const cles = dues.map((a) => cleAlerte(r, a.rang));
+    notifications.push({ titre: borner(r.texte, 80) || "Rappel", corps: borner(`${moment.charAt(0).toUpperCase()}${moment.slice(1)}${r.note ? ` · ${r.note}` : ""}`, 240), cle: cles[cles.length - 1], cles });
   }
   return { notifications, cles: dus.map(cleRappel) };
 }

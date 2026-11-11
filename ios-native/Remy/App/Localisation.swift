@@ -52,6 +52,20 @@ final class CapteurLocalisation: NSObject, CLLocationManagerDelegate {
         gestionnaire.stopMonitoringVisits()
     }
 
+    /// Pour un rappel « en arrivant » ou « en partant » : la permission seule
+    /// (« Pendant l'utilisation » suffit à iOS pour déclencher la notification),
+    /// sans allumer le suivi des visites. Vrai si la position est autorisée.
+    func demanderPourRappel() async -> Bool {
+        if gestionnaire.authorizationStatus == .notDetermined {
+            gestionnaire.requestWhenInUseAuthorization()
+            // iOS répond quand Sam a choisi : on attend sa réponse (une minute au plus).
+            for _ in 0..<120 where gestionnaire.authorizationStatus == .notDetermined {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        return [.authorizedWhenInUse, .authorizedAlways].contains(gestionnaire.authorizationStatus)
+    }
+
     /// La position actuelle, une fois (pour nommer un lieu). Nil si refusée.
     func positionIci() async -> CLLocation? {
         if let l = gestionnaire.location, Date().timeIntervalSince(l.timestamp) < 120, l.horizontalAccuracy < 100 { return l }

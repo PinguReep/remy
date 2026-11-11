@@ -42,6 +42,41 @@ test("à traiter : sans date, ou sans aucune des étiquettes du compte ; un rapp
   assert.deepEqual(C.aTraiter(ranges.map((r) => (r.id === "d" ? { ...r, fait: true } : r)), etiquettes), []);
 });
 
+test("note, alertes, lieu d'un rappel : les libellés de l'iPhone, et un rappel « dans un lieu » n'est plus « sans date »", () => {
+  assert.equal(C.libelleAlerte({ type: "veille", minutes: 1200 }), "la veille à 20:00");
+  assert.equal(C.libelleAlerte({ type: "matin", minutes: 485 }), "le matin à 08:05");
+  assert.equal(C.libelleAlerte({ type: "avant", minutes: 120 }), "2 h avant");
+  assert.equal(C.libelleAlerte({ type: "avant", minutes: 90 }), "1 h 30 avant");
+  assert.equal(C.libelleAlerte({ type: "avant", minutes: 15 }), "15 min avant");
+  assert.equal(C.libelleAlerte({ type: "inconnu", minutes: 5 }), "", "un type d'une app plus récente : tu, jamais faux");
+  assert.equal(C.libelleAlerte({ type: "avant", minutes: "x" }), "");
+  assert.equal(C.resumeAlertes([{ type: "veille", minutes: 1200 }, { type: "avant", minutes: 120 }]), "la veille à 20:00, 2 h avant");
+  assert.equal(C.resumeAlertes(undefined), "");
+  assert.equal(C.libelleLieu({ nom: "Maison", lat: 48.1, lon: 2.3, sens: "arrivee" }), "En arrivant : Maison");
+  assert.equal(C.libelleLieu({ nom: " Bureau ", lat: 48.1, lon: 2.3, sens: "depart" }), "En partant : Bureau");
+  assert.equal(C.libelleLieu(null), "");
+  assert.equal(C.libelleLieu({ nom: "  ", sens: "depart" }), "");
+
+  // Un rendez-vous jeudi 12 novembre à 10:00 : la veille à 20:00, le matin à 08:00, 2 h avant.
+  const rdv = { id: "d", texte: "Dentiste", quand: ms(12, 11, 10), alertes: [{ type: "avant", minutes: 120 }, { type: "veille", minutes: 1200 }, { type: "matin", minutes: 480 }] };
+  assert.deepEqual(C.momentsAlertes(rdv), [{ rang: 1, quand: ms(11, 11, 20) }, { rang: 0, quand: ms(12, 11, 8) }], "« le matin à 08:00 » et « 2 h avant » tombent ensemble : une seule fois");
+  // « Le matin » pas avant l'heure du rappel : écartée (rappel à 07:00, matin à 08:00).
+  assert.deepEqual(C.momentsAlertes({ quand: ms(12, 11, 7), alertes: [{ type: "matin", minutes: 480 }] }), []);
+  assert.deepEqual(C.momentsAlertes({ quand: null, alertes: [{ type: "avant", minutes: 60 }] }), [], "sans date : rien ne sonne avant");
+  assert.deepEqual(C.momentsAlertes({ quand: ms(12, 11, 10) }), []);
+
+  const m = date(11, 11, 18);
+  assert.equal(C.sousTitreRappel(rdv, m), "Prévu demain 10:00");
+  const surPlace = { id: "l", texte: "Sortir les poubelles", quand: null, lieu: { nom: "Maison", lat: 48.1, lon: 2.3, sens: "arrivee" } };
+  assert.equal(C.sousTitreRappel(surPlace, m), "En arrivant : Maison");
+  assert.equal(C.sousTitreRappel({ id: "s", texte: "x", quand: null }, m), "Sans date");
+  assert.deepEqual(C.groupesRappels([surPlace, { id: "s", texte: "Rendre le livre", quand: null }, rdv], m).map((g) => [g.titre, g.rappels.map((r) => r.id).join("")]),
+    [["Plus tard", "d"], ["Dans un lieu", "l"], ["Sans date", "s"]]);
+  // Rangé : il a un lieu qui le déclenchera (Rappel.place).
+  assert.deepEqual(C.aTraiter([surPlace, { id: "s", texte: "Rendre le livre", quand: null }], []).map((r) => r.id), ["s"]);
+  assert.deepEqual(C.aTraiter([surPlace], [{ id: "maison", nom: "Maison" }]).map((r) => r.id), ["l"], "sans catégorie quand le compte en a : il attend toujours");
+});
+
 test("le filtre : vide → tout ; « Sans étiquette » ; au moins une étiquette cochée ; la clé triée", () => {
   const sans = { id: "1", etiquettes: [] };
   const pro = { id: "2", etiquettes: ["et-pro"] };

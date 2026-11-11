@@ -37,6 +37,93 @@ public struct Liste: Codable, Sendable, Equatable, Identifiable {
     public var restants: Int { elements.filter { !$0.fait }.count }
 }
 
+/// Une alerte avant l'échéance (rappels-declencheurs-v1) : « la veille à
+/// 20:00 », « le matin à 08:00 », « 2 h avant ».
+public struct AlerteRappel: Codable, Sendable, Equatable, Hashable {
+    /// « veille » | « matin » | « avant » (gardé tel quel s'il est inconnu).
+    public var type: String
+    /// veille, matin : la minute du jour (1200 = 20:00) ; avant : tant de minutes avant.
+    public var minutes: Int
+
+    public init(type: String, minutes: Int) {
+        self.type = type
+        self.minutes = minutes
+    }
+
+    public static func veille(_ minuteDuJour: Int) -> AlerteRappel { AlerteRappel(type: "veille", minutes: minuteDuJour) }
+    public static func matin(_ minuteDuJour: Int) -> AlerteRappel { AlerteRappel(type: "matin", minutes: minuteDuJour) }
+    public static func avant(_ minutes: Int) -> AlerteRappel { AlerteRappel(type: "avant", minutes: minutes) }
+
+    /// Le moment où elle sonne pour un rappel prévu à `quand` ; nil si elle ne
+    /// sert à rien (type inconnu, « le matin » pas avant l'heure du rappel).
+    public func date(pour quand: Date, calendrier: Calendar = Format.calendrier) -> Date? {
+        switch type {
+        case "avant":
+            return minutes > 0 ? quand.addingTimeInterval(-Double(minutes) * 60) : nil
+        case "veille", "matin":
+            guard minutes >= 0, minutes < 1440 else { return nil }
+            let jour = calendrier.startOfDay(for: quand)
+            let base = type == "veille" ? calendrier.date(byAdding: .day, value: -1, to: jour) : jour
+            guard let base, let d = calendrier.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: base) else { return nil }
+            return d < quand ? d : nil
+        default:
+            return nil
+        }
+    }
+
+    /// « la veille à 20:00 », « le matin à 08:00 », « 2 h avant ».
+    public var libelle: String {
+        switch type {
+        case "veille": return "la veille à \(Self.heure(minutes))"
+        case "matin": return "le matin à \(Self.heure(minutes))"
+        case "avant": return "\(Format.duree(minutes: minutes)) avant"
+        default: return type
+        }
+    }
+
+    /// « 08:05 » pour 485.
+    public static func heure(_ minuteDuJour: Int) -> String {
+        let h = max(0, minuteDuJour) / 60 % 24
+        let m = max(0, minuteDuJour) % 60
+        return (h < 10 ? "0" : "") + "\(h):" + (m < 10 ? "0" : "") + "\(m)"
+    }
+}
+
+/// Un lieu qui déclenche le rappel : en y arrivant, ou en en partant. iOS
+/// surveille seul, même app fermée ; rien ne part ailleurs que sur la tour.
+public struct LieuRappel: Codable, Sendable, Equatable {
+    public var id: String?
+    public var nom: String
+    public var lat: Double
+    public var lon: Double
+    public var rayon: Int?
+    /// « arrivee » | « depart »
+    public var sens: String
+
+    public init(id: String? = nil, nom: String, lat: Double, lon: Double, rayon: Int? = nil, sens: String) {
+        self.id = id
+        self.nom = nom
+        self.lat = lat
+        self.lon = lon
+        self.rayon = rayon
+        self.sens = sens
+    }
+
+    /// Depuis un lieu connu de la tour (nommé, sinon son adresse).
+    public init(_ l: LieuTour, arrivee: Bool) {
+        let nom = [l.nom, l.adresse].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? "ce lieu"
+        self.init(id: l.id, nom: String(nom.prefix(80)), lat: l.lat, lon: l.lon, rayon: l.rayon, sens: arrivee ? "arrivee" : "depart")
+    }
+
+    public var arrivee: Bool { sens != "depart" }
+
+    /// « En arrivant : Maison », « En partant : Bureau ».
+    public var libelle: String { (arrivee ? "En arrivant : " : "En partant : ") + nom }
+
+    /// Le rayon surveillé, en mètres (iOS n'est pas fiable en dessous de 100 m).
+    public var rayonSurveille: Double { Double(min(2000, max(100, rayon ?? 150))) }
+}
+
 public struct Rappel: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var texte: String
@@ -47,14 +134,104 @@ public struct Rappel: Codable, Sendable, Equatable, Identifiable {
     /// Identifiants d'étiquettes (Santé, Voiture…) ; nil : non envoyé (une
     /// tour à jour garde alors celles déjà posées).
     public var etiquettes: [String]?
+    /// La description, sous le titre (rappels-declencheurs-v1).
+    public var note: String?
+    /// Les alertes avant l'échéance (la veille, le matin, N heures avant) ; nil : aucune.
+    public var alertes: [AlerteRappel]?
+    /// Le lieu qui le déclenche (en arrivant, en partant).
+    public var lieu: LieuRappel?
 
-    public init(id: String = UUID().uuidString, texte: String, quand: Millis? = nil, fait: Bool = false, source: String? = nil, etiquettes: [String]? = nil) {
+    public init(id: String = UUID().uuidString, texte: String, quand: Millis? = nil, fait: Bool = false, source: String? = nil, etiquettes: [String]? = nil,
+                note: String? = nil, alertes: [AlerteRappel]? = nil, lieu: LieuRappel? = nil) {
         self.id = id
         self.texte = texte
         self.quand = quand
         self.fait = fait
         self.source = source
         self.etiquettes = etiquettes
+        self.note = note
+        self.alertes = alertes
+        self.lieu = lieu
+    }
+
+    enum CodingKeys: String, CodingKey { case id, texte, quand, fait, source, etiquettes, note, alertes, lieu }
+
+    // Une note, une alerte ou un lieu illisible ne fait pas perdre le rappel.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        texte = try c.decode(String.self, forKey: .texte)
+        quand = try c.decodeIfPresent(Millis.self, forKey: .quand)
+        fait = try c.decode(Bool.self, forKey: .fait)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
+        etiquettes = try c.decodeIfPresent([String].self, forKey: .etiquettes)
+        // « Aucune » se dit nil (jamais "" ni []) : deux rappels égaux le restent.
+        let n = (try? c.decodeIfPresent(String.self, forKey: .note)) ?? nil
+        note = (n ?? "").isEmpty ? nil : n
+        let a = (try? c.decodeIfPresent([AlerteRappel].self, forKey: .alertes)) ?? nil
+        alertes = (a ?? []).isEmpty ? nil : a
+        lieu = (try? c.decodeIfPresent(LieuRappel.self, forKey: .lieu)) ?? nil
+    }
+
+    // La note, les alertes et le lieu partent TOUJOURS (null ou [] : retirés).
+    // Pour la tour, une clé absente veut dire « inchangé » (une app d'avant).
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(texte, forKey: .texte)
+        try c.encodeIfPresent(quand, forKey: .quand)
+        try c.encode(fait, forKey: .fait)
+        try c.encodeIfPresent(source, forKey: .source)
+        try c.encodeIfPresent(etiquettes, forKey: .etiquettes)
+        if let note, !note.isEmpty { try c.encode(note, forKey: .note) } else { try c.encodeNil(forKey: .note) }
+        try c.encode(alertes ?? [], forKey: .alertes)
+        if let lieu { try c.encode(lieu, forKey: .lieu) } else { try c.encodeNil(forKey: .lieu) }
+    }
+
+    /// Rangé : il a une date, ou un lieu qui le déclenchera.
+    public var place: Bool { quand != nil || lieu != nil }
+}
+
+/// Une sonnerie d'un rappel : la sienne (à l'heure dite) ou une alerte avant.
+public struct SonnerieRappel: Sendable, Equatable {
+    /// Ajouté à l'identifiant de la notification (« » pour l'heure dite, « ~a0 »…).
+    public var suffixe: String
+    public var date: Date
+    public var corps: String
+}
+
+public extension Rappel {
+    /// Sépare l'identifiant du rappel de la sonnerie, dans celui de la notification.
+    static let separateurSonnerie = "~"
+    static let suffixeLieu = "~lieu"
+
+    /// Ce qui doit sonner après `maintenant` : l'heure dite, et chaque alerte
+    /// (« Demain 10:00 : Dentiste »). Un rappel fait ou sans date : rien.
+    func sonneries(apres maintenant: Date = Date(), calendrier: Calendar = Format.calendrier) -> [SonnerieRappel] {
+        guard !fait, let q = quand?.date else { return [] }
+        var out: [SonnerieRappel] = []
+        if q > maintenant { out.append(SonnerieRappel(suffixe: "", date: q, corps: corpsNotification)) }
+        var vues = Set<Date>([q])
+        for (i, a) in (alertes ?? []).enumerated() {
+            guard let d = a.date(pour: q, calendrier: calendrier), d > maintenant, vues.insert(d).inserted else { continue }
+            // « Demain 10:00 » vu du moment où l'alerte sonne.
+            let moment = Format.quandRelatif(q.millis, maintenant: d)
+            let debut = moment.prefix(1).uppercased() + String(moment.dropFirst())
+            out.append(SonnerieRappel(suffixe: "\(Self.separateurSonnerie)a\(i)", date: d, corps: "\(debut) : \(corpsNotification)"))
+        }
+        return out.sorted { $0.date < $1.date }
+    }
+
+    /// Le texte, puis la note (coupée) à la ligne.
+    var corpsNotification: String {
+        guard let n = note?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return texte }
+        return texte + "\n" + (n.count > 200 ? String(n.prefix(199)) + "…" : n)
+    }
+
+    /// « la veille à 20:00, 2 h avant » (nil sans alerte).
+    var resumeAlertes: String? {
+        let a = (alertes ?? []).map(\.libelle)
+        return a.isEmpty ? nil : a.joined(separator: ", ")
     }
 }
 
@@ -356,14 +533,17 @@ public final class CarnetModel {
     /// Un rappel ; s'il est déjà noté et pas fait, c'est l'existant qui est
     /// rendu (et dit), daté s'il ne l'était pas (24/10 : « payer le loyer » ×14).
     @discardableResult
-    public func creerRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil) -> Rappel? {
-        guard let n = noterRappel(texte, quand: quand, etiquettes: etiquettes) else { return nil }
+    public func creerRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil,
+                            note: String? = nil, alertes: [AlerteRappel]? = nil, lieu: LieuRappel? = nil) -> Rappel? {
+        guard let n = noterRappel(texte, quand: quand, etiquettes: etiquettes, note: note, alertes: alertes, lieu: lieu) else { return nil }
         if n.dejaLa { app?.dire("Déjà dans tes rappels : « \(n.rappel.texte) ».") }
         return n.rappel
     }
 
     /// Comme `creerRappel`, sans message.
-    public func noterRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil) -> (rappel: Rappel, dejaLa: Bool)? {
+    public func noterRappel(_ texte: String, quand: Date?, etiquettes: [String]? = nil,
+                            note: String? = nil, alertes: [AlerteRappel]? = nil, lieu: LieuRappel? = nil) -> (rappel: Rappel, dejaLa: Bool)? {
+        let noteNette = Self.noteNette(note)
         let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
         let k = cleTexte(t)
@@ -375,8 +555,14 @@ public final class CarnetModel {
             return Format.calendrier.isDate(rq.date, inSameDayAs: q)
         }
         if !k.isEmpty, let i = rappels.firstIndex(where: jumeau) {
-            if rappels[i].quand == nil, let q = quand {
-                rappels[i].quand = q.millis
+            // Le rappel déjà là prend ce qui lui manquait (comme la tour) : la
+            // date, la note, les alertes, le lieu. Rien n'est écrasé.
+            var change = false
+            if rappels[i].quand == nil, let q = quand { rappels[i].quand = q.millis; change = true }
+            if (rappels[i].note ?? "").isEmpty, let noteNette { rappels[i].note = noteNette; change = true }
+            if (rappels[i].alertes ?? []).isEmpty, let alertes, !alertes.isEmpty { rappels[i].alertes = alertes; change = true }
+            if rappels[i].lieu == nil, let lieu { rappels[i].lieu = lieu; change = true }
+            if change {
                 let r = rappels[i]
                 trierRappels()
                 ecrire(.rappels([r]))
@@ -384,11 +570,45 @@ public final class CarnetModel {
             }
             return (rappels[i], true)
         }
-        let r = Rappel(texte: String(t.prefix(300)), quand: quand?.millis, source: "remy", etiquettes: etiquettes?.isEmpty == false ? etiquettes : nil)
+        let r = Rappel(texte: String(t.prefix(300)), quand: quand?.millis, source: "remy", etiquettes: etiquettes?.isEmpty == false ? etiquettes : nil,
+                       note: noteNette, alertes: alertes?.isEmpty == false ? alertes : nil, lieu: lieu)
         rappels.append(r)
         trierRappels()
         ecrire(.rappels([r]))
         return (r, false)
+    }
+
+    /// Une note prête à garder : sans blancs autour, 1000 caractères, nil si vide.
+    public static func noteNette(_ note: String?) -> String? {
+        let n = (note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? nil : String(n.prefix(1000))
+    }
+
+    /// La fiche d'un rappel, en UNE écriture : texte, date, note, alertes, lieu.
+    /// Avec « Annuler ». Rend faux si le texte est vide ou le rappel disparu.
+    @discardableResult
+    public func modifier(_ rappel: Rappel, texte: String, quand: Date?, note: String?, alertes: [AlerteRappel], lieu: LieuRappel?) -> Bool {
+        let t = texte.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let i = rappels.firstIndex(where: { $0.id == rappel.id }) else { return false }
+        let avant = rappels[i]
+        rappels[i].texte = String(t.prefix(300))
+        rappels[i].quand = quand?.millis
+        rappels[i].note = Self.noteNette(note)
+        rappels[i].alertes = alertes.isEmpty ? nil : alertes
+        rappels[i].lieu = lieu
+        // Une nouvelle date (ou un lieu) rouvre un rappel fait : il doit sonner.
+        if rappels[i].quand != avant.quand, quand != nil { rappels[i].fait = false }
+        let r = rappels[i]
+        guard r != avant else { return true }
+        trierRappels()
+        ecrire(.rappels([r]))
+        app?.dire("Rappel enregistré.", annuler: { [weak self] in
+            guard let self, let k = self.rappels.firstIndex(where: { $0.id == avant.id }) else { return }
+            self.rappels[k] = avant
+            self.trierRappels()
+            self.ecrire(.rappels([avant]))
+        })
+        return true
     }
 
     /// Les rappels à trier (Sam, 18/10) : il y note dans la journée ce qu'il
@@ -396,7 +616,7 @@ public final class CarnetModel {
     /// de catégorie dès qu'il en existe (`etiquettes` : celles du compte).
     public static func aTraiter(_ rappels: [Rappel], etiquettes: Set<String>) -> [Rappel] {
         rappels.filter { r in
-            !r.fait && (r.quand == nil || (!etiquettes.isEmpty && Set(r.etiquettes ?? []).isDisjoint(with: etiquettes)))
+            !r.fait && (!r.place || (!etiquettes.isEmpty && Set(r.etiquettes ?? []).isDisjoint(with: etiquettes)))
         }
     }
 
@@ -461,13 +681,7 @@ public final class CarnetModel {
 
     /// « aujourd'hui 18:00 », « demain 09:00 », « jeu. 22 oct. 09:00 »
     public static func quand(_ ms: Millis, maintenant: Date = Date()) -> String {
-        let d = ms.date
-        let auj = Format.debutDuJour(maintenant)
-        let jour = Format.debutDuJour(d)
-        let ecart = Int((jour.timeIntervalSince(auj) / 86_400).rounded())
-        let j = ecart == 0 ? "aujourd'hui" : ecart == 1 ? "demain" : ecart == -1 ? "hier"
-            : Format.jourSemaineCourt(d) + Format.anneeSiAutre(d, maintenant: maintenant)
-        return j + " " + Format.heure(d)
+        Format.quandRelatif(ms, maintenant: maintenant)
     }
 
     public func basculer(_ rappel: Rappel) {

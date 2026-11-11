@@ -1094,6 +1094,15 @@ dialog.appel::backdrop { background: var(--fond); }
 .rappels-puces .puce, .rappels-ligne .meta .puce { min-height: 22px; padding: 0 8px; font: 600 11px/1.2 var(--texte); }
 .rappels-sans-date { color: var(--encre-3); font-size: 12px; }
 .rappels-importe { color: var(--encre-3); font: 600 11px/1.2 var(--texte); }
+/* La note, le lieu et les alertes d'un rappel (réglés sur l'iPhone, dits ici). */
+.rappels-note { color: var(--encre-2); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; text-wrap: pretty; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.rappels-ligne.faite .rappels-note { color: var(--encre-3); }
+.rappels-lieu, .rappels-alertes { display: inline-flex; align-items: center; gap: 4px; color: var(--encre-2); font-size: 12px; }
+.rappels-lieu .ic, .rappels-alertes .ic { width: 14px; height: 14px; flex: none; }
+.rappels-details { display: grid; gap: 6px; margin: 4px 0 2px; padding: 10px 12px; border-radius: 10px; background: var(--fond-2); color: var(--encre-2); font-size: 13px; line-height: 1.4; }
+.rappels-details .rappels-details-ligne { display: flex; gap: 8px; align-items: flex-start; overflow-wrap: anywhere; }
+.rappels-details .ic { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.rappels-details .rappels-details-pied { color: var(--encre-3); font-size: 12px; }
 .rappels-a-traiter {
   display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 4px 8px; margin: 0 -8px 4px; width: calc(100% + 16px);
   border: 0; border-radius: 12px; background: none; color: var(--encre); text-align: left;

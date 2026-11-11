@@ -169,10 +169,14 @@ etiquettes.forEach(([id, nom], ordre) => carnet.ecrireEtiquette(id, { nom, ordre
 carnet.ecrireRappels([
   { id: "r1", texte: "Appeler le garage pour le contrôle technique", quand: now + 2 * H },
   { id: "r2", texte: "Rappeler Hugo", quand: now + 20 * H, etiquettes: ["et-pro"] },
-  { id: "r3", texte: "Renouveler le passeport", quand: now + 3 * 24 * H, etiquettes: ["et-admin"] },
+  // 11/11 : une note et des alertes avant l'échéance (la veille à 20:00, 2 h avant).
+  { id: "r3", texte: "Renouveler le passeport", quand: now + 3 * 24 * H, etiquettes: ["et-admin"],
+    note: "Photos d'identité et ancien passeport.", alertes: [{ type: "veille", minutes: 1200 }, { type: "avant", minutes: 120 }] },
   { id: "r4", texte: "Payer le loyer", quand: now - 50 * M },
   { id: "r5", texte: "Rendre le livre à Léa" },
   { id: "r6", texte: "Réserver le tennis", quand: now - 26 * H, fait: true },
+  // 11/11 : un rappel qui sonne en arrivant quelque part (coordonnées fictives).
+  { id: "r8", texte: "Sortir les poubelles", etiquettes: ["et-perso"], lieu: { nom: "Maison", lat: 48.8566, lon: 2.3522, rayon: 150, sens: "arrivee" } },
 ]);
 carnet.marquerTache("t3", { bloquee: true, raison: "J'attends le bon de commande d'Ondine" });
 // Catégories des tâches (18/10) : gardées par Remy, Motion n'en sait rien.
