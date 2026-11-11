@@ -614,6 +614,8 @@ struct RappelsView: View {
     @State private var import_ = ImportRappels()
     /// Captures de la CI : « Quand ? » ouvert sur le premier rappel.
     @State private var demoQuand: Rappel?
+    /// Captures de la CI : la fiche d'un rappel (ses alertes, ou son lieu).
+    @State private var demoFiche: Rappel?
 
     var body: some View {
         let filtre = FiltreRappels.lire(filtreRappels)
@@ -692,11 +694,18 @@ struct RappelsView: View {
         .sheet(isPresented: $filtrer) { FiltreRappelsVue() }
         .sheet(isPresented: $organiser) { OnboardingRappels() }
         .sheet(item: $demoQuand) { QuandRappel(rappel: $0) }
+        .sheet(item: $demoFiche) { FicheRappel(rappel: $0) }
         .task {
             let env = ProcessInfo.processInfo.environment
-            guard env["REMY_DEMO_MDP"] != nil, env["REMY_DEMO_ECRAN"] == "rappel-quand" else { return }
+            guard env["REMY_DEMO_MDP"] != nil, let ecran = env["REMY_DEMO_ECRAN"], ecran.hasPrefix("rappel-") else { return }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
-            demoQuand = app.carnet.rappels.first { !$0.fait && $0.quand != nil } ?? app.carnet.rappels.first
+            let ouverts = app.carnet.rappels.filter { !$0.fait }
+            switch ecran {
+            case "rappel-quand": demoQuand = ouverts.first { $0.quand != nil } ?? app.carnet.rappels.first
+            case "rappel-fiche": demoFiche = ouverts.first { $0.alertes != nil } ?? app.carnet.rappels.first
+            case "rappel-fiche-lieu": demoFiche = ouverts.first { $0.lieu != nil } ?? app.carnet.rappels.first
+            default: break
+            }
         }
     }
 }
