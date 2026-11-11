@@ -428,10 +428,13 @@ struct LigneRappel: View {
                         Text("sans date").font(Police.texte(12)).foregroundStyle(Palette.encre3)
                     }
                     if let lieu = rappel.lieu {
-                        Label(lieu.libelle, systemImage: "location")
-                            .font(Police.texte(12))
-                            .foregroundStyle(Palette.encre2)
-                            .lineLimit(1)
+                        // Pas un Label : son icône, plus grosse, s'écartait du texte.
+                        HStack(spacing: 3) {
+                            Image(systemName: "location").font(.system(size: 10))
+                            Text(lieu.libelle).font(Police.texte(12)).lineLimit(1)
+                        }
+                        .foregroundStyle(Palette.encre2)
+                        .accessibilityElement(children: .combine)
                     }
                     if let alertes = rappel.resumeAlertes, rappel.quand != nil {
                         Image(systemName: "bell")
