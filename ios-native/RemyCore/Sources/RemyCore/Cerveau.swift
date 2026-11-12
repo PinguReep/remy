@@ -4,8 +4,10 @@ import Observation
 // MARK: - Le cerveau relié à la vie (nuit du 24/10)
 //
 // Trois choses que la tour sait faire et que l'iPhone montre :
-//   - les priorités déclarées de Sam (priorites-v1) : versionnées sur la tour,
-//     « négligée depuis N jours » calculé là-bas, sans IA ;
+//   - les priorités de Sam (priorites-v1) : versionnées sur la tour,
+//     « négligée depuis N jours » calculé là-bas, sans IA ; depuis le 12/11
+//     (priorites-v2), Rémy en PROPOSE le classement et Sam le confirme
+//     (CeQuiCompte.swift) ;
 //   - le carnet proposé par Rémy (carnet-outils-v1) : « ajoute du lait » va
 //     dans Courses, « rappelle-moi… » devient un rappel, sur un « Oui » ;
 //   - les propositions qui attendent hors du chat (propositions-attente-v1) :
@@ -23,12 +25,40 @@ public struct Priorite: Codable, Equatable, Sendable, Identifiable {
     public var neglige: Bool?
     /// La phrase de la tour : un fait daté, jamais une supposition.
     public var constat: String?
+    /// Le projet Motion relié (priorites-v2), par son identifiant, et son nom
+    /// du moment. nil : pas de lien, ou une tour d'avant.
+    public var projetMotion: String?
+    public var projetNom: String?
+    /// Confirmée par Sam dans son classement (priorites-v2) : seules celles-ci
+    /// ont un rang, dans l'ordre de la liste. nil : pas confirmée (ou illisible).
+    public var classee: Bool?
 
     public init(id: String = "p-\(UUID().uuidString.prefix(8).lowercased())", titre: String, pourquoi: String? = nil, mots: [String]? = nil) {
         self.id = id
         self.titre = titre
         self.pourquoi = pourquoi
         self.mots = mots
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, titre, pourquoi, mots, declareeA, joursSans, neglige, constat, projetMotion, projetNom, classee
+    }
+
+    /// Tolérant : seuls l'identifiant et le titre sont exigés ; un champ
+    /// illisible devient nil (jamais renvoyé à la tour comme s'il était connu).
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        titre = try c.decode(String.self, forKey: .titre)
+        pourquoi = try? c.decodeIfPresent(String.self, forKey: .pourquoi)
+        mots = (try? c.decodeIfPresent([Souple<String>].self, forKey: .mots))?.compactMap(\.valeur)
+        declareeA = try? c.decodeIfPresent(Millis.self, forKey: .declareeA)
+        joursSans = try? c.decodeIfPresent(Int.self, forKey: .joursSans)
+        neglige = try? c.decodeIfPresent(Bool.self, forKey: .neglige)
+        constat = try? c.decodeIfPresent(String.self, forKey: .constat)
+        projetMotion = try? c.decodeIfPresent(String.self, forKey: .projetMotion)
+        projetNom = try? c.decodeIfPresent(String.self, forKey: .projetNom)
+        classee = try? c.decodeIfPresent(Bool.self, forKey: .classee)
     }
 }
 
@@ -60,12 +90,34 @@ public struct VuePriorites: Codable, Equatable, Sendable {
     public var majA: Millis?
     public var priorites: [Priorite]
     public var historique: [VersionPriorites]?
+    /// La dernière confirmation du classement (priorites-v2), nil sinon.
+    public var classeA: Millis?
+    /// Les pistes que Sam a dites « pas une priorité » (clés de la
+    /// proposition). nil : la tour ne les a pas rendues (tour d'avant).
+    public var ecartees: [String]?
 
-    public init(version: Int = 0, majA: Millis? = nil, priorites: [Priorite] = [], historique: [VersionPriorites]? = nil) {
+    public init(version: Int = 0, majA: Millis? = nil, priorites: [Priorite] = [], historique: [VersionPriorites]? = nil,
+                classeA: Millis? = nil, ecartees: [String]? = nil) {
         self.version = version
         self.majA = majA
         self.priorites = priorites
         self.historique = historique
+        self.classeA = classeA
+        self.ecartees = ecartees
+    }
+
+    enum CodingKeys: String, CodingKey { case version, majA, priorites, historique, classeA, ecartees }
+
+    /// La liste elle-même reste stricte : une priorité sautée ici serait
+    /// effacée de la tour au prochain enregistrement. Le reste est tolérant.
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        version = (try? c.decodeIfPresent(Int.self, forKey: .version)) ?? 0
+        majA = try? c.decodeIfPresent(Millis.self, forKey: .majA)
+        priorites = try c.decodeIfPresent([Priorite].self, forKey: .priorites) ?? []
+        historique = (try? c.decodeIfPresent([Souple<VersionPriorites>].self, forKey: .historique))?.compactMap(\.valeur)
+        classeA = try? c.decodeIfPresent(Millis.self, forKey: .classeA)
+        ecartees = (try? c.decodeIfPresent([Souple<String>].self, forKey: .ecartees))?.compactMap(\.valeur)
     }
 }
 

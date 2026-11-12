@@ -52,6 +52,14 @@ public enum Nouveautes {
             .init(symbole: "checkmark.circle", titre: "Fini, et c'est dit",
                   texte: "Un projet est fini pour Rémy quand toutes ses tâches sont terminées (dans la liste Motion lue en entier), ou quand tu touches « C'est fini ». Ce qui l'attendait se débloque, et l'Historique le garde."),
         ]),
+        // Remplace « priorites » (12/11) : Rémy propose le classement, Sam le
+        // confirme ; deux pages, pour que la série 11 tienne dans une feuille.
+        Nouveaute(id: "ce-que-remy-a-compris", serie: 11, date: "12 nov.", titre: "Rémy comprend ce qui compte", capacite: CeQuiCompte.capacite, pages: [
+            .init(symbole: "eye", titre: "Rémy propose, tu confirmes",
+                  texte: "Réglages › Ce qui compte : plus rien à écrire. Rémy classe ce qui compte d'après Motion et ce qui passe par lui, et dit ce qu'il a vu. « C'est ça » confirme : seul ce que tu confirmes lui sert."),
+            .init(symbole: "hand.tap", titre: "Corrige d'un geste",
+                  texte: "Monte, descends, ou « Pas une priorité » : Rémy ne la reproposera plus. Puis « Enregistrer ». Ce qui avance hors de Motion (du code, du papier, un appel) lui échappe : ajoute-le à la main, en bas."),
+        ], remplace: "priorites"),
         Nouveaute(id: "pieces-jointes", serie: 10, date: "12 nov.", titre: "Joindre une photo ou un fichier", capacite: PiecesJointes.capacite, pages: [
             .init(symbole: "paperclip", titre: "Le trombone",
                   texte: "À gauche du champ : une photo de la photothèque, une prise maintenant, ou un fichier (PDF, texte, image). Jusqu'à 4 pièces de 10 Mo par message, avec ou sans texte."),
@@ -193,8 +201,9 @@ public enum Nouveautes {
             .init(symbole: "arrow.uturn.backward", titre: "De retour après une absence ?",
                   texte: "Après plus de 3 jours, Rémy propose de trier tes retards ligne par ligne : Fait, Demain ou Abandonner."),
         ]),
-        // À remplacer (12/11) : Rémy proposera lui-même le classement, Sam le
-        // confirmera. Sa remplaçante portera `remplace: "priorites"`.
+        // Remplacée (12/11) par « ce-que-remy-a-compris » (série 11) dès que la
+        // tour connaît priorites-v2 : Rémy propose le classement, Sam le
+        // confirme. Avant, c'est encore elle qui décrit l'écran.
         Nouveaute(id: "priorites", serie: 3, date: "24 oct.", titre: "Dis à Rémy ce qui compte", capacite: "priorites-v1", pages: [
             .init(symbole: "star", titre: "Tes 3 à 5 priorités",
                   texte: "Réglages › Ce qui compte : écris-les avec leur pourquoi. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
