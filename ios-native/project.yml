@@ -73,6 +73,9 @@ targets:
         # les adresses y sont traduites, rien ne part chez Apple ni ailleurs.
         NSLocationWhenInUseUsageDescription: "Pour les rappels « en arrivant » ou « en partant » d'un lieu, et pour que Rémy sache où tu en es dans ta journée (à la maison, à la salle, sur la route). Tes positions vont seulement à ta tour."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Pour reconnaître tes arrivées et départs même app fermée (iOS les détecte, presque sans batterie). Tes positions vont seulement à ta tour, gardées 90 jours."
+        # Pièces jointes du chat (12/11) : une photo prise pour Rémy. Elle part
+        # vers la tour seulement, où elle est gardée chiffrée.
+        NSCameraUsageDescription: "Pour prendre une photo et la joindre à un message pour Rémy. La photo part seulement vers ta tour, où elle est gardée chiffrée ; son texte est lu sur l'iPhone."
         NSMotionUsageDescription: "Pour savoir quand tu es en voiture, et que Rémy ne t'envoie rien de long à lire au volant. Rien ne quitte ta tour."
         # Le rendez-vous quotidien (24/10) : iOS relit la tour en arrière-plan
         # avant le briefing, quand il le permet.

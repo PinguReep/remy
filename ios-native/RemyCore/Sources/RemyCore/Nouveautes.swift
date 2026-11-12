@@ -46,6 +46,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "pieces-jointes", serie: 10, date: "12 nov.", titre: "Joindre une photo ou un fichier", capacite: PiecesJointes.capacite, pages: [
+            .init(symbole: "paperclip", titre: "Le trombone",
+                  texte: "À gauche du champ : une photo de la photothèque, une prise maintenant, ou un fichier (PDF, texte, image). Jusqu'à 4 pièces de 10 Mo par message, avec ou sans texte."),
+            .init(symbole: "eye", titre: "Ce que Rémy en lit",
+                  texte: "Le texte d'une photo est lu sur l'iPhone ; la tour lit les PDF et les textes, et décrit l'image si son modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non."),
+            .init(symbole: "lock.shield", titre: "Gardée chez toi",
+                  texte: "L'original reste chiffré sur ta tour : touche la pièce pour la revoir en grand. Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
+        ]),
         Nouveaute(id: "recherche-projets", serie: 9, date: "12 nov.", titre: "Chercher dans Projets", capacite: nil, pages: [
             .init(symbole: "magnifyingglass", titre: "Tout retrouver",
                   texte: "En haut de Projets, tape un mot : il cherche dans tes projets et tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),

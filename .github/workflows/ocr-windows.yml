@@ -1,0 +1,29 @@
+# La lecture du texte des images sur la tour (lib/ocr.js, 12/11) : l'OCR de
+# Windows appelé par PowerShell 5.1, essayé sur un vrai Windows. Un runner sans
+# langue de reconnaissance le constate et passe (le test le dit) : ce qui est
+# éprouvé ici, c'est que le script ne plante pas et ne laisse aucun fichier.
+name: OCR Windows
+
+on:
+  pull_request:
+    paths:
+      - "lib/ocr.js"
+      - "lib/fichiers-essai.js"
+      - "test/ocr.test.mjs"
+      - ".github/workflows/ocr-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ocr:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: OCR de Windows (réel, ou repli constaté)
+        run: node --test test/ocr.test.mjs

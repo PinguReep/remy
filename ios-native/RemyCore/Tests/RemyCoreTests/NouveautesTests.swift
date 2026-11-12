@@ -398,12 +398,31 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(serie9.map(\.id), ["recherche-projets"])
         XCTAssertNil(serie9[0].capacite)
         XCTAssertLessThanOrEqual(serie9.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app([], reglages: suite())
+        // Telle qu'elle s'affichait quand elle était la dernière série.
+        let a = jusqua(9, [])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["recherche-projets"])
+        let b = jusqua(9, Nouveautes.catalogue.compactMap(\.capacite))
+        b.verifier()
+        XCTAssertEqual(b.affichees?.entrees.map(\.id), ["recherche-projets"], "une tour à jour : la dernière série seule")
+    }
+
+    /// Série 10 (12/11) : les pièces jointes du chat, seulement quand la tour
+    /// sait les recevoir et les lire (pieces-v1) : le trombone en dépend.
+    func testLaSerie10AttendLaTour() {
+        let serie10 = Nouveautes.catalogue.filter { $0.serie == 10 }
+        XCTAssertEqual(serie10.map(\.id), ["pieces-jointes"])
+        XCTAssertEqual(serie10[0].capacite, PiecesJointes.capacite)
+        XCTAssertLessThanOrEqual(serie10.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
+        let a = app([PiecesJointes.capacite], reglages: suite())
         a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"])
-        let b = app(Nouveautes.catalogue.compactMap(\.capacite), reglages: suite())
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["pieces-jointes"])
+        // Une tour pas encore à jour : rien de la dernière série à présenter
+        // (une installation neuve ne montre que la dernière série).
+        let b = app([], reglages: suite())
         b.nouveautes.verifier()
-        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"], "une tour à jour : la dernière série seule")
+        XCTAssertNil(b.nouveautes.affichees, "une tour pas encore à jour : rien à présenter")
+        XCTAssertTrue(serie10[0].pages.contains { $0.texte.contains("pourquoi non") }, "ce qui n'est pas lu est dit")
     }
 
     // MARK: - Le suivi (12/11)

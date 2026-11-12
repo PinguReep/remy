@@ -4,6 +4,93 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Les pièces jointes du chat (`pieces-v1`)
+
+On ne pouvait rien joindre dans la conversation. Désormais : le trombone, coller
+(Ctrl+V) ou déposer sur le site et l'app Windows ; le trombone sur l'iPhone
+(photothèque, appareil photo, Fichiers). Images (PNG, JPEG, HEIC, WebP), PDF,
+texte (.txt, .md) ; tout autre type est refusé avec sa raison. **4 pièces de
+10 Mo au plus par message**, 100 par conversation, 120 envois par heure.
+
+- **Deux temps.** `POST /api/conversations/:id/pieces { nom, donnees (base64),
+  texte?, lecture?, apercu? }` range la pièce et la lit, puis
+  `POST …/messages { text, pieces: [id] }` la joint (texte vide permis). Une
+  pièce jamais jointe est effacée au bout de 24 h ; `DELETE …/pieces/:pid` la
+  retire avant l'envoi. `GET …/pieces/:pid[?telecharger=1]` sert l'original.
+- **Le type se lit dans les octets** (signatures PNG, JPEG, RIFF/WEBP,
+  `ftyp` HEIC, `%PDF-`, UTF-8 valide pour le texte), et doit être celui de
+  l'extension : un `.png` qui contient du HTML, un `.md` qui est une image, un
+  `.svg` : refusés (415). Le nom est assaini (dernier segment, sans caractère
+  de contrôle ni de direction, 120 caractères) et ne sert **jamais** de chemin :
+  le fichier s'appelle par son identifiant (24 hexadécimaux, vérifiés), dans le
+  dossier de sa conversation (identifiant vérifié aussi).
+- **Servi sans danger** : le type lu dans les octets (le texte, même Markdown,
+  en `text/plain`), `nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+  `no-store`, et une CSP `sandbox` (sauf le PDF, que le lecteur du navigateur
+  doit pouvoir afficher) : rien d'envoyé ne s'exécute.
+- **L'original est gardé, chiffré** : `<base>/pieces/<conversation>/<id>.piece`
+  = AES-256-GCM (la clé des conversations, hors du coffre :
+  `chiffrerOctets`, données associées liées au fichier) d'une fiche JSON et des
+  octets. Le nom même n'est pas lisible sur le disque. La base partant dans la
+  sauvegarde, les pièces aussi (avec la clé, dans l'archive chiffrée). La copie
+  lisible d'Obsidian ne porte que « *Pièce jointe : nom — à revoir dans
+  l'app.* ». Supprimer la conversation supprime son dossier.
+- **Joindre ne rend pas le fil privé.** Le texte LU d'une pièce suit la règle du
+  reste du message : dans un fil ordinaire, il peut partir chez Claude si le
+  secours cloud est allumé (coupé par défaut) ; les **octets**, jamais.
+
+**Ce qui est lu, et par qui** (tout reste sur les machines de Sam) :
+
+| Pièce | Lue par | Comment |
+|---|---|---|
+| .txt, .md | la tour | UTF-8, 20 000 caractères au plus (au-delà : coupé, dit) |
+| PDF | la tour | pdf.js (`pdfjs-dist` 6.4.299, build legacy) dans un fil de travail à part : 50 pages, 20 000 caractères, 20 s, 384 Mo ; texte seulement (ni eval, ni polices, ni XFA, ni scripts, ni réseau). Protégé, abîmé, trop long ou scanné : joint, non lu, raison dite |
+| Image de l'iPhone | l'iPhone | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper » |
+| Image du site / de Windows | la tour | OCR de Windows (`Windows.Media.Ocr`, PowerShell 5.1, l'image par l'entrée standard : aucun fichier temporaire ; 30 s ; français d'abord). Absent (Linux, langue non installée) : la raison est dite |
+| Toute image | le modèle de vision **local** | `REMY_VISION_URL` (+ `_MODELE`, `_TOKEN`), sinon le modèle local principal ; partie `image_url` en `data:` ; image réduite à 1 344 px par le client (site : canvas ; iPhone : ImageIO), sinon l'original s'il fait 4 Mo au plus ; description de 1 500 caractères au plus |
+
+- **Le garde-fou de la vision** (`lib/vision.js`) ne dépend d'aucun réglage :
+  l'appel part en direct vers l'adresse du cerveau, jamais par les fournisseurs
+  (aucun secours possible), et seulement si elle est sur les machines de Sam
+  (`modeleLocalChezToi`). Testé avec le secours cloud allumé : aucun octet
+  d'image n'arrive au faux Anthropic.
+- **Une épreuve avant de croire un modèle** : une image d'une couleur tirée au
+  hasard, dont il doit dire la couleur. Un moteur qui ignore l'image (et
+  inventerait une description) ou qui la refuse est écarté, et son verdict
+  retenu 6 h — comme `formatRefuse` pour `response_format`. Chaque appel passe
+  par la garde de charge (`inference`) et entre dans les coûts (`kind`
+  « piece-vision », 0 $). Le modèle que servent les Sparks est annoncé
+  multimodal par son éditeur ; son moteur, lui, **n'a pas été essayé ici**.
+- **Ce que reçoit le modèle de conversation** : du texte seulement
+  (`contenuPourModele` → `texteAvecPieces`). Une pièce lue : une ligne
+  `[pièce jointe lue : nom, type, taille …]` puis son texte encadré
+  (`encadrer`, matière externe) ; une image : le texte reconnu et la
+  description, encadrés, « lecture automatique qui peut se tromper » ; sinon
+  `[pièce jointe non lue : nom, type, taille — raison]` et une consigne : ne
+  pas prétendre l'avoir vue. Le compactage relit le même texte, borné à 16 000
+  caractères par message ; l'original jamais.
+- **Ce que voit Sam** : sous chaque pièce, la phrase de la tour (« lue par
+  Rémy », « texte reconnu sur la tour — peut se tromper », « décrite par le
+  modèle local », « non lue par Rémy : PDF protégé par un mot de passe »…). Le
+  fil relu ne reçoit pas le texte lu (l'original se rouvre).
+- **L'essai, sans terminal** : Réglages › Diagnostic › « Essayer la lecture des
+  pièces » (`POST /api/pieces/essai`, sur ce seul geste, 75 s au plus) essaie
+  l'OCR, le modèle local (l'épreuve) et un PDF d'essai, fichiers fictifs
+  fabriqués par `lib/fichiers-essai.js` ; même chose en ligne de commande :
+  `node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\essai-pieces.mjs`.
+  Ni adresse ni jeton dans le résultat.
+- **Dépendance** : `pdfjs-dist` (Mozilla, Apache-2.0, une bibliothèque, aucun
+  service). Son option `@napi-rs/canvas` (dessiner les pages) n'est pas
+  installée sur la tour (`npm ci --omit=optional` dans l'installeur).
+- **iPhone** : `NSCameraUsageDescription` ajoutée (appareil photo). Une photo
+  part en JPEG réduit à 3 000 px (l'original gardé), avec l'aperçu de 1 344 px
+  et le texte de Vision ; ouverte en grand par Coup d'œil, depuis une copie
+  temporaire effacée à la fermeture.
+- **Limites connues** : « Réessayer » une réponse ratée renvoie le texte, pas
+  les pièces ; l'OCR des PDF scannés n'existe pas ; l'OCR de Windows et le
+  modèle de vision n'ont pu être essayés ici (pas de Windows, pas de Sparks) :
+  l'essai des Réglages est fait pour ça.
+
 ## 2026-11-12 — Le suivi des tutoriels, et plus de vieux tutoriels au lancement
 
 Une mise à jour a présenté un tutoriel vieux de plusieurs semaines, sur une

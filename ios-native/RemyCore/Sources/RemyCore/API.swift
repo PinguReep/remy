@@ -638,8 +638,33 @@ public final class ClientAPI: @unchecked Sendable {
     /// Envoie un message et rend les événements au fil de l'eau (delta, status,
     /// proposal, title, done, error…). `appel` : mode appel, réponse courte et
     /// sans markdown, faite pour être lue à voix haute.
-    public func envoyerMessage(conversation id: String, texte: String, appel: Bool = false) -> AsyncThrowingStream<EvenementSSE, Error> {
-        flux("api/conversations/\(id)/messages", ["text": texte, "call": appel])
+    public func envoyerMessage(conversation id: String, texte: String, appel: Bool = false, pieces: [String] = []) -> AsyncThrowingStream<EvenementSSE, Error> {
+        var corps: [String: Any] = ["text": texte, "call": appel]
+        if !pieces.isEmpty { corps["pieces"] = pieces }
+        return flux("api/conversations/\(id)/messages", corps)
+    }
+
+    // MARK: Pièces jointes (pieces-v1, 12/11)
+
+    /// Envoie une pièce : la tour la range (chiffrée), la lit (texte, PDF, OCR,
+    /// modèle de vision local) et rend sa fiche. La lecture peut prendre du temps.
+    public func envoyerPiece(conversation id: String, _ p: PieceAEnvoyer) async throws -> PieceJointe {
+        try await json(PieceJointe.self, "api/conversations/\(id)/pieces", methode: "POST", corps: PiecesJointes.corps(p), delai: 200)
+    }
+
+    /// L'original d'une pièce (déchiffré par la tour).
+    public func piece(conversation id: String, piece: String) async throws -> Data {
+        try await brut("api/conversations/\(id)/pieces/\(piece)", delai: 60)
+    }
+
+    /// Retire une pièce pas encore partie dans un message.
+    public func retirerPiece(conversation id: String, piece: String) async throws {
+        try await envoyer("api/conversations/\(id)/pieces/\(piece)", methode: "DELETE")
+    }
+
+    /// « Essayer la lecture des pièces » : la tour essaie son OCR, son modèle local et un PDF.
+    public func essaiPieces() async throws -> EssaiPieces {
+        try await json(EssaiPieces.self, "api/pieces/essai", methode: "POST", corps: [:], delai: 110)
     }
 
     /// Réponse de Sam à une demande d'autorisation (V8) : accordée, Rémy

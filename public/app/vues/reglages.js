@@ -337,6 +337,41 @@ const repere = (ancre, el) => {
   return el;
 };
 const retour = () => h("a", { class: "btn texte petit lien-retour-projets", href: "#/reglages" }, icone("retour"), "Réglages");
+/**
+ * « Essayer la lecture des pièces » (12/11) : la tour essaie elle-même son OCR,
+ * son modèle local avec une image d'essai et un PDF d'essai, et dit le
+ * résultat ligne par ligne. Seulement sur ce geste (0 $, modèle local).
+ */
+function essaiPieces() {
+  const resultat = h("div", { class: "reglages-essai-pieces", "aria-live": "polite" });
+  let diagnostic = "";
+  const copier = bouton("Copier le diagnostic", { classe: "papier petit", icone: "copier", onclick: async () => {
+    try {
+      await navigator.clipboard.writeText(diagnostic);
+      dire("Diagnostic copié.", { genre: "succes" });
+    } catch {
+      dire("Copie impossible ici.", { genre: "erreur" });
+    }
+  } });
+  copier.hidden = true;
+  const essayer = bouton("Essayer la lecture des pièces", { classe: "papier", icone: "trombone", onclick: (e) => occupe(e.currentTarget, async () => {
+    copier.hidden = true;
+    vider(resultat, h("p", { class: "aide" }, "La tour essaie… (jusqu'à une minute : le modèle local regarde une image d'essai)"), squelette([0.7, 0.6, 0.4]));
+    try {
+      const r = await api("/api/pieces/essai", { methode: "POST", corps: {}, delai: 100000 });
+      diagnostic = r.diagnostic || "";
+      vider(resultat, ...(r.lignes || []).map((l) => h("div", { class: `ligne-essai ${l.ok ? "ok" : "non"}` }, icone(l.ok ? "coche" : "fermer"), h("span", null, h("strong", null, `${l.libelle} : `), l.detail))));
+      copier.hidden = !diagnostic;
+    } catch (err) {
+      vider(resultat, erreurSection(`Essai impossible : ${texteErreur(err)}`, () => essayer.click()));
+    }
+  }) });
+  return repere("Lecture des pièces jointes", h("div", { class: "reglage" },
+    h("h3", { class: "titre-section reglages-sous-titre" }, "Lecture des pièces jointes"),
+    h("p", { class: "aide" }, "Ce que ta tour sait lire de ce que tu joins : le texte des images (reconnaissance de Windows), les images (le modèle local), les PDF. Des fichiers d'essai, rien de toi."),
+    h("div", { class: "rangee", style: { marginTop: "8px" } }, essayer, copier), resultat));
+}
+
 function carte(titre, aide, ...contenu) {
   return h("section", { class: "carte section-reglage" }, retour(), h("h2", { tabindex: "-1" }, titre), aide ? h("p", { class: "aide" }, aide) : null, ...contenu);
 }
@@ -1258,6 +1293,7 @@ const SECTIONS_RENDU = {
     lireMajAuto();
     return carte("Diagnostic", "Pour comprendre ce que fait Rémy et le signaler. Rien d'indispensable au quotidien.",
       repere("Temps de réponse", h("div", { class: "reglage" }, h("h3", { class: "titre-section reglages-sous-titre" }, "Temps de réponse"), temps)),
+      sait("pieces-v1") ? essaiPieces() : null,
       bascule("Jauge du contexte", "Le cadran en haut des conversations : la place prise, et le résumé à 70 %. Allumée par défaut.", local.lire("diagnostic.jauge", true) !== false, async (x) => {
         local.ecrire("diagnostic.jauge", x);
         dire(x ? "La jauge du contexte s'affiche en haut des conversations." : "Jauge du contexte masquée.", { genre: "succes", duree: 2000 });

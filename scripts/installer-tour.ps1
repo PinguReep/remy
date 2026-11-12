@@ -426,9 +426,11 @@ if ($branche -and -not $AutoriserBranche) {
 if ($LASTEXITCODE -ne 0) { throw "Version introuvable : $Ref" }
 Push-Location $app
 try {
-  # --ignore-scripts : aucune dépendance n'a de script d'installation (lockfile,
-  # 12/11) ; aucun ne s'exécute donc, même si un paquet en gagnait un.
-  & npm ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+  # --ignore-scripts : aucune dépendance installée n'a de script d'installation
+  # (lockfile, 12/11) ; aucun ne s'exécute donc, même si un paquet en gagnait un.
+  # --omit=optional : pdfjs-dist (lecture des PDF joints, 12/11) propose @napi-rs/canvas,
+  # utile seulement pour dessiner les pages ; Rémy n'en extrait que le texte.
+  & npm ci --omit=dev --omit=optional --ignore-scripts --no-audit --no-fund --loglevel=error
   if ($LASTEXITCODE -ne 0) { throw "npm ci a échoué" }
 } finally { Pop-Location }
 

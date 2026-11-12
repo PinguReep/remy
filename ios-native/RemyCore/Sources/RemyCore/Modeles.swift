@@ -1250,11 +1250,13 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
     public var mesures: MesuresReponse?
     /// Le code d'incident d'une erreur de la tour (« R-7KQ2M »).
     public var codeErreur: String?
+    /// Les pièces jointes d'un message de Sam (pieces-v1).
+    public var pieces: [PieceJointe] = []
 
     public init(id: UUID = UUID(), deToi: Bool, texte: String, puce: String? = nil, proposition: Proposition? = nil,
                 indexMessage: Int? = nil, statut: String? = nil, erreur: String? = nil, enCours: Bool = false,
                 question: String? = nil, auteur: String = "Rémy", secours: Bool = false, autorisation: Autorisation? = nil,
-                mesures: MesuresReponse? = nil) {
+                mesures: MesuresReponse? = nil, pieces: [PieceJointe] = []) {
         self.id = id
         self.deToi = deToi
         self.texte = texte
@@ -1269,6 +1271,7 @@ public struct LigneChat: Identifiable, Equatable, Sendable {
         self.secours = secours
         self.autorisation = autorisation
         self.mesures = mesures
+        self.pieces = pieces
     }
 }
 
@@ -1340,6 +1343,10 @@ public final class ChatModel {
     public private(set) var fileEnvoi: [String] = []
     /// Une demande d'arrêt est en route vers le serveur.
     public private(set) var arretEnCours = false
+    /// Les pièces jointes du composeur, pas encore parties (12/11).
+    public private(set) var piecesEnAttente: [PieceAEnvoyer] = []
+    /// Les originaux déjà relus depuis la tour (vignettes du fil), en mémoire.
+    @ObservationIgnored private var originaux: [String: Data] = [:]
 
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored var surSujetsTraites: (() -> Void)?
@@ -1360,6 +1367,60 @@ public final class ChatModel {
     public var jauge: JaugeContexte { JaugeContexte.de(lignes) }
 
     public var compactageDisponible: Bool { app?.serveur?.sait("compactage-v1") == true }
+
+    // MARK: Pièces jointes (pieces-v1, 12/11)
+
+    /// Le trombone : la tour sait recevoir et lire les pièces.
+    public var piecesDisponibles: Bool { app?.serveur?.sait(PiecesJointes.capacite) == true }
+
+    /// Ajoute une pièce au composeur, ou dit pourquoi non. Vrai si ajoutée.
+    @discardableResult
+    public func ajouterPiece(_ p: PieceAEnvoyer) -> Bool {
+        if let r = PiecesJointes.refus(nom: p.nom, taille: p.taille, deja: piecesEnAttente.count) {
+            app?.dire(r)
+            return false
+        }
+        piecesEnAttente.append(p)
+        return true
+    }
+
+    /// Retire une pièce du composeur (déjà sur la tour : elle l'efface).
+    public func retirerPiece(_ id: UUID) {
+        guard let i = piecesEnAttente.firstIndex(where: { $0.id == id }), !piecesEnAttente[i].envoi else { return }
+        let p = piecesEnAttente.remove(at: i)
+        if let f = p.fiche, let c = p.ficheConversation {
+            Task { try? await api.retirerPiece(conversation: c, piece: f.id) }
+        }
+    }
+
+    /// L'original d'une pièce du fil ouvert (relu une fois, puis gardé en mémoire).
+    public func originalPiece(_ id: String) async -> Data? {
+        if let d = originaux[id] { return d }
+        guard let conv = idCourant, let d = try? await api.piece(conversation: conv, piece: id) else { return nil }
+        if originaux.count > 40 { originaux.removeAll() }
+        originaux[id] = d
+        return d
+    }
+
+    /// Envoie les pièces du composeur dans `convId` ; rend leurs fiches, ou lève.
+    private func envoyerPieces(_ pieces: [PieceAEnvoyer], convId: String) async throws -> [PieceJointe] {
+        var fiches: [PieceJointe] = []
+        for p in pieces {
+            if let f = p.fiche, p.ficheConversation == convId {
+                fiches.append(f)
+                continue
+            }
+            if let i = piecesEnAttente.firstIndex(where: { $0.id == p.id }) { piecesEnAttente[i].envoi = true }
+            defer { if let i = piecesEnAttente.firstIndex(where: { $0.id == p.id }) { piecesEnAttente[i].envoi = false } }
+            let f = try await api.envoyerPiece(conversation: convId, p)
+            if let i = piecesEnAttente.firstIndex(where: { $0.id == p.id }) {
+                piecesEnAttente[i].fiche = f
+                piecesEnAttente[i].ficheConversation = convId
+            }
+            fiches.append(f)
+        }
+        return fiches
+    }
 
     /// Résumer le début du fil maintenant (GLM, sur les machines de Sam) : la
     /// suite repart plus légère, rien n'est effacé. Vrai si c'est fait.
@@ -1467,6 +1528,8 @@ public final class ChatModel {
         modeRetenir = false
         titreEnAttente = nil
         fileEnvoi = []
+        piecesEnAttente = []
+        originaux = [:]
         privee = false
         etatRecherchePrivee = .inconnu
         brouillonPrive = ""
@@ -1583,7 +1646,8 @@ public final class ChatModel {
                 auteur: auteur,
                 secours: m.tier == "dégradé",
                 autorisation: demande,
-                mesures: m.mesures
+                mesures: m.mesures,
+                pieces: m.pieces ?? []
             )
         }
     }
@@ -1741,7 +1805,7 @@ public final class ChatModel {
     /// Jamais pendant une réponse, ni avec un brouillon ou un message en file.
     @discardableResult
     public func ouvrirFilDuJour(maintenant: Date = Date()) -> Bool {
-        guard idCourant != nil, !envoi, fileEnvoi.isEmpty, origine == nil,
+        guard idCourant != nil, !envoi, fileEnvoi.isEmpty, piecesEnAttente.isEmpty, origine == nil,
               brouillon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               Fils.aRefermer(derniereActivite: activiteLe, maintenant: maintenant) else { return false }
         fermer()
@@ -1858,7 +1922,9 @@ public final class ChatModel {
 
     private func envoyerUn(_ brut: String, appel: Bool) async -> String? {
         let texte = brut.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !texte.isEmpty, !envoi else { return nil }
+        // Les pièces du composeur partent avec le message (jamais en mode appel).
+        let pieces = appel ? [] : piecesEnAttente
+        guard !texte.isEmpty || !pieces.isEmpty, !envoi else { return nil }
         if lectureSeule {
             app?.dire("Conversation importée : touche « Continuer avec Rémy » pour lui en parler.")
             return nil
@@ -1922,15 +1988,32 @@ public final class ChatModel {
             }
         }
         guard generation == g, let convId = idCourant else { return nil }
+        // Les pièces d'abord : la tour les range (chiffrées) et les lit. Un
+        // échec : rien ne part, le texte revient, les pièces restent.
+        var fiches: [PieceJointe] = []
+        if !pieces.isEmpty {
+            do {
+                fiches = try await envoyerPieces(pieces, convId: convId)
+            } catch {
+                if generation == g { envoi = false }
+                rendreAuComposeur(texte, prive: privee, appel: appel)
+                if let e = error as? ErreurAPI, e == .nonConnecte { app?.signaler(e); return nil }
+                app?.dire("Pièce jointe pas envoyée, rien n'est parti : \(error.localizedDescription)")
+                return nil
+            }
+            guard generation == g else { return nil }
+            let parties = Set(pieces.map(\.id))
+            piecesEnAttente.removeAll { parties.contains($0.id) }
+        }
         // Une demande d'autorisation en attente : « oui » / « non » y répond,
         // toute autre question la remplace. La tour tranche ; on relit après.
         let demandeEnAttente = lignes.contains { $0.autorisation?.enAttente == true }
-        lignes.append(LigneChat(deToi: true, texte: texte))
+        lignes.append(LigneChat(deToi: true, texte: texte, pieces: fiches))
         let reponse = LigneChat(deToi: false, texte: "", enCours: true, question: texte)
         lignes.append(reponse)
         let id = reponse.id
 
-        let b = await lire(api.envoyerMessage(conversation: convId, texte: texte, appel: appel),
+        let b = await lire(api.envoyerMessage(conversation: convId, texte: texte, appel: appel, pieces: fiches.map(\.id)),
                            ligne: id, convId: convId, generation: g)
         if b.sessionExpiree { return nil }
         // Fil changé entre-temps : le serveur finit seul, rien à toucher ici.
