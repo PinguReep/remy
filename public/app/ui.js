@@ -373,6 +373,11 @@ Object.assign(CHEMINS, {
   plateauRanger: "M4 13h4l1.5 3h5L16 13h4M4 13l2-8h12l2 8v6H4zM12 4v7M9 8.5l3 3 3-3",
   panier: "M3 4h2.2l2.3 11h10.8L20.5 7H6.4M9 20h.01M17 20h.01",
   note: "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5",
+  // Pièces jointes du chat (12/11).
+  trombone: "M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.2-8.2a3.4 3.4 0 0 1 4.8 4.8l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6",
+  image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9.5a1 1 0 1 0 0 .01",
+  fichier: "M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h4",
+  telecharger: "M12 4v11M7 10l5 5 5-5M5 20h14",
   calendrier: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5",
   reglage: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
   embranchement: "M6 3v18M6 9c0 4 3 6 7 6h1M18 13a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",

@@ -124,7 +124,9 @@ if ($branche -and -not $AutoriserBranche) {
 if ($LASTEXITCODE -ne 0) { throw "Version introuvable : $Ref" }
 Push-Location $app
 try {
-  & npm ci --omit=dev --no-audit --no-fund --loglevel=error
+  # --omit=optional : pdfjs-dist (lecture des PDF joints, 12/11) propose @napi-rs/canvas,
+  # utile seulement pour dessiner les pages ; Rémy n'en extrait que le texte.
+  & npm ci --omit=dev --omit=optional --no-audit --no-fund --loglevel=error
   if ($LASTEXITCODE -ne 0) { throw "npm ci a échoué" }
 } finally { Pop-Location }
 

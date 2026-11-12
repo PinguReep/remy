@@ -16,6 +16,11 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("pieces-jointes", 9, "12 nov.", "Joindre un fichier à Rémy", "pieces-v1", [
+    p("trombone", "Le trombone, ou Ctrl+V", "Dans Rémy, le trombone à gauche du champ joint une image, un PDF ou un texte (.txt, .md) ; coller une capture ou déposer un fichier marche aussi. 4 pièces de 10 Mo au plus par message."),
+    p("oeil", "Ce que Rémy en lit", "Un texte, un PDF : leur contenu. Une image : son texte reconnu par la tour, et sa description si le modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non (essai : Réglages › Diagnostic)."),
+    p("cadenas", "Gardée chez toi", "L'original reste chiffré sur ta tour : tu le revois dans le fil (clic pour l'agrandir ou le télécharger). Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),

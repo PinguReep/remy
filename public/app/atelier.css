@@ -1586,3 +1586,42 @@ dialog.trancher-revue .feuille-corps { flex: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Pièces jointes du chat (12/11) ---------- */
+.composeur .boite .btn.remy-joindre { min-width: 44px; min-height: 44px; align-self: flex-end; margin-left: -8px; }
+.remy-pieces-attente-zone { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.remy-piece-attente { display: flex; align-items: center; gap: 8px; max-width: min(100%, 320px); min-height: 48px; padding: 4px 2px 4px 6px; border: 1px solid var(--filet); border-radius: 14px; background: var(--surface); }
+.remy-piece-attente.envoi { opacity: .75; }
+.remy-piece-attente.envoi .aide::after { content: ""; display: inline-block; width: 10px; height: 10px; margin-left: 6px; border-radius: 50%; border: 2px solid var(--encre-3); border-top-color: transparent; animation: tourne 800ms linear infinite; vertical-align: -1px; }
+.remy-piece-attente.erreur { border-color: var(--danger); }
+.remy-piece-attente.erreur .aide { color: var(--danger); }
+.remy-piece-mini { width: 38px; height: 38px; object-fit: cover; border-radius: 9px; flex: none; }
+.remy-piece-ic { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 9px; background: var(--fond-2); color: var(--encre-2); flex: none; }
+.remy-piece-texte { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.remy-piece-texte .nom, .remy-piece-legende .nom { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remy-piece-texte .aide { font-size: 12.5px; }
+.msg-sam.avec-pieces { display: flex; flex-direction: column; gap: 8px; white-space: normal; }
+.msg-sam.avec-pieces .msg-sam-texte { white-space: pre-wrap; }
+.remy-pieces { display: flex; flex-wrap: wrap; gap: 8px; }
+.remy-piece-image { display: flex; flex-direction: column; gap: 6px; width: 220px; max-width: 100%; padding: 6px; border: 1px solid var(--filet); border-radius: 14px; background: var(--surface); color: var(--encre); text-align: left; cursor: zoom-in; }
+.remy-piece-image img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 9px; background: var(--fond-2); display: block; }
+.remy-piece-image:focus-visible, .remy-piece-fichier:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.remy-piece-legende { display: flex; flex-direction: column; min-width: 0; padding: 0 4px 2px; line-height: 1.3; }
+.remy-piece-fichier { display: flex; align-items: center; gap: 10px; min-height: 56px; max-width: 100%; width: 300px; padding: 8px 12px 8px 8px; border: 1px solid var(--filet); border-radius: 14px; background: var(--surface); color: var(--encre); text-decoration: none; }
+.remy-piece-fichier:hover, .remy-piece-image:hover { border-color: var(--encre-3); }
+.remy-piece-fichier .remy-piece-texte { flex: 1; }
+.remy-piece-dl { color: var(--encre-3); flex: none; }
+.remy-piece-mention { font-size: 12.5px; line-height: 1.3; color: var(--encre-3); overflow-wrap: anywhere; }
+.remy-piece-mention.lue { color: var(--succes); }
+.remy-piece-feuille .feuille-corps { display: grid; place-items: center; }
+.remy-piece-grande { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; }
+.remy-fil.depot { outline: 2px dashed var(--signal); outline-offset: -10px; }
+.reglages-essai-pieces { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.reglages-essai-pieces .ligne-essai { display: flex; gap: 8px; align-items: flex-start; }
+.reglages-essai-pieces .ligne-essai .ic { flex: none; margin-top: 2px; }
+.reglages-essai-pieces .ligne-essai.ok .ic { color: var(--succes); }
+.reglages-essai-pieces .ligne-essai.non .ic { color: var(--danger); }
+@media (max-width: 720px) {
+  .remy-piece-image { width: min(100%, 260px); }
+  .remy-piece-fichier { width: 100%; }
+}

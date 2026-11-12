@@ -201,9 +201,12 @@ public struct Message: Codable, Equatable, Sendable {
     public var autorisation: Autorisation?
     /// Débit et contexte de la réponse (jauge-v1) ; absent avant le 19/10.
     public var mesures: MesuresReponse?
+    /// Les pièces jointes d'un message de Sam (pieces-v1, 12/11).
+    public var pieces: [PieceJointe]?
 
     public init(role: String, content: String, model: String? = nil, tier: String? = nil, usd: Double? = nil,
-                proposal: Proposition? = nil, autorisation: Autorisation? = nil, mesures: MesuresReponse? = nil) {
+                proposal: Proposition? = nil, autorisation: Autorisation? = nil, mesures: MesuresReponse? = nil,
+                pieces: [PieceJointe]? = nil) {
         self.role = role
         self.content = content
         self.model = model
@@ -212,6 +215,7 @@ public struct Message: Codable, Equatable, Sendable {
         self.proposal = proposal
         self.autorisation = autorisation
         self.mesures = mesures
+        self.pieces = pieces
     }
 
     public var estDeToi: Bool { role == "user" }
