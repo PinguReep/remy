@@ -661,7 +661,6 @@ export function phraseDeconnexion(n) {
 }
 
 /** « 1 nouvelle à découvrir », sinon de quoi revoir les tutoriels. */
-export const sousTitreNouveautes = (n) => (n > 0 ? `${n} nouvelle${n > 1 ? "s" : ""} à découvrir` : "Les tutoriels des mises à jour, à revoir");
 
 // --- Les sections ---
 
@@ -1153,14 +1152,40 @@ const SECTIONS_RENDU = {
       h("p", { class: "aide" }, "Compté sur cet ordinateur seulement : un nom de fonction et un nombre par jour, jamais un texte, un titre ou un lieu. Rien ne part. Gardé 60 jours."));
   },
 
+  /**
+   * Le suivi des tutoriels (12/11) : « 3 à découvrir · 1 commencé · 22
+   * suivis », puis chaque tutoriel rangé par état (à découvrir d'abord), son
+   * état en mots et sa date ; un clic l'ouvre (un commencé reprend à sa page).
+   * « Tout marquer comme suivi », avec « Annuler ».
+   */
   async nouveautes() {
     const m = nouveautes.modele({ sait });
-    return carte("Nouveautés", sousTitreNouveautes(m.aDecouvrir()),
-      h("ul", { class: "liste reglages-nouveautes" }, m.historique().map((n) => h("li", null, ligne(n.titre, m.existe(n) ? n.date : `${n.date} · arrive avec la mise à jour de ta tour`, async () => {
-        await nouveautes.revoir(n, m);
-        dessinerMaitre();
-        dessinerSection();
-      }, { ic: n.pages[0]?.icone || "etincelles", fin: m.estNouvelle(n) ? h("span", { class: "pastille" }, "Nouveau") : null })))));
+    const redessiner = () => {
+      dessinerMaitre();
+      dessinerSection();
+    };
+    const aMarquer = m.aMarquer().length;
+    return carte("Nouveautés", "Gardé sur cet ordinateur. Au lancement, Rémy ne présente que les tutoriels des deux dernières mises à jour ; les autres t'attendent ici.",
+      h("div", { class: "rangee reglages-nouveautes-tete" },
+        h("p", { class: "reglages-nouveautes-resume", role: "status" }, m.resume()),
+        aMarquer ? bouton("Tout marquer comme suivi", { classe: "papier", icone: "coche", onclick: () => {
+          const r = m.toutMarquerSuivi();
+          redessiner();
+          dire(`${r.n} tutoriel${r.n > 1 ? "s" : ""} marqué${r.n > 1 ? "s" : ""} comme suivi${r.n > 1 ? "s" : ""}.`, { genre: "succes", action: { libelle: "Annuler", faire: () => {
+            r.annuler();
+            redessiner();
+          } } });
+        } }) : null),
+      m.groupes().map((g) => [
+        sousTitre(`${g.titre} (${g.entrees.length})`),
+        h("ul", { class: "liste reglages-nouveautes", dataset: { groupe: g.id } }, g.entrees.map((n) => {
+          const etat = nouveautes.ETATS[m.etat(n)];
+          return h("li", null, ligne(n.titre, m.libelle(n), async () => {
+            await nouveautes.revoir(n, m);
+            redessiner();
+          }, { ic: n.pages[0]?.icone || "etincelles", fin: h("span", { class: `nouveautes-etat ${m.etat(n)}`, title: etat.mot, "aria-hidden": "true" }, icone(etat.icone)) }));
+        })),
+      ]));
   },
 
   async diagnostic() {

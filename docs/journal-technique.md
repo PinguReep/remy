@@ -4,6 +4,55 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Le suivi des tutoriels, et plus de vieux tutoriels au lancement
+
+Une mise à jour a présenté un tutoriel vieux de plusieurs semaines, sur une
+fonction en train de changer, et rien ne disait ce qui avait été ouvert ou
+suivi. Mêmes règles des deux côtés (`RemyCore/Nouveautes.swift`,
+`public/app/nouveautes.js`, mêmes cas de test).
+
+- **Trois états, gardés sur l'appareil** : à découvrir (jamais ouvert),
+  commencé (ouvert, dernière page pas atteinte), suivi (dernière page
+  atteinte), avec la date et la page la plus loin. Une page affichée est
+  notée tout de suite (ouverture comprise), jamais en arrière ; un tutoriel
+  commencé rouvert reprend à sa page, un suivi repart du début. Clé
+  `nouveautes.suivi` (iPhone, JSON) / `remy-nouveautes-suivi` (site).
+- **La reprise des « vus »** : ils deviennent **commencés**, datés du jour de
+  la reprise (« ouvert avant le 12 nov. »), pas « suivis ». Un « vu » disait
+  qu'une page au moins avait été affichée — ou rien, pour l'historique marqué
+  vu au premier lancement : l'appeler « suivi » affirmerait ce qu'on ne sait
+  pas. Rien ne redevient « à découvrir », rien ne revient au lancement, et
+  « Tout marquer comme suivi » (avec « Annuler ») range le reste d'un geste.
+  L'ancienne clé n'est lue qu'une fois ; la reprise du build 37 passe avant.
+- **Présenté d'office : les deux dernières séries** (`seriesPresentees` /
+  `SERIES_PRESENTEES`), à découvrir, la tour connaissant la fonction, jamais
+  par-dessus une saisie, 6 pages au plus par feuille. Plus ancien (mise à jour
+  sautée, tour à jour plus tard) : il attend dans Réglages › Nouveautés. Une
+  installation neuve garde sa règle : rien d'avant la série du premier
+  lancement (`nouveautes.depart`).
+- **Retirer, remplacer.** Retirer : l'id dans `retirees` / `RETIREES` (avec la
+  raison), l'entrée hors du catalogue ; un état gardé sous cet id est ignoré.
+  Remplacer : la nouvelle entrée, avec **son propre id** (elle part « à
+  découvrir » pour qui avait suivi l'ancienne), porte `remplace: "<ancienne>"` ;
+  l'ancienne sort du suivi dès que la tour connaît la nouvelle (avant, c'est
+  encore elle qui décrit la fonction). `aRemplacer` : plus présentée d'office,
+  « bientôt remplacé » dans le suivi — c'est l'état de « priorites » (Ce qui
+  compte), dont la remplaçante viendra avec le classement proposé par Rémy.
+- **L'audit du catalogue** contre le code : retirées `jauge` (la vitesse
+  « s'affiche pendant qu'il écrit » : masquée par défaut depuis le 27/10),
+  `compactage` (doublon de la deuxième page de `jauge-retour`) et
+  `bilan-coucher` (annonce passée d'une heure par défaut) ; corrigés le menu du
+  titre (« Rendre cette conversation privée »), les reports d'un rappel
+  (« Ce soir 19:00 », « Demain 9:00 »), le chemin des idées (« Une pensée sans
+  action claire » › « Dans Motion », pas de « Capture » dans Réglages), le nom
+  du modèle (dans la jauge, plus sous chaque réponse sur l'iPhone), le titre
+  « de retour » de la jauge ; sur le site, « Réglages › À trancher et revue ».
+- **L'écran** : « N à découvrir · M commencés · K suivis », puis les rubriques
+  À découvrir, Commencés, Suivis, Avec la mise à jour de ta tour ; l'état se
+  lit en mots (« Commencé le 3 nov. · page 2 sur 3 ») et en forme (cercle vide,
+  à moitié, coché ; sur le site étincelles, horloge, coche), jamais par la
+  couleur seule. Capture CI `6e2-nouveautes-suivi-clair` (`REMY_DEMO_ECRAN=nouveautes-suivi`).
+
 ## 2026-11-12 — Chercher dans Projets
 
 Le champ de Projets (site) ne filtrait que les noms de la colonne ; l'iPhone n'en

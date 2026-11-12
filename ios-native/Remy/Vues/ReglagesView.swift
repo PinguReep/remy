@@ -224,8 +224,7 @@ struct ReglagesView: View {
             .autocorrectionDisabled()
             .onSubmit(of: .search) { allerAuPremier() }
             .sheet(item: $tutoriel) { lot in
-                NouveautesFeuille(lot: lot) { tutoriel = nil }
-                    .onDisappear { app.nouveautes.marquerVues(lot) }
+                NouveautesFeuille(lot: lot, fini: { tutoriel = nil }, pageVue: { app.nouveautes.noter(lot, page: $0) })
             }
             .task { await demoRecherche() }
             .navigationDestination(isPresented: $diagnostic) { DiagnosticVue() }
@@ -267,7 +266,9 @@ struct ReglagesView: View {
         .task {
             // Captures de la CI : l'écran Modèle, sur le serveur de démo.
             let ecran = ProcessInfo.processInfo.environment["REMY_DEMO_ECRAN"]
-            guard ecran == "modeles" || ecran == "nouveautes-liste" || ecran == "priorites" else { return }
+            guard ecran == "modeles" || ecran == "nouveautes-liste" || ecran == "nouveautes-suivi" || ecran == "priorites" else { return }
+            // Le suivi entamé (12/11) : des commencés et des suivis fictifs.
+            if ecran == "nouveautes-suivi" { app.nouveautes.suiviPourCapture() }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if ecran == "modeles" { modelesOuverts = true } else if ecran == "priorites" { prioritesOuvertes = true } else { nouveautesOuvertes = true }
         }
@@ -519,11 +520,8 @@ struct ReglagesView: View {
         return a.jours.suffix(14).filter { $0.messages > 0 || $0.actif == true }.count
     }
 
-    /// « 2 nouvelles », sinon de quoi revoir les tutoriels.
-    private var nouveautesSous: String {
-        let n = app.nouveautes.historique.filter { app.nouveautes.estNouvelle($0) && app.nouveautes.existe($0) }.count
-        return n > 0 ? "\(n) nouvelle\(n > 1 ? "s" : "") à découvrir" : "Les tutoriels des mises à jour, à revoir"
-    }
+    /// Le suivi des tutoriels (12/11) : « 3 à découvrir · 1 commencé · 22 suivis ».
+    private var nouveautesSous: String { app.nouveautes.resume }
 
     /// « Coupée », « Aujourd'hui : 3 h 10 actives », « ActivityWatch ne répond pas ».
     private var activitePCSous: String {

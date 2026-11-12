@@ -235,7 +235,7 @@ enum Demo {
                     app.dictee.interrompre()
                 }
             }
-        case "reglages", "lieux", "modeles", "nouveautes-liste", "activite-pc", "priorites", "usage":
+        case "reglages", "lieux", "modeles", "nouveautes-liste", "nouveautes-suivi", "activite-pc", "priorites", "usage":
             app.onglet = .aujourdhui
             app.reglagesOuverts = true
         case "projets", "liste", "rappels", "filtre", "noeud", "rappel-quand", "rappel-fiche", "rappel-fiche-lieu",
