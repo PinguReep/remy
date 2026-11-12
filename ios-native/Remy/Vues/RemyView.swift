@@ -1322,6 +1322,7 @@ private struct LigneAction: View {
         case "creer": return "Ajouter"
         case "terminer": return "Marquer fait"
         case "supprimer": return "Supprimer"
+        case "attendre": return "Faire attendre"
         default: return "Modifier"
         }
     }

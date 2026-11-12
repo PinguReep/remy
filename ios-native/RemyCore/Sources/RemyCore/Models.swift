@@ -482,6 +482,11 @@ public struct ActionProposee: Codable, Equatable, Sendable {
     public var bloquee_par: [String]?
     public var attend_ids: [String]?
     public var apres: [String]?
+    /// « attendre » (projets-bloques-v1) : ce qui attend (un projet, un
+    /// dossier, une tâche ou la ref d'une création), et les noms de ce qui est déjà là.
+    public var cible: String?
+    public var cible_nom: String?
+    public var noms_ids: [String: String]?
 
     public init(type: String? = nil, nom: String? = nil, nouveau_nom: String? = nil, titre: String? = nil,
                 nouveau_titre: String? = nil, echeance: String? = nil, debut: String? = nil, fin: String? = nil,
@@ -509,6 +514,7 @@ public struct ActionProposee: Codable, Equatable, Sendable {
         case "creer": return "creer"
         case "terminer": return "terminer"
         case "supprimer": return "supprimer"
+        case "attendre": return "attendre"
         default: return "modifier"
         }
     }
@@ -862,6 +868,8 @@ public struct ElementJour: Codable, Sendable, Equatable, Identifiable {
     public var debloque: [LienTache]?
     public var attente: Bool?
     public var menaceBlocage: String?
+    /// Son projet (ou un dossier parent) attend autre chose (projets-bloques-v1).
+    public var projetBloque: ProjetBloque?
 
     public var estRendezVous: Bool { type == "rdv" }
     /// Une activité à soi, à heure fixe dans l'agenda (pas un vrai rendez-vous).
@@ -912,6 +920,7 @@ public struct TacheResume: Codable, Sendable, Equatable, Identifiable {
     public var debloque: [LienTache]?
     public var attente: Bool?
     public var menaceBlocage: String?
+    public var projetBloque: ProjetBloque?
 
     public init(id: String, titre: String, echeance: Millis? = nil, projet: String? = nil, priorite: String? = nil,
                 bloquee: Bool? = nil, raison: String? = nil, duree: Int? = nil) {
@@ -1071,6 +1080,12 @@ public struct Projet: Codable, Sendable, Equatable, Identifiable {
     public var prochaine: TacheResume?
     /// Les tâches ouvertes du projet (dossiers-v1), pour les ranger.
     public var liste: [TacheResume]?
+    /// projets-bloques-v1 : ce qu'il attend, ce qu'il retient, « fini » dit
+    /// par Sam, et le parent qui attend (une branche attend avec son projet).
+    public var bloquePar: [LienTache]?
+    public var debloque: [LienTache]?
+    public var fini: Bool?
+    public var parentBloque: ProjetBloque?
 
     public init(id: String, nom: String, statut: String? = nil, taches: Int, enRetard: Int? = nil, prochaine: TacheResume? = nil) {
         self.id = id

@@ -4,6 +4,55 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+
+## 2026-11-12 — Un projet « bloqué par » une tâche ou un autre projet
+
+Suite des dépendances entre tâches : un nœud — un projet Motion
+(`motion:<id>`) ou un dossier de Remy (`dossier:<id>`), le pivot déjà retenu
+ailleurs — peut attendre une tâche ou un autre nœud (« Carrosserie » ne
+commence que quand « Garage » est fini). Capacité `projets-bloques-v1`,
+migration 12.
+
+- **La plus petite représentation.** La même table `dependances_taches` :
+  `tache_id` et `bloquante_id` acceptent les identifiants préfixés (un
+  identifiant de tâche Motion n'a jamais ce préfixe). La migration 12 ajoute
+  seulement `bloquante_vue` (on a déjà vu des tâches ouvertes au nœud attendu).
+  « C'est fini » se garde comme l'activité faite : `etats_taches.fait_a` sur
+  l'identifiant du nœud. Aucune nouvelle route : `PUT /api/taches/:id/etat`
+  (`bloqueePar`, `fait`) et `GET /api/dependances` (`noeuds`, et `dans` : ce
+  qui contient chaque élément).
+- **Pas de boucle, tâches et projets mêlés.** Le graphe d'attente distingue le
+  DÉBUT et la FIN d'un nœud : une tâche attend ses bloquantes et le début de
+  ses nœuds ; le début d'un nœud attend ses bloquantes et le début de son
+  parent ; la fin d'un nœud attend son début, ses tâches et la fin de ses
+  sous-dossiers. Un lien boucle si la fin de la bloquante attend (même de
+  loin) le début de la cible : un projet ne peut attendre ni une de ses
+  tâches, ni sa branche, ni l'inverse. L'appartenance vient des rattachements,
+  des dossiers et de la liste Motion de la tour (le projet de chaque tâche).
+  Un rangement fait APRÈS coup peut créer une attente circulaire : elle se
+  voit (les deux bloqués) et se défait d'un « Retirer » ; non vérifié au rangement.
+- **Les conséquences, sans un lien par tâche.** `annoterTaches` pose
+  `projetBloque: { id, nom, par }` sur chaque tâche d'un nœud bloqué (ou d'un
+  dossier dont un parent l'est), `bloquee: true` et, pour les apps d'avant,
+  `raison: « projet « X » après « Y » »`. Tout ce qui écarte déjà une tâche
+  bloquée l'écarte donc ; le conseil, les menaces, l'instantané du chat et À
+  trancher disent ce qu'attend son projet. La menace d'échéance prend la fin
+  prévue de ce qui est attendu : pour un projet, la plus tardive de ses
+  tâches ouvertes.
+- **« Fini », la règle dite à l'écran.** Rémy ne lit pas l'état des projets
+  Motion de façon fiable (liste paginée, statuts propres à chaque espace) :
+  un nœud attendu est fini quand Sam le dit (« C'est fini »), ou quand une
+  liste Motion lue EN ENTIER n'a plus aucune de ses tâches ouvertes alors
+  qu'on lui en a déjà vu — un projet tout neuf, encore vide, n'est jamais
+  « fini ». Après une coche dans Rémy, la liste en mémoire (complète, moins
+  la tâche finie) suffit ; « Annuler » rétablit, « Pas fini, finalement »
+  aussi. Trace « Débloqué » dans l'Historique.
+- **Rémy le propose.** Une action `attendre` dans `motion_proposer` : `cible`
+  (projet, dossier, tâche, par identifiant ou nom exact, ou la ref d'une
+  création) et `bloquee_par` ; rien n'est écrit chez Motion, le lien est posé
+  après le « Oui », annulable depuis l'Historique. Les projets portent leur
+  identifiant `[motion:…]` dans l'instantané du chat.
+
 ## 2026-11-12 — Une tâche « bloquée par » une autre
 
 Une tâche peut attendre qu'une ou plusieurs autres soient finies (« faire

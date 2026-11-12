@@ -49,9 +49,9 @@ struct GererPanneau: View {
                 Text(e.sansCreneau ? quandSansCreneau : horaires(maintenant: maintenant, reste: reste))
                     .font(Police.mono(12))
                     .foregroundStyle(e.sansCreneau && e.retard == true ? Palette.danger : Palette.encre2)
-                if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar) }
-                // En attente d'une tâche ET de quelque chose (le bon de commande) : les deux se disent.
-                if !(e.bloqueePar ?? []).isEmpty, e.attente == true { MarqueBloquee(raison: e.raison) }
+                if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar, projet: e.projetBloque) }
+                // En attente d'une tâche (ou de son projet) ET de quelque chose (le bon de commande) : les deux se disent.
+                if !(e.bloqueePar ?? []).isEmpty || e.projetBloque != nil, e.attente == true { MarqueBloquee(raison: e.raison) }
                 if let m = e.menaceBlocage { Risque(texte: m) }
                 if let d = Dependances.marqueDebloque(e.debloque) { MarqueDebloque(texte: d) }
             }
@@ -69,7 +69,7 @@ struct GererPanneau: View {
                 }
                 if app.serveur?.sait("taches-etat-v1") == true {
                     // « Reprendre » lève l'attente manuelle, jamais un « bloquée par » (il se retire plus bas).
-                    if Dependances.attenteManuelle(bloquee: e.bloquee, par: e.bloqueePar, attente: e.attente) {
+                    if Dependances.attenteManuelle(bloquee: e.bloquee, par: e.bloqueePar, attente: e.attente, projet: e.projetBloque) {
                         action("Reprendre", detail: ((e.bloqueePar ?? []).isEmpty ? e.raison : nil) ?? "Elle n'est plus en attente", symbole: "play.circle") {
                             ui.gerer = nil
                             Task { await app.tableau.bloquer(id: e.id, titre: e.titre, bloquee: false) }
@@ -85,7 +85,7 @@ struct GererPanneau: View {
                             Task { await app.tableau.arreter(id: e.id, titre: e.titre) }
                         }
                     } else if e.sansCreneau || Jour.etat(e, maintenant: maintenant) == .avenir {
-                        action("Commencer maintenant", detail: e.bloqueePar?.first.map { "Elle attend encore « \($0.libelle) » : commencer quand même" }
+                        action("Commencer maintenant", detail: (e.bloqueePar?.first ?? e.projetBloque?.par.first).map { "Elle attend encore « \($0.libelle) » : commencer quand même" }
                                ?? "Elle devient ta tâche en cours, pour \(Format.duree(minutes: e.duree ?? e.dureeTotale))", symbole: "play.circle") {
                             ui.gerer = nil
                             Task { await app.tableau.commencer(id: e.id, titre: e.titre, duree: e.duree) }
@@ -779,15 +779,18 @@ struct SectionBloqueePar: View {
     let id: String
     let titre: String
     let initiale: [LienTache]
+    /// Un projet ou un dossier (projets-bloques-v1) : « Bloqué par… », au masculin.
+    var noeud = false
     @State private var liste: [LienTache] = []
     @State private var envoi: String?
     @State private var choisir = false
 
     var body: some View {
+        let mots = Dependances.textes(noeud: noeud)
         VStack(alignment: .leading, spacing: 8) {
-            TitreSection(texte: "Bloquée par…")
+            TitreSection(texte: mots.titre)
             if liste.isEmpty {
-                Text("Elle n'attend aucune autre tâche.")
+                Text(mots.rien)
                     .font(Police.texte(14))
                     .foregroundStyle(Palette.encre2)
             }
@@ -800,6 +803,8 @@ struct SectionBloqueePar: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button(envoi == b.id ? "…" : "Retirer") { retirer(b) }
+                        // Dans une ligne de List (Projets), seul ce bouton répond.
+                        .buttonStyle(.borderless)
                         .font(Police.texte(14, .semibold))
                         .foregroundStyle(Palette.signal)
                         .frame(minWidth: 44, minHeight: 44)
@@ -815,7 +820,7 @@ struct SectionBloqueePar: View {
                 Haptique.leger()
                 choisir = true
             } label: {
-                Label(liste.isEmpty ? "Choisir la tâche qu'elle attend…" : "Ajouter une autre tâche…", systemImage: "plus")
+                Label(liste.isEmpty ? mots.choisir : mots.ajouter, systemImage: "plus")
                     .font(Police.texte(15, .medium))
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
@@ -823,7 +828,7 @@ struct SectionBloqueePar: View {
             .buttonStyle(.plain)
             .foregroundStyle(Palette.encre)
             .disabled(envoi != nil)
-            Text("Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien : il peut la planifier quand même, Rémy ne te la proposera pas avant.")
+            Text(mots.note)
                 .font(Police.texte(12))
                 .foregroundStyle(Palette.encre3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -838,11 +843,12 @@ struct SectionBloqueePar: View {
 
     private func retirer(_ b: LienTache) {
         let nouvelle = liste.filter { $0.id != b.id }
-        enregistrer(nouvelle, cle: b.id, phrase: nouvelle.isEmpty ? "« \(titre) » n'attend plus aucune tâche." : "« \(titre) » n'attend plus « \(b.libelle) ».")
+        let mots = Dependances.textes(noeud: noeud)
+        enregistrer(nouvelle, cle: b.id, phrase: nouvelle.isEmpty ? "« \(titre) » \(mots.plusRien)." : "« \(titre) » n'attend plus « \(b.libelle) ».")
     }
 
     private func ajouter(_ b: LienTache) {
-        enregistrer(liste + [b], cle: b.id, phrase: "« \(titre) » attend « \(b.libelle) » : Rémy ne te la proposera pas avant.")
+        enregistrer(liste + [b], cle: b.id, phrase: Dependances.textes(noeud: noeud).attend(titre, b.libelle))
     }
 
     private func enregistrer(_ nouvelle: [LienTache], cle: String, phrase: String) {
@@ -882,10 +888,11 @@ struct ChoixBloquante: View {
                         Button("Réessayer") { Task { await lire() } }.frame(minHeight: 44)
                     }
                 } else if let lu {
-                    let liste = Dependances.candidats(lu.taches, tache: id, deja: deja, liens: lu.liens, recherche: recherche)
+                    let tous = lu.taches + (avecNoeuds ? lu.noeuds ?? [] : [])
+                    let liste = Dependances.candidats(tous, tache: id, deja: deja, liens: lu.liens, recherche: recherche)
                     Section {
                         if liste.isEmpty {
-                            Text(Dependances.phraseVide(total: lu.taches.filter { $0.id != id }.count, recherche: recherche))
+                            Text(Dependances.phraseVide(total: tous.filter { $0.id != id }.count, recherche: recherche))
                                 .foregroundStyle(Palette.encre2)
                         }
                         ForEach(liste) { t in
@@ -896,7 +903,7 @@ struct ChoixBloquante: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(t.titre).foregroundStyle(Palette.encre)
-                                    Text(detail(t))
+                                    Text(Dependances.detailChoix(t))
                                         .font(Police.texte(13))
                                         .foregroundStyle(Palette.encre2)
                                 }
@@ -906,7 +913,7 @@ struct ChoixBloquante: View {
                             .buttonStyle(.plain)
                         }
                     } header: {
-                        Text("« \(titre) » ne commencera qu'une fois celle-ci finie")
+                        Text(avecNoeuds ? "« \(titre) » ne commencera qu'une fois ceci fini" : "« \(titre) » ne commencera qu'une fois celle-ci finie")
                     }
                 } else {
                     HStack(spacing: 12) { ProgressView(); Text("Lecture de tes tâches…").foregroundStyle(Palette.encre2) }
@@ -914,8 +921,8 @@ struct ChoixBloquante: View {
                 }
             }
             .listeAtelier()
-            .searchable(text: $recherche, placement: .navigationBarDrawer(displayMode: .always), prompt: "Chercher une tâche")
-            .navigationTitle("Elle attend quelle tâche ?")
+            .searchable(text: $recherche, placement: .navigationBarDrawer(displayMode: .always), prompt: avecNoeuds ? "Chercher une tâche ou un projet" : "Chercher une tâche")
+            .navigationTitle(avecNoeuds ? "Elle attend quoi ?" : "Elle attend quelle tâche ?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
@@ -925,13 +932,8 @@ struct ChoixBloquante: View {
         .task { await lire() }
     }
 
-    /// « Voiture · échéance 14 nov. », ou « Sans échéance ».
-    private func detail(_ t: TacheAChoisir) -> String {
-        var bits: [String] = []
-        if let p = t.projet, !p.isEmpty { bits.append(p) }
-        if let e = t.echeance { bits.append("échéance " + Format.jourCourt(e.date)) }
-        return bits.isEmpty ? "Sans échéance" : bits.joined(separator: " · ")
-    }
+    /// Les projets et dossiers aussi, quand la tour sait les faire attendre.
+    private var avecNoeuds: Bool { app.serveur?.sait("projets-bloques-v1") == true }
 
     private func lire() async {
         erreur = nil

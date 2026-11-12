@@ -61,3 +61,41 @@ test("une échéance menacée par le blocage : la question pour Rémy ne parle p
   assert.match(R.phraseMenacee(m), /avancer ce qu'elle attend, ou repousser son échéance/);
   assert.match(R.phraseMenacee({ titre: "X", phrase: "Due ce soir." }), /Trouve-lui un créneau/);
 });
+
+// --- Les projets bloqués (projets-bloques-v1) ---
+
+test("projets : la marque d'une tâche dont le projet attend, celle du projet et de sa branche", () => {
+  const projet = { id: "motion:pc", nom: "Carrosserie", par: [{ id: "motion:pg", nom: "Garage", noeud: true }] };
+  assert.equal(J.marqueBloquee("projet « Carrosserie » après « Garage »", null, projet), "Projet « Carrosserie » bloqué par « Garage »");
+  assert.equal(J.marqueBloquee(null, [{ id: "a", nom: "Devis" }], projet), "Bloquée par « Devis »", "son propre lien d'abord");
+  assert.equal(J.marqueNoeud({ bloquePar: [{ id: "motion:pg", nom: "Garage" }] }), "Bloqué par « Garage »");
+  assert.equal(J.marqueNoeud({ parentBloque: projet }), "« Carrosserie » attend « Garage »");
+  assert.equal(J.marqueNoeud({}), null);
+  assert.match(J.regleFini("Garage"), /« Garage » est fini pour Rémy quand toutes ses tâches sont terminées .* ou quand tu le dis/);
+});
+
+test("projets : « Carrosserie est débloqué », la carte « Faire attendre »", () => {
+  assert.equal(J.phraseDebloquees([{ id: "motion:pc", nom: "Carrosserie" }]), "« Carrosserie » est débloqué : ses tâches peuvent commencer.");
+  assert.equal(P.verbe({ type: "attendre" }), "Faire attendre");
+  assert.equal(P.detailAction({ type: "attendre", nom: "Carrosserie", apres: ["Garage"] }), "après « Garage »");
+  assert.equal(P.phraseLiens({ results: [{ ok: true, type: "terminer", nom: "Récupérer la voiture", debloquees: [{ id: "motion:pc", nom: "Carrosserie" }] }] }), "« Carrosserie » est débloqué.");
+});
+
+test("projets : choisir parmi tâches ET projets, par nom", () => {
+  const items = [...taches, { id: "motion:pg", titre: "Garage", genre: "projet" }, { id: "dossier:peinture", titre: "Peinture", genre: "dossier" }];
+  assert.deepEqual(D.candidats(items, { tacheId: "motion:pc", recherche: "garage" }).map((t) => t.id), ["a", "motion:pg"], "les tâches datées d'abord, puis les projets");
+  assert.deepEqual(D.candidats(items, { tacheId: "motion:pg", recherche: "peint" }).map((t) => t.id), ["dossier:peinture"]);
+});
+
+test("projets : le choix n'offre ni ses propres tâches, ni son projet, ni ses branches", () => {
+  const items = [
+    { id: "g1", titre: "Récupérer la voiture", dans: ["motion:pg"] },
+    { id: "c1", titre: "Porter chez le carrossier", dans: ["motion:pc"] },
+    { id: "motion:pg", titre: "Garage", genre: "projet" },
+    { id: "motion:pc", titre: "Carrosserie", genre: "projet" },
+    { id: "dossier:peinture", titre: "Peinture", genre: "dossier", dans: ["motion:pc"] },
+  ];
+  assert.deepEqual(D.candidats(items, { tacheId: "motion:pc" }).map((t) => t.id).sort(), ["g1", "motion:pg"]);
+  assert.deepEqual(D.candidats(items, { tacheId: "c1" }).map((t) => t.id).sort(), ["dossier:peinture", "g1", "motion:pg"].sort().filter((x) => x !== "motion:pc"));
+  assert.deepEqual(D.candidats(items, { tacheId: "dossier:peinture" }).map((t) => t.id).sort(), ["c1", "g1", "motion:pg"]);
+});

@@ -180,6 +180,7 @@ extension ElementJour {
         e.debloque = t.debloque
         e.attente = t.attente
         e.menaceBlocage = t.menaceBlocage
+        e.projetBloque = t.projetBloque
         return e
     }
 
@@ -195,6 +196,7 @@ extension ElementJour {
         t.debloque = debloque
         t.attente = attente
         t.menaceBlocage = menaceBlocage
+        t.projetBloque = projetBloque
         return t
     }
 }
