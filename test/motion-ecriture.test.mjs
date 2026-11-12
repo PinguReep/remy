@@ -31,6 +31,8 @@ const serveur = http.createServer((req, res) => {
         id: "t1",
         name: "Appeler le garagiste",
         status: { name: statutT1 },
+        scheduledStart: "2026-11-12T09:30:00.000Z",
+        scheduledEnd: "2026-11-12T09:45:00.000Z",
         workspace: { id: "w2", statuses: [{ name: "Todo" }, { name: "Terminé", isResolvedStatus: true }] },
       });
     }
@@ -59,6 +61,8 @@ test("RÉGRESSION : terminer une tâche n'envoie plus workspaceId, avec le statu
   const [r] = await applyActions([{ type: "terminer", id: "t1", nom: "Appeler le garagiste" }]);
   assert.equal(r.ok, true, r.erreur);
   assert.deepEqual(patchs, [{ name: "Appeler le garagiste", status: "Terminé" }]);
+  // « Prochaines heures » (12/11) : le créneau que Motion lui donnait, gardé dans le résultat (lu dans `avant`, rien envoyé).
+  assert.deepEqual(r.creneau, { debut: "2026-11-12T09:30:00.000Z", fin: "2026-11-12T09:45:00.000Z" });
 });
 
 test("l'annulation restaure sans workspaceId non plus", async () => {
@@ -69,6 +73,7 @@ test("l'annulation restaure sans workspaceId non plus", async () => {
   assert.equal(u.ok, true, u.erreur);
   assert.equal(patchs.length, 2);
   assert.ok(!("workspaceId" in patchs[1]));
+  assert.ok(!("scheduledStart" in patchs[1]) && !("creneau" in patchs[1]), "le créneau gardé n'est jamais renvoyé à Motion");
   assert.equal(patchs[1].status, "Todo");
 });
 

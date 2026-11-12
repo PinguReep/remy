@@ -4,6 +4,64 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Prochaines heures se parcourt (`heures-passe-v1`)
+
+Deux manques à l'usage : la frise commençait à maintenant (le matin passé
+invisible) et rien ne s'y touchait. Site et tour seulement.
+
+- **La plage, honnête.** La frise va d'aujourd'hui 7 h (plus tôt si quelque
+  chose y est, ou si on y est) à demain 22 h (plus tard si quelque chose y
+  finit), à l'heure ronde ; jamais au-delà de demain minuit : c'est ce que
+  `/api/semaine?jours=2` couvre. **Hier n'y est pas** : la tour ne lit la
+  semaine qu'à partir de minuit (l'ajouter coûterait une lecture d'agenda de
+  plus pour peu). La nuit vide reste resserrée à la place d'une heure.
+- **Le passé de la journée.** Les rendez-vous passés étaient déjà dans la
+  réponse ; une tâche finie, elle, sort de la liste Motion. La tour ajoute
+  donc à chaque jour `faites` : les coches **par Rémy** (action `terminer` de
+  la chaîne d'écriture), lues dans son journal (une requête SQLite, aucune
+  requête Motion), sans les annulées. Pour la placer, le résultat d'une coche
+  garde désormais `creneau` : le `scheduledStart/End` que Motion lui donnait,
+  lu dans l'`avant` que la coche récupère déjà (aucune requête de plus, jamais
+  renvoyé à Motion à l'annulation). Une coche plus ancienne n'a que son heure :
+  elle est dessinée comme une marque à cette heure, pas comme une durée
+  inventée. Une tâche dont le créneau est passé sans coche est dite « pas
+  cochée : Motion la replacera » ; une activité de l'agenda pas cochée,
+  « passée, pas cochée » ; un rendez-vous avec d'autres, « passé ». **Ce qui
+  est coché dans Motion même n'apparaît pas** (Motion ne garde pas l'heure
+  d'une tâche finie dans sa liste) : dit dans la feuille par son absence, et ici.
+- **Les gestes.** Au doigt, le défilement natif du navigateur (son inertie,
+  et il annule lui-même le clic d'un doigt qui a glissé) ; à la souris, un
+  glisser au-delà de 6 px (10 au doigt) avec une inertie freinée (`pasInertie`,
+  interrompue par tout autre geste, coupée sous « réduire les animations ») ;
+  molette ou trackpad horizontal ; ← → (une heure, Maj : trois), Début/Fin ;
+  ‹ › (trois heures) et « Maintenant ». Un glisser n'ouvre rien (le clic qui
+  le suit est avalé) et ne ferme jamais la feuille (`avantFermeture` refuse
+  « fond » dans les 450 ms qui suivent). La frise suit maintenant tant
+  qu'elle y est centrée ; sinon un redessin (chaque minute, après un geste
+  dans Gérer) garde l'heure qu'on regardait.
+- **Cliquer.** Hors d'un bloc : ce moment au milieu, la ligne qui le couvre
+  (ou la suivante) mise en avant et la liste qui y défile. Un bloc ou une
+  ligne : « Gérer » **par-dessus** (deux `<dialog>` modales empilées, Échap
+  ne ferme que la dernière), la frise reste où elle était et le focus revient
+  au bloc. Une coche du journal n'est plus chez Motion : la ligne dit quand
+  elle a été cochée et mène à l'Historique (qui l'annule). Zones de clic d'au
+  moins 44 px, élargies du côté libre, jamais sur un voisin ; deux éléments
+  qui se chevauchent sont l'un au-dessus de l'autre. 96 px par heure au doigt
+  (une demi-heure fait 48 px), 124 à la souris.
+- **La liste** est liée à la frise (survol, focus, sélection : les deux côtés
+  s'éclairent) ; elle s'ouvre sur ce qui vient, le passé et le fait repliés
+  sous « Passé ou fait » (déplié d'un clic, ou en visant un bloc passé). La
+  frise reste collée en haut pendant que la liste défile. « Sur quel projet »
+  et « Ne rentre pas avant demain midi » ne changent pas.
+- **Les raisons du planning de Rémy ne sont pas reprises** dans la ligne de
+  pourquoi : elles expliquent SON placement, pas celui de Motion qu'on affiche
+  (ce serait présenter une raison qui n'est pas celle de l'ordre montré). Un
+  bouton du pied y mène.
+- Tout le calcul (plage, échelle et inverse, couloirs, zones de clic,
+  étiquettes qui ne passent pas sous la pastille de maintenant, centrage,
+  ligne à une heure, seuil, vitesse au lâcher, inertie) est dans
+  `public/app/analyse/heures.js`, testé sous node à fuseau fixé.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait

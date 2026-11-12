@@ -207,3 +207,193 @@ test("la frise : de maintenant à demain midi, la nuit vide resserrée à la pla
   const pleine = H.echelleFrise([{ debut: at(0, 23), fin: at(1, 6) }], MAINTENANT, at(1, 12));
   assert.equal(pleine.nuit, null, "une nuit occupée n'est pas resserrée");
 });
+
+// --- La frise qui se parcourt (12/11, second lot) ---------------------------------------
+
+// Le même jeudi, avec ce qui a été coché : par Rémy (le journal de la tour : une
+// avec son créneau, une sans), et ici (la cochée t5, à 10:30).
+const avecPasse = {
+  ...semaine,
+  jours: semaine.jours.map((j, k) => (k === 0 ? {
+    ...j,
+    faites: [
+      { type: "tache", id: "f1", titre: "Répondre au devis du plombier", projet: null, a: at(0, 8, 52), debut: at(0, 7, 30), fin: at(0, 7, 50), duree: 20 },
+      { type: "tache", id: "f2", titre: "Payer la cantine", projet: null, a: at(0, 10, 5) },
+      // Cochée par Rémy ET encore dans la liste Motion lue : une seule ligne, faite.
+      { type: "tache", id: "t2", titre: "Trier la boîte mail", a: at(0, 9) },
+    ],
+  } : { ...j, faites: [] })),
+};
+const vueComplete = (maintenant = MAINTENANT) => H.prochainesHeures({ semaine: avecPasse, priorites, maintenant, cochees: new Set(["t5"]), cocheesA: new Map([["t5", at(0, 10, 30)]]) });
+
+test("la plage : aujourd'hui dès 7 h (plus tôt si quelque chose y est), jusqu'à demain 22 h, à l'heure ronde", () => {
+  assert.deepEqual(H.plageFrise(MAINTENANT, []), { debut: at(0, 7), fin: at(1, 22) });
+  assert.deepEqual(H.plageFrise(MAINTENANT, [{ debut: at(0, 6, 15), fin: at(0, 6, 40) }]), { debut: at(0, 6), fin: at(1, 22) });
+  assert.deepEqual(H.plageFrise(MAINTENANT, [{ debut: at(1, 21), fin: at(1, 23, 20) }]), { debut: at(0, 7), fin: at(2, 0) }, "finit à 23 h 20 : jusqu'à minuit, pas au-delà");
+  assert.deepEqual(H.plageFrise(MAINTENANT, [{ debut: at(-1, 22), fin: at(0, 1) }, { debut: at(3, 9), fin: at(3, 10) }]), { debut: at(0, 0), fin: at(1, 22) }, "hier et après-demain n'élargissent pas la frise au-delà de ses bornes");
+  assert.deepEqual(H.plageFrise(at(0, 5, 30), []), { debut: at(0, 5), fin: at(1, 22) }, "levé à 5 h 30 : maintenant est dedans");
+  assert.equal(H.phrasePlage({ debut: at(0, 7), fin: at(1, 22) }, MAINTENANT), "Aujourd'hui dès 7 h, jusqu'à demain 22 h");
+  assert.equal(H.phrasePlage({ debut: at(0, 6), fin: at(2, 0) }, MAINTENANT), "Aujourd'hui dès 6 h, jusqu'à demain minuit");
+});
+
+test("le passé de la journée est là : fait (par Rémy, ici, une activité cochée) distingué de ce qui a glissé", () => {
+  const v = vueComplete();
+  const par = Object.fromEntries(v.toutes.map((l) => [l.id, l]));
+  assert.deepEqual(v.plage, { debut: at(0, 7), fin: at(1, 22) });
+  // Tout ce qui est dans la plage, passé et fait compris, dans l'ordre du temps ; t9 (demain 14 h) aussi.
+  assert.deepEqual(v.toutes.map((l) => l.id), ["f1", "e1", "f2", "t1", "e2", "t2", "t3", "t5", "e3", "t4", "e6", "t7", "t8", "t9"]);
+  // Le journal, à son créneau gardé.
+  assert.equal(par.f1.fait, true);
+  assert.equal(par.f1.statut, "Faite · cochée à 08:52");
+  assert.equal(par.f1.gerable, false, "plus chez Motion : rien à gérer, l'Historique l'annule");
+  assert.equal(par.f1.source, null);
+  // Sans créneau gardé : une marque à l'heure de la coche, rien d'inventé.
+  assert.equal(par.f2.ponctuel, true);
+  assert.equal(par.f2.debut, at(0, 10, 5));
+  assert.equal(par.f2.fin, at(0, 10, 5));
+  assert.match(par.f2.statut, /^Cochée à 10:05 dans Rémy/);
+  // Cochée par Rémy et encore lue chez Motion : une ligne, faite, à son créneau de Motion.
+  assert.equal(v.toutes.filter((l) => l.id === "t2").length, 1);
+  assert.equal(par.t2.fait, true);
+  assert.equal(par.t2.debut, at(0, 14));
+  // Cochée ici : faite, avec son heure.
+  assert.equal(par.t5.statut, "Faite · cochée à 10:30");
+  assert.equal(par.e3.fait, true, "l'aspirateur, coché dans Rémy");
+  assert.equal(par.e3.gerable, true, "une activité faite se rouvre dans Gérer (« Pas encore terminée »)");
+  // Passé sans coche : le rendez-vous de 9 h (une activité à soi), « pas cochée ».
+  assert.equal(par.e1.etat, "passe");
+  assert.equal(par.e1.issue, "pasCochee");
+  assert.equal(par.e1.statut, "Passée, pas cochée");
+  assert.equal(par.t1.etat, "encours");
+  assert.deepEqual(v.bilanPasse, { faites: 5, pasCochees: 1, total: 6 });
+  // Ce qui reste à faire ne change pas : la liste « prochaines heures » de toujours.
+  assert.deepEqual(v.lignes.map((l) => l.id), ["t1", "e2", "t3", "t4", "e6", "t7", "t8"]);
+  assert.equal(v.neRentrePas.some((t) => t.id === "t2"), false);
+  // Un rendez-vous passé avec d'autres : passé, sans « pas coché ».
+  const avecAutres = H.prochainesHeures({ semaine: { jours: [{ ...jourDe(0), items: [{ type: "rdv", id: "r", titre: "Point", avecAutres: true, debut: at(0, 8), fin: at(0, 9) }] }] }, maintenant: MAINTENANT });
+  assert.deepEqual([avecAutres.toutes[0].issue, avecAutres.toutes[0].statut], [null, "Passé"]);
+  // Une tâche dont le créneau est passé sans coche : elle a glissé.
+  const glisse = H.prochainesHeures({ semaine: { jours: [{ ...jourDe(0), items: [{ type: "tache", id: "g", titre: "G", debut: at(0, 8), fin: at(0, 8, 30) }] }] }, maintenant: MAINTENANT });
+  assert.equal(glisse.toutes[0].statut, "Créneau passé, pas cochée : Motion la replacera");
+  assert.equal(glisse.vide, true);
+  assert.equal(glisse.rienDuTout, false, "plus rien à venir, mais la journée n'est pas vide");
+});
+
+test("la liste : ce qui vient par tranche (en cours dans la tranche de maintenant), le passé et le fait à part", () => {
+  const v = vueComplete();
+  assert.deepEqual(v.groupes.aVenir.map((g) => [g.id, g.lignes.map((l) => l.id)]), [
+    ["matin", ["t1"]], ["apresmidi", ["e2", "t3"]], ["soir", ["t4"]], ["demain", ["e6", "t7", "t8"]], ["demainApresmidi", ["t9"]],
+  ]);
+  assert.deepEqual(v.groupes.passees.map((g) => [g.id, g.lignes.map((l) => l.id)]), [["matin", ["f1", "e1", "f2"]], ["apresmidi", ["t2"]], ["soir", ["t5", "e3"]]]);
+  // Commencée à 11 h 30, en cours à 12 h 10 : dans « Cet après-midi », pas dans un matin fini.
+  const midi = H.prochainesHeures({ semaine: { jours: [{ ...jourDe(0), items: [{ type: "tache", id: "x", titre: "x", debut: at(0, 11, 30), fin: at(0, 12, 30) }] }] }, maintenant: at(0, 12, 10) });
+  assert.deepEqual(midi.groupes.aVenir.map((g) => [g.id, g.etat, g.lignes.map((l) => l.id)]), [["apresmidi", "encours", ["x"]]]);
+});
+
+test("la frise en pixels : l'échelle, l'aller-retour pixel ↔ heure, la nuit resserrée, maintenant", () => {
+  const v = vueComplete();
+  const g = H.friseDe(v.toutes, v.plage, MAINTENANT, { pxParHeure: 120 });
+  // 7 h → 23 h (16 h), la nuit resserrée (1 h), 7 h → 22 h (15 h) : 32 h dessinées.
+  assert.equal(g.total, 32 * 120);
+  assert.equal(g.x(v.plage.debut), 0);
+  assert.equal(g.x(v.plage.fin), g.total);
+  assert.ok(Math.abs(g.maintenant - (3 + 47 / 60) * 120) < 1e-6, "10:47 : 3 h 47 après 7 h");
+  for (const t of [at(0, 7), at(0, 10, 47), at(0, 23), at(1, 2), at(1, 7), at(1, 18, 30)]) assert.ok(Math.abs(g.temps(g.x(t)) - t) < 1000, `aller-retour ${new Date(t).toISOString()}`);
+  assert.ok(Math.abs(g.demain - (16 + 1 / 8) * 120) < 1e-6, "minuit : au huitième de la nuit resserrée (23 h → 7 h)");
+  assert.ok(g.heures.every((r) => r.ms <= at(0, 23) || r.ms >= at(1, 7)), "aucune heure dans la nuit");
+  assert.equal(g.heures[0].libelle, "7h", "la première heure, au bord gauche");
+  // L'étiquette d'une heure ne passe pas sous la pastille de maintenant : à 10:55, « 11h » (8 px à droite) est masquée.
+  const masques = (m) => Object.fromEntries(H.friseDe(v.toutes, v.plage, m, { pxParHeure: 120 }).heures.filter((r) => r.ms < at(1, 0)).map((r) => [r.libelle, r.masque]));
+  assert.deepEqual([masques(at(0, 10, 55))["10h"], masques(at(0, 10, 55))["11h"], masques(at(0, 10, 55))["12h"]], [false, true, false]);
+  assert.deepEqual(Object.values(masques(MAINTENANT)).filter(Boolean), [], "à 10:47, la pastille tient entre 10h et 11h");
+});
+
+test("les blocs : la largeur dit la durée, deux qui se chevauchent sont l'un sur l'autre, aucune zone de clic sous 44 px", () => {
+  const ligne = (id, h0, m0, h1, m1, extra = {}) => ({ cle: `tache:${id}`, type: "tache", id, debut: at(0, h0, m0), fin: at(0, h1, m1), ...extra });
+  const toutes = [
+    ligne("long", 9, 0, 10, 30), // 1 h 30 : 180 px à 120 px/h
+    ligne("court", 11, 0, 11, 10), // 10 min : 20 px dessinés, 44 px de zone
+    ligne("a", 13, 0, 13, 15), ligne("b", 13, 15, 13, 30), // collées, 15 min chacune (30 px)
+    ligne("p1", 15, 0, 16, 0), ligne("p2", 15, 30, 16, 30), // qui se chevauchent
+    { cle: "tache:coche", type: "tache", id: "coche", debut: at(0, 17), fin: at(0, 17), ponctuel: true },
+  ];
+  const g = H.friseDe(toutes, { debut: at(0, 7), fin: at(0, 22) }, at(0, 8), { pxParHeure: 120, cible: 44 });
+  const b = (id) => g.parCle.get(`tache:${id}`);
+  assert.equal(b("long").x1 - b("long").x0, 180);
+  assert.equal(b("long").etiquette, "complete");
+  assert.equal(b("court").x1 - b("court").x0, 20);
+  assert.equal(b("court").etiquette, "icone", "trop étroit pour un titre lisible : son icône seule");
+  assert.equal(b("court").hit1 - b("court").hit0, 44);
+  assert.ok(b("court").hit0 <= b("court").x0 && b("court").hit1 >= b("court").x1, "la zone contient le dessin");
+  // Collées : chacune s'étend du côté libre, sans empiéter sur l'autre.
+  assert.ok(b("a").hit1 <= b("b").hit0, "pas de chevauchement des zones");
+  assert.ok(b("a").hit1 - b("a").hit0 >= 44 && b("b").hit1 - b("b").hit0 >= 44, `a ${b("a").hit1 - b("a").hit0}, b ${b("b").hit1 - b("b").hit0}`);
+  assert.deepEqual([b("p1").couloir, b("p1").couloirs, b("p2").couloir, b("p2").couloirs], [0, 2, 1, 2]);
+  assert.equal(b("p1").etiquette, "titre", "à deux étages : le titre seul");
+  assert.equal(b("long").couloirs, 1);
+  assert.equal(b("coche").x1 - b("coche").x0, 20, "une coche sans créneau : une marque, pas une durée");
+  assert.ok(b("coche").hit1 - b("coche").hit0 >= 44);
+  // Trois blocs de 5 min serrés : la zone ne déborde jamais sur un voisin (au pire, sous 44 px ; dit dans le journal).
+  const serres = ["x", "y", "z"].map((id, i) => ligne(id, 18, i * 5, 18, i * 5 + 5));
+  const s = H.friseDe(serres, { debut: at(0, 7), fin: at(0, 22) }, at(0, 8), { pxParHeure: 120 });
+  const z = serres.map((l) => s.parCle.get(l.cle));
+  assert.ok(z[0].hit1 <= z[1].hit0 && z[1].hit1 <= z[2].hit0);
+});
+
+test("centrer, viser un moment, et la phrase qui le dit", () => {
+  assert.equal(H.defilementPour(1000, 800, 4000), 600, "maintenant au milieu");
+  assert.equal(H.defilementPour(100, 800, 4000), 0, "tout au début : borné");
+  assert.equal(H.defilementPour(3900, 800, 4000), 3200, "tout à la fin : borné");
+  assert.equal(H.defilementPour(100, 800, 500), 0, "une frise plus courte que la vue");
+  const v = vueComplete();
+  const r = H.ligneA(v.toutes, at(0, 11));
+  assert.equal(r.ligne.id, "t1");
+  assert.equal(r.exact, true);
+  assert.equal(H.phraseMoment(at(0, 11), r), "11:00 · « Finaliser la démo de la boutique » (10:27 – 11:42)");
+  const creux = H.ligneA(v.toutes, at(0, 11, 50));
+  assert.deepEqual([creux.ligne.id, creux.exact, creux.sens], ["e2", false, "apres"]);
+  assert.equal(H.phraseMoment(at(0, 11, 50), creux), "11:50 · rien de prévu ; ensuite « Déjeuner avec Léa » à 12:30");
+  const coche = H.ligneA(v.toutes, at(0, 10, 10));
+  assert.equal(coche.ligne.id, "f2", "une coche sans créneau se vise à 10 min près");
+  assert.match(H.phraseMoment(at(0, 10, 10), coche), /^10:10 · « Payer la cantine », cochée à 10:05/);
+  const tard = H.ligneA(v.toutes, at(1, 21));
+  assert.deepEqual([tard.ligne.id, tard.sens], ["t9", "avant"]);
+  assert.equal(H.phraseMoment(at(1, 21), tard), "21:00 · plus rien après « Commander les mèches » (fini à 14:30)");
+  assert.equal(H.ligneA([], at(0, 12)), null);
+  assert.equal(H.phraseMoment(at(0, 12), null), "12:00 · rien de prévu");
+  // Ce qui reste à faire passe devant ce qui est fait au même moment.
+  const deux = [{ cle: "a", id: "a", type: "tache", debut: at(0, 9), fin: at(0, 10), fait: true }, { cle: "b", id: "b", type: "tache", debut: at(0, 9), fin: at(0, 10), fait: false }];
+  assert.equal(H.ligneA(deux, at(0, 9, 30)).ligne.id, "b");
+  // Le point de départ (focus, sélection) et la voisine au clavier.
+  assert.equal(H.ligneCourante(v.toutes, MAINTENANT).id, "t1");
+  assert.equal(H.ligneCourante(vueComplete(at(1, 23)).toutes, at(1, 23)).id, "t9", "plus rien après : la dernière");
+  assert.equal(H.voisine(v.toutes, "tache:t1", -1).id, "f2");
+  assert.equal(H.voisine(v.toutes, "tache:t1", 1).id, "e2");
+  assert.equal(H.voisine(v.toutes, "tache:f1", -1).id, "f1", "au bout : on y reste");
+});
+
+test("glisser n'est pas cliquer : le seuil, la vitesse au lâcher, l'inertie qui s'arrête", () => {
+  assert.equal(H.estGlisser(3, 2, "mouse"), false, "un clic qui tremble reste un clic");
+  assert.equal(H.estGlisser(6, 0, "mouse"), true);
+  assert.equal(H.estGlisser(8, 0, "touch"), false, "le doigt tremble plus");
+  assert.equal(H.estGlisser(0, 10, "touch"), true);
+  // Vitesse : sur les 100 dernières ms ; immobile avant de lâcher, 0.
+  const e = [{ t: 0, x: 0 }, { t: 50, x: 40 }, { t: 100, x: 100 }, { t: 116, x: 120 }];
+  assert.ok(Math.abs(H.vitesseRelachee(e, 120) - 80 / 66) < 1e-9, "de t = 50 à t = 116");
+  assert.equal(H.vitesseRelachee(e, 400), 0, "tenu immobile avant de lâcher");
+  assert.equal(H.vitesseRelachee([{ t: 0, x: 0 }, { t: 10, x: 500 }], 12), 3, "bornée");
+  assert.equal(H.vitesseRelachee([], 0), 0);
+  // L'inertie freine et s'arrête : en moins de 2 s, sur une distance bornée.
+  let v = 2;
+  let d = 0;
+  let pas = 0;
+  while (v !== 0 && pas < 500) {
+    const r = H.pasInertie(v, 16);
+    d += r.dx;
+    v = r.v;
+    pas++;
+  }
+  assert.ok(pas < 125, `${pas} images`);
+  assert.ok(d > 200 && d < 600, `${Math.round(d)} px`);
+  assert.ok(Math.abs(H.pasInertie(-2, 16).dx + H.pasInertie(2, 16).dx) < 1e-12, "symétrique");
+});
