@@ -205,7 +205,8 @@ final class NouveautesTests: XCTestCase {
         // au lancement d'après, et plus rien ensuite.
         let b2 = app([], reglages: r)
         b2.nouveautes.verifier()
-        let suivantes = Nouveautes.catalogue.filter { $0.serie > 4 && $0.capacite == nil }.map(\.id)
+        // De la plus ancienne série à la plus récente, comme la feuille les présente.
+        let suivantes = Nouveautes.catalogue.filter { $0.serie > 4 && $0.capacite == nil }.sorted { $0.serie < $1.serie }.map(\.id)
         XCTAssertEqual(b2.nouveautes.affichees?.entrees.map(\.id) ?? [], suivantes)
         b2.nouveautes.pageVue(99)
         b2.nouveautes.fermer()
