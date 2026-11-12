@@ -1749,6 +1749,11 @@ dialog.trancher-revue .feuille-corps { flex: 1; }
 .reglages-essai-pieces { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .reglages-essai-pieces .ligne-essai { display: flex; gap: 8px; align-items: flex-start; }
 .reglages-essai-pieces .ligne-essai .ic { flex: none; margin-top: 2px; }
+/* Outils de code (passerelle-v1) : l'adresse à copier, lisible au pouce. */
+.reglages-passerelle-adresse { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.reglages-passerelle-adresse .rangee { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.reglages-passerelle-adresse code { overflow-wrap: anywhere; min-width: 0; flex: 1 1 200px; }
+.reglages-passerelle-cle .btn { min-height: 44px; }
 .reglages-essai-pieces .ligne-essai.ok .ic { color: var(--succes); }
 .reglages-essai-pieces .ligne-essai.non .ic { color: var(--danger); }
 @media (max-width: 720px) {

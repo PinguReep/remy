@@ -54,6 +54,7 @@ const CAPACITE_SECTION = {
   lieux: "lieux-v1",
   revue: "a-trancher-v1",
   nouveautes: "version",
+  passerelle: "passerelle-v1",
 };
 const sectionVisible = (id) => !CAPACITE_SECTION[id] || sait(CAPACITE_SECTION[id]);
 const sectionsVisibles = () => R.SECTIONS.filter((s) => sectionVisible(s.id));
@@ -731,6 +732,27 @@ export function detailMajAuto(v, maintenant = Date.now()) {
   if (v.retard) return `La tâche n'est pas passée depuis ${Number.isFinite(passe) ? quand(passe, { maintenant }) : "son activation"} : regarde le Planificateur de tâches de la tour (« Rémy - mise à jour »).`;
   return v.message ? `${v.message}${Number.isFinite(passe) ? ` (passage : ${quand(passe, { maintenant })})` : ""}` : `Premier passage dans ${v.intervalleMin || 15} min au plus.`;
 }
+/** Une clé de la passerelle des outils de code : ce qu'on en sait (jamais la clé). */
+export function phraseClePasserelle(c, maintenant = Date.now()) {
+  if (!c) return "Aucune clé.";
+  const morceaux = [`Une clé existe (${c.apercu || "…"}`];
+  if (c.creeA) morceaux.push(`créée ${quand(c.creeA, { maintenant })}`);
+  morceaux.push(c.dernierUsage ? `utilisée ${quand(c.dernierUsage, { maintenant })}` : "pas encore utilisée");
+  return `${morceaux.join(", ")}).`;
+}
+/** Les adresses à mettre dans l'outil : la tour elle-même, et celle du site (tailnet). */
+export function adressesPasserelle(v, origine = "") {
+  const l = [{ titre: "Sur la tour elle-même (T3 Code y tourne)", url: `http://127.0.0.1:${Number(v?.portLocal) || 3000}/v1` }];
+  if (/^https?:\/\//.test(origine) && !/^https?:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(origine)) l.push({ titre: "Depuis un autre appareil de ton réseau", url: `${origine.replace(/\/+$/, "")}/v1` });
+  return l;
+}
+/** « 2 appels d'agents en attente, 1 en cours » (Réglages › Outils de code). */
+export function phraseEtatPasserelle(v) {
+  const f = Number(v?.enFile) || 0;
+  const c = Number(v?.enCours) || 0;
+  if (!f && !c) return "Aucun appel d'outil de code en ce moment.";
+  return [f ? `${f} appel${f > 1 ? "s" : ""} d'agent${f > 1 ? "s" : ""} en attente` : null, c ? `${c} en cours` : null].filter(Boolean).join(", ") + ".";
+}
 /**
  * La ligne « Travail de fond » de Diagnostic (fond-cede-v1) : ce que Rémy fait
  * sans qu'on le lui ait demandé, et s'il est en pause — « Réflexion de nuit en
@@ -1196,6 +1218,62 @@ const SECTIONS_RENDU = {
         } }) : null));
     dessiner(j.jeton);
     return carte("Jeton de capture", "Pour le raccourci « Envoyer à Rémy » de l'iPhone (feuille de partage, Siri) : il ne sert qu'à noter.", zone);
+  },
+
+  // La passerelle du modèle local pour les outils de code (passerelle-v1, lib/passerelle.js).
+  async passerelle(donnees) {
+    const v = donnees?.cles ? donnees : await api("/api/passerelle");
+    const nouvelle = donnees?._nouvelle || null;
+    const changer = async (corps, phrase) => {
+      const r = await remplacer("/api/passerelle", corps);
+      dire(phrase(r), { genre: "succes" });
+      await redessiner(r);
+    };
+    const copier = (texte) => bouton("Copier", { classe: "papier", icone: "copier", onclick: async () => { try { await navigator.clipboard.writeText(texte); dire("Copié.", { genre: "succes" }); } catch { dire("Copie impossible : sélectionne-le à la main.", { genre: "erreur" }); } } });
+    const adresse = (titre, url) => h("div", { class: "reglages-passerelle-adresse" }, h("span", { class: "aide" }, titre), h("span", { class: "rangee" }, h("code", { class: "mono" }, url), copier(url)));
+    const cle = (type, titre, detail) => {
+      const c = v.cles?.[type];
+      const neuve = nouvelle?.type === type ? nouvelle.cle : null;
+      return h("div", { class: "reglage reglages-passerelle-cle" },
+        h("strong", null, titre), h("p", { class: "aide", style: { margin: "4px 0 8px" } }, detail),
+        neuve ? [h("p", { class: "aide" }, "Copie-la maintenant dans ton outil : elle ne sera plus jamais affichée."), h("p", { class: "mono", style: { overflowWrap: "anywhere", margin: "6px 0" } }, neuve), copier(neuve)]
+          : h("p", null, phraseClePasserelle(c)),
+        h("div", { class: "rangee", style: { marginTop: "10px" } },
+          bouton(c ? "Remplacer la clé" : "Créer la clé", { classe: c ? "papier" : "plein", onclick: async (e) => {
+            if (c && !(await confirmer(`Remplacer la clé « ${type === "clavier" ? "au clavier" : "agents de fond"} » ?`, { detail: "L'ancienne cesse de marcher tout de suite : l'outil qui l'utilise devra recevoir la nouvelle.", libelle: "Remplacer" }))) return;
+            await occupe(e.currentTarget, async () => {
+              try { const r = await ecrire(`/api/passerelle/cles/${type}`, {}); await redessiner({ ...r, _nouvelle: { type, cle: r.cle } }); } catch (err) { direErreur(err, null, "Clé pas créée"); }
+            });
+          } }),
+          c ? bouton("Révoquer", { classe: "danger", onclick: async (e) => {
+            if (!(await confirmer("Révoquer cette clé ?", { detail: "L'outil qui l'utilise est refusé tout de suite.", libelle: "Révoquer", danger: true }))) return;
+            await occupe(e.currentTarget, async () => { try { const r = await supprimer(`/api/passerelle/cles/${type}`); dire("Clé révoquée : elle ne marche plus.", { genre: "succes" }); await redessiner(r); } catch (err) { direErreur(err); } });
+          } }) : null));
+    };
+    const choix = (valeurs, actuelle, libelle, ecrire) => {
+      const sel = h("select", { class: "champ", "aria-label": libelle, style: { maxWidth: "160px" } }, [...new Set([...valeurs, actuelle])].sort((a, b) => a - b).map((x) => h("option", { value: String(x), selected: x === actuelle }, ecrire(x))));
+      return sel;
+    };
+    const attente = choix([30, 60, 120, 300, 600], v.attenteMaxS, "Attente maximale d'un agent de fond", (x) => (x < 60 ? `${x} s` : `${x / 60} min`));
+    attente.addEventListener("change", () => changer({ attenteMaxS: Number(attente.value) }, (r) => `Un agent de fond attend au plus ${r.attenteMaxS < 60 ? `${r.attenteMaxS} s` : `${r.attenteMaxS / 60} min`}, puis réessaie.`).catch((err) => direErreur(err, null, "Réglage pas enregistré")));
+    const file = choix([2, 4, 8, 16, 32], v.fileMax, "Appels d'agents en file au plus", (x) => `${x} appels`);
+    file.addEventListener("change", () => changer({ fileMax: Number(file.value) }, (r) => `${r.fileMax} appels d'agents en file au plus.`).catch((err) => direErreur(err, null, "Réglage pas enregistré")));
+    return carte("Outils de code", "Ton outil de code (T3 Code, et les agents qu'il pilote) parle au modèle local de la tour en passant par Rémy : une question à Rémy ne fait plus la queue derrière un agent, et les agents qui tournent seuls se mettent en pause quand tu demandes quelque chose.",
+      bascule("Ouvrir la porte aux outils de code", "Coupée par défaut. Allumée, seuls les outils qui ont une clé ci-dessous entrent, et seulement vers le modèle local de la tour (jamais le cloud). Rien de ce qu'ils envoient n'est gardé.", v.active,
+        (x) => changer({ active: x }, (r) => (r.active ? "Porte ouverte : donne une clé à ton outil." : "Porte fermée : les outils de code sont refusés."))),
+      v.branche ? null : info("Aucun modèle local de la maison n'est branché sur la tour : la porte refusera les appels."),
+      repere("Adresse à mettre dans l'outil", h("div", { class: "reglage" }, sousTitre("Adresse à mettre dans l'outil"),
+        h("p", { class: "aide" }, "Dans le champ « base URL » (ou « adresse de l'API compatible OpenAI ») de ton outil. Le nom du modèle importe peu : Rémy prend toujours le sien."),
+        ...adressesPasserelle(v, typeof location === "undefined" ? "" : location.origin).map((a) => adresse(a.titre, a.url)))),
+      sousTitre("Les deux clés"),
+      repere("Clé au clavier", cle("clavier", "Clé au clavier", "Pour ce que tu fais toi-même dans ton outil, quand tu attends la réponse : elle passe devant tout, comme une question posée à Rémy, et met en pause son travail de fond et les agents de fond.")),
+      repere("Clé des agents de fond", cle("fond", "Clé des agents de fond", "Pour les agents qui tournent seuls : quand tu demandes quelque chose (à Rémy ou au clavier), leurs nouveaux appels attendent leur tour puis repartent. Celui déjà en cours finit.")),
+      repere("Attente des agents de fond", h("div", { class: "reglage" }, sousTitre("Attente des agents de fond"),
+        h("div", { class: "rangee", style: { flexWrap: "wrap", gap: "8px" } }, h("span", { class: "aide" }, "Au plus"), attente, h("span", { class: "aide" }, "puis l'outil réessaie seul ; file de"), file),
+        h("p", { class: "aide" }, phraseEtatPasserelle(v)))),
+      bascule("Couper aussi un appel sans flux", "Un appel d'agent de fond déjà parti, sans flux, est coupé quand tu demandes quelque chose, puis refait en entier. Coupé par défaut ; un appel en flux n'est jamais coupé.", v.couperSansFlux,
+        (x) => changer({ couperSansFlux: x }, (r) => (r.couperSansFlux ? "Un appel sans flux cédera aussi sa place." : "Un appel déjà parti finit toujours."))),
+      h("p", { class: "aide reglage" }, "Mode d'emploi : docs/outils-de-code.md, dans le dépôt de Rémy."));
   },
 
   async couts() {
