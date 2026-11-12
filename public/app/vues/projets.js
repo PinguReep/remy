@@ -15,7 +15,8 @@ import * as R from "../analyse/recherche-projets.js";
 import { normaliser } from "../analyse/recherche-reglages.js";
 import { surMenu, ouvrirMenu } from "../menu.js";
 import { gerer, terminer, oublierCocheeAnnulee } from "./gerer.js";
-import { marqueBloquee, marqueDebloque } from "../analyse/journee.js";
+import { marqueBloquee, marqueDebloque, marqueNoeud } from "../analyse/journee.js";
+import { sectionNoeud } from "./gerer.js";
 import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes, ouvrirQuand } from "./rappels.js";
 import { ouvrirTri } from "./tri-rappels.js";
 
@@ -179,7 +180,8 @@ function groupeMotion(ok) {
     etat,
     p?.motion !== false ? projets.flatMap((x) => [ok(x.nom) ? element("motion", x.id, x.nom, null, {
       couleur: couleurProjet(x.nom),
-      meta: [petit(C.detailProjet(x)), x.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(x.enRetard)) : null],
+      meta: [petit(C.detailProjet(x)), x.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(x.enRetard)) : null,
+        marqueNoeud(x) ? h("span", { class: "marque-bloquee" }, icone("pause"), marqueNoeud(x)) : null],
       fin: x.statut ? h("span", { class: "pastille discrete projets-statut" }, x.statut) : null,
       menu: () => actionsProjet(x),
     }) : null, ...arbre(`motion:${x.id}`, 1, ok, dossiers)]) : null,
@@ -189,7 +191,9 @@ function groupeMotion(ok) {
 
 function arbre(parent, niveau, ok, dossiers) {
   return C.enfants(dossiers, parent).filter((d) => d.id !== "idees").flatMap((d) => [
-    ok(d.nom) ? element("dossier", d.id, d.nom, null, { sous: niveau > 0, icone: C.iconeDossier(d), meta: C.metaDossier(d, dossiers) ? petit(C.metaDossier(d, dossiers)) : null, menu: () => actionsDossier(d) }) : null,
+    ok(d.nom) ? element("dossier", d.id, d.nom, null, { sous: niveau > 0, icone: C.iconeDossier(d), meta: C.metaDossier(d, dossiers) ? petit(C.metaDossier(d, dossiers)) : null, menu: () => actionsDossier(d),
+      // Bloqué (lui, ou son parent) : projets-bloques-v1.
+      fin: marqueNoeud(d) ? h("span", { class: "pastille discrete projets-bloque", title: marqueNoeud(d), "aria-label": marqueNoeud(d) }, icone("pause")) : null }) : null,
     ...arbre(d.id, niveau + 1, ok, dossiers)]);
 }
 
@@ -390,6 +394,7 @@ function detailMotion(id) {
     h("p", { class: "aide" }, C.detailProjet(p)),
     p.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(p.enRetard)) : null,
     p.statut ? h("span", { class: "pastille discrete" }, p.statut) : null),
+  sait("projets-bloques-v1") ? sectionNoeud({ id: `motion:${p.id}`, titre: p.nom, bloquePar: p.bloquePar, debloque: p.debloque, fini: p.fini, parentBloque: p.parentBloque }, { apres: recharger }) : null,
   avecDossiers ? [
     titreSection("Sous-projets", sous.length),
     sous.length ? h("ul", { class: "liste" }, sous.map(ligneDossier)) : null,
@@ -410,6 +415,7 @@ function elementTache(t, projet) {
     // « bloquée par » / « débloque » (taches-dependances-v1), lus avec le projet
     ...(t.bloqueePar?.length ? { bloqueePar: t.bloqueePar, bloquee: true, raison: `après « ${t.bloqueePar[0].nom} »` } : {}),
     ...(t.debloque?.length ? { debloque: t.debloque } : {}),
+    ...(t.projetBloque ? { projetBloque: t.projetBloque, bloquee: true } : {}),
   };
 }
 
@@ -463,7 +469,7 @@ function ligneTacheMotion(t, projet, { noeud, dans }) {
     h("div", { class: "corps cliquable", role: "button", tabindex: "0", onclick: () => gerer(e, { apres: () => setTimeout(recharger, 600), contexte: ctx }), onkeydown: (ev) => { if (ev.key === "Enter") gerer(e, { apres: recharger, contexte: ctx }); } },
       h("div", { class: "titre-ligne" }, t.titre),
       h("div", { class: "meta" }, t.echeance ? h("span", { class: t.echeance < Date.now() ? "risque" : "" }, `échéance ${C.quandRappel(t.echeance)}`) : null, t.duree ? h("span", null, duree(t.duree)) : null),
-      t.bloqueePar?.length ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar)) : null,
+      t.bloqueePar?.length || t.projetBloque ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar, t.projetBloque)) : null,
       marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     plus);
   surMenu(li, actions, { titre: t.titre });
@@ -484,7 +490,7 @@ function ligneTacheRangee(t, d) {
   ajouterA(li, h("span", { class: "projets-icone" }, icone("liste")),
     h("div", connue ? { class: "corps cliquable", role: "button", tabindex: "0", onclick: ouvrir, onkeydown: (ev) => { if (ev.key === "Enter") ouvrir(); } } : { class: "corps" },
       h("div", { class: "titre-ligne" }, t.titre), meta ? h("div", { class: "meta" }, meta) : null,
-      t.bloqueePar?.length ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar)) : null,
+      t.bloqueePar?.length || t.projetBloque ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar, t.projetBloque)) : null,
       marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     plus);
   surMenu(li, () => (connue ? actions() : actions().filter((a) => a && a.libelle !== "Gérer…")), { titre: t.titre });
@@ -533,6 +539,7 @@ function detailDossier(id) {
       bouton("", { classe: "texte icone", icone: "crayon", etiquette: "Renommer", titre: "Renommer", onclick: () => renommerDossier(d) }),
       bouton("", { classe: "texte icone", icone: "corbeille", etiquette: "Supprimer le dossier", titre: "Supprimer le dossier", onclick: () => supprimerDossier(d) })],
     d.id === "idees" ? null : [
+      sait("projets-bloques-v1") && !d.absent ? sectionNoeud({ id: `dossier:${d.id}`, titre: d.nom, bloquePar: d.bloquePar, debloque: d.debloque, fini: d.fini, parentBloque: d.parentBloque }, { apres: recharger }) : null,
       sous.length ? [titreSection("Sous-projets", sous.length), h("ul", { class: "liste" }, sous.map(ligneDossier))] : null,
       titreSection("Tâches rangées ici", taches.length),
       taches.length ? h("ul", { class: "liste" }, taches.map((t) => ligneTacheRangee(t, d))) : vide(null, "Range ici des tâches depuis le projet (clic droit sur une tâche)."),

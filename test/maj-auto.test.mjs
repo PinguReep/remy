@@ -106,13 +106,15 @@ test("journal : borné, sur une ligne, sans secret ; l'installeur ne reçoit pas
   assert.deepEqual(M.envSans({ PATH: "/bin", MOTION_API_KEY: "x", session_secret: "y", USERPROFILE: "C:\\U" }, noms), { PATH: "/bin", USERPROFILE: "C:\\U" });
 });
 
-test("le jeton du script : 60 s, seulement GET /api/maj-auto et GET /api/version", async () => {
+test("le jeton du script : 60 s, seulement GET /api/maj-auto, GET /api/version et la pause du fond (POST/DELETE /api/maj-auto/ceder)", async () => {
   const { checkSessionToken, makeSessionToken } = await import("../lib/auth.js");
   const req = (method, url) => ({ method, url });
   const j = M.jetonSession(process.env);
   assert.equal(checkSessionToken(j, req("GET", "/api/maj-auto")), true);
   assert.equal(checkSessionToken(j, req("GET", "/api/version?x=1")), true);
-  for (const [m, u] of [["PUT", "/api/maj-auto"], ["GET", "/api/conversations"], ["POST", "/api/chat"], ["GET", "/api/memory"], ["GET", "/api/maj-auto/autre"]]) {
+  assert.equal(checkSessionToken(j, req("POST", "/api/maj-auto/ceder")), true);
+  assert.equal(checkSessionToken(j, req("DELETE", "/api/maj-auto/ceder")), true);
+  for (const [m, u] of [["PUT", "/api/maj-auto"], ["GET", "/api/conversations"], ["POST", "/api/chat"], ["GET", "/api/memory"], ["GET", "/api/maj-auto/autre"], ["GET", "/api/maj-auto/ceder"], ["GET", "/api/fond"], ["PUT", "/api/maj-auto/ceder"]]) {
     assert.equal(checkSessionToken(j, req(m, u)), false, `${m} ${u}`);
   }
   assert.equal(checkSessionToken(j), false, "sans requête : refusé");
@@ -367,9 +369,61 @@ test("passage : occupé sans relâche plus de 6 h → signalé dans la vue", asy
   assert.equal(m.etat.occupeDepuis, depuis, "la première fois est gardée");
   const v = M.vueMajAuto({ tache: { active: true }, etat: m.etat, maintenant: m.t, env: {} });
   assert.equal(v.occupeLongtemps, true);
+  assert.deepEqual(v.occupePar, ["1 écriture en cours"], "la vue dit ce qui bloque vraiment");
   m.occupation = { joignable: true, occupe: false, raisons: [] };
   await M.passer(d);
   assert.equal(m.etat.occupeDepuis, null);
+  assert.equal(m.etat.occupePar, null);
+  assert.deepEqual(M.vueMajAuto({ tache: { active: true }, etat: m.etat, maintenant: m.t, env: {} }).occupePar, []);
+});
+
+test("passage : le fond cède la place (12/11) — Rémy est prié de céder avant d'être jugé ; rien installé, il reprend", async () => {
+  // ceder() rend l'occupation qui reste, une fois le fond en pause.
+  const appels = [];
+  const avecCeder = (o) => {
+    const w = monde(o);
+    w.d.remy.ceder = async () => (appels.push("ceder"), w.m.occupation);
+    w.d.remy.reprendre = async () => (appels.push("reprendre"), true);
+    w.d.remy.occupation = async () => (appels.push("occupation"), w.m.occupation);
+    return w;
+  };
+  let { m, d } = avecCeder();
+  assert.equal((await M.passer(d)).etat, "installe");
+  assert.deepEqual(appels, ["ceder"], "ceder, pas l'ancienne occupation ; installé : pas de reprise (Rémy a redémarré)");
+  // À jour : rien ne lui est demandé (le fond n'est jamais dérangé pour rien).
+  appels.length = 0;
+  ({ m, d } = avecCeder({ main: { sha: A } }));
+  assert.equal((await M.passer(d)).etat, "a-jour");
+  assert.deepEqual(appels, []);
+  // L'installeur voit Rémy se remettre au travail (code 3) : le fond reprend tout de suite.
+  appels.length = 0;
+  ({ m, d } = avecCeder({ installeur: [{ code: M.CODE_OCCUPE, change: false }] }));
+  assert.equal((await M.passer(d)).etat, "occupe");
+  assert.deepEqual(appels, ["ceder", "reprendre"]);
+  // Arrêté avant tout changement : reprise aussi.
+  appels.length = 0;
+  ({ m, d } = avecCeder({ installeur: [{ code: 1, change: false, raison: "sauvegarde impossible" }] }));
+  assert.equal((await M.passer(d)).etat, "annulee");
+  assert.deepEqual(appels, ["ceder", "reprendre"]);
+  // À blanc : on ne dérange pas le fond, l'occupation suffit.
+  appels.length = 0;
+  ({ m, d } = avecCeder({ aBlanc: true }));
+  assert.equal((await M.passer(d)).etat, "installerait");
+  assert.deepEqual(appels, ["occupation"]);
+  // Pause refusée (le fond a cédé 45 min d'affilée) : rien installé, remis au passage suivant, et la vue dit pourquoi.
+  appels.length = 0;
+  ({ m, d } = avecCeder({ occupation: { joignable: true, occupe: true, rattrapage: true, raisons: ["Le travail de fond a déjà cédé 45 min d'affilée à la mise à jour : il rattrape son retard jusqu'à 03:15, la mise à jour attendra."] } }));
+  const rr = await M.passer(d);
+  assert.equal(rr.etat, "rattrapage");
+  assert.equal(m.installations.length, 0);
+  assert.deepEqual(appels, ["ceder"]);
+  assert.match(M.vueMajAuto({ tache: { active: true }, etat: m.etat, maintenant: m.t, env: {} }).message, /rattrape son retard jusqu'à 03:15.*au passage suivant/);
+  // Occupé par Sam : dit ce qui retient.
+  ({ m, d } = avecCeder({ occupation: { joignable: true, occupe: true, raisons: ["1 réponse en cours"] } }));
+  const r = await M.passer(d);
+  assert.equal(r.etat, "occupe");
+  assert.deepEqual(m.etat.occupePar, ["1 réponse en cours"]);
+  assert.equal(m.installations.length, 0);
 });
 
 test("vue de Réglages : activée, en pause, en retard, coupée", () => {

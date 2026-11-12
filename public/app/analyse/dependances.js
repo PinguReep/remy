@@ -35,9 +35,14 @@ export function candidats(taches, { tacheId, deja = [], liens = [], recherche = 
       pile.push(t);
     }
   }
+  // Projets et dossiers (projets-bloques-v1) : `dans` dit ce qui contient
+  // chaque élément. Une tâche n'attend pas son propre projet ; un projet
+  // n'attend ni ses tâches ni ses sous-dossiers (ni son parent).
+  const liste = Array.isArray(taches) ? taches : [];
+  const siens = new Set(liste.find((t) => t?.id === tacheId)?.dans || []);
   const mots = cle(recherche).split(" ").filter(Boolean);
-  return (Array.isArray(taches) ? taches : [])
-    .filter((t) => t?.id && !exclues.has(t.id))
+  return liste
+    .filter((t) => t?.id && !exclues.has(t.id) && !siens.has(t.id) && !(t.dans || []).includes(tacheId))
     .filter((t) => {
       if (!mots.length) return true;
       const texte = cle(`${t.titre} ${t.projet || ""}`);

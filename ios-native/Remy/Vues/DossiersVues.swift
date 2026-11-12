@@ -78,6 +78,9 @@ struct LigneDossier: View {
                             dossier.taches.isEmpty ? nil : "\(dossier.taches.count) tâche\(dossier.taches.count > 1 ? "s" : "")",
                             notes > 0 ? "\(notes) idée\(notes > 1 ? "s" : "")" : nil].compactMap { $0 }
                 if !bits.isEmpty { Text(bits.joined(separator: " · ")).font(Police.texte(13)).foregroundStyle(Palette.encre2) }
+                if let m = Dependances.marqueNoeud(bloquePar: dossier.bloquePar, parentBloque: dossier.parentBloque) {
+                    Label(m, systemImage: "pause.circle.fill").font(Police.texte(12, .semibold)).foregroundStyle(Palette.encre2).lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             if chevron {
@@ -108,6 +111,12 @@ struct NoeudView: View {
     }
     private var dossier: Dossier? { app.organisation.dossiers.first { $0.id == id } }
     private var titre: String { projet?.nom ?? dossier?.nom ?? "Introuvable" }
+    /// L'identifiant du nœud pour la tour : « motion:<id> » ou « dossier:<id> » (projets-bloques-v1).
+    private var noeudAPI: String? {
+        if projet != nil { return id }
+        if let d = dossier, d.id != "idees" { return "dossier:" + d.id }
+        return nil
+    }
 
     /// Toutes les tâches Motion connues (projets, journée), pour retrouver un titre.
     private var toutesTaches: [String: TacheResume] {
@@ -148,6 +157,20 @@ struct NoeudView: View {
         List {
             if projet == nil && dossier == nil {
                 Text("Ce dossier n'existe plus.").foregroundStyle(Palette.encre2)
+            }
+            // « Bloqué par… » et « C'est fini » (projets-bloques-v1).
+            if app.serveur?.sait("projets-bloques-v1") == true, let n = noeudAPI {
+                Section {
+                    if let m = Dependances.marqueNoeud(bloquePar: nil, parentBloque: projet?.parentBloque ?? dossier?.parentBloque) {
+                        Label(m + " : ses tâches attendent aussi.", systemImage: "pause.circle.fill")
+                            .font(Police.texte(13, .semibold))
+                            .foregroundStyle(Palette.encre2)
+                    }
+                    SectionBloqueePar(id: n, titre: titre, initiale: projet?.bloquePar ?? dossier?.bloquePar ?? [], noeud: true)
+                    if !(projet?.debloque ?? dossier?.debloque ?? []).isEmpty || (projet?.fini ?? dossier?.fini) == true {
+                        SectionFini(id: n, titre: titre, debloque: projet?.debloque ?? dossier?.debloque ?? [], fini: (projet?.fini ?? dossier?.fini) == true)
+                    }
+                }
             }
             Section {
                 ForEach(sous) { d in
@@ -279,7 +302,7 @@ struct NoeudView: View {
                 Text(t.titre).font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
                 let bits = [t.echeance.map { "avant le \(Format.jourCourt($0.date))" }, t.duree.map { Format.duree(minutes: $0) }].compactMap { $0 }
                 if !bits.isEmpty { Text(bits.joined(separator: " · ")).font(Police.texte(13)).foregroundStyle(Palette.encre2) }
-                if !(t.bloqueePar ?? []).isEmpty { MarqueBloquee(raison: nil, par: t.bloqueePar) }
+                if !(t.bloqueePar ?? []).isEmpty || t.projetBloque != nil { MarqueBloquee(raison: nil, par: t.bloqueePar, projet: t.projetBloque) }
                 if let d = Dependances.marqueDebloque(t.debloque) { MarqueDebloque(texte: d) }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -297,6 +320,45 @@ struct NoeudView: View {
             if dossier != nil {
                 Button("Sortir du sous-projet") { Task { await app.organisation.ranger(tache: t.id, dans: nil) } }
             }
+        }
+    }
+}
+
+/// « Ce qu'il retient » (projets-bloques-v1) : ce qui attend ce projet, la
+/// règle du « fini » dite telle quelle, et « C'est fini » (annulable).
+struct SectionFini: View {
+    @Environment(AppModel.self) private var app
+    let id: String
+    let titre: String
+    let debloque: [LienTache]
+    let fini: Bool
+    @State private var envoi = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let d = Dependances.marqueDebloque(debloque) { MarqueDebloque(texte: d) }
+            Text(fini ? "Tu l'as dit fini : ce qu'il retenait est débloqué." : Dependances.regleFini(titre))
+                .font(Police.texte(13))
+                .foregroundStyle(Palette.encre2)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                guard !envoi else { return }
+                envoi = true
+                Haptique.leger()
+                let valeur = !fini
+                Task {
+                    _ = await app.tableau.finirNoeud(id: id, titre: titre, fait: valeur)
+                    envoi = false
+                }
+            } label: {
+                Label(envoi ? "…" : (fini ? "Pas fini, finalement" : "C'est fini"), systemImage: fini ? "arrow.uturn.backward" : "checkmark")
+                    .font(Police.texte(15, .medium))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.encre)
+            .disabled(envoi)
         }
     }
 }

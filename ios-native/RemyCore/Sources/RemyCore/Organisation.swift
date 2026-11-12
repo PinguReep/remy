@@ -37,6 +37,12 @@ public struct Dossier: Codable, Sendable, Equatable, Identifiable {
     public var notes: [NoteDossier]
     /// Tâches Motion rangées ici.
     public var taches: [String]
+    /// projets-bloques-v1 : ce qu'il attend, ce qu'il retient, « fini » dit
+    /// par Sam, et le parent qui attend (une branche attend avec son projet).
+    public var bloquePar: [LienTache]?
+    public var debloque: [LienTache]?
+    public var fini: Bool?
+    public var parentBloque: ProjetBloque?
     public init(id: String = UUID().uuidString, nom: String, parent: String? = nil, projetMotion: String? = nil, ordre: Int? = nil,
                 notes: [NoteDossier] = [], taches: [String] = []) {
         self.id = id

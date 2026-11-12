@@ -4,6 +4,280 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
+
+Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait
+demandé à l'instant se met en pause dès qu'arrive une demande ou une mise à
+jour, puis reprend. C'était l'inverse par endroits : la mise à jour
+automatique ATTENDAIT la fin de tout travail de fond (réflexion de nuit,
+sauvegarde, « travaux de fond en attente du modèle »…), d'où l'état « occupé
+depuis plus de 6 h ».
+
+- **Un seul classement** : `lib/priorite.js` (`TRAVAUX`). *Demandé* (réponse
+  du chat et sa suite immédiate — titre, mémoire —, dictée, capture, pièce
+  jointe, écriture, « un autre conseil », compactage depuis la jauge,
+  réflexion lancée à la main), *attendu* (briefing du matin, bilan du soir :
+  calculés sans IA à la lecture), *fond* (réflexion de nuit, relecture de nuit
+  des conversations d'ailleurs, conseil précalculé, compactage automatique,
+  sauvegarde, commerces, indexation, règles, relevés, ménages). Chaque job le
+  déclare par son type (testé : tous les jobs que la tour enregistre y sont) ;
+  conseil et compactage automatiques passent par `jobs.enFond(id, fn)`. Un
+  identifiant inconnu compte comme du fond (dans le doute, il cède).
+- **Une demande**, c'est une requête d'écriture d'une session valide
+  (`natureRequete` : question, dictée, capture, pièce, écriture ; le signe de
+  vie, les lieux et l'appareil sont « passifs » et ne font rien céder), une
+  réponse qui s'écrit, ou un appel au modèle hors fond. Pendant une demande et
+  un **répit** de 5 s après (20 s au départ, ramené à 5 à la demande de l'utilisateur ; `REMY_FOND_REPIT_MS`, 0 en test : la question
+  suivante arrive souvent dans la foulée), la garde de charge (`jobs.inference`)
+  ne laisse partir **aucun** appel de fond (avant : 1 tap + 1 job en même
+  temps), et `jobs.passer` ne commence aucun job.
+- **Couper un appel en vol** : un `complete` du modèle local (et des cerveaux
+  locaux de `lib/cerveau.js`) reçoit un signal d'abandon ; une demande le
+  déclenche, la connexion se ferme, et l'appel est **refait en entier** quand
+  la place se libère. Sûr parce qu'un appel au modèle n'écrit rien : ce qui le
+  suit (briefing, résumé, conseil) ne s'exécute qu'avec sa réponse. Ce que
+  fait le serveur du modèle d'une connexion fermée n'est pas vérifiable ici
+  (vLLM et llama.cpp arrêtent le calcul ; le moteur des Sparks, à mesurer sur
+  la tour) : s'il continue à calculer, la demande est quand même servie dès
+  qu'il a de la place, et aucun nouvel appel de fond ne part. Un `stream` de
+  fond n'est **pas** interruptible (ses outils agissent, son texte part au fur
+  et à mesure) : aucun job n'en fait aujourd'hui ; il ne commencerait
+  simplement pas pendant une demande. Mesuré contre un faux modèle lent à une
+  seule place (`test/fond-cede.test.mjs`) : réponse à Sam en ~25 ms pendant un
+  fond de 600 ms ; témoin non interruptible : ~620 ms.
+- **Le délai d'un job** ne compte plus la pause (ni l'appel coupé) : céder ne
+  le fait jamais échouer. Céder n'est pas un essai (`tentatives` inchangé).
+- **Promotion** : Sam qui demande ce qu'un fond fait déjà (compacter le fil en
+  cours de compactage automatique, « un autre conseil » pendant le calcul
+  automatique) le **promeut** : il ne cède plus et sort de la file — sinon la
+  demande attendrait un travail en pause… à cause d'elle.
+- **La mise à jour** (`POST /api/maj-auto/ceder`, appelé par `maj-auto.mjs`
+  avant de juger, et par `--occupe` que l'installeur lance juste avant
+  d'arrêter node) : un **bail** de 20 min met le fond en pause (aucun job ne
+  commence, les appels interruptibles sont coupés), puis l'occupation ne
+  compte plus que ce qui est demandé ou attendu, et le fond **au milieu d'une
+  étape qu'on ne coupe pas** (une sauvegarde qui écrit, un import des
+  commerces, un relevé), jusqu'à son délai maximal (au-delà, déjà compté
+  comme échoué et repris, il ne retient plus rien). Un travail en pause est
+  ENTRE deux étapes : rien n'est à moitié écrit. Retenu seulement par Sam : le
+  bail est levé tout de suite (ses demandes font déjà céder le fond) ; rien
+  installé (code 3, arrêt avant changement) : `DELETE …/ceder`, le fond reprend.
+  Le jeton de la tâche (portée « maj-auto ») ouvre ces deux routes, rien de
+  plus. Aucune protection de la mise à jour n'a changé (droits, contrôles,
+  retour arrière, verrou) ; `installer-tour.ps1` n'est pas modifié.
+- **Plafonds (relecture de sécurité)** : la pause pour une mise à jour dure
+  **45 min d'affilée au plus** (trois passages de la tâche, sauvegarde et
+  installation comprises), même renouvelée par chaque `ceder`. Au-delà, le
+  fond reprend d'office et `ceder` répond **409 `pause_plafonnee`** pendant
+  **30 min** (le planificateur repasse en 10 min au plus, une sauvegarde de
+  nuit tient en 15 min) : la tâche note « rattrapage » et remet la mise à
+  jour au passage suivant, Réglages dit pourquoi. Une tâche coincée ou une
+  session qui renouvellerait la pause sans fin n'arrête donc jamais la
+  sauvegarde (testé : demandes toutes les 15 min, la sauvegarde part à
+  +50 min). Une **demande** ouverte depuis plus de 10 min ne compte plus (ni
+  pour faire céder le fond, ni pour retenir la mise à jour) ; une **réponse
+  du chat** reste protégée par son registre (`lib/arret.js`, posé au début,
+  retiré une fois tout écrit ; une réponse est bornée à ~6 min par le budget
+  du modèle) jusqu'à 30 min — pas de signe de vie plus fin (les morceaux du
+  flux ne sont pas suivis).
+- **Aucune boucle planifiée n'appelle le modèle hors job** (inventaire : le
+  planificateur ne lance que des jobs ; la relecture différée de Motion est
+  sans IA ; la capture différée est la suite d'une capture) ; un test classe
+  chaque fichier qui appelle le modèle et échoue sur un nouvel appelant.
+- **Reprise après le redémarrage** : un job en pause pendant le bail est marqué
+  dans la file (`erreur = « en pause : mise à jour »`) ; `reprendreInterrompus`
+  le remet en attente **sans compter l'essai** et sans alerte. Un arrêt
+  ordinaire compte toujours le sien. Prouvé par un vrai processus tué net
+  pendant la pause : pas de fichier à moitié écrit, une seule écriture après
+  la reprise (la lecture d'avant l'appel se refait : idempotente).
+- **Non interruptible, et pourquoi** : la sauvegarde (archive chiffrée en
+  cours d'écriture), l'import des commerces (il remplace la base), les jobs
+  sans modèle de quelques secondes (indexation, règles, relevés, ménages) — ils
+  ne concurrencent pas le modèle, ne commencent pas pendant une demande, et la
+  mise à jour les attend ; la suite immédiate d'une réponse (titre, mémoire) :
+  classée « demandée », car elle ne vit qu'en mémoire du processus (une mise à
+  jour la perdrait) ; un appel au secours cloud d'un job (pas le modèle local,
+  rien à lui céder ; la mise à jour l'attend).
+- **« Occupé depuis plus de 6 h »** ne peut plus venir que de demandes
+  continues ou d'un fond non interruptible bloqué avant son délai ; la vue dit
+  maintenant ce qui retient (`occupePar`).
+- **Visible sans bruit** : Réglages › Diagnostic › « Travail de fond »
+  (`GET /api/fond`, `fond-cede-v1`) — « Réflexion de nuit en pause : tu viens
+  de poser une question ». Pas de notification, pas de nouveauté.
+
+## 2026-11-12 — Le planning de Rémy, à côté de celui de Motion (`planning-remy-v1`)
+
+Étape 1 de l'étude « se passer du planificateur de Motion » : un planificateur
+« fantôme » qui calcule son propre planning avec les mêmes tâches, le compare à
+celui de Motion et laisse Sam juger les écarts. Il n'écrit RIEN chez Motion ni
+dans un agenda. Site seulement dans ce lot.
+
+- **Le calcul (`lib/planificateur.js`, pur).** Aucune entrée/sortie, aucune
+  horloge implicite (`maintenant` et `tz` sont des paramètres) : même entrée,
+  même sortie, quel que soit le fuseau de la machine. Temps libre = horaires de
+  travail à l'heure de Sam (changements d'heure compris) moins l'agenda, sur une
+  grille de 5 min. Chaque tâche est placée au plus tôt, dans l'ordre de règles
+  NOMMÉES : R1 attend (après ce qu'elle attend ; un projet attendu = ses tâches
+  ouvertes), R2 pas avant, R3 échéance ferme, R4 ASAP, R5 priorités confirmées
+  (rang), R6 échéance (dépassée ou sous 48 h : avant les priorités), R7
+  priorité Motion, R8 ne pas bouger. Plus d'une heure : en morceaux de 30 min
+  au moins. Chaque placement porte la règle qui l'a décidé et sa phrase.
+- **Les échéances fermes (R3).** Avant chaque placement, une simulation « la
+  plus proche échéance d'abord » sur le temps libre restant vérifie que les
+  échéances fermes encore à placer tiennent ; sinon celle qui ne tiendrait plus
+  passe devant (« Avant X : son échéance est ferme… »). Sur une seule machine,
+  c'est la meilleure façon de tenir des échéances quand on peut couper ; la
+  simulation respecte aussi les tâches qu'on ne coupe pas (jusqu'à 1 h : un trou
+  trop court ne compte pas — régression trouvée sur les données de démo). Une
+  échéance déjà intenable est placée au plus tôt, et le manque est dit. Pas de
+  solveur : le glouton suffit et s'explique (300 tâches < 2 s, testé).
+- **La stabilité.** (1) Tris complets, aucun hasard. (2) À règles égales,
+  l'ordre du calcul précédent. (3) R8 : une tâche garde le créneau du calcul
+  d'avant s'il est encore libre, futur (ou en cours), après ce qu'elle attend
+  et avant son échéance ; seules ASAP bougent d'office. (4) Au plus tôt dans
+  l'ordre : un changement ne touche pas ce qui est placé avant lui. Testé : un
+  rendez-vous ajouté mercredi ne bouge rien de lundi-mardi, et ce qui glisse le
+  fait d'au plus sa durée ; une tâche finie ne fait rien remonter ; 20 min qui
+  passent, une durée allongée, une ASAP nouvelle ne rebattent pas l'ordre.
+- **La comparaison** (`comparer`) : bloquée et placée quand même par Motion (ou
+  mise en attente), échéance ferme (puis souple) tenue par l'un et pas par
+  l'autre — dit honnêtement dans les deux sens —, ordre inverse quand une règle
+  de Rémy départage (jamais pour un simple ex æquo). Identifiants stables
+  (`bloquee:t13`, `ordre:t12:t10`) : un jugement suit son écart d'un calcul à
+  l'autre.
+- **Par la tour (`lib/planning-remy.js`).** `GET /api/planning-remy` : la liste
+  Motion et les horaires du CACHE (`tachesConnues`, `horairesConnus`, nouveau,
+  sans requête) — aucune requête Motion de plus (testé) ; l'agenda comme la vue
+  de la semaine. Rien en fond : calcul à l'ouverture seulement. Circuit
+  « planificateur » (coupable dans Réglages › Rémy ; coupé : rien n'est calculé
+  ni gardé). `POST /api/planning-remy/jugements` `{ ecart, verdict: remy |
+  motion | null }`. Un fichier sur la tour, `planning-remy.json` dans la base
+  (sauvegardé avec elle) : le dernier planning (pour R8) et les jugements datés.
+  Pas de migration SQLite : deux autres lots prennent déjà la n° 12. Fichier
+  illisible : le planning s'affiche, un jugement est refusé (503), rien n'est
+  écrasé.
+- **Ce qu'il ne sait pas faire** (dit à l'écran) : déborder des horaires pour
+  une échéance ferme (Motion le fait), pauses, trajets, récurrences, deviner une
+  durée ; les rendez-vous « toute la journée » ou « disponible » ne bloquent
+  rien ; une tâche commencée n'est connue que par le calcul d'avant.
+- **Démo** : t12 (banque) devient ferme, t13 (newsletter) attend t14 (photos) ;
+  `faux-services.mjs` accepte `FAUX_PORTS_DECALAGE` pour une seconde série de
+  faux services à côté de la première.
+
+## 2026-11-12 — Pièces jointes : tout est lu sur la tour, et le modèle peut relire
+
+Deux demandes de Sam sur les pièces jointes (`pieces-v1`) : que le texte d'une
+image soit lu **sur la tour**, quel que soit l'appareil qui l'envoie ; et que le
+modèle puisse aller **rechercher lui-même** une pièce de la conversation quand
+l'extrait reçu à l'envoi ne suffit pas.
+
+- **Une seule lecture, au même endroit.** L'iPhone ne reconnaît plus le texte
+  d'une photo (Vision retiré de `PreparationPiece.image`, `texteLu` et
+  `lecture` retirés de `PieceAEnvoyer` et du corps d'envoi) : il envoie la
+  photo (JPEG 3 000 px) et son aperçu (1 344 px, pour le modèle de vision),
+  la tour la lit comme celle du site (OCR de Windows, modèle de vision local).
+  Côté tour, `texte` et `lecture: "iphone"` envoyés par une **ancienne** app
+  sont ignorés : la tour lit quand même — jamais deux vérités. Choix du plus
+  simple : pas de Vision « en secours » quand la tour ne sait pas lire. Une
+  tour sans OCR (non Windows, langue absente) laisse l'image « non lue », avec
+  la raison de la tour sous la pièce (« pas de lecture du texte des images sur
+  cette tour… ») ; l'essai des Réglages le dit aussi (« le texte des images, du
+  site comme de l'iPhone, n'est donc pas lu »). Les fiches d'avant
+  (`par: "iphone"`) gardent leur mention, vraie à l'époque.
+- **L'outil `lire_piece`** (`lib/outil-pieces.js`), pour le modèle LOCAL :
+  sans argument, la liste des pièces du fil (nom, type, taille, pages, ce qui a
+  été lu à l'envoi) ; avec `piece` (nom, morceau de nom sans ambiguïté, ou
+  identifiant) : un PDF — `pages` (« 12-13 », « 4 », « p. 3 à 8 », sinon depuis
+  la page 1), chaque page marquée `[page N]`, avec `pages_total` et la `suite`
+  à demander ; un texte — la suite à partir de `depuis` ; une image — son texte
+  relu par l'OCR de la tour (jusqu'à 16 000 caractères, au lieu des 8 000 de la
+  fiche ; utile aussi pour une fiche d'avant, lue par l'iPhone, ou lue quand
+  l'OCR manquait) ou, avec `question`, la réponse du modèle de vision local
+  (`decrireImage` prend désormais une `question`, bornée à 300 caractères, et
+  le `reqId` de la réponse).
+- **Garde-fous.** Seulement les pièces de CE fil (prises dans ses messages au
+  début de la réponse ; un nom ou un identifiant d'un autre fil est refusé ;
+  la lecture passe par `pieces.lire`, identifiants vérifiés, jamais un chemin).
+  Offert seulement quand le modèle local répond **et** qu'il est sur les
+  machines de Sam (`modeleLocalChezToi`) : jamais à Claude — ni cerveau
+  cloud, ni secours (le secours repart de la demande d'origine, sans `pieces`
+  ni résultats d'outil) ; appelé sans ce contexte (Claude, salle blanche), il
+  refuse et dit pourquoi. Bornes : 4 appels par message, 16 000 caractères par
+  appel, 40 000 par message, 10 pages par appel ; les refus de budget
+  commencent par « Budget » (lib/glm.js les compte comme un budget épuisé). Ce
+  qui est relu est encadré (matière externe) et rejoint le lexique du filtre
+  des requêtes sortantes, comme `motion_lister`. Conversations privées : rien
+  ne change, l'outil est local. `REMY_OUTIL_PIECES=off` le coupe.
+- **Le prompt** (seulement quand l'outil est offert) : s'en servir quand la
+  question porte sur un détail ABSENT de l'extrait (pièce coupée, page non lue,
+  image dont le texte ne dit pas ce qui est demandé), pas « pour voir » ; dire
+  quand l'outil ne trouve pas, au lieu de deviner.
+- **Ce qui se voit et se compte.** L'étape `piece` dans la barre du chat
+  (« Rémy relit le PDF « rapport.pdf »… », « Rémy regarde l'image … (modèle
+  local)… » ; icône trombone sur le site, `paperclip` sur l'iPhone). Chaque
+  relecture laisse une ligne à 0 $ au panneau des coûts (`kind`
+  « piece-relue », le nom de la pièce, jamais son contenu) ; la vision, qui
+  consomme de l'inférence, garde sa ligne « piece-vision » avec ses jetons.
+- **pdf.js** : `lirePdf` prend `debut` et `marquer` (le fil de travail lit une
+  plage) et rend `premiere` ; une plage au-delà du PDF ou sans texte a sa
+  raison.
+- **L'essai des Réglages** a une quatrième ligne, « Le modèle relit une pièce
+  (outil) » : un constat de réglages (coupé, pas de modèle local, modèle hors
+  de tes machines), sans appel au modèle. Les apps lisent les lignes telles
+  quelles : rien à changer pour l'iPhone.
+- **Non vérifié ici** : le Swift (compilé par la CI seulement) ; un vrai
+  modèle local qui choisit d'appeler `lire_piece` au bon moment (essayé contre
+  un faux modèle scripté) ; l'OCR de Windows sur une photo de l'iPhone.
+
+
+## 2026-11-12 — Un projet « bloqué par » une tâche ou un autre projet
+
+Suite des dépendances entre tâches : un nœud — un projet Motion
+(`motion:<id>`) ou un dossier de Remy (`dossier:<id>`), le pivot déjà retenu
+ailleurs — peut attendre une tâche ou un autre nœud (« Carrosserie » ne
+commence que quand « Garage » est fini). Capacité `projets-bloques-v1`,
+migration 12.
+
+- **La plus petite représentation.** La même table `dependances_taches` :
+  `tache_id` et `bloquante_id` acceptent les identifiants préfixés (un
+  identifiant de tâche Motion n'a jamais ce préfixe). La migration 12 ajoute
+  seulement `bloquante_vue` (on a déjà vu des tâches ouvertes au nœud attendu).
+  « C'est fini » se garde comme l'activité faite : `etats_taches.fait_a` sur
+  l'identifiant du nœud. Aucune nouvelle route : `PUT /api/taches/:id/etat`
+  (`bloqueePar`, `fait`) et `GET /api/dependances` (`noeuds`, et `dans` : ce
+  qui contient chaque élément).
+- **Pas de boucle, tâches et projets mêlés.** Le graphe d'attente distingue le
+  DÉBUT et la FIN d'un nœud : une tâche attend ses bloquantes et le début de
+  ses nœuds ; le début d'un nœud attend ses bloquantes et le début de son
+  parent ; la fin d'un nœud attend son début, ses tâches et la fin de ses
+  sous-dossiers. Un lien boucle si la fin de la bloquante attend (même de
+  loin) le début de la cible : un projet ne peut attendre ni une de ses
+  tâches, ni sa branche, ni l'inverse. L'appartenance vient des rattachements,
+  des dossiers et de la liste Motion de la tour (le projet de chaque tâche).
+  Un rangement fait APRÈS coup peut créer une attente circulaire : elle se
+  voit (les deux bloqués) et se défait d'un « Retirer » ; non vérifié au rangement.
+- **Les conséquences, sans un lien par tâche.** `annoterTaches` pose
+  `projetBloque: { id, nom, par }` sur chaque tâche d'un nœud bloqué (ou d'un
+  dossier dont un parent l'est), `bloquee: true` et, pour les apps d'avant,
+  `raison: « projet « X » après « Y » »`. Tout ce qui écarte déjà une tâche
+  bloquée l'écarte donc ; le conseil, les menaces, l'instantané du chat et À
+  trancher disent ce qu'attend son projet. La menace d'échéance prend la fin
+  prévue de ce qui est attendu : pour un projet, la plus tardive de ses
+  tâches ouvertes.
+- **« Fini », la règle dite à l'écran.** Rémy ne lit pas l'état des projets
+  Motion de façon fiable (liste paginée, statuts propres à chaque espace) :
+  un nœud attendu est fini quand Sam le dit (« C'est fini »), ou quand une
+  liste Motion lue EN ENTIER n'a plus aucune de ses tâches ouvertes alors
+  qu'on lui en a déjà vu — un projet tout neuf, encore vide, n'est jamais
+  « fini ». Après une coche dans Rémy, la liste en mémoire (complète, moins
+  la tâche finie) suffit ; « Annuler » rétablit, « Pas fini, finalement »
+  aussi. Trace « Débloqué » dans l'Historique.
+- **Rémy le propose.** Une action `attendre` dans `motion_proposer` : `cible`
+  (projet, dossier, tâche, par identifiant ou nom exact, ou la ref d'une
+  création) et `bloquee_par` ; rien n'est écrit chez Motion, le lien est posé
+  après le « Oui », annulable depuis l'Historique. Les projets portent leur
+  identifiant `[motion:…]` dans l'instantané du chat.
+
 ## 2026-11-12 — Une tâche « bloquée par » une autre
 
 Une tâche peut attendre qu'une ou plusieurs autres soient finies (« faire
@@ -96,7 +370,7 @@ texte (.txt, .md) ; tout autre type est refusé avec sa raison. **4 pièces de
 |---|---|---|
 | .txt, .md | la tour | UTF-8, 20 000 caractères au plus (au-delà : coupé, dit) |
 | PDF | la tour | pdf.js (`pdfjs-dist` 6.4.299, build legacy) dans un fil de travail à part : 50 pages, 20 000 caractères, 20 s, 384 Mo ; texte seulement (ni eval, ni polices, ni XFA, ni scripts, ni réseau). Protégé, abîmé, trop long ou scanné : joint, non lu, raison dite |
-| Image de l'iPhone | l'iPhone | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper » |
+| Image de l'iPhone | l'iPhone, puis la tour | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper ». **Remplacé le même jour** : la tour lit aussi les images de l'iPhone (voir « tout est lu sur la tour », plus haut) |
 | Image du site / de Windows | la tour | OCR de Windows (`Windows.Media.Ocr`, PowerShell 5.1, l'image par l'entrée standard : aucun fichier temporaire ; 30 s ; français d'abord). Absent (Linux, langue non installée) : la raison est dite |
 | Toute image | le modèle de vision **local** | `REMY_VISION_URL` (+ `_MODELE`, `_TOKEN`), sinon le modèle local principal ; partie `image_url` en `data:` ; image réduite à 1 344 px par le client (site : canvas ; iPhone : ImageIO), sinon l'original s'il fait 4 Mo au plus ; description de 1 500 caractères au plus |
 

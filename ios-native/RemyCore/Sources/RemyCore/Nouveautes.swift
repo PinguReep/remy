@@ -46,11 +46,17 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "projets-bloques", serie: 11, date: "12 nov.", titre: "Un projet qui en attend un autre", capacite: "projets-bloques-v1", pages: [
+            .init(symbole: "pause.circle", titre: "« Bloqué par… » sur un projet",
+                  texte: "Dans Projets, ouvre un projet Motion ou un dossier : « Choisir ce qu'il attend… », une tâche ou un autre projet. Aucune de ses tâches ne t'est proposée avant ; elles disent « Projet … bloqué par … »."),
+            .init(symbole: "checkmark.circle", titre: "Fini, et c'est dit",
+                  texte: "Un projet est fini pour Rémy quand toutes ses tâches sont terminées (dans la liste Motion lue en entier), ou quand tu touches « C'est fini ». Ce qui l'attendait se débloque, et l'Historique le garde."),
+        ]),
         Nouveaute(id: "pieces-jointes", serie: 10, date: "12 nov.", titre: "Joindre une photo ou un fichier", capacite: PiecesJointes.capacite, pages: [
             .init(symbole: "paperclip", titre: "Le trombone",
                   texte: "À gauche du champ : une photo de la photothèque, une prise maintenant, ou un fichier (PDF, texte, image). Jusqu'à 4 pièces de 10 Mo par message, avec ou sans texte."),
             .init(symbole: "eye", titre: "Ce que Rémy en lit",
-                  texte: "Le texte d'une photo est lu sur l'iPhone ; la tour lit les PDF et les textes, et décrit l'image si son modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non."),
+                  texte: "La tour lit tout, pas l'iPhone : le texte d'une photo, les PDF, les textes, et décrit l'image si son modèle local voit. Pour un détail, Rémy relit la pièce. Sous chaque pièce : ce qui a été lu, ou pourquoi non."),
             .init(symbole: "lock.shield", titre: "Gardée chez toi",
                   texte: "L'original reste chiffré sur ta tour : touche la pièce pour la revoir en grand. Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
         ]),

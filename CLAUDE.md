@@ -50,6 +50,60 @@ cas de doute, ça ne va pas dans le dépôt.
   pause) : pas d'auto-déploiement, la tour se met à jour avec
   `scripts/installer-tour.ps1 -Ref <commit>` après chaque fusion.
 
+## Parler à l'utilisateur
+
+Il lit pour **décider**, pas pour suivre le chantier. Chaque ligne qu'il lit
+doit lui servir. Il préfère découvrir un défaut dans l'app plutôt que lire
+trois fois plus.
+
+**On écrit seulement pour :**
+1. une **décision** qui lui revient (question fermée, avec la recommandation) ;
+2. une **action** qu'il doit faire lui-même (la commande, le bouton) ;
+3. ce qu'il a demandé est **utilisable** (une ligne : quoi, où) ;
+4. un **problème** qui l'empêche d'utiliser l'app ou qui touche ses données.
+
+**On n'écrit pas :** ce qu'on a décidé seul, ce qu'on a lancé, ce qui est en
+cours, ce qui a été vérifié, la liste de ce qui a changé, les limites qui ne
+changent rien à ce qu'il doit faire, « rien à signaler ». Tout cela va dans
+`docs/journal-technique.md`, pas dans la conversation.
+
+**Un message par lot**, pas par événement : on regroupe et on attend d'avoir
+quelque chose des quatre cas ci-dessus.
+
+**Quand il faut expliquer, on explique vraiment** : phrases complètes, mots de
+tous les jours (pas de PR, CI, branche, commit, migration, endpoint…), le
+nombre de mots qu'il faut pour comprendre — pas un style télégraphique. Court
+ne veut pas dire tronqué. `/mute` (ci-dessous) reste la version extrême.
+
+## Autonomie (tant que personne d'autre n'utilise l'app)
+
+Sans demander : ouvrir la demande de fusion, la fusionner dès que tous les
+contrôles passent, lancer le build TestFlight, mettre la tour à jour quand elle
+est joignable. Chercher soi-même (code, documentation, web) avant de poser une
+question.
+
+On demande seulement pour : ce qui ne se rattrape pas (suppression, réécriture
+d'historique, données réelles), les secrets, un nouveau service tiers, une
+dépense, un changement de modèle par défaut. Cette règle tombe le jour où
+l'app a d'autres utilisateurs.
+
+## IDÉE ou GO
+
+Un message qui commence par **IDÉE** : on note, on donne un avis en deux
+lignes, on ne construit rien. **GO** (ou une demande claire) : on construit.
+Dans le doute sur un message mêlé, on construit ce qui est demandé et on note
+le reste comme idées, en le disant.
+
+Une fonctionnalité se lance avec le skill `/fonctionnalite` : la situation
+vécue, les critères vérifiables, **l'écran montré avant** de le porter partout.
+
+## Le travail de fond cède la place
+
+Tout ce que Rémy fait sans qu'on le lui ait demandé à l'instant (réflexion de
+nuit, résumés, indexation, agents en arrière-plan, inférence locale) se met en
+pause dès qu'arrive une demande de l'utilisateur ou une mise à jour, puis
+reprend. Une tâche de fond ne fait jamais attendre une réponse.
+
 ## `/mute` — répondre court
 
 Quand l'utilisateur écrit `/mute` dans un message : réponse en 3 lignes maximum.

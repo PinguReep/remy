@@ -29,6 +29,8 @@ public struct MenaceeTour: Codable, Sendable, Equatable, Identifiable {
     public var action: Action?
     /// « bloquee » : ce qu'elle attend (une autre tâche, pas encore finie).
     public var bloqueePar: [LienTache]?
+    /// Ou son projet qui attend (projets-bloques-v1).
+    public var projetBloque: ProjetBloque?
 
     /// La question préparée pour Rémy (« Caser » / « En parler »), jamais envoyée seule.
     /// Bloquée par une autre tâche, la caser ne servirait à rien tant qu'elle attend.
