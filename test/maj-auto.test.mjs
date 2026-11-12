@@ -410,6 +410,14 @@ test("passage : le fond cède la place (12/11) — Rémy est prié de céder ava
   ({ m, d } = avecCeder({ aBlanc: true }));
   assert.equal((await M.passer(d)).etat, "installerait");
   assert.deepEqual(appels, ["occupation"]);
+  // Pause refusée (le fond a cédé 45 min d'affilée) : rien installé, remis au passage suivant, et la vue dit pourquoi.
+  appels.length = 0;
+  ({ m, d } = avecCeder({ occupation: { joignable: true, occupe: true, rattrapage: true, raisons: ["Le travail de fond a déjà cédé 45 min d'affilée à la mise à jour : il rattrape son retard jusqu'à 03:15, la mise à jour attendra."] } }));
+  const rr = await M.passer(d);
+  assert.equal(rr.etat, "rattrapage");
+  assert.equal(m.installations.length, 0);
+  assert.deepEqual(appels, ["ceder"]);
+  assert.match(M.vueMajAuto({ tache: { active: true }, etat: m.etat, maintenant: m.t, env: {} }).message, /rattrape son retard jusqu'à 03:15.*au passage suivant/);
   // Occupé par Sam : dit ce qui retient.
   ({ m, d } = avecCeder({ occupation: { joignable: true, occupe: true, raisons: ["1 réponse en cours"] } }));
   const r = await M.passer(d);

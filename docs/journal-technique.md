@@ -65,6 +65,25 @@ depuis plus de 6 h ».
   Le jeton de la tâche (portée « maj-auto ») ouvre ces deux routes, rien de
   plus. Aucune protection de la mise à jour n'a changé (droits, contrôles,
   retour arrière, verrou) ; `installer-tour.ps1` n'est pas modifié.
+- **Plafonds (relecture de sécurité)** : la pause pour une mise à jour dure
+  **45 min d'affilée au plus** (trois passages de la tâche, sauvegarde et
+  installation comprises), même renouvelée par chaque `ceder`. Au-delà, le
+  fond reprend d'office et `ceder` répond **409 `pause_plafonnee`** pendant
+  **30 min** (le planificateur repasse en 10 min au plus, une sauvegarde de
+  nuit tient en 15 min) : la tâche note « rattrapage » et remet la mise à
+  jour au passage suivant, Réglages dit pourquoi. Une tâche coincée ou une
+  session qui renouvellerait la pause sans fin n'arrête donc jamais la
+  sauvegarde (testé : demandes toutes les 15 min, la sauvegarde part à
+  +50 min). Une **demande** ouverte depuis plus de 10 min ne compte plus (ni
+  pour faire céder le fond, ni pour retenir la mise à jour) ; une **réponse
+  du chat** reste protégée par son registre (`lib/arret.js`, posé au début,
+  retiré une fois tout écrit ; une réponse est bornée à ~6 min par le budget
+  du modèle) jusqu'à 30 min — pas de signe de vie plus fin (les morceaux du
+  flux ne sont pas suivis).
+- **Aucune boucle planifiée n'appelle le modèle hors job** (inventaire : le
+  planificateur ne lance que des jobs ; la relecture différée de Motion est
+  sans IA ; la capture différée est la suite d'une capture) ; un test classe
+  chaque fichier qui appelle le modèle et échoue sur un nouvel appelant.
 - **Reprise après le redémarrage** : un job en pause pendant le bail est marqué
   dans la file (`erreur = « en pause : mise à jour »`) ; `reprendreInterrompus`
   le remet en attente **sans compter l'essai** et sans alerte. Un arrêt

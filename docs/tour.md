@@ -160,6 +160,10 @@ bloquer ni pour valider ; une relance remplace l'échec d'avant :
    retiennent plus rien : en pause entre deux étapes, ils reprennent après le
    redémarrage (un job repris ainsi ne compte pas d'essai). Rien installé :
    le fond reprend tout de suite (`DELETE …/ceder`), sinon à la fin du bail.
+   La pause dure **45 min d'affilée au plus** : au-delà, le fond reprend
+   d'office et la pause est refusée 30 min (« rattrapage » dans Réglages ; la
+   mise à jour passe au passage suivant). Une demande ouverte depuis plus de
+   10 min (30 min pour une réponse du chat) ne retient plus rien.
    Occupé : on repasse dans 15 minutes ; occupé sans relâche plus de 6 h,
    Réglages le signale, avec ce qui retient. (Une tour d'avant cette règle
    répond 404 : `GET /api/maj-auto`, comme avant.) L'installeur revérifie avant

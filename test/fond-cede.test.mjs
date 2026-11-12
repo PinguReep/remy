@@ -232,7 +232,7 @@ test("une mise à jour n'attend plus le fond : pause entre deux étapes, reprise
 
   // Avant : la réflexion en plein calcul « cède à la mise à jour ».
   assert.match(serveurMaj.occupation().raisons.join(" "), /Réflexion de nuit : appel au modèle en cours \(cède à la mise à jour\)/);
-  assert.equal(await jobs.cederPourMiseAJour({ reposMs: 2_000 }), true, "l'appel en vol est revenu en pause");
+  assert.deepEqual(await jobs.cederPourMiseAJour({ reposMs: 2_000 }), { ok: true, repos: true }, "l'appel en vol est revenu en pause");
   let o = serveurMaj.occupation();
   assert.deepEqual(o.raisons, ["travail de fond : Sauvegarde de la nuit en cours (ne se coupe pas au milieu)"], "seule la sauvegarde qui écrit retient");
   assert.equal(jobs.lireJob(id).erreur, jobs.MARQUE_PAUSE_MAJ, "pause notée dans la file");
@@ -396,4 +396,171 @@ test("routes : POST /api/maj-auto/ceder (jeton de la tâche) met le fond en paus
     prio.reprendreApresMiseAJour();
     remy.close();
   }
+});
+
+test("plafond de la pause pour une mise à jour : 45 min d'affilée, reprise d'office, refus 30 min, puis retour à la normale", () => {
+  remiseAZero();
+  const min = 60_000;
+  const base = Date.parse("2026-11-12T02:00:00Z");
+  let t = base;
+  prio._horloge(() => t);
+  try {
+    assert.equal(prio.cederPourMiseAJour().ok, true);
+    assert.equal(prio.fondDoitCeder()?.nature, "maj");
+    t += 15 * min;
+    assert.equal(prio.cederPourMiseAJour().ok, true, "renouvelée au passage suivant");
+    t += 15 * min;
+    const r = prio.cederPourMiseAJour();
+    assert.equal(r.ok, true);
+    assert.equal(r.bail.jusqua, base + 45 * min, "jamais au-delà du plafond");
+    t += 15 * min; // 45 min d'affilée
+    const refus = prio.cederPourMiseAJour();
+    assert.deepEqual(refus, { ok: false, refus: "rattrapage", jusqua: t + 30 * min });
+    assert.equal(prio.fondDoitCeder(), null, "le fond reprend d'office");
+    t += 15 * min;
+    assert.equal(prio.cederPourMiseAJour().ok, false, "toujours refusée pendant la récupération");
+    assert.equal(prio.fondDoitCeder(), null);
+    t = base + 75 * min;
+    assert.equal(prio.cederPourMiseAJour().ok, true, "retour à la normale");
+    assert.equal(prio.fondDoitCeder()?.nature, "maj");
+    // Un bail qui atteint son plafond de lui-même (plus d'appel) : la récupération part de là.
+    prio.reprendreApresMiseAJour();
+    t = base + 200 * min;
+    prio.cederPourMiseAJour();
+    t += 15 * min;
+    prio.cederPourMiseAJour();
+    t += 15 * min;
+    prio.cederPourMiseAJour(); // jusqu'à +45
+    t += 16 * min; // échu au plafond (+45), sans appel
+    assert.equal(prio.fondDoitCeder(), null);
+    assert.equal(prio.cederPourMiseAJour().ok, false, "pas un nouveau bail : la récupération court");
+  } finally {
+    prio._reinitialiser();
+  }
+});
+
+test("la sauvegarde de la nuit finit par partir malgré une mise à jour qui demande la pause toutes les 15 min", async () => {
+  remiseAZero();
+  const min = 60_000;
+  const base = Date.parse("2026-11-12T02:00:00Z");
+  let t = base;
+  prio._horloge(() => t);
+  let partie = null;
+  jobs.enregistrer("sauvegarde-nuit", { circuit: "socle", priorite: 1, async executer() { partie = (t - base) / min; return { nom: "essai" }; } });
+  jobs.planifier("sauvegarde-nuit", { cle: "sauvegarde-nuit:plafond", entree: { jour: "2026-11-12" }, quand: 0 });
+  const refus = [];
+  try {
+    for (let m = 0; m <= 180 && partie === null; m += 5) {
+      t = base + m * min;
+      if (m % 15 === 0) {
+        const r = await jobs.cederPourMiseAJour({ reposMs: 0 }); // la tâche « Rémy - mise à jour »
+        if (!r.ok) refus.push(m);
+      }
+      if (m % 10 === 0) await jobs.passer(); // le planificateur
+    }
+    assert.equal(partie, 50, "partie au premier passage du planificateur après le plafond (45 min)");
+    assert.deepEqual(refus, [45]);
+  } finally {
+    prio._reinitialiser();
+  }
+});
+
+test("une demande restée ouverte plus de 10 min ne fait plus céder le fond ni ne retient la mise à jour ; une réponse en cours, si (jusqu'à 30 min)", async () => {
+  remiseAZero();
+  const arret = await import("../lib/arret.js");
+  const min = 60_000;
+  let t = Date.now();
+  prio._horloge(() => t);
+  try {
+    const fin = prio.debutDemande("ecriture");
+    assert.equal(serveurMaj.occupation().occupe, true);
+    t += 11 * min;
+    assert.equal(prio.fondDoitCeder(), null, "une requête restée ouverte ne bloque plus le fond");
+    assert.equal(serveurMaj.occupation().occupe, false, "ni la mise à jour");
+    fin();
+    // La réponse du chat : son registre (posé au début, retiré à la fin) la protège plus longtemps.
+    const g = arret.demarrerGeneration("conv-longue");
+    t = Date.now() + 11 * min;
+    assert.equal(prio.fondDoitCeder()?.nature, "question");
+    assert.deepEqual(serveurMaj.occupation().raisons, ["1 réponse en cours"]);
+    t = Date.now() + 31 * min;
+    assert.equal(prio.fondDoitCeder(), null, "une génération coincée ne retient rien sans fin");
+    assert.equal(serveurMaj.occupation().occupe, false);
+    g.liberer();
+  } finally {
+    prio._reinitialiser();
+  }
+});
+
+test("refus de la pause (plafond) : POST /api/maj-auto/ceder répond 409 pause_plafonnee, le client le dit", async () => {
+  remiseAZero();
+  const { routeApi } = await import("../lib/routes.js");
+  const M = await import("../lib/maj-auto.js");
+  const remy = http.createServer(async (req, res) => {
+    if (!(await routeApi(req, res))) {
+      res.statusCode = 404;
+      res.end("{}");
+    }
+  });
+  await new Promise((r) => remy.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${remy.address().port}`;
+  let t = Date.now();
+  prio._horloge(() => t);
+  try {
+    const client = M.clientRemy({ url: base, env: process.env, pauseMs: 1 });
+    for (let i = 0; i < 3; i++) {
+      assert.equal((await client.ceder()).occupe, false);
+      t += 15 * 60_000;
+    }
+    const r = await client.ceder();
+    assert.equal(r.rattrapage, true);
+    assert.equal(r.occupe, true);
+    assert.match(r.raisons[0], /a déjà cédé 45 min d'affilée à la mise à jour : il rattrape son retard jusqu'à \d\d:\d\d/);
+    const brut = await fetch(`${base}/api/maj-auto/ceder`, { method: "POST", headers: { Cookie: `remy_session=${M.jetonSession(process.env)}` } });
+    assert.equal(brut.status, 409);
+    assert.equal((await brut.json()).error, "pause_plafonnee");
+  } finally {
+    prio._reinitialiser();
+    remy.close();
+  }
+});
+
+// Un appel au modèle lancé par une boucle planifiée hors job (ni `enFond`)
+// serait pris pour une demande de Sam et couperait le fond. Inventaire du
+// 12/11 : aucun. Ce test échoue si un fichier se met à appeler le modèle sans
+// être classé ici, ou si une boucle (setInterval) vit à côté d'un appel au modèle.
+test("inventaire : chaque fichier qui appelle le modèle est classé ; aucune boucle planifiée ne l'appelle hors job", () => {
+  const CLASSES = {
+    "analyses.js": "demande (analyses d'un tap)",
+    "capture.js": "demande (capture, lecture d'image)",
+    "cerveau.js": "adaptateur (passe par la garde de charge)",
+    "chat.js": "demande (réponse, routeur, titre et mémoire) ; compactage auto → enFond",
+    "compactage.js": "enFond('compactage') ou demande (jauge)",
+    "connaissances/nuit.js": "job conversations-nuit",
+    "conseil.js": "enFond('conseil') ou demande (« un autre conseil »)",
+    "couverture.js": "demande (analyse lancée d'un tap)",
+    "essai-pieces.js": "demande (essai lancé d'un tap)",
+    "glm.js": "adaptateur (garde de charge)",
+    "handlers.js": "demande (requêtes HTTP ; capture différée = suite d'une capture)",
+    "jobs.js": "la garde de charge elle-même",
+    "ocr.js": "pas le modèle (OCR local)",
+    "outil-pieces.js": "demande (outil lire_piece, appelé par le modèle pendant une réponse)",
+    "pieces.js": "demande (pièce jointe)",
+    "planif.js": "jobs seulement",
+    "providers.js": "adaptateurs",
+    "reflection.js": "job reflexion-nuit, ou demande (réflexion à la main, sujets du soir)",
+    "salle-blanche.js": "demande (recherche d'une question)",
+    "vision.js": "demande (pièce jointe)",
+  };
+  const appel = /glmProvider\.(complete|stream)|fournisseurDeFond\(|inference\(|cerveauLocal\(|lireImage|provider\.(complete|stream)\(|\.complete\(\{/;
+  const lib = path.join(ICI, "..", "lib");
+  const fichiers = fs.readdirSync(lib, { recursive: true }).map((f) => String(f).split(path.sep).join("/")).filter((f) => f.endsWith(".js"));
+  const appelants = fichiers.filter((f) => appel.test(fs.readFileSync(path.join(lib, f), "utf8")));
+  for (const f of appelants) assert.ok(CLASSES[f], `lib/${f} appelle le modèle : classe-le (demande, job, enFond) ici et dans lib/priorite.js`);
+  for (const f of appelants) {
+    const src = fs.readFileSync(path.join(lib, f), "utf8");
+    // (jobs.js : son setInterval suit l'état « en pause » d'un travail qui attend ; il n'appelle rien.)
+    if (/setInterval\(/.test(src) && f !== "jobs.js") assert.equal(f, "planif.js", `lib/${f} : une boucle planifiée à côté d'un appel au modèle — passe par un job ou enFond`);
+  }
+  assert.match(fs.readFileSync(path.join(lib, "planif.js"), "utf8"), /setInterval\(tick/, "la seule boucle : le planificateur, qui ne lance que des jobs");
 });
