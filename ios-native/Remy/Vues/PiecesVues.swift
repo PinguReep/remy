@@ -8,15 +8,15 @@ import RemyCore
 // Les pièces jointes du chat (12/11) : le trombone du composeur (photothèque,
 // appareil photo, Fichiers), les pièces en attente, et dans le fil la vignette
 // d'une image ou la puce d'un fichier, avec ce que Rémy en a lu. Une photo est
-// réduite ici (JPEG) et son texte reconnu sur l'iPhone (Vision, hors ligne) ;
-// la tour range l'original chiffré. La logique est dans RemyCore
-// (PiecesJointes.swift, testée).
+// réduite ici (JPEG) ; la tour range l'original chiffré et le LIT (OCR de
+// Windows, modèle de vision local) — l'iPhone ne reconnaît plus le texte
+// lui-même. La logique est dans RemyCore (PiecesJointes.swift, testée).
 
 /// Préparer une pièce sur l'iPhone, hors du fil principal.
 enum PreparationPiece {
     /// Une image : l'original réduit à `coteOriginal` px (JPEG), un aperçu à
-    /// `coteVision` px pour le modèle de vision local de la tour, une vignette
-    /// pour le composeur, et le texte que Vision y lit (nil : aucun).
+    /// `coteVision` px pour le modèle de vision local de la tour, et une
+    /// vignette pour le composeur. Le texte, c'est la tour qui le lit.
     static func image(_ donnees: Data, nom: String) -> PieceAEnvoyer? {
         guard let source = CGImageSourceCreateWithData(donnees as CFData, nil) else { return nil }
         func reduite(_ cote: Int) -> CGImage? {
@@ -35,9 +35,7 @@ enum PreparationPiece {
         let vision = reduite(PiecesJointes.coteVision)
         let apercu = vision.flatMap { UIImage(cgImage: $0).jpegData(compressionQuality: 0.8) }
         let vignette = reduite(160).flatMap { UIImage(cgImage: $0).jpegData(compressionQuality: 0.7) }
-        let texte = vision.flatMap { LecturePartage.lireTexte($0) }
-        return PieceAEnvoyer(nom: PiecesJointes.enJPEG(nom), donnees: original, texteLu: texte, lecture: true,
-                             apercu: apercu, vignette: vignette)
+        return PieceAEnvoyer(nom: PiecesJointes.enJPEG(nom), donnees: original, apercu: apercu, vignette: vignette)
     }
 
     /// Un fichier choisi dans Fichiers : une image passe par `image`, le reste
@@ -367,7 +365,7 @@ struct EssaiLecturePieces: View {
                 Image(systemName: "paperclip").font(.system(size: 18)).frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Lecture des pièces jointes").font(Police.texte(16, .medium))
-                    Text("Ce que ta tour sait lire : le texte des images, les images (modèle local), les PDF. Des fichiers d'essai, rien de toi.")
+                    Text("Ce que ta tour sait lire de ce que tu joins, ici comme sur le site : le texte des images, les images (modèle local), les PDF ; et si le modèle peut relire une pièce. Des fichiers d'essai, rien de toi.")
                         .font(Police.texte(13)).foregroundStyle(Palette.encre2)
                         .fixedSize(horizontal: false, vertical: true)
                 }

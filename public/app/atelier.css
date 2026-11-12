@@ -403,6 +403,10 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .feuille-choix-bloquante .champ[type="search"] { width: 100%; margin-bottom: 10px; min-height: 44px; }
 .choix-bloquante-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: min(60vh, 460px); overflow-y: auto; }
 .choix-bloquante .vide { padding: 12px 4px; }
+/* Un projet ou un dossier qui attend (projets-bloques-v1) */
+.noeud-blocage { display: grid; gap: 4px; margin: 4px 0 12px; }
+.noeud-blocage > .marque-bloquee { display: flex; margin: 0; }
+.pastille.projets-bloque { display: inline-flex; align-items: center; padding: 0 6px; }
 
 /* La journée à l'échelle */
 .journee-echelle { position: relative; }
@@ -1751,3 +1755,56 @@ dialog.trancher-revue .feuille-corps { flex: 1; }
   .remy-piece-image { width: min(100%, 260px); }
   .remy-piece-fichier { width: 100%; }
 }
+
+/* ---------- Le planning de Rémy, à côté de Motion (12/11, planning-remy-v1) ---------- */
+.pr-vue { display: grid; gap: 14px; }
+.pr-squelettes { display: grid; gap: 12px; }
+.pr-tete { font: 600 18px/1.35 var(--serif); text-wrap: pretty; overflow-wrap: anywhere; }
+.pr-compteur { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--fond-2); font-size: 14px; color: var(--encre-2); }
+.pr-barre { height: 6px; border-radius: 3px; background: var(--fond-3); overflow: hidden; }
+.pr-barre span { display: block; height: 100%; background: var(--succes); border-radius: 3px; }
+.pr-note { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--encre-2); }
+.pr-note svg.ic { width: 14px; height: 14px; flex: none; }
+.pr-titre { font: 600 12px/1.3 var(--texte); letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2); margin: 4px 0 8px; }
+.pr-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.pr-ecart { border: 1px solid var(--filet); border-radius: 16px; padding: 12px 14px; background: var(--surface); display: grid; gap: 6px; }
+.pr-ecart.bloquee, .pr-ecart.ferme { border-left: 4px solid var(--signal); }
+.pr-ecart.juge { background: var(--fond); }
+.pr-genre { display: flex; align-items: center; gap: 6px; font: 600 12px/1.3 var(--texte); letter-spacing: .04em; text-transform: uppercase; color: var(--encre-3); }
+.pr-genre svg.ic { width: 14px; height: 14px; }
+.pr-nom { font-weight: 600; overflow-wrap: anywhere; }
+.pr-pourquoi { color: var(--encre); text-wrap: pretty; overflow-wrap: anywhere; }
+.pr-deux { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 0; font-size: 13px; }
+.pr-deux > div { background: var(--fond-2); border-radius: 10px; padding: 6px 10px; min-width: 0; }
+.pr-deux dt { font: 600 11px/1.3 var(--texte); letter-spacing: .06em; text-transform: uppercase; color: var(--encre-3); }
+.pr-deux dd { margin: 2px 0 0; color: var(--encre-2); overflow-wrap: anywhere; }
+.pr-gestes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.pr-juge { flex: 1 1 160px; }
+.pr-juge.choisi { background: var(--encre); color: var(--fond); border-color: var(--encre); }
+.pr-juge.choisi:hover { background: var(--encre-2); }
+.pr-juge-le { font-size: 12px; }
+.pr-jours { display: grid; gap: 12px; }
+.pr-jour-titre { font: 600 14px/1.3 var(--texte); margin-bottom: 4px; }
+.pr-lignes { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pr-ligne { display: grid; grid-template-columns: 112px 1fr; column-gap: 12px; row-gap: 2px; padding: 8px 10px; border-radius: 10px; border-left: 3px solid var(--couleur, var(--filet)); background: var(--fond); }
+.pr-ligne .h { font: 400 13px/1.4 var(--mono); color: var(--encre-2); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.pr-ligne .t { font-weight: 600; overflow-wrap: anywhere; }
+.pr-ligne .r { grid-column: 2; font-size: 13px; color: var(--encre-2); overflow-wrap: anywhere; display: flex; gap: 6px; align-items: baseline; }
+.pr-ligne .r svg.ic { width: 13px; height: 13px; flex: none; }
+.pr-non .pr-ligne { grid-template-columns: 1fr; }
+.pr-non .pr-ligne .r { grid-column: 1; }
+.pr-regles summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; color: var(--encre-2); }
+.pr-regles ol, .pr-regles ul { margin: 4px 0 8px; padding-left: 22px; font-size: 14px; color: var(--encre-2); display: grid; gap: 2px; }
+@media (max-width: 720px) {
+  dialog.feuille.large.feuille-planning-remy { width: 100vw; max-width: 100vw; }
+  .pr-deux { grid-template-columns: 1fr; }
+  .pr-ligne { grid-template-columns: 1fr; }
+  .pr-ligne .r { grid-column: 1; }
+  .pr-tete { font-size: 16px; }
+}
+.semaine-porte-remy { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--filet); border-radius: 12px; background: var(--fond); color: inherit; text-align: left; cursor: pointer; }
+.semaine-porte-remy:hover { background: var(--fond-2); }
+.semaine-porte-remy > svg.ic { width: 18px; height: 18px; flex: none; color: var(--encre-2); }
+.semaine-porte-remy .textes { flex: 1; min-width: 0; display: grid; }
+.semaine-porte-remy .t { font-weight: 600; }
+.semaine-porte-remy .d { font-size: 13px; color: var(--encre-3); }

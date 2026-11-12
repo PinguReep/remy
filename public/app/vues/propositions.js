@@ -21,8 +21,9 @@ import { ouvrirAjuster } from "./ajuster.js";
 // --- Les mots (Format.swift, Models.swift) ---
 
 /** Le verbe affiché : liste blanche stricte (le type vient du modèle, jamais affiché brut). */
-export const typeVerbe = (a) => (["creer", "terminer", "supprimer"].includes(a?.type) ? a.type : "modifier");
-export const verbe = (a) => ({ creer: "Ajouter", terminer: "Marquer fait", supprimer: "Supprimer", modifier: "Modifier" })[typeVerbe(a)];
+// « attendre » (projets-bloques-v1) : un projet qui attend autre chose, rien chez Motion.
+export const typeVerbe = (a) => (["creer", "terminer", "supprimer", "attendre"].includes(a?.type) ? a.type : "modifier");
+export const verbe = (a) => ({ creer: "Ajouter", terminer: "Marquer fait", supprimer: "Supprimer", modifier: "Modifier", attendre: "Faire attendre" })[typeVerbe(a)];
 export const libelleAction = (a) => a?.nouveau_nom ?? a?.nom ?? a?.nouveau_titre ?? a?.titre ?? "(sans nom)";
 
 const dateISO = (s) => {
@@ -180,11 +181,12 @@ export function phraseLiens(r) {
   const out = [];
   const lies = res.filter((x) => x?.ok && Array.isArray(x.bloqueePar) && x.bloqueePar.length);
   if (lies.length === 1) out.push(`« ${lies[0].nom} » attendra « ${lies[0].bloqueePar.map((b) => b.nom || "une autre tâche").join(" » et « ")} ».`);
-  else if (lies.length > 1) out.push(`${lies.length} tâches attendront leur étape précédente.`);
+  else if (lies.length > 1) out.push(`${lies.length} ${lies.some((x) => x.type === "attendre") ? "tâches ou projets" : "tâches"} attendront leur étape précédente.`);
   const rates = res.flatMap((x) => (Array.isArray(x?.liensRates) ? x.liensRates : []));
   if (rates.length) out.push(rates.length > 1 ? `${rates.length} liens « après » n'ont pas été posés.` : "Un lien « après » n'a pas été posé (son étape n'a pas été créée).");
   const libres = res.flatMap((x) => (Array.isArray(x?.debloquees) ? x.debloquees : [])).map((x) => x?.nom).filter(Boolean);
-  if (libres.length) out.push(libres.length > 1 ? `${libres.length} tâches débloquées.` : `« ${libres[0]} » est débloquée.`);
+  const noeudLibre = res.some((x) => (x?.debloquees || []).some((d) => /^(dossier|motion):/.test(String(d?.id || ""))));
+  if (libres.length) out.push(libres.length > 1 ? `${libres.length} débloqués.` : `« ${libres[0]} » est débloqué${noeudLibre ? "" : "e"}.`);
   return out.join(" ");
 }
 

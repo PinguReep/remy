@@ -416,19 +416,36 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(serie10.map(\.id), ["pieces-jointes", "dependances-taches"])
         XCTAssertEqual(serie10[0].capacite, PiecesJointes.capacite)
         XCTAssertEqual(serie10[1].capacite, "taches-dependances-v1")
-        let deux = app([PiecesJointes.capacite, "taches-dependances-v1"], reglages: suite())
-        deux.nouveautes.verifier()
-        XCTAssertEqual(Set(deux.nouveautes.affichees?.entrees.map(\.id) ?? []), ["pieces-jointes", "dependances-taches"])
+        // Telle qu'elle s'affichait quand elle était la dernière série.
+        let deux = jusqua(10, [PiecesJointes.capacite, "taches-dependances-v1"])
+        deux.verifier()
+        XCTAssertEqual(Set(deux.affichees?.entrees.map(\.id) ?? []), ["pieces-jointes", "dependances-taches"])
         XCTAssertLessThanOrEqual(serie10.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app([PiecesJointes.capacite], reglages: suite())
-        a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["pieces-jointes"])
+        let a = jusqua(10, [PiecesJointes.capacite])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["pieces-jointes"])
         // Une tour pas encore à jour : rien de la dernière série à présenter
         // (une installation neuve ne montre que la dernière série).
-        let b = app([], reglages: suite())
-        b.nouveautes.verifier()
-        XCTAssertNil(b.nouveautes.affichees, "une tour pas encore à jour : rien à présenter")
+        let b = jusqua(10, [])
+        b.verifier()
+        XCTAssertNil(b.affichees, "une tour pas encore à jour : rien à présenter")
         XCTAssertTrue(serie10[0].pages.contains { $0.texte.contains("pourquoi non") }, "ce qui n'est pas lu est dit")
+    }
+
+    /// Série 11 (12/11) : un projet « bloqué par » une tâche ou un autre
+    /// projet, seulement quand la tour sait le garder (projets-bloques-v1).
+    func testLaSerie11ProjetsBloques() {
+        let e = Nouveautes.catalogue.first { $0.id == "projets-bloques" }
+        XCTAssertEqual(e?.serie, 11)
+        XCTAssertEqual(e?.capacite, "projets-bloques-v1")
+        XCTAssertLessThanOrEqual(e?.pages.count ?? 9, 3)
+        let a = jusqua(11, ["projets-bloques-v1"])
+        a.verifier()
+        XCTAssertTrue(a.affichees?.entrees.map(\.id).contains("projets-bloques") == true)
+        let b = jusqua(11, [])
+        b.verifier()
+        XCTAssertFalse(b.affichees?.entrees.map(\.id).contains("projets-bloques") == true, "une tour pas encore à jour : pas présentée")
+        XCTAssertTrue(e?.pages.contains { $0.texte.contains("toutes ses tâches sont terminées") } == true, "la règle du « fini » est dite")
     }
 
     // MARK: - Le suivi (12/11)

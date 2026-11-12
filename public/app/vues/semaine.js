@@ -128,11 +128,16 @@ export function creerSemaine(ctx, { journee, gestes } = {}) {
     if (!disponible()) return vider(carte);
     const tete = h("h2", { class: "titre-section" }, "Demain et 7 jours",
       h("span", { class: "fin" }, bouton("À l'échelle", { classe: "texte petit", icone: "frise", etiquette: "À l'échelle : aujourd'hui, demain et les 7 jours", onclick: () => ouvrir("7jours") })));
+    // Le planning de Rémy à côté de celui de Motion (planning-remy-v1) : une feuille, calculée à l'ouverture.
+    const porte = sait("planning-remy-v1")
+      ? h("button", { type: "button", class: "semaine-porte-remy", onclick: () => import("./planning-remy.js").then((m) => m.ouvrir({ contexte: ctx })) },
+        icone("deplacer"), h("span", { class: "textes" }, h("span", { class: "t" }, "Le planning de Rémy, à côté de Motion"), h("span", { class: "d" }, "Là où il ne fait pas comme Motion, et pourquoi")), icone("chevron", "chevron-jour"))
+      : null;
     const suite = jours().filter((j) => j.jour !== jourISO());
     const corps = suite.length
       ? [bandeauVue(), h("div", { class: "semaine-cartes" }, suite.map((j) => carteJour(j, ouvrir))), ...notesSemaine(etat.donnees).map((n) => h("p", { class: `aide semaine-note${n.alerte ? " risque-texte" : ""}` }, n.texte))]
       : [bandeauVue(), etatSansJours(VIDES.semaine)];
-    vider(carte, h("section", { class: "carte semaine-carte", "aria-label": "Demain et les 7 jours" }, tete, corps));
+    vider(carte, h("section", { class: "carte semaine-carte", "aria-label": "Demain et les 7 jours" }, tete, corps, porte));
   }
 
   // --- La vue « À l'échelle » ---
