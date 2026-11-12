@@ -37,7 +37,7 @@ export const CATALOGUE = [
   ]),
   n("pieces-jointes", 9, "12 nov.", "Joindre un fichier à Rémy", "pieces-v1", [
     p("trombone", "Le trombone, ou Ctrl+V", "Dans Rémy, le trombone à gauche du champ joint une image, un PDF ou un texte (.txt, .md) ; coller une capture ou déposer un fichier marche aussi. 4 pièces de 10 Mo au plus par message."),
-    p("oeil", "Ce que Rémy en lit", "Un texte, un PDF : leur contenu. Une image : son texte reconnu par la tour, et sa description si le modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non (essai : Réglages › Diagnostic)."),
+    p("oeil", "Ce que Rémy en lit", "Tout est lu sur la tour : un texte, un PDF ; une image, son texte et, si le modèle local voit, sa description. Pour un détail, Rémy relit la pièce. Sous chaque pièce : ce qui a été lu, ou pourquoi non (essai : Réglages › Diagnostic)."),
     p("cadenas", "Gardée chez toi", "L'original reste chiffré sur ta tour : tu le revois dans le fil (clic pour l'agrandir ou le télécharger). Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
   ]),
   n("maj-auto", 9, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
