@@ -16,6 +16,11 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
+    p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
+    p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),
+    p("etoile", "Ce qui compte, dans l'ordre", "Réglages › Ce qui compte : ↑ ↓ classent tes priorités (la n°1 passe devant), et chacune peut se relier à un projet Motion. Ses tâches disent alors « sert ta priorité n°1 »."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),

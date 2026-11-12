@@ -12,8 +12,8 @@ const t = (h, m = 0, jour = 0) => new Date(auj.getTime() + jour * 24 * H + h * H
 const enCours = Math.floor((now - 25 * 60_000) / 300_000) * 300_000;
 
 const taches = [
-  { id: "t1", name: "Finaliser la démo de la boutique", scheduledStart: new Date(enCours).toISOString(), scheduledEnd: new Date(enCours + 75 * 60_000).toISOString(), dueDate: new Date(enCours + 4 * H).toISOString(), priority: "HIGH", project: { id: "p1", name: "Boutiques" }, duration: 75, workspace: { id: "w1" } },
-  { id: "t2", name: "Relire le contrat de Hugo", scheduledStart: t(14), scheduledEnd: t(14, 45), dueDate: t(19), priority: "MEDIUM", duration: 45, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t1", name: "Finaliser la démo de la boutique", scheduledStart: new Date(enCours).toISOString(), scheduledEnd: new Date(enCours + 75 * 60_000).toISOString(), dueDate: new Date(enCours + 4 * H).toISOString(), deadlineType: "HARD", priority: "HIGH", project: { id: "p1", name: "Boutiques" }, duration: 75, workspace: { id: "w1" } },
+  { id: "t2", name: "Relire le contrat de Hugo", scheduledStart: t(14), scheduledEnd: t(14, 45), dueDate: t(19), deadlineType: "SOFT", priority: "MEDIUM", duration: 45, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   { id: "t3", name: "Préparer la facture Ondine", dueDate: t(17), priority: "MEDIUM", workspace: { id: "w1" } },
   { id: "t4", name: "Relancer le comptable", dueDate: t(18, 0, -4), priority: "ASAP", workspace: { id: "w1" } },
   { id: "t5", name: "Envoyer le devis tennis", dueDate: t(12, 0, -2), priority: "HIGH", workspace: { id: "w1" } },
@@ -25,7 +25,11 @@ const taches = [
   { id: "t10", name: "Envoyer les visuels à l'imprimeur", scheduledStart: new Date(now + 20 * H).toISOString(), scheduledEnd: new Date(now + 21 * H).toISOString(), dueDate: new Date(now + 6 * H).toISOString(), priority: "HIGH", duration: 60, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   { id: "t8", name: "Retoucher les photos", dueDate: t(20, 0, 2), duration: 90, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
   // Les jours suivants (vue « Demain » et « 7 jours », 24/10) : placés par Motion.
-  { id: "t10", name: "Préparer la réunion fournisseurs", scheduledStart: t(9, 30, 1), scheduledEnd: t(11, 0, 1), dueDate: t(18, 0, 1), duration: 90, priority: "HIGH", project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  { id: "t18", name: "Préparer la réunion fournisseurs", scheduledStart: t(9, 30, 1), scheduledEnd: t(11, 0, 1), dueDate: t(18, 0, 1), deadlineType: "HARD", duration: 90, priority: "HIGH", project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
+  // « Prochaines heures » (12/11) : ce soir, la musique (pas avant aujourd'hui) ;
+  // demain tôt, une tâche que rien ne distingue (pas d'échéance, priorité moyenne).
+  { id: "t16", name: "Répéter le morceau pour samedi", scheduledStart: t(21), scheduledEnd: t(21, 45), startOn: t(0).slice(0, 10), duration: 45, priority: "MEDIUM", project: { id: "p4", name: "Musique" }, workspace: { id: "w1" } },
+  { id: "t17", name: "Trier les factures du mois", scheduledStart: t(8, 45, 1), scheduledEnd: t(9, 15, 1), duration: 30, priority: "MEDIUM", workspace: { id: "w1" } },
   { id: "t11", name: "Commander les mèches en coton", scheduledStart: t(14, 0, 1), scheduledEnd: t(14, 30, 1), dueDate: t(19, 0, 3), duration: 30, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   // Placée après son échéance : « Motion la place après ».
   { id: "t12", name: "Envoyer le dossier à la banque", scheduledStart: t(16, 0, 1), scheduledEnd: t(17, 0, 1), dueDate: t(12, 0, 1), duration: 60, priority: "HIGH", workspace: { id: "w1" } },
@@ -120,6 +124,7 @@ http.createServer((req, res) => {
     { id: "p1", name: "Boutiques", status: { name: "En cours" } },
     { id: "p2", name: "Album « Été »", status: { name: "En cours" } },
     { id: "p3", name: "Voyage à Porto", status: { name: "En attente" } },
+    { id: "p4", name: "Musique", status: { name: "En cours" } },
   ] }));
   res.statusCode = 404; res.end("{}");
 }).listen(9998);
