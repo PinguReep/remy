@@ -727,9 +727,17 @@ export function detailMajAuto(v, maintenant = Date.now()) {
   if (!v.active) return "Pour qu'elle installe seule ce qui arrive sur main après ses contrôles : une fois, sur la tour, dans un PowerShell administrateur, installer-tour.ps1 -MiseAJourAuto (docs/tour.md).";
   if (v.pause) return `En pause${v.pauseDepuis ? ` depuis ${quand(Date.parse(v.pauseDepuis), { maintenant })}` : ""} : rien n'est installé.`;
   const passe = Date.parse(v.dernierePasse);
-  if (v.occupeLongtemps) return `Rémy est occupé sans relâche depuis ${quand(Date.parse(v.occupeDepuis), { maintenant })} : aucune mise à jour ne passe. Si ça dure, regarde ce qui tourne sur la tour (incidents ci-dessous), ou relance Rémy.`;
+  if (v.occupeLongtemps) return `Rémy est occupé sans relâche depuis ${quand(Date.parse(v.occupeDepuis), { maintenant })} : aucune mise à jour ne passe${v.occupePar?.length ? ` (ce qui la retient : ${v.occupePar.join(", ")})` : ""}. Si ça dure, regarde ce qui tourne sur la tour (incidents ci-dessous), ou relance Rémy.`;
   if (v.retard) return `La tâche n'est pas passée depuis ${Number.isFinite(passe) ? quand(passe, { maintenant }) : "son activation"} : regarde le Planificateur de tâches de la tour (« Rémy - mise à jour »).`;
   return v.message ? `${v.message}${Number.isFinite(passe) ? ` (passage : ${quand(passe, { maintenant })})` : ""}` : `Premier passage dans ${v.intervalleMin || 15} min au plus.`;
+}
+/**
+ * La ligne « Travail de fond » de Diagnostic (fond-cede-v1) : ce que Rémy fait
+ * sans qu'on le lui ait demandé, et s'il est en pause — « Réflexion de nuit en
+ * pause : tu viens de poser une question ». La phrase vient de la tour.
+ */
+export function phraseFond(v) {
+  return typeof v?.ligne === "string" && v.ligne ? v.ligne : "Travail de fond : état inconnu";
 }
 export const confirmationMajAuto = (pause) => (pause ? "Mise à jour automatique en pause : la tour n'installera plus rien seule." : "Mise à jour automatique reprise : la tour installe de nouveau ce qui passe ses contrôles.");
 
@@ -1293,6 +1301,18 @@ const SECTIONS_RENDU = {
       }
     };
     lireMajAuto();
+    const fond = h("div", { class: "reglages-fond" });
+    const lireFond = async () => {
+      if (!sait("fond-cede-v1")) return vider(fond);
+      vider(fond, squelette([0.7]));
+      try {
+        vider(fond, fondVue(await api("/api/fond", { delai: 10000 }), lireFond));
+      } catch (err) {
+        if (err?.nature === "auth") return;
+        vider(fond, erreurSection(`Travail de fond illisible : ${texteErreur(err)}`, lireFond));
+      }
+    };
+    lireFond();
     return carte("Diagnostic", "Pour comprendre ce que fait Rémy et le signaler. Rien d'indispensable au quotidien.",
       repere("Temps de réponse", h("div", { class: "reglage" }, h("h3", { class: "titre-section reglages-sous-titre" }, "Temps de réponse"), temps)),
       sait("pieces-v1") ? essaiPieces() : null,
@@ -1308,6 +1328,7 @@ const SECTIONS_RENDU = {
       repere("Version", h("dl", { class: "paires reglage" }, h("dt", null, "Tour"), h("dd", null, `${v.serveur || "?"}${v.commit ? ` · ${String(v.commit).slice(0, 7)}` : ""}`), h("dt", null, "API"), h("dd", null, String(v.api)), h("dt", null, "Capacités"), h("dd", null, String((v.capacites || []).length)),
         h("dt", null, "App Windows"), h("dd", null, bureau.estBureau() ? bureau.etatBureau()?.version || "oui" : "non (navigateur)"))),
       sait("maj-auto-v1") ? repere("Mise à jour automatique", h("div", { class: "reglage" }, majAuto)) : null,
+      sait("fond-cede-v1") ? repere("Travail de fond", h("div", { class: "reglage" }, fond)) : null,
       sousTitre("Incidents récents"),
       incidents.length ? h("ul", { class: "liste" }, incidents.slice(0, 15).map((i) => h("li", { class: "ligne" }, h("div", { class: "corps" }, h("div", { class: "titre-ligne mono" }, i.code || "?"), h("div", { class: "meta" }, [i.type, i.route, i.a ? quand(new Date(i.a).getTime()) : null].filter(Boolean).join(" · ")))))) : vide(null, "Aucun incident."),
       h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton("Copier le diagnostic", { classe: "papier", icone: "copier", onclick: async () => { try { await navigator.clipboard.writeText(texte); dire("Diagnostic copié.", { genre: "succes" }); } catch { dire("Copie impossible ici.", { genre: "erreur" }); } } })));
@@ -2052,6 +2073,16 @@ function majAutoVue(v, relire) {
   }
   blocs.push(h("div", { class: "rangee", style: { marginTop: "8px" } }, bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, relire) })));
   return blocs;
+}
+
+/** Travail de fond (Diagnostic) : une ligne, sans notification. */
+function fondVue(v, relire) {
+  return [
+    h("h3", { class: "titre-section reglages-sous-titre" }, "Travail de fond"),
+    h("strong", { class: "fond-ligne" }, phraseFond(v)),
+    h("p", { class: "aide", style: { margin: "4px 0 0" } }, "Ce que Rémy fait sans que tu le lui demandes (réflexion de nuit, résumés, conseil…). Il se met en pause dès que tu lui demandes quelque chose ou qu'une mise à jour s'installe, puis reprend."),
+    h("div", { class: "rangee", style: { marginTop: "8px" } }, bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, relire) })),
+  ];
 }
 
 function mesuresVue(t, erreur, rafraichir) {

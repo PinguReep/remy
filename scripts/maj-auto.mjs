@@ -7,8 +7,9 @@
 // Options :
 //   --a-blanc   dit ce qui serait fait, sans rien installer ni écrire
 //   --etat      l'état, la vue de Réglages et les dernières lignes du journal
-//   --occupe    sort en 10 si Rémy travaille (l'installeur -Auto s'en sert juste
-//               avant de changer de version), 0 sinon
+//   --occupe    met le fond en pause, puis sort en 10 si Rémy travaille pour
+//               Sam (l'installeur -Auto s'en sert juste avant de changer de
+//               version), 0 sinon
 //
 // La décision vit dans lib/maj-auto.js (testée) ; ici, seulement les vrais
 // services : git sur la copie de production, l'API publique de GitHub (sans
@@ -47,7 +48,10 @@ const remy = M.clientRemy({ url, env, pauseMs: Number(M.surcharge(env, "REMY_MAJ
 const gitExe = M.trouverDansPath("git", { env });
 
 if (args.includes("--occupe")) {
-  const o = await remy.occupation();
+  // Juste avant d'arrêter Rémy (l'installeur -Auto) : le fond se met en pause
+  // (bail renouvelé) et seul ce qui est demandé, ou une sauvegarde qui écrit,
+  // répond « occupé » (12/11, lib/priorite.js).
+  const o = await remy.ceder();
   console.log(o.joignable ? (o.occupe ? `Rémy travaille : ${o.raisons.join(", ")}` : "Rémy est calme") : "Rémy ne répond pas");
   process.exit(o.joignable && o.occupe ? M.CODE_SORTIE_OCCUPE : 0);
 }

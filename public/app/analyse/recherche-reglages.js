@@ -182,6 +182,8 @@ export const INDEX = [
     { ancre: "Version", mots: ["version", "build", "numéro", "serveur", "tour", "à jour"] }),
   entree("majAuto", "Mise à jour automatique", "La tour installe seule ce qui passe ses contrôles ; la mettre en pause.", "diagnostic",
     { ancre: "Mise à jour automatique", mots: ["mise à jour", "mises à jour", "automatique", "installer", "installation", "pause", "tour", "version", "commit", "déploiement"], si: ["capacite:maj-auto-v1"] }),
+  entree("fond", "Travail de fond", "Ce que Rémy fait sans que tu le demandes, et s'il est en pause.", "diagnostic",
+    { ancre: "Travail de fond", mots: ["fond", "arrière-plan", "réflexion de nuit", "tâches de fond", "en pause", "agents", "occupé"], si: ["capacite:fond-cede-v1"] }),
   entree("avance.classique", "Interface classique", "La roadmap et la consigne de nuit.", "avance",
     { ancre: "Interface classique", mots: ["classique", "ancienne interface", "roadmap", "consigne"] }),
   entree("deconnexion", "Se déconnecter", "Il faudra retaper le mot de passe.", "avance",
