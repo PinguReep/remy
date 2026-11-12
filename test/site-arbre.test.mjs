@@ -89,7 +89,7 @@ test("le verrou : l'écran dit ce qu'il protège ET ce qu'il ne protège pas, et
   assert.match(vue, /statut === 423/);
   assert.doesNotMatch(lire("vues/arbre.js"), /localStorage|sessionStorage/, "rien du verrou dans le navigateur (le cookie est HttpOnly)");
   // Réglages › Mémoire passe par le même verrou.
-  assert.match(lire("vues/reglages.js"), /statut === 423\) \{\n\s+const c = carteVerrou/);
+  assert.match(lire("vues/reglages.js"), /statut === 423\) \{\r?\n\s+const c = carteVerrou/);
 });
 
 test("tour d'avant (clé absente) : rien ne change", () => {

@@ -95,10 +95,16 @@ const remy = http.createServer(async (req, res) => {
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${remy.address().port}`;
 
+// Lire une conversation ouvre la base : on la referme avant d'effacer le dossier (Windows refuse sinon).
+let fermerDb = () => {};
+try {
+  fermerDb = (await import("../lib/db.js")).fermer;
+} catch {}
 test.after(() => {
   remy.close();
   glm.close();
   anthropic.close();
+  fermerDb();
   fs.rmSync(dossier, { recursive: true, force: true });
 });
 
