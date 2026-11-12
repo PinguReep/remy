@@ -39,7 +39,10 @@ ajoute tes réglages à `remy.env`, puis lance l'installeur. Rien n'est supprim�
 
 ## Mettre à jour
 
-Dans un PowerShell **administrateur**, depuis une copie du dépôt :
+Avec la mise à jour automatique (ci-dessous), rien à faire : la tour installe
+d'elle-même ce qui arrive sur `main` et passe ses contrôles. À la main, ou
+pour un commit précis, dans un PowerShell **administrateur**, depuis une copie
+du dépôt :
 
 ```powershell
 git pull
@@ -61,6 +64,144 @@ powershell -ExecutionPolicy Bypass -File scripts\installer-tour.ps1 -Ref (Get-Co
 
 Les migrations de la base vont toujours en avant et restent lisibles par la
 version précédente (tables ajoutées, jamais retirées).
+
+## Mise à jour automatique
+
+### L'activer : une commande, une fois
+
+Dans un PowerShell **administrateur** (clic droit › Exécuter en tant
+qu'administrateur), depuis une copie à jour du dépôt :
+
+```powershell
+git pull
+powershell -ExecutionPolicy Bypass -File scripts\installer-tour.ps1 -Ref <dernier commit de main> -MiseAJourAuto
+```
+
+L'installeur fait sa mise à jour habituelle (sauvegarde « avant-maj », copie de
+production, redémarrage), puis pose une seconde tâche planifiée, **« Rémy -
+mise à jour »**. Une copie de production qui a déjà cette fonction n'a besoin
+que de `installer-tour.ps1 -MiseAJourAuto` (sans `-Ref` : le lanceur de Rémy est
+réécrit, la tâche « Rémy » réenregistrée et redémarrée, et la tâche de mise à
+jour posée). Elle passe toutes les 15 minutes et 5 minutes après l'ouverture de
+session. Une mise à jour à la main, sans ces drapeaux, ne la crée ni ne la
+retire.
+
+**Sans droits d'administrateur.** La tâche de mise à jour tourne en
+« RunLevel Limited », comme Rémy : un programme du compte qui modifierait ses
+fichiers (la copie de production, `remy.env`, son lanceur) n'en tirerait aucun
+droit de plus. Elle ne touche donc à aucune tâche planifiée : elle arrête le
+node de Rémy, et le lanceur de la tâche « Rémy » (`run-remy.ps1`, posé par
+`-MiseAJourAuto` et par chaque installation à la main) **le relance**, avec la
+nouvelle version (3 s après ; s'il retombe 5 fois en 2 minutes, il attend
+5 minutes et le note dans `remy.log`). Seuls `-MiseAJourAuto`,
+`-SansMiseAJourAuto`, `-Uninstall` et une installation à la main demandent un
+PowerShell administrateur. Ce que `-Auto` fait — `git fetch`/`checkout`,
+`npm ci --ignore-scripts`, la sauvegarde, l'arrêt de node — se fait avec les
+droits du compte ; il ne fait **pas** `tailscale serve` (la publication, posée
+à l'installation, reste en place) ni rien sur les tâches.
+
+Par prudence encore : git, PowerShell et conhost par leur chemin complet
+(jamais trouvés dans un dossier courant), git sans hooks, sans fsmonitor ni
+objets de remplacement, seule l'API `https://api.github.com`, les variables
+d'essai `REMY_MAJ_*` ignorées hors essai, et le jeton que la tâche signe pour
+parler à Rémy ne vaut que 60 s, pour `GET /api/maj-auto` et `GET /api/version`.
+
+### Ce que ça implique
+
+La tour installe **d'elle-même** tout commit qui arrive sur `main` du dépôt
+public et passe ses contrôles. Seul le propriétaire du dépôt peut pousser sur
+`main` (les autres proposent une PR, qu'il fusionne ou non) : ce qu'il fusionne
+part sur la tour dans le quart d'heure qui suit la fin des contrôles. Pour
+garder la main : la pause, ou la retirer.
+
+### La règle
+
+À chaque passage (`scripts\maj-auto.mjs`, décision dans `lib/maj-auto.js`) :
+
+1. **Coupée ou en pause ?** `REMY_MAJ_AUTO=off` dans `remy.env`, ou la pause de
+   l'app : rien.
+2. **Le bon dépôt.** La copie de production doit suivre
+   `github.com/PinguReep/remy` (son `origin`) ; sinon rien.
+3. **Le candidat** : le dernier commit de `main`, lu sur l'API publique de
+   GitHub, sans jeton. Déjà installé : rien (une seule requête).
+4. **Jamais en arrière.** Le commit installé doit être un ancêtre du candidat
+   (`git merge-base --is-ancestor`). Un commit installé à la main hors de
+   `main` (une branche) suspend donc la mise à jour automatique jusqu'à ce
+   qu'un commit de `main` soit installé à la main — elle le dit.
+5. **Les contrôles.** Sur un commit de `main`, deux workflows peuvent tourner :
+   **« Serveur — tests »** (`serveur.yml` : `npm test` sous Ubuntu, et sous
+   Windows avec les scripts de la tour, la tâche planifiée et un passage de
+   cette mise à jour), toujours ; **« Bureau Windows — installateur »** quand
+   `desktop/` change. Les workflows iOS ne tournent pas sur `main` (PR,
+   TestFlight à la demande). On prend la dernière exécution de chaque workflow
+   lancée par un **envoi** (`push`) sur `main` **du dépôt** (`repository` et
+`head_repository` = `PinguReep/remy`) pour ce commit — une PR, même d'un fork
+dont la branche s'appelle `main` avec le même commit, ne compte ni pour
+bloquer ni pour valider ; une relance remplace l'échec d'avant :
+   - « Serveur — tests » doit y être et avoir **réussi** ;
+   - toutes les autres terminées, réussies ou sautées ;
+   - une encore en cours (ou « Serveur » pas encore lancé, moins d'une heure
+     après le commit) : **on attend** le passage suivant ;
+   - pas de « Serveur » une heure après : **pas d'installation** (« aucun
+     contrôle ») ;
+   - un échec, une annulation, un délai dépassé : **pas d'installation**, et
+     Réglages dit lequel. Relancer le workflow sur GitHub suffit : s'il passe,
+     le commit est installé au passage suivant.
+6. **Pas pendant que Rémy travaille.** `GET /api/maj-auto` (local, avec une
+   session signée par `SESSION_SECRET`) dit s'il y a une réponse en cours, un
+   job de fond (sauvegarde, réflexion de la nuit, commerces…), un appel au
+   modèle ou une écriture d'une session valide (envoi, capture ; une requête
+   sans session ne compte pas). Occupé : on repasse dans 15 minutes ; occupé
+   sans relâche plus de 6 h, Réglages le signale. L'installeur revérifie avant
+   sa sauvegarde et juste après (code 3 : rien n'a changé, pas de sauvegarde
+   pour rien), puis attend jusqu'à 10 minutes que Rémy soit calme juste avant
+   de l'arrêter (la copie est alors déjà à jour : passé ce délai, il redémarre
+   quand même). Rémy qui ne répond pas deux passages de suite ne travaille pour
+   personne : on installe.
+7. **L'installation** passe par l'installeur, `-Ref <commit> -Auto` : sa
+   sauvegarde chiffrée « avant-maj » d'abord. S'il s'arrête avant tout
+   changement (sauvegarde impossible, réseau), rien n'a bougé : nouvel essai
+   15 min plus tard, puis 30, 1 h, 2 h… jusqu'à 6 h.
+8. **La vérification.** `/api/version` doit annoncer le candidat. Sinon (ou si
+   l'installeur s'est arrêté après avoir changé la copie) : **retour
+   automatique** à la version d'avant par le même installeur (celui de cette
+   version-là, `-Retour`), et le candidat est **refusé** : jamais retenté. Le
+   commit suivant de `main` le sera.
+
+Jamais deux passages à la fois : `maj-auto\verrou.json` (périmé à la mort de
+son processus, ou au bout de 2 h) ; une installation à la main le prend aussi,
+et refuse de démarrer pendant un passage. L'API de GitHub sans jeton permet 60
+requêtes par heure : un passage en fait une (à jour) ou deux (un commit à
+juger) ; si la limite est atteinte, on attend qu'elle se lève.
+
+### La voir, la mettre en pause, la retirer
+
+- **Dans l'app** : Réglages › Diagnostic › « Mise à jour automatique :
+  activée / désactivée / en pause — dernière : tel commit, tel jour,
+  réussie / annulée (raison) », ce que fait le dernier passage, et
+  l'interrupteur « Installer seule les mises à jour » (coupé : en pause).
+- **Le journal** (court, sans secret : des commits et des états) :
+  `Get-Content $env:USERPROFILE\.remy\maj-auto\journal.log -Tail 20`. La
+  sortie complète de la dernière installation :
+  `maj-auto\derniere-installation.log`. L'état en une commande :
+  `node --no-warnings --env-file=$env:USERPROFILE\.remy\remy.env $env:USERPROFILE\.remy\app\scripts\maj-auto.mjs --etat`
+  (`--a-blanc` : ce qui serait fait, sans rien installer).
+- **Couper depuis la tour** : `REMY_MAJ_AUTO=off` dans `remy.env` (l'app ne
+  peut plus la rallumer).
+- **La retirer** : `installer-tour.ps1 -SansMiseAJourAuto` (PowerShell
+  administrateur) ; `-Uninstall` la retire aussi.
+- **Un retour en arrière raté** reste affiché (« retour-echoue », avec la
+  commande à lancer) à chaque passage, jamais « à jour », tant que Rémy
+  n'annonce pas le commit de la copie ou qu'une installation à la main ne l'a
+  pas mise ailleurs.
+
+| Fichier (`%USERPROFILE%\.remy\maj-auto\`) | Rôle |
+| --- | --- |
+| `tache.json` | posé par `-MiseAJourAuto` (« activée ») |
+| `pause.json` | la pause de l'app, lue par la tâche même quand Rémy ne répond pas |
+| `etat.json` | le dernier passage, la dernière mise à jour, les commits refusés |
+| `journal.log` | ce qui s'est passé (400 lignes au plus) |
+| `verrou.json` | le passage en cours |
 
 ## Sauvegardes
 

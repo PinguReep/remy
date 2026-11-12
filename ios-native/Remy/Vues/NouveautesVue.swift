@@ -3,14 +3,22 @@ import RemyCore
 
 /// Le mini tutoriel d'une mise à jour (21/10) : quelques pages, une moitié
 /// d'écran, « Plus tard » toujours à portée. Vu une fois, puis rangé dans
-/// Réglages › Nouveautés.
+/// Réglages › Nouveautés, qui suit où tu en es (12/11).
 struct NouveautesFeuille: View {
     let lot: LotNouveautes
     let fini: () -> Void
-    /// La page affichée (0 : la première) : à la fermeture, seules les
-    /// entrées atteintes sont vues ; « Plus tard » garde les autres.
-    var pageVue: (Int) -> Void = { _ in }
-    @State private var index = 0
+    /// La page affichée (0 : la première), dès l'ouverture : le suivi note
+    /// « commencé » ou « suivi » (dernière page) ; « Plus tard » garde le reste.
+    let pageVue: (Int) -> Void
+    @State private var index: Int
+
+    /// `lot.depart` : un tutoriel commencé reprend à sa page la plus loin.
+    init(lot: LotNouveautes, fini: @escaping () -> Void, pageVue: @escaping (Int) -> Void = { _ in }) {
+        self.lot = lot
+        self.fini = fini
+        self.pageVue = pageVue
+        _index = State(initialValue: min(max(0, lot.depart), max(0, lot.pages.count - 1)))
+    }
 
     var body: some View {
         let pages = lot.pages
@@ -81,11 +89,15 @@ struct NouveautesFeuille: View {
         .background(Palette.fond)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onAppear { pageVue(index) }
         .onChange(of: index) { _, i in pageVue(i) }
     }
 }
 
-/// Réglages › Nouveautés : chaque mise à jour et son tutoriel, à revoir.
+/// Réglages › Nouveautés, le suivi (12/11) : « 3 à découvrir · 1 commencé ·
+/// 22 suivis », puis chaque tutoriel rangé par état (à découvrir d'abord),
+/// son état en mots et sa date. Toucher l'ouvre — un commencé reprend à sa
+/// page. « Tout marquer comme suivi », avec « Annuler ».
 struct NouveautesListe: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
@@ -95,45 +107,79 @@ struct NouveautesListe: View {
         let m = app.nouveautes
         NavigationStack {
             List {
-                ForEach(m.historique) { n in
-                    Button {
-                        Haptique.leger()
-                        revu = m.lot(pour: n)
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: n.pages.first?.symbole ?? "sparkles")
-                                .font(.system(size: 17))
+                Section {
+                    Text(m.resume)
+                        .font(Police.texte(16, .semibold))
+                        .foregroundStyle(Palette.encre)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .accessibilityLabel(m.resume.replacingOccurrences(of: " · ", with: ", "))
+                        .accessibilityIdentifier("nouveautes.resume")
+                    if !m.aMarquer.isEmpty {
+                        Button {
+                            Haptique.leger()
+                            m.toutMarquerSuivi()
+                        } label: {
+                            Label("Tout marquer comme suivi", systemImage: "checkmark.circle")
+                                .font(Police.texte(15, .medium))
                                 .foregroundStyle(Palette.encre)
-                                .frame(width: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(n.titre).font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
-                                Text(m.existe(n) ? n.date : "\(n.date) · arrive avec la mise à jour de ta tour")
-                                    .font(Police.texte(13))
-                                    .foregroundStyle(Palette.encre2)
-                            }
-                            Spacer(minLength: 8)
-                            if m.estNouvelle(n) {
-                                Text("Nouveau")
-                                    .font(Police.mono(11))
-                                    .foregroundStyle(Palette.fond)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(Palette.signal, in: Capsule())
-                            }
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                        .frame(minHeight: 48)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Range tout ce qui reste ; « Annuler » ensuite pour revenir en arrière")
                     }
-                    .buttonStyle(.plain)
+                } footer: {
+                    Text("Gardé sur cet iPhone. À l'ouverture de l'app, Rémy ne présente que les tutoriels des deux dernières mises à jour ; les autres t'attendent ici.")
+                        .font(Police.texte(12))
+                }
+                ForEach(m.groupes) { g in
+                    Section {
+                        ForEach(g.entrees) { n in ligne(n, m) }
+                    } header: {
+                        Text("\(g.titre) (\(g.entrees.count))")
+                    }
                 }
             }
             .navigationTitle("Nouveautés")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { fermer() } } }
+            .overlay(alignment: .bottom) { ToastView(marge: 24, annoncer: false) }
             .sheet(item: $revu) { lot in
-                NouveautesFeuille(lot: lot) { revu = nil }
-                    .onDisappear { m.marquerVues(lot) }
+                NouveautesFeuille(lot: lot, fini: { revu = nil }, pageVue: { m.noter(lot, page: $0) })
             }
         }
+    }
+
+    private func ligne(_ n: Nouveaute, _ m: NouveautesModel) -> some View {
+        let etat = m.etat(n)
+        let libelle = m.libelle(n)
+        return Button {
+            Haptique.leger()
+            revu = m.lot(pour: n)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: n.pages.first?.symbole ?? "sparkles")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Palette.encre)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(n.titre).font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    Text(libelle)
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                // La forme dit l'état (vide, à moitié, coché), pas la couleur seule.
+                Image(systemName: etat.symbole)
+                    .font(.system(size: 20))
+                    .foregroundStyle(etat == .aDecouvrir ? Palette.signal : Palette.encre2)
+            }
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(n.titre). \(libelle)")
+        .accessibilityHint(m.indice(n))
     }
 }

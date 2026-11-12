@@ -4,6 +4,292 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Une tâche « bloquée par » une autre
+
+Une tâche peut attendre qu'une ou plusieurs autres soient finies (« faire
+réparer la voiture au garage », puis « la porter chez le carrossier ») —
+capacité `taches-dependances-v1`, migration 11 (`dependances_taches`).
+
+- **Ce que Motion permet.** Lu dans la doc de l'API publique (Get / List /
+  Create / Update task) : aucun champ de dépendance, ni en lecture ni en
+  écriture (le seul lien entre tâches est `parentRecurringTaskId`). L'app
+  Motion a des « blockers », l'API ne les expose pas. Le lien vit donc dans
+  Remy, et **Motion continue de planifier la tâche bloquée** comme si de rien
+  n'était. Remy ne la propose jamais « à faire maintenant », et le dit (Gérer,
+  nouveautés, consigne du chat). Aucune écriture automatique chez Motion pour
+  compenser (pas de `startDate` repoussée en douce) : c'est un choix à faire
+  avec Sam.
+- **Le modèle.** Une ligne = « `tache_id` attend `bloquante_id` », levée
+  (`levee_a`, `levee_raison`) plutôt qu'effacée. Ni auto-blocage, ni boucle
+  (parcours des bloquantes, même lointaines), 8 bloquantes au plus. L'ancien
+  « en attente » (raison en texte) reste à part : on peut attendre « le bon de
+  commande » sans dépendre d'une tâche, ou les deux (`attente: true`).
+- **Le déblocage seul.** (1) Une coche dans Rémy (`/api/motion/apply`,
+  `terminer`) lève les liens de la bloquante ; le résultat porte
+  `debloquees` et l'app dit « Y est débloquée ». « Annuler » sur la coche les
+  rétablit (et marque la trace annulée). (2) Chaque lecture **complète** de la
+  liste Motion (`quandTachesLues`, jamais une liste tronquée, gardée ou vide)
+  : une bloquante qui n'y est plus est finie ou supprimée dans Motion — sa
+  tâche se débloque. Chaque déblocage laisse une entrée `source: "remy"`,
+  origine « Automatisation », action « Débloquée » dans l'Historique.
+- **Partout où Rémy choisit.** Les marques sont posées sur les tâches BRUTES
+  (`carnet.annoterTaches`) avant tout calcul : journée, conseil, briefing du
+  matin, bilan du soir, menaces, semaine, Projets, À trancher. Une tâche
+  bloquée par une autre est `bloquee: true` (ce que toutes les apps, même
+  anciennes, écartent déjà), avec `raison: « après « A » »` pour celles qui
+  ne lisent pas `bloqueePar`. Effet de bord voulu : l'« en attente » manuel
+  est désormais aussi écarté du briefing du matin (il ne l'était pas : le
+  briefing partait des tâches brutes). Une échéance que le blocage menace
+  (la bloquante finit après, ou elle est due sous 48 h) devient une menace
+  `raison: "bloquee"`, avec « Repousser » après la bloquante.
+- **Rémy le propose.** `motion_proposer` accepte `ref` et `bloquee_par` sur les
+  créations ; vérifiés côté tour (sortie de modèle = non fiable) : ref d'une
+  création de la proposition (le nom exact est ramené à sa ref) ou tâche
+  Motion ouverte, ni boucle ni auto-blocage. Rangés en `bloquee_par` (refs) et
+  `attend_ids` (Motion), plus `apres` (les noms) pour la carte. Les liens sont
+  posés APRÈS l'écriture, avec les identifiants que Motion vient de rendre ;
+  une étape décochée ou ratée ne lie à rien (`liensRates`). Rien n'est créé
+  sans le « Oui » de Sam.
+- **Contrat HTTP.** `PUT /api/taches/:id/etat` : `bloqueePar` (liste
+  complète, `[]` pour tout retirer) ; clé absente = inchangé. `GET
+  /api/dependances` : les liens et les tâches ouvertes (liste en cache, aucune
+  requête Motion de plus).
+
+## 2026-11-12 — Les pièces jointes du chat (`pieces-v1`)
+
+On ne pouvait rien joindre dans la conversation. Désormais : le trombone, coller
+(Ctrl+V) ou déposer sur le site et l'app Windows ; le trombone sur l'iPhone
+(photothèque, appareil photo, Fichiers). Images (PNG, JPEG, HEIC, WebP), PDF,
+texte (.txt, .md) ; tout autre type est refusé avec sa raison. **4 pièces de
+10 Mo au plus par message**, 100 par conversation, 120 envois par heure.
+
+- **Deux temps.** `POST /api/conversations/:id/pieces { nom, donnees (base64),
+  texte?, lecture?, apercu? }` range la pièce et la lit, puis
+  `POST …/messages { text, pieces: [id] }` la joint (texte vide permis). Une
+  pièce jamais jointe est effacée au bout de 24 h ; `DELETE …/pieces/:pid` la
+  retire avant l'envoi. `GET …/pieces/:pid[?telecharger=1]` sert l'original.
+- **Le type se lit dans les octets** (signatures PNG, JPEG, RIFF/WEBP,
+  `ftyp` HEIC, `%PDF-`, UTF-8 valide pour le texte), et doit être celui de
+  l'extension : un `.png` qui contient du HTML, un `.md` qui est une image, un
+  `.svg` : refusés (415). Le nom est assaini (dernier segment, sans caractère
+  de contrôle ni de direction, 120 caractères) et ne sert **jamais** de chemin :
+  le fichier s'appelle par son identifiant (24 hexadécimaux, vérifiés), dans le
+  dossier de sa conversation (identifiant vérifié aussi).
+- **Servi sans danger** : le type lu dans les octets (le texte, même Markdown,
+  en `text/plain`), `nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+  `no-store`, et une CSP `sandbox` (sauf le PDF, que le lecteur du navigateur
+  doit pouvoir afficher) : rien d'envoyé ne s'exécute.
+- **L'original est gardé, chiffré** : `<base>/pieces/<conversation>/<id>.piece`
+  = AES-256-GCM (la clé des conversations, hors du coffre :
+  `chiffrerOctets`, données associées liées au fichier) d'une fiche JSON et des
+  octets. Le nom même n'est pas lisible sur le disque. La base partant dans la
+  sauvegarde, les pièces aussi (avec la clé, dans l'archive chiffrée). La copie
+  lisible d'Obsidian ne porte que « *Pièce jointe : nom — à revoir dans
+  l'app.* ». Supprimer la conversation supprime son dossier.
+- **Joindre ne rend pas le fil privé.** Le texte LU d'une pièce suit la règle du
+  reste du message : dans un fil ordinaire, il peut partir chez Claude si le
+  secours cloud est allumé (coupé par défaut) ; les **octets**, jamais.
+
+**Ce qui est lu, et par qui** (tout reste sur les machines de Sam) :
+
+| Pièce | Lue par | Comment |
+|---|---|---|
+| .txt, .md | la tour | UTF-8, 20 000 caractères au plus (au-delà : coupé, dit) |
+| PDF | la tour | pdf.js (`pdfjs-dist` 6.4.299, build legacy) dans un fil de travail à part : 50 pages, 20 000 caractères, 20 s, 384 Mo ; texte seulement (ni eval, ni polices, ni XFA, ni scripts, ni réseau). Protégé, abîmé, trop long ou scanné : joint, non lu, raison dite |
+| Image de l'iPhone | l'iPhone | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper » |
+| Image du site / de Windows | la tour | OCR de Windows (`Windows.Media.Ocr`, PowerShell 5.1, l'image par l'entrée standard : aucun fichier temporaire ; 30 s ; français d'abord). Absent (Linux, langue non installée) : la raison est dite |
+| Toute image | le modèle de vision **local** | `REMY_VISION_URL` (+ `_MODELE`, `_TOKEN`), sinon le modèle local principal ; partie `image_url` en `data:` ; image réduite à 1 344 px par le client (site : canvas ; iPhone : ImageIO), sinon l'original s'il fait 4 Mo au plus ; description de 1 500 caractères au plus |
+
+- **Le garde-fou de la vision** (`lib/vision.js`) ne dépend d'aucun réglage :
+  l'appel part en direct vers l'adresse du cerveau, jamais par les fournisseurs
+  (aucun secours possible), et seulement si elle est sur les machines de Sam
+  (`modeleLocalChezToi`). Testé avec le secours cloud allumé : aucun octet
+  d'image n'arrive au faux Anthropic.
+- **Une épreuve avant de croire un modèle** : une image d'une couleur tirée au
+  hasard, dont il doit dire la couleur. Un moteur qui ignore l'image (et
+  inventerait une description) ou qui la refuse est écarté, et son verdict
+  retenu 6 h — comme `formatRefuse` pour `response_format`. Chaque appel passe
+  par la garde de charge (`inference`) et entre dans les coûts (`kind`
+  « piece-vision », 0 $). Le modèle que servent les Sparks est annoncé
+  multimodal par son éditeur ; son moteur, lui, **n'a pas été essayé ici**.
+- **Ce que reçoit le modèle de conversation** : du texte seulement
+  (`contenuPourModele` → `texteAvecPieces`). Une pièce lue : une ligne
+  `[pièce jointe lue : nom, type, taille …]` puis son texte encadré
+  (`encadrer`, matière externe) ; une image : le texte reconnu et la
+  description, encadrés, « lecture automatique qui peut se tromper » ; sinon
+  `[pièce jointe non lue : nom, type, taille — raison]` et une consigne : ne
+  pas prétendre l'avoir vue. Le compactage relit le même texte, borné à 16 000
+  caractères par message ; l'original jamais.
+- **Ce que voit Sam** : sous chaque pièce, la phrase de la tour (« lue par
+  Rémy », « texte reconnu sur la tour — peut se tromper », « décrite par le
+  modèle local », « non lue par Rémy : PDF protégé par un mot de passe »…). Le
+  fil relu ne reçoit pas le texte lu (l'original se rouvre).
+- **L'essai, sans terminal** : Réglages › Diagnostic › « Essayer la lecture des
+  pièces » (`POST /api/pieces/essai`, sur ce seul geste, 75 s au plus) essaie
+  l'OCR, le modèle local (l'épreuve) et un PDF d'essai, fichiers fictifs
+  fabriqués par `lib/fichiers-essai.js` ; même chose en ligne de commande :
+  `node --no-warnings --env-file=%USERPROFILE%\.remy\remy.env %USERPROFILE%\.remy\app\scripts\essai-pieces.mjs`.
+  Ni adresse ni jeton dans le résultat.
+- **Dépendance** : `pdfjs-dist` (Mozilla, Apache-2.0, une bibliothèque, aucun
+  service). Son option `@napi-rs/canvas` (dessiner les pages) n'est pas
+  installée sur la tour (`npm ci --omit=optional` dans l'installeur).
+- **iPhone** : `NSCameraUsageDescription` ajoutée (appareil photo). Une photo
+  part en JPEG réduit à 3 000 px (l'original gardé), avec l'aperçu de 1 344 px
+  et le texte de Vision ; ouverte en grand par Coup d'œil, depuis une copie
+  temporaire effacée à la fermeture.
+- **Limites connues** : « Réessayer » une réponse ratée renvoie le texte, pas
+  les pièces ; l'OCR des PDF scannés n'existe pas ; l'OCR de Windows et le
+  modèle de vision n'ont pu être essayés ici (pas de Windows, pas de Sparks) :
+  l'essai des Réglages est fait pour ça.
+
+## 2026-11-12 — Le suivi des tutoriels, et plus de vieux tutoriels au lancement
+
+Une mise à jour a présenté un tutoriel vieux de plusieurs semaines, sur une
+fonction en train de changer, et rien ne disait ce qui avait été ouvert ou
+suivi. Mêmes règles des deux côtés (`RemyCore/Nouveautes.swift`,
+`public/app/nouveautes.js`, mêmes cas de test).
+
+- **Trois états, gardés sur l'appareil** : à découvrir (jamais ouvert),
+  commencé (ouvert, dernière page pas atteinte), suivi (dernière page
+  atteinte), avec la date et la page la plus loin. Une page affichée est
+  notée tout de suite (ouverture comprise), jamais en arrière ; un tutoriel
+  commencé rouvert reprend à sa page, un suivi repart du début. Clé
+  `nouveautes.suivi` (iPhone, JSON) / `remy-nouveautes-suivi` (site).
+- **La reprise des « vus »** : ils deviennent **commencés**, datés du jour de
+  la reprise (« ouvert avant le 12 nov. »), pas « suivis ». Un « vu » disait
+  qu'une page au moins avait été affichée — ou rien, pour l'historique marqué
+  vu au premier lancement : l'appeler « suivi » affirmerait ce qu'on ne sait
+  pas. Rien ne redevient « à découvrir », rien ne revient au lancement, et
+  « Tout marquer comme suivi » (avec « Annuler ») range le reste d'un geste.
+  L'ancienne clé n'est lue qu'une fois ; la reprise du build 37 passe avant.
+- **Présenté d'office : les deux dernières séries** (`seriesPresentees` /
+  `SERIES_PRESENTEES`), à découvrir, la tour connaissant la fonction, jamais
+  par-dessus une saisie, 6 pages au plus par feuille. Plus ancien (mise à jour
+  sautée, tour à jour plus tard) : il attend dans Réglages › Nouveautés. Une
+  installation neuve garde sa règle : rien d'avant la série du premier
+  lancement (`nouveautes.depart`).
+- **Retirer, remplacer.** Retirer : l'id dans `retirees` / `RETIREES` (avec la
+  raison), l'entrée hors du catalogue ; un état gardé sous cet id est ignoré.
+  Remplacer : la nouvelle entrée, avec **son propre id** (elle part « à
+  découvrir » pour qui avait suivi l'ancienne), porte `remplace: "<ancienne>"` ;
+  l'ancienne sort du suivi dès que la tour connaît la nouvelle (avant, c'est
+  encore elle qui décrit la fonction). `aRemplacer` : plus présentée d'office,
+  « bientôt remplacé » dans le suivi — c'est l'état de « priorites » (Ce qui
+  compte), dont la remplaçante viendra avec le classement proposé par Rémy.
+- **L'audit du catalogue** contre le code : retirées `jauge` (la vitesse
+  « s'affiche pendant qu'il écrit » : masquée par défaut depuis le 27/10),
+  `compactage` (doublon de la deuxième page de `jauge-retour`) et
+  `bilan-coucher` (annonce passée d'une heure par défaut) ; corrigés le menu du
+  titre (« Rendre cette conversation privée »), les reports d'un rappel
+  (« Ce soir 19:00 », « Demain 9:00 »), le chemin des idées (« Une pensée sans
+  action claire » › « Dans Motion », pas de « Capture » dans Réglages), le nom
+  du modèle (dans la jauge, plus sous chaque réponse sur l'iPhone), le titre
+  « de retour » de la jauge ; sur le site, « Réglages › À trancher et revue ».
+- **L'écran** : « N à découvrir · M commencés · K suivis », puis les rubriques
+  À découvrir, Commencés, Suivis, Avec la mise à jour de ta tour ; l'état se
+  lit en mots (« Commencé le 3 nov. · page 2 sur 3 ») et en forme (cercle vide,
+  à moitié, coché ; sur le site étincelles, horloge, coche), jamais par la
+  couleur seule. Capture CI `6e2-nouveautes-suivi-clair` (`REMY_DEMO_ECRAN=nouveautes-suivi`).
+
+## 2026-11-12 (soir) — Mise à jour automatique : revue de sécurité
+
+- **Plus d'élévation.** La tâche « Rémy - mise à jour » tournait en RunLevel
+  Highest, sans invite, toutes les 15 min, sur des fichiers que tout programme
+  du compte peut modifier (son lanceur, la copie de production, `remy.env` lu
+  par `--env-file` — `NODE_OPTIONS` compris —, la config git, `.npmrc`) : un
+  logiciel sans droits devenait administrateur. Elle tourne désormais en
+  Limited. L'élévation ne servait qu'à remplacer la tâche « Rémy » : `-Auto`
+  n'y touche plus, il arrête node, et le lanceur de « Rémy » est devenu une
+  boucle qui le relance (3 s ; 5 chutes en 2 min : 5 min d'attente, notée
+  dans `remy.log` ; un seul lanceur à la fois, mutex de session).
+  `-MiseAJourAuto` (administrateur, une fois) réécrit ce lanceur, réenregistre
+  « Rémy », pose la tâche. `-Auto` ne fait plus `tailscale serve` ni
+  `tailscale status`.
+- **Durcissements gardés** : conhost, PowerShell et git par leur chemin
+  complet (Node et le Planificateur cherchent un nom dans le dossier courant
+  avant le PATH) ; git sans hooks, fsmonitor ni `refs/replace` ;
+  `npm ci --ignore-scripts` (aucun paquet du lockfile n'a de script
+  d'installation) ; `REMY_MAJ_*` ignorées hors `REMY_ENV=test` ; seule l'API
+  `https://api.github.com` ; jeton de **portée** `maj-auto`, 60 s, accepté par
+  `lib/auth.js` pour `GET /api/maj-auto` et `GET /api/version` seulement.
+- **Les contrôles** : la requête demande `branch=main&event=push`, et
+  `evaluerControles` n'accepte que `event: push` avec `repository` ET
+  `head_repository` = le dépôt attendu. Avant, une PR d'un fork (branche
+  nommée `main`, même commit) pouvait bloquer indéfiniment, et une PR verte
+  pouvait valider un envoi rouge.
+- **Occupé** : une écriture ne compte que d'une session valide (un corps
+  lent sans session sur `/api/login` retenait les mises à jour) ; occupé plus
+  de 6 h d'affilée : signalé dans Réglages. L'installeur vérifie avant la
+  sauvegarde (plus de sauvegarde toutes les 15 min pour rien), après, puis
+  attend jusqu'à 10 min juste avant d'arrêter node.
+- **Retour raté** : `retourEchoue` est gardé et redit à chaque passage
+  (jamais « à jour », jamais une autre installation) tant que Rémy n'annonce
+  pas le commit de la copie.
+- Aussi : verrou de l'installeur à la main en création exclusive
+  (`FileMode.CreateNew`) ; minuterie de 45 min qui tue tout l'arbre
+  (`taskkill /T /F`) ; `If-None-Match` sur `/commits/main` (un 304 ne compte
+  pas dans la limite).
+
+## 2026-11-12 — La tour se met à jour seule (si on l'active)
+
+Après chaque fusion, il fallait coller `installer-tour.ps1 -Ref <commit>` sur
+la tour. `installer-tour.ps1 -MiseAJourAuto` pose une fois une seconde tâche,
+« Rémy - mise à jour » (15 min, ouverture de session + 5 min), qui lance
+`scripts/maj-auto.mjs`. Choix :
+
+- **La décision en Node, testée** (`lib/maj-auto.js`, `passer()` avec tout
+  injecté) ; PowerShell ne fait que poser la tâche et installer. Le script ne
+  dépend d'aucun paquet : `npm ci` peut remplacer `node_modules` sous lui.
+- **Les contrôles = GitHub Actions sur `main`** (`/actions/runs?head_sha=`,
+  `head_branch` = `main`, la dernière exécution par workflow). « Serveur —
+  tests » est exigé et doit avoir réussi — c'est lui qui passe `npm test` et
+  les scripts de la tour sous Windows ; le reste doit être fini, réussi ou
+  sauté. Pas de « Serveur » une heure après le commit : pas d'installation.
+  Les statuts d'autres services (une ancienne intégration Vercel) ne comptent
+  pas. API publique sans jeton : 1 à 2 requêtes par passage, la limite de
+  60/h respectée jusqu'à sa levée.
+- **Jamais en arrière** : `merge-base --is-ancestor installé candidat`. Un
+  commit de branche installé à la main suspend donc l'automatique (dit en
+  clair) plutôt que d'être écrasé.
+- **« Rémy travaille »** = une génération en cours (`lib/arret.js`), un job
+  qui tourne (`lib/jobs.js`, en mémoire : la sauvegarde et la réflexion de la
+  nuit en sont), un appel au modèle (garde de charge) ou une écriture HTTP en
+  cours (POST/PUT/PATCH/DELETE, comptées dans `routeApi`). Exposé par
+  `GET /api/maj-auto`, avec un jeton de session que le script signe avec
+  `SESSION_SECRET` (même format que `lib/auth.js`, vérifié par un test). La
+  sauvegarde « avant-maj » de l'installeur peut durer : `-Auto` revérifie
+  juste après elle, avant de toucher à la copie (code 3, rien de changé).
+  Rémy injoignable deux passages de suite : on installe (il ne sert personne,
+  la version suivante le répare peut-être).
+- **Vérifier puis revenir** : `/api/version` doit annoncer le candidat. Sinon,
+  `git checkout` de la version d'avant PUIS son installeur (`-Retour`) : le
+  retour passe par l'installeur éprouvé, pas par celui qu'on vient d'installer.
+  Le candidat est « refusé » à vie ; un arrêt AVANT tout changement
+  (sauvegarde impossible) n'est pas un refus : réessais espacés (15 min → 6 h).
+- **La sauvegarde n'est jamais contournée** : la tâche n'a pas `-SansSauvegarde`.
+- **Un verrou pour tout le monde** (`maj-auto\verrou.json`, création
+  exclusive, périmé à la mort de son processus ou après 2 h) : l'installeur à
+  la main le prend aussi et refuse de démarrer pendant un passage.
+- **La raison d'un arrêt de l'installeur** lui est écrite en UTF-8 (`-Auto`) :
+  relayée par PowerShell 5.1, la sortie perd les accents. D'abord par un `trap`
+  de portée script — erreur : son `continue` (mode `Continue`) reprend après le
+  bloc englobant, pas après l'instruction ; la CI Windows l'a pris en défaut
+  (`-Uninstall` sans tailscale sautait son `return`, puis le `throw` « Indique
+  la version », et déroulait une installation). Remplacé par un
+  `try/catch/finally` autour du seul chemin d'installation, après les sorties
+  anticipées : le catch écrit la raison et relance la même erreur, le finally
+  rend le verrou. Chaque passage en `Continue` (tailscale, Node deux fois)
+  vérifie sa commande par `Get-Command` : aucune erreur terminale n'y reste
+  possible, et une qui surviendrait arrêterait l'installation avant tout
+  changement. La CI vérifie qu'un `-Uninstall` (sans tailscale, puis sans
+  node, git ni tailscale dans le PATH) rend 0, se dit désinstallé et ne lance
+  rien d'autre.
+- **La pause est un fichier** (`pause.json`), pas un réglage de la base : la
+  tâche la lit même quand Rémy ne répond pas. Réglages › Diagnostic la pose
+  (`PUT /api/maj-auto`), capacité `maj-auto-v1`. `REMY_MAJ_AUTO=off` coupe côté tour.
+- L'installeur appelé par la tâche ne reçoit pas les variables de `remy.env`
+  par l'environnement : il le relit lui-même, exactement comme à la main.
+
 ## 2026-11-12 — Prochaines heures, et « Ce que Rémy a compris »
 
 Deux questions de Sam : « qu'est-ce que je fais là, ce soir, demain matin, et

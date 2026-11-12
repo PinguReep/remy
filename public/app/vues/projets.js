@@ -15,6 +15,7 @@ import * as R from "../analyse/recherche-projets.js";
 import { normaliser } from "../analyse/recherche-reglages.js";
 import { surMenu, ouvrirMenu } from "../menu.js";
 import { gerer, terminer, oublierCocheeAnnulee } from "./gerer.js";
+import { marqueBloquee, marqueDebloque } from "../analyse/journee.js";
 import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes, ouvrirQuand } from "./rappels.js";
 import { ouvrirTri } from "./tri-rappels.js";
 
@@ -403,8 +404,13 @@ function detailMotion(id) {
 /** Gérer une tâche : celle de la journée si elle y est, sinon telle que le projet la décrit. */
 function elementTache(t, projet) {
   const duJour = journee().find((x) => x.id === t.id && x.type !== "rdv" && x.debut != null && x.type !== "sans-creneau");
-  if (duJour) return duJour;
-  return { type: "sans-creneau", id: t.id, titre: t.titre, echeance: t.echeance, duree: t.duree, priorite: t.priorite, projet, debut: null };
+  if (duJour) return { ...duJour, bloqueePar: duJour.bloqueePar ?? t.bloqueePar, debloque: duJour.debloque ?? t.debloque };
+  return {
+    type: "sans-creneau", id: t.id, titre: t.titre, echeance: t.echeance, duree: t.duree, priorite: t.priorite, projet, debut: null,
+    // « bloquée par » / « débloque » (taches-dependances-v1), lus avec le projet
+    ...(t.bloqueePar?.length ? { bloqueePar: t.bloqueePar, bloquee: true, raison: `après « ${t.bloqueePar[0].nom} »` } : {}),
+    ...(t.debloque?.length ? { debloque: t.debloque } : {}),
+  };
 }
 
 /** Ranger une tâche dans un sous-projet, ou l'en sortir : tout de suite à l'écran, rétabli si la tour refuse. */
@@ -456,7 +462,9 @@ function ligneTacheMotion(t, projet, { noeud, dans }) {
   ajouterA(li, caseB,
     h("div", { class: "corps cliquable", role: "button", tabindex: "0", onclick: () => gerer(e, { apres: () => setTimeout(recharger, 600), contexte: ctx }), onkeydown: (ev) => { if (ev.key === "Enter") gerer(e, { apres: recharger, contexte: ctx }); } },
       h("div", { class: "titre-ligne" }, t.titre),
-      h("div", { class: "meta" }, t.echeance ? h("span", { class: t.echeance < Date.now() ? "risque" : "" }, `échéance ${C.quandRappel(t.echeance)}`) : null, t.duree ? h("span", null, duree(t.duree)) : null)),
+      h("div", { class: "meta" }, t.echeance ? h("span", { class: t.echeance < Date.now() ? "risque" : "" }, `échéance ${C.quandRappel(t.echeance)}`) : null, t.duree ? h("span", null, duree(t.duree)) : null),
+      t.bloqueePar?.length ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar)) : null,
+      marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     plus);
   surMenu(li, actions, { titre: t.titre });
   return li;
@@ -475,7 +483,9 @@ function ligneTacheRangee(t, d) {
   const ouvrir = () => gerer(elementTache(t, projet), { apres: () => setTimeout(recharger, 600), contexte: ctx });
   ajouterA(li, h("span", { class: "projets-icone" }, icone("liste")),
     h("div", connue ? { class: "corps cliquable", role: "button", tabindex: "0", onclick: ouvrir, onkeydown: (ev) => { if (ev.key === "Enter") ouvrir(); } } : { class: "corps" },
-      h("div", { class: "titre-ligne" }, t.titre), meta ? h("div", { class: "meta" }, meta) : null),
+      h("div", { class: "titre-ligne" }, t.titre), meta ? h("div", { class: "meta" }, meta) : null,
+      t.bloqueePar?.length ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(null, t.bloqueePar)) : null,
+      marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     plus);
   surMenu(li, () => (connue ? actions() : actions().filter((a) => a && a.libelle !== "Gérer…")), { titre: t.titre });
   return li;

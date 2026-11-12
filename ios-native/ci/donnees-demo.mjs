@@ -221,4 +221,27 @@ priorites.enregistrerPriorites([
   { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"], projetMotion: "p1", projetNom: "Boutiques", confirmee: true },
   { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Je les vois trop peu depuis la rentrée", mots: ["Léa", "Hugo"] },
 ], { base: 0, maintenant: now - 21 * 24 * H });
+// 12/11 : des pièces jointes dans un fil (captures « 5p »), FICTIVES, rangées
+// chiffrées comme sur la tour ; la lecture d'une image par la tour est simulée.
+{
+  const pieces = await import("../../lib/pieces.js");
+  const { pdfEssai, pngMot, pngUni } = await import("../../lib/fichiers-essai.js");
+  const conv = { id: "c16", title: "Devis des bougies", createdAt: now - 50 * 60_000, updatedAt: now - 40 * 60_000, messages: [] };
+  const lu = async (nom, octets, extra = {}, ocr = async () => ({ raison: "pas de lecture du texte des images sur cette tour (OCR de Windows seulement)" })) =>
+    pieces.pourMessage((await pieces.recevoir(conv, { nom, donnees: octets.toString("base64"), ...extra }, { ocr, vision: async () => ({ raison: "le modèle local ne voit pas les images" }) })).piece);
+  const jointes = [
+    await lu("ticket-fournisseur.png", pngMot("REMY 42"), {}, async () => ({ texte: "REMY 42\nCire de soja 5 kg — 42,00 €", moteur: "OCR de Windows (fr-FR)" })),
+    await lu("devis-bougies.pdf", pdfEssai(["Devis n° 2026-114 — Atelier des mèches", "60 bougies parfumées : 420,00 € HT", "Livraison sous 15 jours"])),
+    await lu("idees-vitrine.md", Buffer.from("# Vitrine de décembre\n\n- trois hauteurs de bougies\n- étiquettes kraft\n")),
+    await lu("photo-etagere.png", pngUni("bleu", 240)),
+  ];
+  conv.messages = [
+    { role: "user", content: "Le devis colle avec le ticket ? Et tu en penses quoi pour la vitrine ?", pieces: jointes },
+    { role: "assistant", model: "glm-5.3", tier: "local", usd: 0, content: "Le devis annonce **420 € HT pour 60 bougies**, soit 7 € pièce ; le ticket que la tour a lu montre 42 € de cire de soja pour 5 kg, ce qui reste cohérent.\n\nPour la vitrine, tes notes vont dans le bon sens. La photo de l'étagère, je ne la vois pas : dis-moi ce qu'elle montre si tu veux un avis." },
+  ];
+  const fichier = path.join(D, "conversations.json");
+  const base = JSON.parse(fs.readFileSync(fichier, "utf8"));
+  base.conversations.push(conv);
+  fs.writeFileSync(fichier, JSON.stringify(base, null, 2));
+}
 console.log("seed ok");

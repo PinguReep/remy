@@ -52,7 +52,7 @@ jobs:
         shell: powershell
         run: |
           $echec = $false
-          foreach ($f in Get-ChildItem scripts -Filter *.ps1) {
+          foreach ($f in Get-ChildItem scripts, test\outils -Filter *.ps1) {
             $erreurs = $null
             [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$erreurs) | Out-Null
             if ($erreurs) { $echec = $true; $erreurs | ForEach-Object { Write-Error "$($f.Name):$($_.Extent.StartLineNumber): $($_.Message)" } }
@@ -83,6 +83,125 @@ jobs:
           # Unix : en CRLF, bash s'arrête dès « set -o pipefail ».
           if ([IO.File]::ReadAllBytes('scripts/spark-preparer.sh') -contains 13) { Write-Error 'spark-preparer.sh extrait en CRLF'; exit 1 }
           Write-Output "spark-preparer.sh en fins de ligne Unix (core.autocrlf = $(git config core.autocrlf)) : OK"
+      - name: Mise à jour automatique — un passage complet par powershell.exe
+        shell: powershell
+        run: |
+          # scripts\maj-auto.mjs contre un faux GitHub et un faux Remy, avec un
+          # faux installeur .ps1 lancé comme le vrai (powershell -File) : codes de
+          # sortie, raison laissée en UTF-8, retour en arrière, refus, verrou.
+          $ErrorActionPreference = 'Continue'
+          & node test\outils\essai-maj-auto.mjs --installeur test\outils\faux-installeur.ps1
+          if ($LASTEXITCODE -ne 0) { Write-Error "Essai de la mise a jour automatique : code $LASTEXITCODE"; exit 1 }
+      - name: Mise à jour automatique — la tâche planifiée, posée puis retirée par l'installeur
+        shell: powershell
+        run: |
+          # Motifs sans accent : Windows PowerShell 5.1 lit cette étape en ANSI.
+          $ErrorActionPreference = 'Stop'
+          # Un profil à part : l'installeur n'y trouve qu'une copie de production.
+          $profil = Join-Path $env:RUNNER_TEMP 'profil-remy'
+          $env:USERPROFILE = $profil
+          $base = Join-Path $profil '.remy'
+          $app = Join-Path $base 'app'
+          New-Item -ItemType Directory -Force $base | Out-Null
+          $ErrorActionPreference = 'Continue'
+          & git clone --quiet . $app 2>&1 | Out-Null
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path (Join-Path $app 'scripts\maj-auto.mjs'))) { Write-Error 'Copie de production non preparee'; exit 1 }
+          $installeur = 'scripts\installer-tour.ps1'
+          $trouver = { Get-ScheduledTask | Where-Object { $_.TaskName -like 'R*my - mise * jour' } }
+          # (Write-Host : seule la valeur rendue sort de la fonction ; « Continue » :
+          # la sortie d'erreur d'un programme redirigée ne doit pas arrêter l'étape.)
+          function Lancer($drapeau) {
+            $ErrorActionPreference = 'Continue'
+            $sortie = @(powershell -NoProfile -ExecutionPolicy Bypass -File $installeur $drapeau 2>&1 | ForEach-Object { "$_" })
+            $code = $LASTEXITCODE
+            $sortie | ForEach-Object { Write-Host "    $_" }
+            return [pscustomobject]@{ Code = $code; Sortie = ($sortie -join "`n") }
+          }
+          # Apres -Uninstall : code 0, le message de desinstallation, et RIEN
+          # d'autre (ni sauvegarde, ni version notee, ni verrou, ni installation).
+          # Le 12/11, un trap faisait sauter le return du bloc -Uninstall quand
+          # tailscale manquait : l'installeur deroulait une installation.
+          function Verifier-Desinstallation($r, $cas) {
+            if ($r.Code -ne 0) { Write-Error "$cas : code $($r.Code)"; exit 1 }
+            if ($r.Sortie -notmatch 'sinstall') { Write-Error "$cas : pas de message de desinstallation"; exit 1 }
+            if ($r.Sortie -match 'Sauvegarde|Indique la version|Node |npm|Version introuvable|tourne :') { Write-Error "$cas : l'installeur a continue apres la desinstallation"; exit 1 }
+            foreach ($f in 'version-precedente.txt', 'maj-auto\verrou.json') {
+              if (Test-Path (Join-Path $base $f)) { Write-Error "$cas : $f ecrit, une installation a ete lancee"; exit 1 }
+            }
+            if (& $trouver) { Write-Error "$cas : tache toujours la"; exit 1 }
+            if (Get-ScheduledTask | Where-Object { $_.TaskName -like 'R*my' }) { Write-Error "$cas : tache Remy toujours la"; exit 1 }
+            if (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('run-remy.ps1') }) { Write-Error "$cas : le lanceur de Remy tourne encore"; exit 1 }
+          }
+          # 0. Deux drapeaux contraires : refus, rien de pose.
+          $ErrorActionPreference = 'Continue'
+          powershell -NoProfile -ExecutionPolicy Bypass -File $installeur -MiseAJourAuto -SansMiseAJourAuto 2>&1 | Out-Null
+          $codeContraires = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($codeContraires -eq 0 -or (& $trouver)) { Write-Error 'Drapeaux contraires acceptes'; exit 1 }
+          # 1. -MiseAJourAuto, seul : la tache, ses declencheurs, ses droits.
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto a echoue'; exit 1 }
+          $t = & $trouver
+          if (-not $t) { Write-Error 'Tache de mise a jour absente'; exit 1 }
+          Write-Output "Tache : $($t.TaskName) ; droits $($t.Principal.RunLevel) ; $($t.Principal.LogonType)"
+          # Sans droits d'administrateur : elle ne touche a aucune tache, elle arrete node
+          # et le lanceur de la tache Remy le relance.
+          if ($t.Principal.RunLevel -ne 'Limited') { Write-Error "La tache de mise a jour doit tourner SANS droits d'administrateur (RunLevel $($t.Principal.RunLevel))"; exit 1 }
+          $systeme = $env:SystemRoot
+          foreach ($a in $t.Actions) {
+            if ($a.Execute -ne (Join-Path $systeme 'System32\conhost.exe')) { Write-Error "Action par un chemin relatif : $($a.Execute)"; exit 1 }
+            if (-not $a.Arguments.Contains((Join-Path $systeme 'System32\WindowsPowerShell\v1.0\powershell.exe'))) { Write-Error "powershell.exe par son nom : $($a.Arguments)"; exit 1 }
+          }
+          # -MiseAJourAuto seul reecrit le lanceur de Remy (en boucle) et reenregistre la tache Remy.
+          $remy = Get-ScheduledTask | Where-Object { $_.TaskName -like 'R*my' }
+          if (-not $remy) { Write-Error 'Tache Remy non reenregistree'; exit 1 }
+          if ($remy.Actions[0].Execute -ne (Join-Path $systeme 'System32\conhost.exe')) { Write-Error 'Tache Remy : conhost par son nom'; exit 1 }
+          $lanceurRemy = Join-Path $base 'run-remy.ps1'
+          $erreurs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($lanceurRemy, [ref]$null, [ref]$erreurs) | Out-Null
+          if ($erreurs) { Write-Error "run-remy.ps1 : $($erreurs[0].Message)"; exit 1 }
+          $texteLanceur = Get-Content $lanceurRemy -Raw
+          if (-not $texteLanceur.Contains('RemyLanceur') -or -not $texteLanceur.Contains('while ($true)') -or $texteLanceur.Contains('__APP__')) { Write-Error 'run-remy.ps1 ne relance pas node, ou ses chemins ne sont pas remplis'; exit 1 }
+          $ouverture = $t.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }
+          $horloge = $t.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskTimeTrigger' }
+          if (-not $ouverture -or $ouverture.Delay -ne 'PT5M') { Write-Error "Declencheur d'ouverture de session absent ou sans delai de 5 min"; exit 1 }
+          if (-not $horloge -or $horloge.Repetition.Interval -ne 'PT15M') { Write-Error 'Repetition toutes les 15 min absente'; exit 1 }
+          $duree = $horloge.Repetition.Duration
+          Write-Output "Repetition : $($horloge.Repetition.Interval), duree [$duree] (vide : sans fin)"
+          if ($duree -and ([System.Xml.XmlConvert]::ToTimeSpan($duree)).TotalDays -lt 365) { Write-Error "Repetition limitee a $duree"; exit 1 }
+          if ($t.Settings.MultipleInstances -ne 'IgnoreNew') { Write-Error 'Deux passages a la fois possibles'; exit 1 }
+          if (-not ((($t.Actions | ForEach-Object { $_.Arguments }) -join ' ').Contains('run-maj-auto.ps1'))) { Write-Error 'La tache ne lance pas run-maj-auto.ps1'; exit 1 }
+          $marque = Get-Content (Join-Path $base 'maj-auto\tache.json') -Raw | ConvertFrom-Json
+          if (-not $marque.active) { Write-Error 'tache.json absent'; exit 1 }
+          # 2. Le lanceur ecrit par l'installeur : syntaxe 5.1, puis un passage
+          #    reel, coupe par remy.env (REMY_MAJ_AUTO=off) : rien n'est installe.
+          $lanceur = Join-Path $base 'run-maj-auto.ps1'
+          $erreurs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($lanceur, [ref]$null, [ref]$erreurs) | Out-Null
+          if ($erreurs) { Write-Error "run-maj-auto.ps1 : $($erreurs[0].Message)"; exit 1 }
+          [IO.File]::WriteAllText((Join-Path $base 'remy.env'), "REMY_MAJ_AUTO=off`nSESSION_SECRET=ci`n")
+          $ErrorActionPreference = 'Continue'
+          powershell -NoProfile -ExecutionPolicy Bypass -File $lanceur 2>&1 | ForEach-Object { Write-Output "    $_" }
+          $codeLanceur = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          $etat = Get-Content (Join-Path $base 'maj-auto\etat.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          Write-Output "Passage par le lanceur : code $codeLanceur, etat $($etat.etat)"
+          if ($codeLanceur -ne 0 -or $etat.etat -ne 'coupee') { Write-Error 'Le lanceur de la tache ne fait pas son passage'; exit 1 }
+          # 3. -SansMiseAJourAuto la retire.
+          if ((Lancer '-SansMiseAJourAuto').Code -ne 0) { Write-Error '-SansMiseAJourAuto a echoue'; exit 1 }
+          if ((& $trouver) -or (Test-Path (Join-Path $base 'maj-auto\tache.json'))) { Write-Error 'Tache toujours la apres -SansMiseAJourAuto'; exit 1 }
+          # 4. -Uninstall la retire aussi, et s'arrete la (tailscale absent du runner).
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto (2) a echoue'; exit 1 }
+          Verifier-Desinstallation (Lancer '-Uninstall') '-Uninstall sans tailscale'
+          # 5. -Uninstall sans node, git ni tailscale dans le PATH : jamais d'installation.
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto (3) a echoue'; exit 1 }
+          $cheminAvant = $env:Path
+          $env:Path = "$env:SystemRoot\System32;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          foreach ($o in 'node', 'git', 'tailscale') { if (Get-Command $o -ErrorAction SilentlyContinue) { Write-Error "$o encore dans le PATH reduit"; exit 1 } }
+          $r = Lancer '-Uninstall'
+          $env:Path = $cheminAvant
+          Verifier-Desinstallation $r '-Uninstall sans node, git ni tailscale'
+          Write-Output 'Tache de mise a jour : posee, lancee, retiree (-SansMiseAJourAuto, -Uninstall) ; -Uninstall ne lance jamais rien d autre : OK'
       - name: Spark — empreinte relevée par l'OpenSSH de Windows
         shell: powershell
         run: |

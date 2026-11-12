@@ -19,6 +19,8 @@ import { questionEnAttente } from "./noter.js";
 import { etatRecherchePrivee, sousTitrePrivee, ceQueCaChange, confirmationPrivee } from "../analyse/privee.js";
 import * as R from "../analyse/remy.js";
 import * as nonLus from "../non-lus.js";
+import * as PJ from "./pieces.js";
+import * as PA from "../analyse/pieces.js";
 
 // Les modules des autres lots : toujours par import(), jamais en statique
 // (absents avant la fusion, un import statique manquant casserait la vue).
@@ -56,6 +58,10 @@ let arretEnCours = false;
 const brouillons = new Map();
 let brouillonPrive = "";
 const revenus = new Map(); // fils où un message est revenu dans le champ → la phrase du bandeau au retour
+// Les pièces jointes pas encore parties, par fil (comme les brouillons) : en
+// mémoire seulement, jamais dans localStorage (12/11).
+const piecesEnAttente = new Map();
+const enAttente = () => piecesEnAttente.get(cleDe(courante)) || [];
 let modeRetenir = false;
 let enCapture = false;
 let miseEnPrive = false;
@@ -193,6 +199,11 @@ function construire() {
   refs.session = h("div", { class: "remy-session", hidden: true });
   refs.messages = h("div", { class: "fil-messages", tabindex: "-1" });
   refs.champ = h("textarea", { rows: 1, placeholder: "Écris à Rémy…", "aria-label": "Message à Rémy" });
+  // Pièces jointes (12/11) : le trombone, et coller ou déposer un fichier.
+  refs.joindre = bouton("", { classe: "texte icone remy-joindre", icone: "trombone", etiquette: "Joindre un fichier", titre: "Joindre une image, un PDF ou un texte (ou colle-le, ou dépose-le ici)" });
+  refs.joindre.hidden = true;
+  refs.fichier = h("input", { type: "file", multiple: true, accept: PA.ACCEPTE, hidden: true, tabindex: "-1", "aria-hidden": "true" });
+  refs.piecesZone = h("div", { class: "remy-pieces-attente-zone", hidden: true, "aria-live": "polite" });
   refs.envoyer = bouton("", { classe: "plein icone", icone: "envoyer", etiquette: "Envoyer (Entrée)", titre: "Envoyer (Entrée)" });
   refs.retenir = bouton("Retenir", { classe: "plein remy-retenir", titre: "Rémy la retient, sans répondre (Entrée)" });
   refs.retenir.hidden = true;
@@ -205,11 +216,12 @@ function construire() {
   refs.bandes = h("div", { class: "remy-bandes" });
   refs.vocaux = h("div", { class: "remy-vocaux" });
   refs.aideEnvoi = h("span", null, " envoie");
-  refs.boite = h("div", { class: "boite" }, refs.champ, refs.micro, refs.envoyer, refs.retenir);
+  refs.boite = h("div", { class: "boite" }, refs.joindre, refs.champ, refs.micro, refs.envoyer, refs.retenir, refs.fichier);
   refs.panneau = h("aside", { class: "remy-panneau", "aria-label": "Contexte et étapes", tabindex: "-1" });
   refs.composeur = h("div", { class: "composeur" }, h("div", { class: "colonne" },
     refs.bandes, refs.vocaux,
     h("div", { class: "rangee serree remy-rangee-composeur" }, refs.pucePrivee, refs.stop, refs.corriger),
+    refs.piecesZone,
     refs.boite,
     h("div", { class: "aide-clavier" }, h("span", null, kbd("Entrée"), refs.aideEnvoi), h("span", null, kbd("Maj"), " ", kbd("Entrée"), " à la ligne"), h("span", null, kbd("Échap"), " interrompt"))));
   refs.importee = h("div", { class: "composeur remy-importee", hidden: true });
@@ -266,6 +278,36 @@ function construire() {
     ];
   }, { titre: "Texte sélectionné" });
   refs.envoyer.addEventListener("click", soumettre);
+  refs.joindre.addEventListener("click", () => refs.fichier.click());
+  refs.fichier.addEventListener("change", () => {
+    ajouterFichiers([...(refs.fichier.files || [])]);
+    refs.fichier.value = "";
+  });
+  // Coller une capture d'écran (Ctrl+V) : un fichier sans texte à côté.
+  refs.champ.addEventListener("paste", (e) => {
+    const d = e.clipboardData;
+    const fichiers = [...(d?.files || [])];
+    if (!fichiers.length || (d.types || []).includes("text/plain")) return;
+    e.preventDefault();
+    ajouterFichiers(fichiers);
+  });
+  // Déposer un fichier sur le fil ou le composeur (l'Explorateur, le bureau).
+  const avecFichiers = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  const fil = refs.racine.querySelector(".remy-fil");
+  fil.addEventListener("dragover", (e) => {
+    if (!avecFichiers(e) || refs.composeur.hidden) return;
+    e.preventDefault();
+    fil.classList.add("depot");
+  });
+  fil.addEventListener("dragleave", (e) => {
+    if (!fil.contains(e.relatedTarget)) fil.classList.remove("depot");
+  });
+  fil.addEventListener("drop", (e) => {
+    fil.classList.remove("depot");
+    if (!avecFichiers(e) || refs.composeur.hidden) return;
+    e.preventDefault();
+    ajouterFichiers([...(e.dataTransfer.files || [])]);
+  });
   refs.retenir.addEventListener("click", retenir);
   refs.stop.addEventListener("click", () => interrompre());
   refs.micro.addEventListener("click", (e) => occupe(e.currentTarget, dicter));
@@ -465,6 +507,7 @@ function entrerFil() {
     brouillonPrive = "";
   }
   mettreAuChamp(texte);
+  dessinerPieces();
   if (revenus.has(cle)) {
     const phrase = revenus.get(cle);
     revenus.delete(cle);
@@ -914,7 +957,10 @@ async function continuer() {
 }
 
 function blocSam(m) {
-  const el = h("div", { class: "msg-sam", tabindex: "0" }, m.content);
+  const pieces = PJ.blocPieces(courante?.id, m.pieces);
+  const el = pieces
+    ? h("div", { class: "msg-sam avec-pieces", tabindex: "0" }, pieces, m.content ? h("div", { class: "msg-sam-texte" }, m.content) : null)
+    : h("div", { class: "msg-sam", tabindex: "0" }, m.content);
   m._el = el;
   menuTexte(el, () => m.content);
   return el;
@@ -1190,6 +1236,8 @@ function majComposeur() {
   refs.champ.placeholder = modeRetenir ? "Ton idée, en quelques phrases…" : composeurPrive(c) ? "Message privé à Rémy…" : "Écris à Rémy…";
   refs.envoyer.hidden = modeRetenir;
   refs.retenir.hidden = !modeRetenir;
+  refs.joindre.hidden = !sait("pieces-v1") || modeRetenir;
+  dessinerPieces();
   majBoutonRetenir();
   majEnvoyer();
   const lib = envoi ? "Envoyer (Rémy répond encore)" : "Envoyer (Entrée)";
@@ -1231,7 +1279,8 @@ function choisir(titre, { detail, choix }) {
 async function soumettre() {
   if (modeRetenir) return retenir();
   const texte = refs.champ.value.trim();
-  if (!texte) return refs.champ.focus();
+  const pieces = enAttente();
+  if (!PA.peutPartir(texte, pieces)) return refs.champ.focus();
   if (courante?.origine) return dire(IMPORTEE);
   if (courante?.chargement) return;
   // Fil pas affiché : le texte reste dans le champ (fil absent : il suivra
@@ -1242,6 +1291,11 @@ async function soumettre() {
   }
   if (etatDictee === "transcription") return dire(TRANSCRIPTION);
   const lien = R.contientLien(texte);
+  if (envoi && pieces.length) {
+    // Les pièces ne vont pas dans « Envoyer après » : elles attendent ici.
+    dire(pieces.some((p) => p.etat === "envoi") ? "Tes pièces partent : un instant." : "Rémy répond encore : tes pièces partiront avec ton prochain message, une fois sa réponse finie.");
+    return refs.champ.focus();
+  }
   if (envoi) {
     // Rémy répond encore : Sam choisit ; le lien est dit dans la même question.
     const v = await choisir("Rémy répond encore", {
@@ -1274,10 +1328,77 @@ async function soumettre() {
   }
   mettreAuChamp("");
   brouillons.delete(cleDe(courante));
-  envoyerMessage(texte);
+  envoyerMessage(texte, { pieces });
 }
 
-async function envoyerMessage(texte, { titre = null, session = null } = {}) {
+// --- Pièces jointes (12/11) ---
+
+function dessinerPieces() {
+  if (!refs.piecesZone) return;
+  const liste = enAttente();
+  refs.piecesZone.hidden = !liste.length || Boolean(courante?.origine) || modeRetenir;
+  vider(refs.piecesZone, ...liste.map((p) => PJ.puceAttente(p, { retirer: () => retirerPiece(p) })));
+  placerBandeauxRemy();
+}
+
+/** Ajoute des fichiers au composeur, ou dit pourquoi non (sans rien perdre du reste). */
+function ajouterFichiers(fichiers) {
+  if (!fichiers.length) return;
+  if (!sait("pieces-v1")) return dire("La tour ne sait pas encore recevoir de pièce jointe : mets-la à jour (installeur de la tour).", { genre: "erreur" });
+  if (courante?.origine) return dire(IMPORTEE);
+  if (modeRetenir) return dire("« Noter une idée » ne prend que du texte : passe par « Plutôt en parler » pour joindre un fichier.");
+  if (courante?.chargement || courante?.introuvable) return dire(FIL_ILLISIBLE, { genre: "erreur" });
+  const cle = cleDe(courante);
+  const liste = [...(piecesEnAttente.get(cle) || [])];
+  for (const f of fichiers) {
+    const nom = f.name || PA.nomCollage(f.type);
+    const non = PA.refus({ nom, taille: f.size }, liste.length);
+    if (non) {
+      dire(non, { genre: "erreur" });
+      continue;
+    }
+    liste.push(PJ.preparer(f, nom));
+  }
+  piecesEnAttente.set(cle, liste);
+  dessinerPieces();
+  refs.champ.focus();
+}
+
+function retirerPiece(p) {
+  const cle = cleDe(courante);
+  const liste = (piecesEnAttente.get(cle) || []).filter((x) => x !== p);
+  if (liste.length) piecesEnAttente.set(cle, liste);
+  else piecesEnAttente.delete(cle);
+  PJ.liberer(p);
+  // Déjà sur la tour (un envoi revenu) : elle l'efface.
+  if (p.fiche && courante?.id) api(`/api/conversations/${seg(courante.id)}/pieces/${seg(p.fiche.id)}`, { methode: "DELETE" }).catch(() => {});
+  dessinerPieces();
+  refs.champ.focus();
+}
+
+/** Envoie les pièces du composeur (celles déjà parties gardent leur fiche) ; rend les fiches. */
+async function envoyerPieces(c, pieces) {
+  const fiches = [];
+  for (const p of pieces) {
+    if (!p.fiche) {
+      p.etat = "envoi";
+      dessinerPieces();
+      try {
+        p.fiche = await PJ.envoyer(c.id, p);
+      } catch (err) {
+        p.etat = "erreur";
+        for (const q of pieces) if (q.etat === "envoi") q.etat = "attente";
+        dessinerPieces();
+        throw err;
+      }
+    }
+    p.etat = "attente";
+    fiches.push(p.fiche);
+  }
+  return fiches;
+}
+
+async function envoyerMessage(texte, { titre = null, session = null, pieces = [] } = {}) {
   if (courante?.origine) {
     dire(IMPORTEE);
     return;
@@ -1351,6 +1472,11 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
     envoi = null;
     courante = { ...c, messages: Array.isArray(c.messages) ? c.messages : [] };
     brouillons.delete(cle);
+    // Les pièces suivent le fil qui vient de naître.
+    if (piecesEnAttente.has(cle)) {
+      piecesEnAttente.set(c.id, piecesEnAttente.get(cle));
+      piecesEnAttente.delete(cle);
+    }
     liste = [{ id: c.id, title: c.title, updatedAt: Date.now(), prive: Boolean(c.prive), pinned: Boolean(c.pinned), messages: courante.messages.length, dernier: null, origine: null }, ...(liste || []).filter((x) => x.id !== c.id)];
     history.replaceState(null, "", `#/remy/${seg(c.id)}`);
     refs.racine.classList.add("fil-ouvert");
@@ -1361,14 +1487,39 @@ async function envoyerMessage(texte, { titre = null, session = null } = {}) {
     redessiner = true;
   }
   const c = courante;
+  let fiches = [];
+  if (pieces.length) {
+    // Les pièces partent d'abord : la tour les range (chiffrées) et les lit.
+    const moi = { convId: c.id, creation: true, gen };
+    envoi = moi;
+    majComposeur();
+    try {
+      fiches = await envoyerPieces(c, pieces);
+    } catch (err) {
+      if (envoi === moi) envoi = null;
+      if (generation === gen) majComposeur();
+      rendreAuChamp(texte, { cle: cleDe(c), prive: composeurPrive(c) });
+      direErreur(err, () => soumettre(), "Pièce jointe pas envoyée (rien n'est parti)");
+      return;
+    }
+    if (envoi === moi) envoi = null;
+    if (generation !== gen) {
+      // Sam a changé de fil pendant l'envoi : rien ne part, tout l'attend.
+      if (rendreAuChamp(texte, { cle: cleDe(c), prive: composeurPrive(c) })) dire(REVENU_ICI);
+      return;
+    }
+    piecesEnAttente.delete(cleDe(c));
+    pieces.forEach(PJ.liberer);
+    dessinerPieces();
+  }
   const demandeEnAttente = c.messages.some((m) => m.autorisation?.statut === "en_attente");
-  const msg = { role: "user", content: texte };
+  const msg = { role: "user", content: texte, ...(fiches.length ? { pieces: fiches } : {}) };
   c.messages.push(msg);
   // Un fil qui vient de remplacer l'écran vide se dessine en entier.
   if (redessiner || c.messages.length === 1 || !colonne()) dessinerFil();
   else colonne().append(blocSam(msg));
   defilerEnBas(true);
-  await lancerFlux(`/api/conversations/${seg(c.id)}/messages`, { text: texte, call: false }, { question: texte, msgSam: msg, demandeEnAttente });
+  await lancerFlux(`/api/conversations/${seg(c.id)}/messages`, { text: texte, call: false, ...(fiches.length ? { pieces: fiches.map((f) => f.id) } : {}) }, { question: texte, msgSam: msg, demandeEnAttente });
 }
 
 /** Lit une réponse en flux (message ou autorisation) et la montre au fil de l'eau. */
@@ -1502,6 +1653,11 @@ async function lancerFlux(chemin, corps, { question = null, msgSam = null, deman
         c.messages.splice(c.messages.indexOf(msgSam), 1);
         msgSam._el?.remove();
         rendreAuChamp(question, { cle: cleDe(c), prive: composeurPrive(c) });
+        // Ses pièces (déjà sur la tour, pas dans le fil) reviennent au composeur.
+        if (msgSam.pieces?.length) {
+          piecesEnAttente.set(cleDe(c), [...msgSam.pieces.map((f) => ({ cle: f.id, nom: f.nom, taille: f.taille, famille: f.famille, fiche: f, etat: "attente" })), ...(piecesEnAttente.get(cleDe(c)) || [])]);
+          dessinerPieces();
+        }
         dire("La tour ne répond pas : ton message est revenu dans le champ.", { genre: "erreur", action: { libelle: "Réessayer", faire: () => soumettre() } });
       } else {
         remettreEnAttente();

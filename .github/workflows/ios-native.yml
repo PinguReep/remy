@@ -242,10 +242,16 @@ jobs:
           capture 5m-erreur-sombre dark erreur
           capture 5n-regle-clair light regle
           capture 5o-carnet-clair light carnet
+          # Pièces jointes (12/11) : une image lue par la tour, un PDF et un .md
+          # lus, une photo non lue avec sa raison (données fictives, c16).
+          capture 5p-pieces-clair light remy-fil c16
+          capture 5q-pieces-sombre dark remy-fil c16
           capture 6b-lieux-clair light lieux
           capture 6c-modele-sombre dark modeles
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
+          # Le suivi des tutoriels (12/11) : à découvrir, commencés, suivis.
+          capture 6e2-nouveautes-suivi-clair light nouveautes-suivi
           capture 6f-activite-pc-clair light activite-pc
           capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
           capture 6f-priorites-clair light priorites

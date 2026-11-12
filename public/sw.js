@@ -4,12 +4,12 @@
 // modules : ils sont tous gardés, pour que la page s'ouvre tour éteinte et que
 // « Noter » mette en file ce qui partira au retour.
 
-const CACHE = "remy-v6";
+const CACHE = "remy-v7";
 const STATIC_ASSETS = [
   "/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png",
   "/app/vues/boite.js", "/app/vues/trancher.js", "/app/analyse/rituel.js",
   "/fonts/inter-latin.woff2", "/fonts/jbmono-latin.woff2", "/fonts/source-serif-4-latin-400.woff2", "/fonts/source-serif-4-latin-600.woff2",
-  "/app/analyse/journee.js", "/app/analyse/conseil.js", "/app/analyse/semaine.js", "/app/vues/conseil.js", "/app/vues/et-maintenant.js", "/app/vues/semaine.js",
+  "/app/analyse/journee.js", "/app/analyse/dependances.js", "/app/analyse/conseil.js", "/app/analyse/semaine.js", "/app/vues/conseil.js", "/app/vues/et-maintenant.js", "/app/vues/semaine.js",
   "/app/atelier.css", "/app/main.js", "/app/api.js", "/app/ui.js", "/app/bureau.js", "/app/file-envoi.js", "/app/palette.js", "/app/couleurs.js",
   "/app/non-lus.js", "/app/menu.js", "/app/analyse/remy.js",
   "/app/analyse/dates.js", "/app/analyse/genre.js", "/app/analyse/motion.js", "/app/analyse/privee.js", "/app/analyse/conversations.js",
@@ -19,6 +19,7 @@ const STATIC_ASSETS = [
   "/app/vues/reglages.js", "/app/vues/conversations-externes.js", "/app/vues/connexion.js",
   "/app/usage.js", "/app/nouveautes.js", "/app/analyse/recherche-reglages.js", "/app/analyse/recherche-projets.js",
   "/app/analyse/heures.js", "/app/vues/heures.js",
+  "/app/analyse/pieces.js", "/app/vues/pieces.js",
 ];
 
 self.addEventListener("install", (e) => {

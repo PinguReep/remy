@@ -549,18 +549,29 @@ private struct LigneMessage: View {
     @ViewBuilder
     private var contenu: some View {
         if ligne.deToi {
-            HStack {
-                Spacer(minLength: 48)
-                Text(ligne.texte)
-                    .font(Police.texte(16))
-                    .lineSpacing(2)
-                    .foregroundStyle(Palette.fond)
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 11)
-                    .background(Palette.encre, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20,
-                                                                          bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
-                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .contextMenu { ActionsTexte(texte: ligne.texte, aSelectionner: $aSelectionner) }
+            VStack(alignment: .trailing, spacing: 6) {
+                // Les pièces jointes du message (12/11), au-dessus de la bulle.
+                if !ligne.pieces.isEmpty {
+                    HStack {
+                        Spacer(minLength: 48)
+                        PiecesDuMessage(pieces: ligne.pieces)
+                    }
+                }
+                if !ligne.texte.isEmpty {
+                    HStack {
+                        Spacer(minLength: 48)
+                        Text(ligne.texte)
+                            .font(Police.texte(16))
+                            .lineSpacing(2)
+                            .foregroundStyle(Palette.fond)
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 11)
+                            .background(Palette.encre, in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20,
+                                                                                  bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous))
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .contextMenu { ActionsTexte(texte: ligne.texte, aSelectionner: $aSelectionner) }
+                    }
+                }
             }
             .padding(.bottom, 22)
         } else {
@@ -1457,6 +1468,9 @@ private struct Composeur: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
             }
+            if !retenir && !chat.piecesEnAttente.isEmpty {
+                PiecesEnAttente()
+            }
             Group {
                 switch dictee.etat {
                 case .enregistrement(let debut):
@@ -1577,7 +1591,14 @@ private struct Composeur: View {
     private func saisie(_ modele: ChatModel, retenir: Bool) -> some View {
         @Bindable var chat = modele
         let vide = chat.brouillon.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Des pièces en attente : le message peut partir sans texte.
+        let rien = vide && (retenir || chat.piecesEnAttente.isEmpty)
+        let joindre = !retenir && chat.piecesDisponibles
         HStack(alignment: .bottom, spacing: 2) {
+            if joindre {
+                BoutonJoindre()
+                    .padding(.leading, 4)
+            }
             // UIKit et non TextField(axis: .vertical) : mesuré le 18/10 dans cet
             // écran (fil de 60 messages, dictée de 2 min dans le champ), 96,6 ms
             // par image et 429 images sautées pour 90 lettres avec le champ
@@ -1587,7 +1608,7 @@ private struct Composeur: View {
                            bonMot = mot
                            correction = CorrectionDictee(entendu: mot, place: place)
                        } : nil)
-                .padding(.leading, 16)
+                .padding(.leading, joindre ? 0 : 16)
                 .padding(.vertical, 13)
             Button {
                 Haptique.leger()
@@ -1643,14 +1664,14 @@ private struct Composeur: View {
                 Button(action: envoyer) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(vide ? Palette.encre3 : Palette.surSignal)
+                        .foregroundStyle(rien ? Palette.encre3 : Palette.surSignal)
                         .frame(width: 40, height: 40)
-                        .background(vide ? Palette.fond3 : Palette.signal, in: Circle())
+                        .background(rien ? Palette.fond3 : Palette.signal, in: Circle())
                         .padding(4)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(vide)
+                .disabled(rien)
                 .accessibilityLabel(chat.envoi ? "Envoyer (Rémy répond encore)" : "Envoyer")
             }
         }
@@ -1684,7 +1705,13 @@ private struct Composeur: View {
 
     private func envoyer() {
         let t = app.chat.brouillon
-        guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let pieces = !app.chat.piecesEnAttente.isEmpty
+        guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pieces else { return }
+        // Les pièces n'entrent pas dans « Envoyer après » : elles attendent la fin de la réponse.
+        if app.chat.envoi && pieces {
+            app.dire("Rémy répond encore : tes pièces partiront avec ton prochain message, une fois sa réponse finie.")
+            return
+        }
         // Rémy répond encore : Sam choisit (le texte reste dans le champ
         // tant qu'il n'a pas choisi). Le lien, s'il y en a un, est dit dans le
         // même choix — pas deux questions de suite.

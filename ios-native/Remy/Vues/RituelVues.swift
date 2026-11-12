@@ -84,7 +84,7 @@ struct CarteMenacee: View {
         }
         // « Caser » : la question est préparée pour Rémy, jamais envoyée seule.
         avant()
-        let texte = "« \(m.titre) » est menacée : \(m.phrase) Trouve-lui un créneau avant son échéance, sans toucher à mes rendez-vous."
+        let texte = m.questionPourRemy
         Task {
             if !(await app.preparer(texte, dansFil: Fils.journee(Date()))) {
                 app.dire("Tu as déjà un message en cours pour Rémy : envoie-le ou efface-le d'abord.")
@@ -605,6 +605,7 @@ enum Diagnostic {
 }
 
 struct DiagnosticVue: View {
+    @Environment(AppModel.self) private var app
     @AppStorage(Diagnostic.cleJauge) private var jauge = Diagnostic.jaugeParDefaut
     @AppStorage(Diagnostic.cleVitesse) private var vitesse = Diagnostic.vitesseParDefaut
     @AppStorage(Gestes.cleAppui) private var appuiMs = Gestes.appuiParDefaut
@@ -636,6 +637,10 @@ struct DiagnosticVue: View {
                 .buttonStyle(.plain)
                 .overlay(alignment: .bottom) { Filet() }
                 .repere("Temps de réponse", dans: .diagnostic)
+                // Pièces jointes (12/11) : la tour essaie ce qu'elle sait lire.
+                if app.serveur?.sait(PiecesJointes.capacite) == true {
+                    EssaiLecturePieces()
+                }
                 Toggle(isOn: $jauge) {
                     HStack(spacing: 14) {
                         Image(systemName: "gauge.with.dots.needle.33percent").font(.system(size: 18)).frame(width: 26)
