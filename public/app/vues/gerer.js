@@ -876,7 +876,7 @@ function sectionBloqueePar(e, { apres } = {}) {
           bouton("Retirer", { classe: "texte petit", etiquette: `Ne plus attendre « ${b.nom || "cette tâche"} »`, onclick: (ev) => changer(liste.filter((x) => x.id !== b.id), ev.currentTarget, (l) => (l.length ? `« ${e.titre} » n'attend plus « ${b.nom} ».` : `« ${e.titre} » n'attend plus aucune tâche.`)) }))))
         : h("p", { class: "aide" }, "Elle n'attend aucune autre tâche."),
       bouton(liste.length ? "Ajouter une autre tâche…" : "Choisir la tâche qu'elle attend…", { classe: "papier", icone: "plus", onclick: () => choisirBloquante(e, liste, (b, btn) => changer([...liste, b], btn, () => `« ${e.titre} » attend « ${b.nom} » : Rémy ne te la proposera pas avant.`)) }),
-      h("p", { class: "aide gerer-note" }, "Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien (son API ne le permet pas) : il peut la planifier quand même, Rémy ne te la proposera pas avant."));
+      h("p", { class: "aide gerer-note" }, "Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien (son API ne le permet pas) : il peut la planifier quand même, Rémy ne te la proposera pas avant."));
   };
   dessiner();
   return sec;
