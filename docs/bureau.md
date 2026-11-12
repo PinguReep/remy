@@ -289,7 +289,7 @@ signal**. Mêmes valeurs, en variables CSS :
   contenu, jamais de spinner seul.
 - **Thème** : Auto / Clair / Sombre (comme « Apparence » de l'iPhone),
   appliqué avant le premier rendu.
-- **Clavier** : `N` noter, `/` chercher dans la vue, `Ctrl+K` palette de
+- **Clavier** : `N` noter, `H` les prochaines heures (ouvrir, fermer), `/` chercher dans la vue, `Ctrl+K` palette de
   commandes (vues, actions, réglages), `Ctrl+1…5` les vues, `Échap` ferme,
   `?` l'aide des raccourcis ; dans le chat `Entrée` envoie, `Maj+Entrée`
   passe à la ligne ; dans Noter `Entrée` envoie. Les lettres seules ne
@@ -586,7 +586,7 @@ interface) plutôt que de l'affaiblir.
 | Fermer la fenêtre (×) | elle se **range près de l'horloge** (les rappels continuent) ; la première fois, une notification le rappelle. Pour quitter : clic droit sur l'icône › **Quitter Rémy**. Réglable (Réglages › Ordinateur : « Fermer = quitter »). |
 | Relancer Rémy (épingle, menu Démarrer) alors qu'il tourne | ramène la fenêtre existante (une seule instance) |
 | **Ctrl+=** / **Ctrl+-** / **Ctrl+0** | zoom de l'interface |
-| **N**, **/**, **Ctrl+K**, **Ctrl+1…5**, **?** | raccourcis du site (noter, chercher, palette de commandes, vues, aide) — ils marchent aussi dans le navigateur |
+| **N**, **H**, **/**, **Ctrl+K**, **Ctrl+1…5**, **?** | raccourcis du site (noter, prochaines heures, chercher, palette de commandes, vues, aide) — ils marchent aussi dans le navigateur |
 | Lien vers un autre site | s'ouvre dans ton navigateur par défaut, jamais dans la fenêtre de Rémy |
 
 **Le raccourci Noter se change** dans Réglages › Ordinateur (par exemple

@@ -512,8 +512,13 @@ export function joursActifs(activite) {
 }
 export const phraseJoursActifs = (n) => (n === 0 ? "Tu n'as pas parlé à Rémy ces 14 derniers jours." : `Tu as parlé à Rémy ${n} jour${n > 1 ? "s" : ""} sur les 14 derniers.`);
 
-/** Priorités : ce qui part vers la tour (Priorites.aEnvoyer). */
-export function aEnvoyerPriorites(liste) {
+/**
+ * Priorités : ce qui part vers la tour (Priorites.aEnvoyer), dans l'ordre du
+ * classement. `lien` (la tour sait priorites-v2) : le projet Motion relié
+ * et la confirmation partent toujours, `null` et `false` compris (clé
+ * présente = remplacé).
+ */
+export function aEnvoyerPriorites(liste, { lien = false } = {}) {
   const vus = new Set();
   const out = [];
   for (const p of liste || []) {
@@ -527,6 +532,11 @@ export function aEnvoyerPriorites(liste) {
     const brut = p.motsTexte != null ? [p.motsTexte] : Array.isArray(p.mots) ? p.mots : [];
     const mots = brut.flatMap((t) => String(t).split(/[,;\n]/)).map((t) => t.trim()).filter((t) => [...t].length >= 3);
     if (mots.length) q.mots = mots.slice(0, 8);
+    if (lien) {
+      q.projetMotion = typeof p.projetMotion === "string" && p.projetMotion ? p.projetMotion : null;
+      if (q.projetMotion && p.projetNom) q.projetNom = String(p.projetNom).slice(0, 80);
+      q.confirmee = p.classee === true;
+    }
     out.push(q);
   }
   return out;
@@ -967,14 +977,19 @@ const SECTIONS_RENDU = {
   },
 
   async priorites() {
-    let v;
-    try {
-      v = await api("/api/priorites");
-    } catch (err) {
+    // La proposition de Rémy et les projets Motion (priorites-v2) : lus en même temps, leur échec n'enlève que ce qu'ils apportent.
+    const [lu, prop, proj] = await Promise.allSettled([
+      api("/api/priorites"),
+      sait("priorites-v2") ? api("/api/priorites/proposition", { delai: 20000 }) : Promise.resolve(null),
+      sait("priorites-v2") ? api("/api/projets", { delai: 15000 }) : Promise.resolve(null),
+    ]);
+    if (lu.status === "rejected") {
+      const err = lu.reason;
       if (err?.nature === "auth") throw err;
-      return carte("Ce qui compte", "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", erreurSection(`Priorités illisibles : ${texteErreur(err).replace(/\.$/, "")}.`, () => dessinerSection()));
+      return carte("Ce qui compte", SOUS_PRIORITES, erreurSection(`Priorités illisibles : ${texteErreur(err).replace(/\.$/, "")}.`, () => dessinerSection()));
     }
-    return prioritesVue(v);
+    const proposition = prop.status === "fulfilled" && Array.isArray(prop.value?.candidats) ? prop.value : null;
+    return prioritesVue(lu.value, { proposition, projets: projetsLiables(proj) });
   },
 
   async modele(donnees) {
@@ -1329,45 +1344,203 @@ function memoireVue(etat) {
     h("div", { class: "rangee" }, bouton("Annuler", { classe: "papier", onclick: () => lecture(etat.texteServeur) }), enregistrer, h("span", { class: "aide" }, `${ctrl}+S`)));
 }
 
-// --- Ce qui compte : les 3 à 5 priorités ---
+// --- Ce qui compte : « Ce que Rémy a compris » (12/11) ---
+// Sam n'écrit plus ses priorités : la tour en PROPOSE un classement, sans IA,
+// avec ses indices (GET /api/priorites/proposition). Sam confirme (« C'est
+// ça »), corrige (↑ ↓) ou écarte (« Pas une priorité »). Tant qu'il n'a pas
+// confirmé, c'est « proposé par Rémy, à confirmer », et rien ne s'en sert
+// comme d'un fait : seules les priorités confirmées (`classee`) forment le
+// classement, daté, que lisent le conseil, la nuit et « Prochaines heures ».
+// Ajouter une priorité à la main reste possible, discrètement, en bas.
 
 const PRIORITES_MAX = 5;
+const SOUS_PRIORITES = "Ce que Rémy a compris de ce qui compte pour toi. Tu confirmes ou tu corriges : seul ce que tu confirmes lui sert.";
 const nouvelIdPriorite = () => `p-${Math.random().toString(36).slice(2, 10)}`;
-const memes = (a, b) => JSON.stringify(aEnvoyerPriorites(a)) === JSON.stringify(aEnvoyerPriorites(b));
+const avecLien = () => sait("priorites-v2");
 
-function prioritesVue(vue) {
-  const brouillon = (vue.priorites || []).map((p) => ({ ...p, motsTexte: (p.mots || []).join(", ") }));
+/**
+ * Les projets Motion qu'on peut relier, d'après GET /api/projets :
+ * { liste: [{ id, nom }], etat: "ok" | "absent" (Motion pas relié) | "erreur" | "inconnu" (tour d'avant) }.
+ */
+export function projetsLiables(r) {
+  if (!r || r.status === "fulfilled" && r.value == null) return { liste: [], etat: "inconnu" };
+  if (r.status === "rejected") return { liste: [], etat: "erreur" };
+  const v = r.value;
+  if (v?.motion === false) return { liste: [], etat: "absent" };
+  const liste = (Array.isArray(v?.projets) ? v.projets : []).filter((p) => p && p.id && p.nom).map((p) => ({ id: String(p.id), nom: String(p.nom) }));
+  return { liste: liste.sort((a, b) => a.nom.localeCompare(b.nom, "fr")), etat: "ok" };
+}
+
+/** Les choix du menu « Projet Motion » d'une priorité : aucun, les projets connus, et le lien gardé s'il n'y est plus. */
+export function choixProjet(p, projets) {
+  const choix = [{ id: "", nom: "Aucun projet Motion" }, ...projets.liste];
+  if (p?.projetMotion && !projets.liste.some((x) => x.id === p.projetMotion)) {
+    choix.push({ id: p.projetMotion, nom: `${p.projetNom || "Projet relié"}${projets.etat === "ok" ? " (plus dans Motion)" : ""}` });
+  }
+  return choix;
+}
+
+/** Monter (−1) ou descendre (+1) la ligne `i` : la nouvelle liste, ou null au bord. */
+export function deplacerPriorite(liste, i, sens) {
+  const j = i + sens;
+  if (i < 0 || i >= liste.length || j < 0 || j >= liste.length) return null;
+  const out = [...liste];
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+/** La clé d'une piste dans la proposition (celle que « Pas une priorité » écarte). */
+export const clePiste = (p) => p?.cle || (p?.projetMotion ? `motion:${p.projetMotion}` : `declaree:${p?.id}`);
+
+/**
+ * L'écran à partir de ce que la tour a rendu : `classees` (le classement
+ * confirmé, dans l'ordre), `proposees` (ce que Rémy propose, à confirmer :
+ * ses pistes, et les priorités écrites mais jamais confirmées), `ecartees`.
+ * `proposition` : null si elle n'a pas pu être calculée (les priorités
+ * écrites restent alors proposées, sans indices).
+ */
+export function etatClassement(lu, proposition) {
+  const liste = Array.isArray(lu?.priorites) ? lu.priorites : [];
+  const copie = (p) => ({ ...p, motsTexte: (p.mots || []).join(", ") });
+  const classees = liste.filter((p) => p.classee === true).map(copie);
+  const ecrites = liste.filter((p) => p.classee !== true);
+  const proposees = [];
+  for (const c of proposition?.candidats || []) {
+    if (!c?.cle || !c.titre) continue;
+    const ecrite = c.declaree?.id ? ecrites.find((p) => p.id === c.declaree.id) : null;
+    proposees.push({
+      ...(ecrite ? copie(ecrite) : { id: null, titre: c.titre, pourquoi: "", mots: [], motsTexte: "" }),
+      cle: c.cle, titre: ecrite?.titre || c.titre, projetMotion: c.projetMotion || ecrite?.projetMotion || null, projetNom: c.projetNom || ecrite?.projetNom || null,
+      indices: (c.indices || []).map((i) => i.texte).filter(Boolean), ecrite: Boolean(ecrite),
+    });
+  }
+  // Une priorité écrite que la proposition ne montre pas (elle n'a pas pu être calculée, ou au-delà de ses pistes) : proposée quand même.
+  for (const p of ecrites) {
+    if (!proposees.some((x) => x.ecrite && x.id === p.id)) proposees.push({ ...copie(p), cle: clePiste(p), indices: ["Tu l'as écrite toi-même"], ecrite: true });
+  }
+  return { classees, proposees, ecartees: Array.isArray(lu?.ecartees) ? [...lu.ecartees] : [] };
+}
+
+/** « C'est ça » : la piste devient une priorité confirmée (les mots de Sam gardés s'il l'avait écrite). */
+export function confirmerPiste(x, nouvelId = nouvelIdPriorite) {
+  return { ...x, id: x.id || nouvelId(), titre: [...String(x.titre || "").trim()].slice(0, 80).join(""), classee: true, indices: undefined, cle: undefined, ecrite: undefined };
+}
+
+/**
+ * Ce qui part vers la tour : le classement (confirmées, dans l'ordre), puis
+ * les priorités écrites pas encore confirmées (elles restent à Sam, sans
+ * rang) ; les pistes de Rémy non confirmées ne partent pas — ce ne sont que
+ * des hypothèses.
+ */
+export function aEnregistrerClassement({ classees, proposees, ecartees }) {
+  const liste = [...classees.map((p) => ({ ...p, classee: true })), ...proposees.filter((p) => p.ecrite).map((p) => ({ ...p, classee: false }))];
+  return { priorites: aEnvoyerPriorites(liste, { lien: true }), ecartees: [...new Set(ecartees)] };
+}
+
+function prioritesVue(lu, { proposition = null, projets = { liste: [], etat: "inconnu" } } = {}) {
+  if (!avecLien()) return prioritesSansProposition(lu);
+  const e = etatClassement(lu, proposition);
+  const initial = JSON.stringify(aEnregistrerClassement(etatClassement(lu, proposition)));
   let enregistrement = false;
-  const modifie = () => !memes(brouillon, vue.priorites || []);
-  garde = () => (modifie() ? "tes priorités" : null);
-  const enregistrer = bouton("Enregistrer", { classe: "plein", onclick: () => envoyer() });
+  let edition = null; // l'identifiant de la priorité confirmée ouverte en « Modifier »
+  const annonce = h("p", { class: "reglages-annonce", role: "status", "aria-live": "polite" });
+  const modifie = () => JSON.stringify(aEnregistrerClassement(e)) !== initial;
+  garde = () => (modifie() ? "ton classement" : null);
+  const enregistrer = bouton("Enregistrer le classement", { classe: "plein", onclick: () => envoyer() });
   enregistrer.dataset.enregistrer = "1";
   const majBouton = () => {
     enregistrer.disabled = !modifie() || enregistrement;
-    enregistrer.querySelector(".lib").textContent = enregistrement ? "…" : "Enregistrer";
+    enregistrer.querySelector(".lib").textContent = enregistrement ? "…" : "Enregistrer le classement";
   };
-  const liste = h("div", { class: "reglages-priorites" });
-  const dessinerListe = (focus = null) => {
-    vider(liste,
-      brouillon.length ? null : h("p", { class: "aide reglage" }, "Écris les 3 à 5 choses qui comptent le plus en ce moment, avec pourquoi. Le conseil du moment et la réflexion de nuit s'en servent, et Rémy te dit quand l'une n'a pas bougé depuis une semaine."),
-      brouillon.map((p, i) => lignePriorite(p, i)),
-      brouillon.length < PRIORITES_MAX
-        ? h("div", { class: "rangee reglage" }, bouton("Ajouter une priorité", { classe: "papier", icone: "plus", onclick: () => {
-          brouillon.push({ id: nouvelIdPriorite(), titre: "", motsTexte: "" });
-          dessinerListe(brouillon.length - 1);
-          majBouton();
-        } }))
-        : h("p", { class: "aide reglage" }, "Cinq au plus : au-delà, plus rien n'est prioritaire."));
-    if (focus != null) liste.querySelectorAll(".reglages-priorite")[focus]?.querySelector("input")?.focus();
-  };
-  const retirer = (i) => {
-    const [p] = brouillon.splice(i, 1);
-    dessinerListe();
+  const zone = h("div", { class: "reglages-priorites" });
+  const dire2 = (t) => (annonce.textContent = t);
+  const nomDe = (p) => `« ${court(p.titre || "Sans titre")} »`;
+  const plein = () => e.classees.length >= PRIORITES_MAX;
+  const changer = (focus) => {
+    dessiner();
     majBouton();
-    dire(p.titre.trim() ? `« ${court(p.titre)} » retirée : Enregistrer pour confirmer.` : "Priorité vide retirée.", { duree: 3000 });
-    (liste.querySelectorAll(".reglages-priorite")[Math.min(i, brouillon.length - 1)]?.querySelector("input") || liste.querySelector("button"))?.focus();
+    focus?.();
   };
-  const lignePriorite = (p, i) => {
+  const focusSur = (cle, quoi) => () => zone.querySelector(`[data-ligne="${CSS.escape(cle)}"] ${quoi}`)?.focus();
+
+  // --- Les gestes ---
+  const deplacer = (liste, i, sens) => {
+    const neuf = deplacerPriorite(liste, i, sens);
+    if (!neuf) return;
+    liste.splice(0, liste.length, ...neuf);
+    const x = liste[i + sens];
+    const k = clePiste(x);
+    dire2(`${nomDe(x)} passe en ${liste === e.classees ? "n°" : "proposition n°"}${i + sens + 1}. Enregistrer pour confirmer.`);
+    // Le focus suit la ligne déplacée ; au bord, il passe sur l'autre flèche.
+    changer(() => {
+      const ligne = zone.querySelector(`[data-ligne="${CSS.escape(k)}"]`);
+      const meme = ligne?.querySelector(`[data-sens='${sens < 0 ? "haut" : "bas"}']`);
+      (meme && !meme.disabled ? meme : ligne?.querySelector(`[data-sens='${sens < 0 ? "bas" : "haut"}']`))?.focus();
+    });
+  };
+  const confirmer = (i) => {
+    if (plein()) return dire("Cinq au plus dans ton classement : retire ou écarte une priorité d'abord.", { genre: "erreur" });
+    const [x] = e.proposees.splice(i, 1);
+    const p = confirmerPiste(x);
+    e.classees.push(p);
+    dire2(`${nomDe(p)} entre dans ton classement en n°${e.classees.length}. Enregistrer pour confirmer.`);
+    changer(focusSur(clePiste(e.proposees[Math.min(i, e.proposees.length - 1)] || p), "button"));
+  };
+  const toutConfirmer = () => {
+    const place = PRIORITES_MAX - e.classees.length;
+    const pris = e.proposees.splice(0, place);
+    e.classees.push(...pris.map((x) => confirmerPiste(x)));
+    dire2(`${pris.length} confirmée${pris.length > 1 ? "s" : ""}, dans cet ordre. Enregistrer pour confirmer.`);
+    changer(() => enregistrer.focus());
+  };
+  const ecarter = (liste, i) => {
+    const [x] = liste.splice(i, 1);
+    if (!e.ecartees.includes(clePiste(x))) e.ecartees.push(clePiste(x));
+    dire2(`${nomDe(x)} : pas une priorité. Rémy ne la reproposera plus. Enregistrer pour confirmer.`);
+    const suivante = liste[Math.min(i, liste.length - 1)];
+    changer(suivante ? focusSur(clePiste(suivante), "button") : () => enregistrer.focus());
+  };
+  const ajouter = () => {
+    if (plein()) return dire("Cinq au plus dans ton classement : au-delà, plus rien n'est prioritaire.", { genre: "erreur" });
+    const p = { id: nouvelIdPriorite(), titre: "", pourquoi: "", mots: [], motsTexte: "", classee: true };
+    e.classees.push(p);
+    edition = p.id;
+    changer(focusSur(clePiste(p), "input"));
+  };
+  const reproposer = () => {
+    e.ecartees = [];
+    dire2("Les pistes écartées seront reproposées après l'enregistrement.");
+    changer(() => enregistrer.focus());
+  };
+
+  // --- Les lignes ---
+  const fleches = (liste, i, x) => {
+    const f = (sens, lib) => {
+      const b = bouton("", { classe: "texte icone", icone: sens, etiquette: `${lib} ${nomDe(x)}`, onclick: () => deplacer(liste, i, sens === "haut" ? -1 : 1) });
+      b.dataset.sens = sens;
+      b.title = lib;
+      b.disabled = sens === "haut" ? i === 0 : i === liste.length - 1;
+      return b;
+    };
+    return liste.length > 1 ? [f("haut", "Monter"), f("bas", "Descendre")] : [];
+  };
+  const indices = (x) => (x.indices?.length ? h("ul", { class: "reglages-indices", "aria-label": `Ce que Rémy a vu pour ${nomDe(x)}` }, x.indices.map((t) => h("li", null, t))) : null);
+  const ligneClassee = (p, i) => {
+    const ouvert = edition === p.id;
+    const etat = etatPriorite(p);
+    const modifier = bouton(ouvert ? "Fermer" : "Modifier", { classe: "texte", onclick: () => { edition = ouvert ? null : p.id; changer(focusSur(clePiste(p), ouvert ? "[data-modifier]" : "input")); } });
+    modifier.dataset.modifier = "1";
+    modifier.setAttribute("aria-expanded", String(ouvert));
+    return h("li", { class: "reglages-priorite classee", dataset: { ligne: clePiste(p) } },
+      h("div", { class: "reglages-priorite-tete" },
+        h("span", { class: "reglages-rang", title: `Priorité n°${i + 1}` }, `n°${i + 1}`),
+        h("span", { class: "reglages-priorite-titre" }, h("strong", null, p.titre || "Sans titre"), p.projetNom ? h("span", { class: "aide" }, `Motion : ${p.projetNom}`) : null)),
+      etat ? h("p", { class: p.neglige === true ? "reglages-neglige" : "aide" }, etat) : null,
+      ouvert ? edition_(p) : null,
+      h("div", { class: "rangee serree reglages-gestes" }, ...fleches(e.classees, i, p), modifier,
+        bouton("Pas une priorité", { classe: "texte", etiquette: `${nomDe(p)} n'est pas une priorité`, onclick: () => ecarter(e.classees, i) })));
+  };
+  const edition_ = (p) => {
     const champ = (balise, props, cle) => {
       const el = h(balise, { class: "champ", ...props });
       el.value = p[cle] || "";
@@ -1377,45 +1550,91 @@ function prioritesVue(vue) {
       });
       return el;
     };
-    const etat = etatPriorite(p);
-    const pied = h("div", { class: "rangee reglages-priorite-pied" },
-      etat ? h("span", { class: p.neglige === true ? "reglages-neglige" : "aide" }, etat) : h("span"),
-      bouton("", { classe: "texte icone", icone: "corbeille", etiquette: `Retirer « ${p.titre || "cette priorité"} »`, onclick: () => retirer(i) }));
-    // Le clic droit (l'appui long et le balayage de l'iPhone), hors des champs : leur menu reste celui du navigateur.
-    surMenu(pied, () => [{ libelle: "Retirer cette priorité", icone: "corbeille", danger: true, faire: () => retirer(i) }], { titre: "Priorité" });
-    return h("div", { class: "reglages-priorite" },
-      champ("input", { type: "text", placeholder: "Ce qui compte (ex. « La musique »)", "aria-label": `Priorité ${i + 1}`, maxlength: "120" }, "titre"),
-      champ("textarea", { rows: 2, placeholder: "Pourquoi, avec tes mots", "aria-label": `Pourquoi la priorité ${i + 1}` }, "pourquoi"),
-      champ("input", { type: "text", placeholder: "Mots qui la reconnaissent (facultatif : guitare, répétition)", "aria-label": `Mots de la priorité ${i + 1}` }, "motsTexte"),
-      pied);
+    const menu = h("select", { class: "champ", "aria-label": `Projet Motion de ${nomDe(p)}` }, choixProjet(p, projets).map((x) => h("option", { value: x.id }, x.nom)));
+    menu.value = p.projetMotion || "";
+    menu.addEventListener("change", () => {
+      p.projetMotion = menu.value || null;
+      p.projetNom = menu.value ? (projets.liste.find((c) => c.id === menu.value)?.nom || p.projetNom || null) : null;
+      majBouton();
+    });
+    return h("div", { class: "reglages-edition" },
+      champ("input", { type: "text", placeholder: "Ce qui compte (ex. « La musique »)", "aria-label": "Ce qui compte", maxlength: "120" }, "titre"),
+      champ("textarea", { rows: 2, placeholder: "Pourquoi, avec tes mots (facultatif)", "aria-label": "Pourquoi" }, "pourquoi"),
+      champ("input", { type: "text", placeholder: "Mots qui la reconnaissent (facultatif : guitare, répétition)", "aria-label": "Mots qui la reconnaissent" }, "motsTexte"),
+      h("label", { class: "reglages-lien-projet" }, h("span", { class: "aide" }, "Projet Motion (facultatif)"), menu),
+      projets.etat === "erreur" ? h("p", { class: "aide" }, "Les projets Motion n'ont pas pu être lus : le lien déjà posé reste.") : null);
   };
+  const ligneProposee = (x, i) => h("li", { class: "reglages-priorite proposee", dataset: { ligne: clePiste(x) } },
+    h("div", { class: "reglages-priorite-tete" },
+      h("span", { class: "reglages-rang propose", title: "Proposée par Rémy, à confirmer" }, `${i + 1} ?`),
+      h("span", { class: "reglages-priorite-titre" }, h("strong", null, x.titre), x.projetNom && x.projetNom !== x.titre ? h("span", { class: "aide" }, `Motion : ${x.projetNom}`) : null)),
+    indices(x),
+    h("div", { class: "rangee serree reglages-gestes" },
+      bouton("C'est ça", { classe: "papier", icone: "coche", etiquette: `C'est ça : ${nomDe(x)} est une priorité`, onclick: () => confirmer(i) }),
+      ...fleches(e.proposees, i, x),
+      bouton("Pas une priorité", { classe: "texte", etiquette: `${nomDe(x)} n'est pas une priorité`, onclick: () => ecarter(e.proposees, i) })));
+
+  const dessiner = () => {
+    const classeA = lu.classeA && !modifie() ? ` · confirmé le ${jourCourt(lu.classeA)}` : modifie() ? " · à enregistrer" : "";
+    vider(zone,
+      e.classees.length ? h("section", { class: "reglages-classement", "aria-label": "Ton classement" },
+        h("h3", { class: "reglages-sous-titre" }, `Ton classement${classeA}`),
+        e.classees.length > 1 ? h("p", { class: "reglages-regle" }, icone("etoile"), h("span", null, "Dans l'ordre : la n°1 passe devant la n°2, et ainsi de suite.")) : null,
+        h("ol", { class: "reglages-liste-priorites" }, e.classees.map(ligneClassee))) : null,
+      e.proposees.length ? h("section", { class: "reglages-proposition", "aria-label": "Proposé par Rémy, à confirmer" },
+        h("h3", { class: "reglages-sous-titre" }, "Proposé par Rémy, à confirmer"),
+        h("p", { class: "aide" }, e.classees.length
+          ? "Rémy voit aussi ces pistes. Rien ne s'en sert tant que tu n'as pas dit « C'est ça »."
+          : "Voilà ce que Rémy a compris, dans cet ordre. Rien ne s'en sert tant que tu n'as pas dit « C'est ça »."),
+        h("ol", { class: "reglages-liste-priorites" }, e.proposees.map(ligneProposee)),
+        e.proposees.length > 1 && !plein() ? h("div", { class: "rangee reglage" }, bouton(e.classees.length ? "Les confirmer toutes, dans cet ordre" : "Tout est juste, dans cet ordre", { classe: "papier", icone: "coche", onclick: toutConfirmer })) : null) : null,
+      !e.classees.length && !e.proposees.length
+        ? h("p", { class: "aide reglage" }, proposition
+          ? "Rémy n'a encore rien à te proposer : ni projet Motion actif, ni priorité écrite. Il en proposera dès que Motion aura des tâches planifiées."
+          : "La proposition de Rémy n'a pas pu être calculée : réessaie dans un instant.")
+        : null,
+      proposition?.limites ? h("p", { class: "aide reglages-limites" }, icone("info"), h("span", null, proposition.limites)) : null,
+      proposition ? null : h("p", { class: "aide" }, "La proposition de Rémy n'a pas pu être lue : seules tes priorités écrites sont montrées."),
+      h("div", { class: "rangee reglages-discret" },
+        plein() ? h("span", { class: "aide" }, "Cinq au plus : au-delà, plus rien n'est prioritaire.") : bouton("Ajouter une priorité à la main", { classe: "texte petit", icone: "plus", onclick: ajouter }),
+        e.ecartees.length ? bouton(`Reproposer les pistes écartées (${e.ecartees.length})`, { classe: "texte petit", onclick: reproposer }) : null));
+  };
+
   const envoyer = async () => {
     if (enregistrement || !modifie()) return;
     enregistrement = true;
     majBouton();
-    const envoi = aEnvoyerPriorites(brouillon);
     try {
-      const r = await remplacer("/api/priorites", { priorites: envoi, base: vue.version || 0 });
-      dire(r?.priorites?.length ? "Priorités enregistrées : Rémy s'en sert dès le prochain conseil." : "Priorités vidées (l'ancienne version reste sur ta tour).", { genre: "succes" });
+      const r = await remplacer("/api/priorites", { ...aEnregistrerClassement(e), base: lu.version || 0 });
+      const n = (r?.priorites || []).filter((p) => p.classee === true).length;
+      dire(n ? `Classement enregistré : ${n} priorité${n > 1 ? "s" : ""}, dans cet ordre. Rémy s'en sert dès maintenant.` : "Enregistré : pas de classement confirmé pour l'instant.", { genre: "succes" });
       garde = () => null;
-      vider(refs.detail, prioritesVue(r || { version: vue.version, priorites: envoi }));
+      await dessinerSection();
     } catch (err) {
       enregistrement = false;
       majBouton();
       if (err?.statut === 409) {
-        dire("Tes priorités ont changé ailleurs entre-temps : je recharge, refais ta modification.", { genre: "erreur" });
+        dire("Ton classement a changé ailleurs entre-temps : je recharge, refais ta correction.", { genre: "erreur" });
         garde = () => null;
         await dessinerSection();
         return;
       }
-      direErreur(err, () => envoyer(), "Priorités pas enregistrées");
+      direErreur(err, () => envoyer(), "Classement pas enregistré");
     }
   };
-  dessinerListe();
+  dessiner();
   majBouton();
-  const pied = vue.version > 0 ? h("p", { class: "aide" }, `Version ${vue.version}${vue.majA ? ` du ${jourCourt(vue.majA)}` : ""} : chaque enregistrement garde les précédentes sur ta tour.`) : null;
-  return carte("Ce qui compte", "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.",
-    liste, h("div", { class: "rangee", style: { marginTop: "12px" } }, enregistrer, h("span", { class: "aide" }, `${ctrl}+S`)), pied);
+  const pied = lu.version > 0 ? h("p", { class: "aide" }, `Version ${lu.version}${lu.majA ? ` du ${jourCourt(lu.majA)}` : ""} : chaque enregistrement garde les précédentes sur ta tour.`) : null;
+  return carte("Ce qui compte", SOUS_PRIORITES,
+    zone, annonce, h("div", { class: "rangee", style: { marginTop: "12px" } }, enregistrer, h("span", { class: "aide" }, `${ctrl}+S`)), pied);
+}
+
+/** Une tour d'avant priorites-v2 : la liste écrite, en lecture, et quoi faire. */
+function prioritesSansProposition(lu) {
+  garde = () => null;
+  return carte("Ce qui compte", SOUS_PRIORITES,
+    (lu.priorites || []).length ? h("ol", { class: "reglages-liste-priorites" }, lu.priorites.map((p) => h("li", { class: "reglages-priorite" }, h("strong", null, p.titre), etatPriorite(p) ? h("p", { class: "aide" }, etatPriorite(p)) : null))) : null,
+    h("p", { class: "aide reglage" }, "Le classement proposé par Rémy arrive avec la mise à jour de ta tour (scripts/installer-tour.ps1)."));
 }
 
 // --- Modèle ---

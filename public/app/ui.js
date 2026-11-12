@@ -71,6 +71,7 @@ const CHEMINS = {
   alerte: "M12 4 2.5 20h19zM12 10v4M12 17.5v.5",
   chevron: "M9 6l6 6-6 6",
   bas: "M6 9l6 6 6-6",
+  haut: "M6 15l6-6 6 6",
   menu: "M4 7h16M4 12h16M4 17h16",
   externe: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
   liste: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",

@@ -16,6 +16,11 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
+    p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
+    p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),
+    p("etoile", "Ce que Rémy a compris", "Réglages › Ce qui compte : Rémy propose un classement de tes projets, avec ce qu'il a vu. « C'est ça », ↑ ↓ ou « Pas une priorité » ; seul ce que tu confirmes devient « sert ta priorité n°1 »."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),
@@ -87,7 +92,7 @@ export const CATALOGUE = [
     p("retour", "De retour après une absence ?", "Après plus de 3 jours, Rémy propose de trier tes retards ligne par ligne : Fait, Demain ou Abandonner."),
   ]),
   n("priorites", 3, "24 oct.", "Dis à Rémy ce qui compte", "priorites-v1", [
-    p("etoile", "Tes 3 à 5 priorités", "Réglages › Ce qui compte : écris-les avec leur pourquoi. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
+    p("etoile", "Tes 3 à 5 priorités", "Réglages › Ce qui compte : Rémy te propose ce qu'il a compris, tu confirmes ou tu corriges. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
     p("horloge", "Ce qui n'a pas bougé", "Sans trace d'activité depuis une semaine, une priorité est marquée « négligée », avec sa dernière trace. Chaque version reste sur ta tour."),
   ]),
   n("carnet-remy", 3, "24 oct.", "Les courses et les rappels, en parlant", "carnet-outils-v1", [

@@ -4,6 +4,63 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Prochaines heures, et « Ce que Rémy a compris »
+
+Deux questions de Sam : « qu'est-ce que je fais là, ce soir, demain matin, et
+pourquoi ceci avant cela ? » et « quels projets comptent, dans quel ordre ? ».
+Livré par la tour et le site seulement (pas d'IA, pas de table, pas de tiers).
+
+- **Motion dit plus sur chaque tâche.** `normTache` garde `projetId`,
+  `deadlineType` (HARD/SOFT/NONE) et `startOn` (une date), **seulement s'ils
+  sont donnés et lisibles** ; la journée et la semaine les transmettent.
+  L'iPhone décode ces objets par clés connues (Codable synthétisé) : les
+  champs en plus sont ignorés.
+- **Le classement est une liste confirmée, pas un ordre de saisie.** Une
+  priorité `classee` a été confirmée par Sam ; son rang est sa place parmi
+  les confirmées (la n°1 passe devant). `classeA` date le dernier changement
+  du classement. Chaque priorité peut se relier à un projet Motion
+  **par identifiant** (`projetMotion`, et `projetNom` pour l'afficher quand
+  Motion ne répond pas). Capacité `priorites-v2`.
+- **Clé absente = inchangé** (comme `declencheursDe` des rappels) : l'app
+  iPhone d'avant écrit sans `projetMotion`, sans `confirmee`, sans
+  `ecartees` et ne réordonne pas ; son enregistrement ne défait rien (on se
+  raccroche à l'`id` de chaque priorité). Une priorité qu'elle ajoute n'est
+  pas classée. Versionnement et 409 inchangés.
+- **Rémy propose, Sam confirme.** `GET /api/priorites/proposition` calcule
+  sans IA une proposition (`lib/proposition-priorites.js`, pur) : par projet
+  Motion, le temps planifié sur 14 jours, les échéances fermes, les tâches
+  ouvertes ou en retard ; l'activité dans Rémy (dossiers rangés sous le
+  projet, leurs idées, tâches rangées, tâches cochées) ; ce que Sam a écrit
+  (relié, ou « qui ressemble » au nom d'un projet, dit comme tel). Chaque
+  candidat porte ses indices en clair ; les poids restent sur la tour.
+  Rien n'est gardé : c'est une hypothèse. Les « pas une priorité » sont
+  gardés (`ecartees`) pour ne pas revenir. Les sources d'indices sont une
+  liste (`SOURCES_INDICES`) : un lot suivant y ajoute le modèle local
+  (mémoire, conversations, préparé de nuit) ou les fils T3 Code.
+- **Ce que la proposition ne voit pas** : ce qui avance hors de Motion et de
+  Rémy (code, papier, appels), l'importance d'une chose courte, un projet
+  sans projet Motion. L'écran le dit sous la proposition. Les rappels ne sont
+  rattachés à aucun projet : ils ne comptent pas (pas de devinette par mots).
+- **« Prochaines heures » (H, ou Ctrl+K)** : la feuille large d'« À
+  l'échelle », de maintenant à demain midi, en lecture seule. Elle lit
+  `/api/semaine?jours=2` et `/api/priorites` (jamais `/api/dashboard`, qui
+  peut relancer le conseil), au plus une fois par minute à l'ouverture.
+  Calculs dans `public/app/analyse/heures.js` (pur, testé sous node) : les
+  lignes dans l'ordre de Motion, une phrase de pourquoi faite des **seuls
+  faits** (rendez-vous fixe, échéance ferme ou proche, priorité Motion,
+  « pas avant » du jour, menacée, en retard, en attente, « sert ta priorité
+  n°k »), et « Rien ne la distingue : Motion l'a mise là » sinon ; les
+  minutes par projet et par tranche (au prorata d'une tâche étalée) ; ce qui
+  ne rentre pas avant demain midi d'après Motion (pas placé, ou fini après
+  l'échéance). La nuit vide est resserrée dans la frise.
+- **Limites.** Motion ne dit pas pourquoi il place A avant B : on dit ce que
+  ses données montrent, pas son calcul. « Morceau n/m » (les `chunks`) et
+  `schedulingIssue` ne sont pas lus : jamais vus dans les données réelles.
+  « Sert ta priorité n°k » n'existe que pour un classement confirmé et un
+  projet relié par identifiant. Les projets s'arrêtent au niveau Motion (pas
+  les sous-dossiers de Rémy). La touche H n'agit que fenêtre Rémy au premier
+  plan (pas de raccourci global Windows dans ce lot).
+
 ## 2026-11-12 — Chercher dans Projets
 
 Le champ de Projets (site) ne filtrait que les noms de la colonne ; l'iPhone n'en

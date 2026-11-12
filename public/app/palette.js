@@ -147,6 +147,7 @@ export function lignesDeBase({ contexte, vues, vueCourante = () => null, sait: c
     connait("a-trancher-v1") ? { groupe: "Actions", titre: "Revue de la semaine", icone: "calendrier", mots: "dimanche hebdo", faire: aller("aujourdhui/revue") } : null,
     connait("a-trancher-v1") ? { groupe: "Actions", titre: "Retards au retour", icone: "retard", mots: "retard retards en retard absent absence", faire: aller("aujourdhui/retards") } : null,
     { groupe: "Actions", titre: "Faire connaissance", icone: "personne", mots: "onboarding présentation connaissance découvrir", faire: aller("aujourdhui/connaissance") },
+    connait("semaine-v1") ? { groupe: "Actions", titre: "Prochaines heures", icone: "horloge", detail: "H", mots: "maintenant ce soir demain matin pourquoi ordre projet heures", faire: () => import("./vues/heures.js").then((m) => m.ouvrir({ contexte })) } : null,
     connait("semaine-v1") ? { groupe: "Actions", titre: "Les 7 jours à l'échelle", icone: "horloge", mots: "semaine demain échelle", faire: aller("aujourdhui/echelle/7jours") } : null,
     { groupe: "Actions", titre: "Organiser ma journée avec Rémy", icone: "remy", mots: "journée planning organiser", faire: organiserLaJournee(contexte) },
     { groupe: "Actions", titre: "Thème clair", icone: "soleil", faire: () => appliquerTheme("light") },

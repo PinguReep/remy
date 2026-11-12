@@ -9,6 +9,7 @@ import * as fileEnvoi from "./file-envoi.js";
 import { suivreFileCochees } from "./vues/gerer.js";
 import * as noter from "./vues/noter.js";
 import * as palette from "./palette.js";
+import * as heures from "./vues/heures.js";
 import * as usage from "./usage.js";
 
 const MODULE_NON_LUS = "./non-lus.js";
@@ -226,6 +227,7 @@ function aideRaccourcis() {
     titre: "Raccourcis clavier",
     contenu: h("dl", { class: "raccourcis" },
       ligne("Noter quelque chose", "N"),
+      ligne("Prochaines heures (ouvrir, fermer)", "H"),
       ligne("Chercher dans la vue", "/"),
       ligne("Palette de commandes", ctrl, "K"),
       ...vuesVisibles().map((v, i) => ligne(v.titre, ctrl, String(i + 1))),
@@ -262,6 +264,10 @@ function clavier(e) {
   if (e.key === "n" || e.key === "N") {
     e.preventDefault();
     ouvrirNoter();
+  } else if ((e.key === "h" || e.key === "H") && !modeNoter && sessionOuverte) {
+    // Prochaines heures : la feuille se referme elle-même sur H (une feuille ouverte bloque ce raccourci-ci).
+    e.preventDefault();
+    heures.basculer({ contexte });
   } else if (e.key === "/") {
     e.preventDefault();
     if (vueCourante?.module?.chercher) vueCourante.module.chercher();
