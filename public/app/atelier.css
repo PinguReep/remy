@@ -638,20 +638,23 @@ dialog.feuille.feuille-heures { width: min(1120px, calc(100vw - 64px)); max-heig
 .heures-t .point { width: 9px; height: 9px; border-radius: 50%; background: var(--couleur, var(--encre-3)); flex: none; }
 .heures-t .pastille { flex: none; }
 .heures-p { font-size: 13px; color: var(--encre-3); display: flex; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
-.rang { display: inline-flex; align-items: center; font: 600 11px/1 var(--texte); padding: 3px 6px; border-radius: 999px; background: var(--fond-3); color: var(--encre); }
+.feuille-heures .rang { display: inline-flex; align-items: center; font: 600 11px/1 var(--texte); padding: 3px 6px; border-radius: 999px; background: var(--fond-3); color: var(--encre); }
 .heures-pq { display: flex; align-items: flex-start; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--encre-2); overflow-wrap: anywhere; }
 .heures-pq svg.ic { width: 13px; height: 13px; flex: none; margin-top: 3px; }
 .heures-pq.menace { color: var(--danger); }
 .heures-pq.rien { color: var(--encre-3); font-style: italic; }
 .heures-projets { display: flex; flex-direction: column; gap: 12px; }
 .heures-tranche-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 14px; margin-bottom: 4px; }
-.heures-barres { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.heures-barre { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(40px, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; }
-.heures-barre .nom { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.heures-barre.rdv .nom { color: var(--encre-3); }
-.heures-barre .jauge { height: 8px; border-radius: 999px; background: var(--fond-3); overflow: hidden; }
-.heures-barre .jauge span { display: block; height: 100%; border-radius: 999px; }
-.heures-barre .min { font: 400 12px/1 var(--mono); color: var(--encre-2); white-space: nowrap; }
+.ph-barres { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ph-barre { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(40px, 1fr) 58px; align-items: center; gap: 8px; font-size: 13px; }
+.ph-barre .nom { display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--texte); }
+.ph-barre .nom .n { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ph-barre .nom .rang { flex: none; }
+dialog.feuille-heures:focus { outline: none; }
+.ph-barre.rdv .nom { color: var(--encre-3); }
+.ph-barre .jauge { height: 8px; border-radius: 999px; background: var(--fond-3); overflow: hidden; }
+.ph-barre .jauge span { display: block; height: 100%; border-radius: 999px; }
+.ph-barre .min { font: 400 12px/1 var(--mono); color: var(--encre-2); white-space: nowrap; text-align: right; }
 .heures-rentre ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .heures-rentre-ligne { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--encre-2); }
 .heures-rentre-ligne svg.ic { width: 14px; height: 14px; flex: none; color: var(--danger); margin-top: 2px; }
@@ -660,6 +663,7 @@ dialog.feuille.feuille-heures { width: min(1120px, calc(100vw - 64px)); max-heig
 .heures-squelettes { display: flex; flex-direction: column; gap: 14px; }
 .squelette-frise { animation: pulse 1.6s ease-in-out infinite; margin-top: 18px; }
 @media (max-width: 520px) {
+  .heures-nuit > span { display: none; }
   .heures-ligne { grid-template-columns: minmax(0, 1fr); padding-left: 10px; }
   .heures-h { font-size: 12px; }
   .heures-tete { font-size: 16px; }
@@ -1378,12 +1382,29 @@ button.etat-tour:hover { background: var(--fond-2); color: var(--encre); }
 /* Ce qui compte. */
 .reglages-priorites { display: flex; flex-direction: column; gap: 12px; }
 .reglages-priorite { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--filet); border-radius: 14px; background: var(--surface); }
-.reglages-priorite-tete { display: flex; align-items: center; gap: 8px; }
-.reglages-priorite-tete .champ { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 16px; }
+.reglages-priorite-tete { display: flex; align-items: center; gap: 10px; }
+.reglages-priorite-titre { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.reglages-priorite-titre strong { font-size: 16px; overflow-wrap: anywhere; }
 .reglages-rang { flex: none; min-width: 40px; height: 32px; padding: 0 8px; border-radius: 999px; display: inline-grid; place-items: center; font: 600 13px/1 var(--texte); background: var(--encre); color: var(--fond); }
-.reglages-ordre { display: inline-flex; flex: none; }
-.reglages-ordre .btn { min-width: 44px; min-height: 44px; }
-.reglages-ordre .btn:disabled { opacity: .3; }
+.reglages-rang.propose { background: transparent; color: var(--encre-2); box-shadow: inset 0 0 0 1.5px var(--encre-3); border: 0; }
+.reglages-priorite.proposee { border-style: dashed; background: transparent; }
+.reglages-liste-priorites { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.reglages-sous-titre { font: 600 12px/1.3 var(--texte); letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2); margin: 4px 0 8px; }
+.reglages-classement, .reglages-proposition { display: flex; flex-direction: column; gap: 6px; }
+.reglages-proposition { margin-top: 10px; }
+.reglages-indices { margin: 0; padding: 0 0 0 50px; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; color: var(--encre-2); }
+.reglages-indices li::before { content: "·"; margin: 0 6px 0 -12px; color: var(--encre-3); }
+.reglages-gestes { flex-wrap: wrap; gap: 4px; padding-left: 42px; }
+.reglages-gestes .btn:disabled { opacity: .3; }
+.reglages-edition { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 0 50px; }
+.reglages-limites { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-top: 8px; }
+.reglages-limites svg.ic { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.reglages-discret { margin-top: 6px; gap: 4px; }
+@media (max-width: 520px) {
+  .reglages-indices, .reglages-edition { padding-left: 0; }
+  .reglages-indices li::before { margin-left: 0; }
+  .reglages-gestes { padding-left: 0; }
+}
 .reglages-regle { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .reglages-regle svg.ic { width: 16px; height: 16px; flex: none; color: var(--signal-texte); }
 .reglages-lien-projet { display: flex; flex-direction: column; gap: 4px; }

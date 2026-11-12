@@ -16,11 +16,15 @@ const MAINTENANT = new Date(2026, 10, 12, 10, 47).getTime();
 const at = (jour, h, m = 0) => new Date(2026, 10, 12 + jour, h, m).getTime();
 const jourDe = (k) => ({ jour: `2026-11-${12 + k}`, debut: at(k, 0), fin: at(k + 1, 0) });
 
+// Le classement confirmé (« C'est ça ») : la musique, puis la boutique. Les proches sont écrits, pas classés ;
+// l'atelier est relié à un projet mais pas confirmé : il n'a pas de rang.
 const priorites = [
-  { id: "p-musique", titre: "La musique", projetMotion: "p4" },
-  { id: "p-boutique", titre: "Lancer la boutique de bougies", projetMotion: "p1" },
+  { id: "p-musique", titre: "La musique", projetMotion: "p4", classee: true },
+  { id: "p-atelier", titre: "Ranger l'atelier", projetMotion: "p9" },
+  { id: "p-boutique", titre: "Lancer la boutique de bougies", projetMotion: "p1", classee: true },
   { id: "p-proches", titre: "Voir Léa et Hugo" },
 ];
+const sansClassement = priorites.map(({ classee, ...p }) => p);
 
 const semaine = {
   sources: { motion: "ok", agenda: "ok" },
@@ -93,6 +97,15 @@ test("le pourquoi ne dit que des faits, et avoue quand rien ne distingue une lig
   assert.equal(t3.rang, 2);
 });
 
+test("sans classement confirmé (une saisie, ou une proposition de Rémy), aucune ligne ne dit quelle priorité elle sert", () => {
+  const v = H.prochainesHeures({ semaine, priorites: sansClassement, maintenant: MAINTENANT, cochees: new Set(["t5"]) });
+  assert.ok(v.lignes.every((l) => !/priorité n°/.test(l.pourquoi) && l.rang === null));
+  assert.equal(v.lignes.find((l) => l.id === "t2").pourquoi, "Rien ne la distingue : Motion l'a mise là");
+  assert.equal(v.lignes.find((l) => l.id === "t4").pourquoi, "Pas avant aujourd'hui : sa date de début dans Motion");
+  assert.equal(v.tranches.find((t) => t.id === "soir").projets[0].rang, null);
+  assert.match(v.notes.map((n) => n.texte).join(" "), /pas encore confirmé/);
+});
+
 test("les faits, un à un : échéance souple lointaine, sans échéance, ASAP, en retard, en attente", () => {
   const f = (e) => H.pourquoi(H.faitsDe({ type: "tache", id: "x", titre: "x", debut: at(0, 15), fin: at(0, 16), ...e }, { maintenant: MAINTENANT }));
   assert.equal(f({ echeance: at(20, 18) }), "Rien ne la distingue : Motion l'a mise là", "due dans trois semaines : ne dit rien de ce créneau");
@@ -104,7 +117,8 @@ test("les faits, un à un : échéance souple lointaine, sans échéance, ASAP, 
   assert.equal(f({ startOn: "2026-11-10" }), "Rien ne la distingue : Motion l'a mise là", "une date de début passée n'explique rien");
   // Sans le classement, plus de « sert ta priorité » ; une priorité sans lien ne relie rien.
   assert.equal(H.rangsParProjet(null).size, 0);
-  assert.deepEqual([...H.rangsParProjet([{ titre: "A", projetMotion: "p1" }, { titre: "B", projetMotion: "p1" }]).entries()], [["p1", { rang: 1, titre: "A" }]], "deux priorités sur le même projet : la mieux classée");
+  assert.deepEqual([...H.rangsParProjet([{ titre: "A", projetMotion: "p1", classee: true }, { titre: "B", projetMotion: "p1", classee: true }]).entries()], [["p1", { rang: 1, titre: "A" }]], "deux priorités sur le même projet : la mieux classée");
+  assert.deepEqual([...H.rangsParProjet(priorites).entries()].map(([id, r]) => [id, r.rang]), [["p4", 1], ["p1", 2]], "le rang se compte parmi les confirmées");
 });
 
 test("les minutes par projet et par tranche (au prorata d'une tâche étalée, rendez-vous à part)", () => {
@@ -155,8 +169,9 @@ test("vide, Motion absent ou en panne, priorités illisibles ou sans lien : la f
   const sansMotion = H.notesHeures({ sources: { motion: "off", agenda: "ok" } }, []);
   assert.deepEqual(sansMotion.map((n) => n.texte), ["Motion n'est pas relié à ta tour : seuls tes rendez-vous apparaissent ici."]);
   assert.equal(H.notesHeures({ sources: { motion: "erreur", agenda: "erreur" } }, priorites).filter((n) => n.alerte).length, 2);
-  assert.match(H.notesHeures({ sources: { motion: "ok" } }, null)[0].texte, /n'ont pas pu être lues/);
-  assert.equal(H.notesHeures({ sources: { motion: "ok" } }, [{ titre: "A" }])[0].reglage, true, "aucune priorité reliée : où le faire");
+  assert.match(H.notesHeures({ sources: { motion: "ok" } }, null)[0].texte, /n'a pas pu être lu/);
+  assert.match(H.notesHeures({ sources: { motion: "ok" } }, [{ titre: "A", classee: true }])[0].texte, /Aucune priorité de ton classement n'est reliée/, "classées, mais sans lien : où le faire");
+  assert.match(H.notesHeures({ sources: { motion: "ok" } }, sansClassement)[0].texte, /pas encore confirmé/);
   assert.equal(H.semaineLisible({ jours: [] }), true);
   assert.equal(H.semaineLisible("<html>"), false);
   assert.equal(H.semaineLisible({ erreur: "x" }), false);

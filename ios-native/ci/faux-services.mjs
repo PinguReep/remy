@@ -7,6 +7,8 @@ const H = 3600_000;
 const now = Date.now();
 const auj = new Date(); auj.setHours(0, 0, 0, 0);
 const t = (h, m = 0, jour = 0) => new Date(auj.getTime() + jour * 24 * H + h * H + m * 60_000).toISOString();
+// Une DATE locale (« 2026-11-12 »), comme le startOn de Motion.
+const jourLocal = (jour = 0) => { const d = new Date(auj.getTime() + jour * 24 * H + 12 * H); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 // La tâche en cours suit l'heure de la CI : commencée il y a ~25 min, 1 h 15
 // au total. La carte « Maintenant » et « Gérer » ont toujours de quoi montrer.
 const enCours = Math.floor((now - 25 * 60_000) / 300_000) * 300_000;
@@ -28,7 +30,7 @@ const taches = [
   { id: "t18", name: "Préparer la réunion fournisseurs", scheduledStart: t(9, 30, 1), scheduledEnd: t(11, 0, 1), dueDate: t(18, 0, 1), deadlineType: "HARD", duration: 90, priority: "HIGH", project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   // « Prochaines heures » (12/11) : ce soir, la musique (pas avant aujourd'hui) ;
   // demain tôt, une tâche que rien ne distingue (pas d'échéance, priorité moyenne).
-  { id: "t16", name: "Répéter le morceau pour samedi", scheduledStart: t(21), scheduledEnd: t(21, 45), startOn: t(0).slice(0, 10), duration: 45, priority: "MEDIUM", project: { id: "p4", name: "Musique" }, workspace: { id: "w1" } },
+  { id: "t16", name: "Répéter le morceau pour samedi", scheduledStart: t(21), scheduledEnd: t(21, 45), startOn: jourLocal(0), duration: 45, priority: "MEDIUM", project: { id: "p4", name: "Musique" }, workspace: { id: "w1" } },
   { id: "t17", name: "Trier les factures du mois", scheduledStart: t(8, 45, 1), scheduledEnd: t(9, 15, 1), duration: 30, priority: "MEDIUM", workspace: { id: "w1" } },
   { id: "t11", name: "Commander les mèches en coton", scheduledStart: t(14, 0, 1), scheduledEnd: t(14, 30, 1), dueDate: t(19, 0, 3), duration: 30, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   // Placée après son échéance : « Motion la place après ».

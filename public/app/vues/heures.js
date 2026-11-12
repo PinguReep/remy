@@ -6,6 +6,9 @@
 // minutes par projet et par tranche, et ce qui ne rentre pas avant demain midi
 // d'après Motion. Les calculs sont dans analyse/heures.js (testé sous node).
 //
+// « Sert ta priorité n°k » : seulement pour le classement CONFIRMÉ (les
+// priorités `classee`) ; une proposition de Rémy n'est jamais citée ici.
+//
 // Données : GET /api/semaine?jours=2 (sans IA, Motion lu depuis le cache de
 // la tour) et GET /api/priorites. Jamais /api/dashboard (il peut relancer le
 // conseil réfléchi). Relues au plus une fois par minute à l'ouverture, toutes
@@ -15,7 +18,7 @@ import { h, vider, icone, bouton, feuille, squelette, vide, texteErreur, occupe 
 import { couleurProjet } from "../couleurs.js";
 import { heure, duree, jourTitre } from "../analyse/journee.js";
 import { etatVue } from "../analyse/semaine.js";
-import { prochainesHeures, echelleFrise, phraseTranche, heuresTranche, phraseTete, semaineLisible } from "../analyse/heures.js";
+import { prochainesHeures, classeesDe, echelleFrise, phraseTranche, heuresTranche, phraseTete, semaineLisible } from "../analyse/heures.js";
 import { cochees } from "./gerer.js";
 
 const FRAIS_MS = 60e3;
@@ -24,6 +27,9 @@ const RELIRE_OUVERTE_MS = 5 * 60e3;
 const etat = { semaine: null, priorites: [], misAJour: null, erreur: null, chargement: false };
 let lecture = null;
 let vue = null; // { f, corps, minuteur, contexte }
+
+// Pas de guillemet seul en début de ligne : « et » tiennent au mot qu'ils encadrent.
+const insecable = (t) => String(t ?? "").replace(/« /g, "«\u00a0").replace(/ »/g, "\u00a0»");
 
 const ICONE_FAIT = { fixe: "cadenas", menace: "alerte", priorite: "etoile", echeance: "drapeau", motion: "fleche", debut: "calendrier", attente: "pause", rien: "question" };
 
@@ -127,8 +133,8 @@ function dessiner() {
   const phrase = phraseTete(v, m);
   vider(corps,
     tete,
-    phrase ? h("p", { class: "heures-tete" }, phrase) : null,
-    h("p", { class: "aide heures-regle" }, "Motion décide de l'ordre. Sous chaque ligne : ce que ses données en disent, et la priorité qu'elle sert."),
+    phrase ? h("p", { class: "heures-tete" }, insecable(phrase)) : null,
+    h("p", { class: "aide heures-regle" }, classeesDe(etat.priorites).length ? "Motion décide de l'ordre. Sous chaque ligne : ce que ses données en disent, et la priorité de ton classement qu'elle sert." : "Motion décide de l'ordre. Sous chaque ligne : ce que ses données en disent."),
     frise(v),
     v.toute.length ? h("p", { class: "aide heures-toute" }, `Toute la journée : ${v.toute.join(" · ")}`) : null,
     notes,
@@ -188,7 +194,7 @@ function projets(v) {
       return h("div", { class: "heures-tranche" },
         h("p", { class: "heures-tranche-tete" }, h("strong", null, t.titre), h("span", { class: "h" }, heuresTranche(t))),
         t.projets.length || t.minutesRdv
-          ? h("ul", { class: "heures-barres", "aria-label": `${t.titre} : ${phraseTranche(t)}` },
+          ? h("ul", { class: "ph-barres", "aria-label": `${t.titre} : ${phraseTranche(t)}` },
             t.projets.map((p) => barre(p.nom, p.minutes, max, couleurProjet(p.nom === "Sans projet" ? null : p.nom), p.rang)),
             t.minutesRdv ? barre("Rendez-vous", t.minutesRdv, max, "var(--encre-2)", null, true) : null)
           : h("p", { class: "aide" }, "Rien de placé"));
@@ -196,8 +202,8 @@ function projets(v) {
 }
 
 function barre(nom, minutes, max, couleur, rang, rdv = false) {
-  return h("li", { class: `heures-barre${rdv ? " rdv" : ""}` },
-    h("span", { class: "nom" }, nom, rang ? h("span", { class: "rang", title: `Ta priorité n°${rang}` }, `n°${rang}`) : null),
+  return h("li", { class: `ph-barre${rdv ? " rdv" : ""}` },
+    h("span", { class: "nom" }, h("span", { class: "n", title: nom }, nom), rang ? h("span", { class: "rang", title: `Ta priorité n°${rang}` }, `n°${rang}`) : null),
     h("span", { class: "jauge", "aria-hidden": "true" }, h("span", { style: { width: `${Math.max(4, Math.round((minutes / max) * 100))}%`, background: couleur } })),
     h("span", { class: "min" }, duree(minutes)));
 }
@@ -229,5 +235,5 @@ function ligne(l) {
       h("span", { class: "heures-t" }, rdv ? icone("cadenas") : h("span", { class: "point", "aria-hidden": "true" }), h("span", { class: "tt" }, l.titre),
         l.enCours ? h("span", { class: "pastille" }, "En cours") : null),
       l.projet || l.rang ? h("span", { class: "heures-p" }, l.projet || "", l.rang ? h("span", { class: "rang" }, `priorité n°${l.rang}`) : null) : null,
-      h("span", { class: `heures-pq ${premier}` }, icone(ICONE_FAIT[premier] || "info"), h("span", null, l.pourquoi))));
+      h("span", { class: `heures-pq ${premier}` }, icone(ICONE_FAIT[premier] || "info"), h("span", null, insecable(l.pourquoi)))));
 }

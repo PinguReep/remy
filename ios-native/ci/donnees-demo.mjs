@@ -213,11 +213,12 @@ const coche = db().prepare("INSERT INTO journal (id, ts, source, origine, resume
   .forEach(([id, jours, nom, projet, duree]) => coche.run(id, now - jours * 24 * H, JSON.stringify([{ ok: true, type: "terminer", nom, projet, avant: { duration: duree } }]), now - jours * 24 * H));
 w("briefings.json", [{ text: "- Tu avances mieux sur la boutique le matin que le soir (70 %)\n- Les tâches du vendredi glissent souvent au lundi (60 %)\n- Question douce : la démo avant le site ?", generatedAt: now - 2 * 24 * H }]);
 // 24/10 : les priorités déclarées de Sam (fictives), la première il y a 3 semaines ;
-// classées, les deux premières reliées à un projet Motion (12/11, priorites-v2).
+// les deux premières confirmées dans le classement et reliées à un projet
+// Motion (12/11, priorites-v2) ; la troisième écrite, pas encore confirmée.
 const priorites = await import("../../lib/priorites.js");
 priorites.enregistrerPriorites([
-  { id: "p-musique", titre: "La musique", pourquoi: "Jouer me rend calme toute la semaine", mots: ["musique", "guitare", "répétition"], projetMotion: "p4", projetNom: "Musique" },
-  { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"], projetMotion: "p1", projetNom: "Boutiques" },
+  { id: "p-musique", titre: "La musique", pourquoi: "Jouer me rend calme toute la semaine", mots: ["musique", "guitare", "répétition"], projetMotion: "p4", projetNom: "Musique", confirmee: true },
+  { id: "p-boutique", titre: "Lancer la boutique de bougies", pourquoi: "C'est mon revenu de l'an prochain", mots: ["boutique", "bougies", "démo"], projetMotion: "p1", projetNom: "Boutiques", confirmee: true },
   { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Je les vois trop peu depuis la rentrée", mots: ["Léa", "Hugo"] },
 ], { base: 0, maintenant: now - 21 * 24 * H });
 console.log("seed ok");

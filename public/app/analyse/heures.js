@@ -54,13 +54,16 @@ export function quand(ms, maintenant = Date.now()) {
 }
 
 /**
- * Le classement de Sam, par projet Motion relié : identifiant → { rang, titre }.
- * Le rang est la place dans la liste (la n°1 passe devant la n°2). Deux
- * priorités reliées au même projet : la mieux classée.
+ * Le classement CONFIRMÉ de Sam, par projet Motion relié : identifiant →
+ * { rang, titre }. Seules les priorités qu'il a confirmées (`classee`) ont un
+ * rang, leur place parmi elles (la n°1 passe devant la n°2) ; une priorité
+ * seulement écrite, ou une proposition de Rémy, n'en a pas. Deux priorités
+ * reliées au même projet : la mieux classée.
  */
+export const classeesDe = (priorites) => (Array.isArray(priorites) ? priorites : []).filter((p) => p?.classee === true);
 export function rangsParProjet(priorites) {
   const rangs = new Map();
-  (Array.isArray(priorites) ? priorites : []).forEach((p, i) => {
+  classeesDe(priorites).forEach((p, i) => {
     const id = typeof p?.projetMotion === "string" ? p.projetMotion : null;
     if (id && !rangs.has(id)) rangs.set(id, { rang: i + 1, titre: String(p.titre || "") });
   });
@@ -134,7 +137,9 @@ export const semaineLisible = (s) => Boolean(s) && typeof s === "object" && Arra
 
 /**
  * Tout ce que montre la feuille. `semaine` : GET /api/semaine?jours=2 ;
- * `priorites` : la liste de GET /api/priorites (null : illisible) ;
+ * `priorites` : la liste de GET /api/priorites (null : illisible) — seul le
+ * classement confirmé y compte : sans lui, aucune ligne ne dit « sert ta
+ * priorité n°k » (jamais une hypothèse présentée comme un fait) ;
  * `cochees` : les tâches cochées ici, pas encore parties.
  */
 export function prochainesHeures({ semaine, priorites = [], maintenant = Date.now(), cochees = new Set() } = {}) {
@@ -227,16 +232,20 @@ export function prochainesHeures({ semaine, priorites = [], maintenant = Date.no
   };
 }
 
-/** Ce qui manque pour dire tout : une source absente ou en panne, des priorités illisibles ou sans lien. */
+/** Ce qui manque pour dire tout : une source absente ou en panne, un classement illisible, pas confirmé ou sans lien. */
 export function notesHeures(semaine, priorites) {
   const notes = [];
   const s = semaine?.sources || {};
   if (s.motion === "off") notes.push({ texte: "Motion n'est pas relié à ta tour : seuls tes rendez-vous apparaissent ici.", alerte: false });
   else if (s.motion === "erreur") notes.push({ texte: "Motion n'a pas répondu : des tâches peuvent manquer. Rafraîchis dans un instant.", alerte: true });
   if (s.agenda === "erreur") notes.push({ texte: "L'agenda n'a pas répondu : des rendez-vous peuvent manquer.", alerte: true });
-  if (priorites === null) notes.push({ texte: "Tes priorités n'ont pas pu être lues : « sert ta priorité » n'apparaît pas cette fois.", alerte: false });
-  else if (s.motion !== "off" && !(priorites || []).some((p) => typeof p?.projetMotion === "string")) {
-    notes.push({ texte: "Relie tes priorités à un projet Motion (Réglages › Ce qui compte) : chaque ligne dira laquelle elle sert.", alerte: false, reglage: true });
+  if (priorites === null) notes.push({ texte: "Ton classement n'a pas pu être lu : « sert ta priorité » n'apparaît pas cette fois.", alerte: false });
+  else if (s.motion === "off") {
+    // Sans Motion, aucune tâche à relier : rien à demander.
+  } else if (!classeesDe(priorites).length) {
+    notes.push({ texte: "Ton classement n'est pas encore confirmé : Rémy en propose un dans Ce qui compte. D'ici là, aucune ligne ne dit quelle priorité elle sert.", alerte: false, reglage: true });
+  } else if (!classeesDe(priorites).some((p) => typeof p.projetMotion === "string")) {
+    notes.push({ texte: "Aucune priorité de ton classement n'est reliée à un projet Motion : relie-les dans Ce qui compte, chaque ligne dira laquelle elle sert.", alerte: false, reglage: true });
   }
   return notes;
 }

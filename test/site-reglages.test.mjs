@@ -53,6 +53,59 @@ test("Ce qui compte : ce qui part (vides et doublons retirés, mots découpés) 
   assert.equal(V.etatPriorite({}), null);
 });
 
+test("Ce que Rémy a compris : le classement confirmé, les pistes à confirmer, ce qui part", () => {
+  const lu = {
+    version: 3, classeA: 1000, ecartees: ["motion:p9"],
+    priorites: [
+      { id: "p-boutique", titre: "Lancer la boutique", projetMotion: "p1", projetNom: "Boutiques", classee: true, mots: ["bougies"] },
+      { id: "p-proches", titre: "Voir Léa et Hugo", pourquoi: "Trop peu vus" },
+    ],
+  };
+  const proposition = { candidats: [
+    { cle: "motion:p4", titre: "Musique", projetMotion: "p4", projetNom: "Musique", indices: [{ source: "motion", texte: "45 min planifiées sur les 14 prochains jours" }] },
+    { cle: "declaree:p-proches", titre: "Voir Léa et Hugo", declaree: { id: "p-proches" }, indices: [{ source: "declarees", texte: "Tu l'as écrite toi-même, sans projet Motion" }] },
+  ] };
+  const e = V.etatClassement(lu, proposition);
+  assert.deepEqual(e.classees.map((p) => p.id), ["p-boutique"]);
+  assert.deepEqual(e.proposees.map((p) => [p.cle, p.ecrite, p.indices]), [
+    ["motion:p4", false, ["45 min planifiées sur les 14 prochains jours"]],
+    ["declaree:p-proches", true, ["Tu l'as écrite toi-même, sans projet Motion"]],
+  ]);
+  assert.equal(e.proposees[1].pourquoi, "Trop peu vus", "ses mots à lui sont gardés");
+  // Rien de confirmé en plus : ce qui part est ce qui est là (la piste de Rémy ne part pas).
+  let envoi = V.aEnregistrerClassement(e);
+  assert.deepEqual(envoi.priorites.map((p) => [p.id, p.confirmee, p.projetMotion]), [["p-boutique", true, "p1"], ["p-proches", false, null]]);
+  assert.deepEqual(envoi.ecartees, ["motion:p9"]);
+  // « C'est ça » sur la musique : elle entre en n°2, avec un identifiant neuf et son projet.
+  e.classees.push(V.confirmerPiste(e.proposees.shift(), () => "p-neuf"));
+  envoi = V.aEnregistrerClassement(e);
+  assert.deepEqual(envoi.priorites.map((p) => [p.id, p.titre, p.confirmee, p.projetMotion]), [["p-boutique", "Lancer la boutique", true, "p1"], ["p-neuf", "Musique", true, "p4"], ["p-proches", "Voir Léa et Hugo", false, null]]);
+  // Monter la musique en n°1.
+  e.classees.splice(0, 2, ...V.deplacerPriorite(e.classees, 1, -1));
+  assert.deepEqual(V.aEnregistrerClassement(e).priorites.filter((p) => p.confirmee).map((p) => p.id), ["p-neuf", "p-boutique"]);
+  assert.equal(V.deplacerPriorite(e.classees, 0, -1), null, "au bord : rien");
+  // « Pas une priorité » sur une priorité écrite : elle part, et sa piste est écartée.
+  e.ecartees.push(V.clePiste(e.proposees.pop()));
+  envoi = V.aEnregistrerClassement(e);
+  assert.deepEqual(envoi.priorites.map((p) => p.id), ["p-neuf", "p-boutique"]);
+  assert.deepEqual(envoi.ecartees, ["motion:p9", "declaree:p-proches"]);
+  // La proposition illisible : les priorités écrites restent proposées, sans indices de Rémy.
+  const sans = V.etatClassement(lu, null);
+  assert.deepEqual(sans.proposees.map((p) => [p.id, p.indices]), [["p-proches", ["Tu l'as écrite toi-même"]]]);
+});
+
+test("Ce qui compte : les projets Motion qu'on peut relier, et le lien gardé quand Motion ne répond pas", () => {
+  assert.deepEqual(V.projetsLiables({ status: "fulfilled", value: { projets: [{ id: "p2", nom: "Album" }, { id: "p1", nom: "Boutiques" }, { nom: "sans id" }], motion: true } }),
+    { liste: [{ id: "p2", nom: "Album" }, { id: "p1", nom: "Boutiques" }], etat: "ok" });
+  assert.equal(V.projetsLiables({ status: "fulfilled", value: { projets: [], motion: false } }).etat, "absent");
+  assert.equal(V.projetsLiables({ status: "rejected", reason: new Error("x") }).etat, "erreur");
+  assert.equal(V.projetsLiables({ status: "fulfilled", value: null }).etat, "inconnu");
+  const enPanne = V.choixProjet({ projetMotion: "p1", projetNom: "Boutiques" }, { liste: [], etat: "erreur" });
+  assert.deepEqual(enPanne.map((x) => x.nom), ["Aucun projet Motion", "Boutiques"]);
+  const disparu = V.choixProjet({ projetMotion: "p7", projetNom: "Ancien" }, { liste: [{ id: "p1", nom: "Boutiques" }], etat: "ok" });
+  assert.equal(disparu.at(-1).nom, "Ancien (plus dans Motion)");
+});
+
 test("Modèle : la fenêtre en clair, et pourquoi c'est lui", () => {
   assert.equal(V.fenetreLisible(1048576), "1 M de contexte");
   assert.equal(V.fenetreLisible(1000000), "1 M de contexte");
@@ -219,6 +272,25 @@ test("contrat : Ce qui compte — une version de plus, la même liste ne bouge r
   assert.equal(meme.corps.version, 1);
   const perimee = await appel("/api/priorites", { methode: "PUT", corps: { priorites: [{ id: "p-x", titre: "Autre chose" }], base: 0 } });
   assert.equal(perimee.statut, 409, "une autre version est passée entre-temps");
+});
+
+test("contrat : « C'est ça » sur le site, puis l'iPhone d'avant — le classement et les liens tiennent", async () => {
+  const v0 = (await appel("/api/priorites")).corps;
+  const e = V.etatClassement(v0, { candidats: [{ cle: "motion:p4", titre: "Musique", projetMotion: "p4", projetNom: "Musique", indices: [] }] });
+  // Tout est juste : la musique (piste de Rémy) et la priorité écrite au test d'avant.
+  e.classees.push(...e.proposees.splice(0).map((x) => V.confirmerPiste(x)));
+  const r = await appel("/api/priorites", { methode: "PUT", corps: { ...V.aEnregistrerClassement(e), base: v0.version } });
+  assert.equal(r.statut, 200, JSON.stringify(r.corps));
+  assert.ok(r.corps.classeA, "le classement est daté");
+  assert.deepEqual(r.corps.priorites.map((p) => [p.titre, p.classee === true, p.projetMotion ?? null]), [["Musique", true, "p4"], ["La musique", true, null]]);
+  // Relu, rien n'a changé : Enregistrer reste grisé.
+  assert.equal(JSON.stringify(V.aEnregistrerClassement(V.etatClassement(r.corps, { candidats: [] }))), JSON.stringify(V.aEnregistrerClassement(V.etatClassement(r.corps, null))));
+  // L'iPhone d'avant renvoie la liste sans lien ni confirmation : rien ne se perd.
+  const iphone = r.corps.priorites.map((p) => ({ id: p.id, titre: p.titre, ...(p.pourquoi ? { pourquoi: p.pourquoi } : {}), ...(p.mots?.length ? { mots: p.mots } : {}) }));
+  const r2 = await appel("/api/priorites", { methode: "PUT", corps: { priorites: iphone, base: r.corps.version } });
+  assert.equal(r2.corps.version, r.corps.version, "même liste : pas de version de plus");
+  assert.equal(r2.corps.priorites[0].projetMotion, "p4");
+  assert.equal(r2.corps.priorites[0].classee, true);
 });
 
 test("contrat : la mémoire se relit avant d'écrire (le conflit se voit)", async () => {

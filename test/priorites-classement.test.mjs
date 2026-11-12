@@ -127,6 +127,54 @@ test("le site retire un lien (null) ; le 409 d'une base périmée reste, sans ri
   assert.equal((await envoyer("PUT", "/api/priorites", { priorites: [] })).statut, 409, "sans base : refusé, comme avant");
 });
 
+test("le classement : les priorités confirmées, datées ; l'iPhone d'avant ne le défait pas et garde les pistes écartées", async () => {
+  let lu = (await envoyer("GET", "/api/priorites")).corps;
+  assert.equal(lu.classeA, null, "jusqu'ici, l'ordre n'était qu'un ordre de saisie");
+  assert.ok(lu.priorites.every((p) => !("classee" in p)));
+  // Le site : « C'est ça » sur les deux premières, la troisième reste écrite mais pas classée ; une piste écartée.
+  const envoi = lu.priorites.map((p, k) => ({ ...p, confirmee: k < 2 }));
+  let r = await envoyer("PUT", "/api/priorites", { base: lu.version, priorites: envoi, ecartees: ["motion:p9", "motion:p9", ""] });
+  assert.equal(r.statut, 200, JSON.stringify(r.corps));
+  assert.ok(r.corps.classeA >= lu.majA, "daté");
+  assert.deepEqual(r.corps.priorites.map((p) => p.classee === true), [true, true, false]);
+  assert.deepEqual(r.corps.ecartees, ["motion:p9"]);
+  const date = r.corps.classeA;
+  // L'iPhone d'avant ajoute une priorité (sans confirmee ni ecartees) : rien ne se perd, la nouvelle n'est pas classée.
+  r = await envoyer("PUT", "/api/priorites", { base: r.corps.version, priorites: [...commeIphoneV1(r.corps.priorites), { id: "p-lire", titre: "Lire le soir" }] });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.classeA, date, "le classement n'a pas changé : sa date non plus");
+  assert.deepEqual(r.corps.priorites.map((p) => p.classee === true), [true, true, false, false]);
+  assert.deepEqual(r.corps.ecartees, ["motion:p9"]);
+  // Renvoyer la même liste depuis l'iPhone : aucune version vide.
+  const v = r.corps.version;
+  r = await envoyer("PUT", "/api/priorites", { base: v, priorites: commeIphoneV1(r.corps.priorites) });
+  assert.equal(r.corps.version, v);
+  // Un nouvel ordre confirmé (la n°2 passe devant) : une nouvelle version, une nouvelle date.
+  const [a, b, ...reste] = r.corps.priorites;
+  r = await envoyer("PUT", "/api/priorites", { base: v, priorites: [b, a, ...reste].map((p) => ({ ...p, confirmee: p.classee === true })) });
+  assert.equal(r.corps.version, v + 1);
+  assert.equal(r.corps.priorites[0].id, b.id);
+  assert.ok(r.corps.classeA >= date);
+  assert.deepEqual(r.corps.ecartees, ["motion:p9"], "ecartees absente : inchangée");
+  // Tout déconfirmer : plus de classement.
+  r = await envoyer("PUT", "/api/priorites", { base: v + 1, priorites: r.corps.priorites.map((p) => ({ ...p, confirmee: false })) });
+  assert.equal(r.corps.classeA, null);
+  r = await envoyer("PUT", "/api/priorites", { base: v + 2, priorites: r.corps.priorites.map((p, k) => ({ ...p, confirmee: k < 3 })) });
+  assert.ok(r.corps.classeA);
+});
+
+test("GET /api/priorites/proposition : sans Motion, ce qui est déjà classé n'est pas reproposé", async () => {
+  const r = await envoyer("GET", "/api/priorites/proposition");
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.motion, "off");
+  assert.ok(r.corps.classeA, "le classement est confirmé");
+  // Classées : la musique, la boutique, les proches ; reste « Lire le soir », écrite mais pas classée.
+  assert.deepEqual(r.corps.candidats.map((c) => c.titre), ["Lire le soir"], "ce qui est classé n'est pas reproposé");
+  assert.equal(r.corps.candidats[0].declaree.id, "p-lire");
+  assert.ok(r.corps.sources.some((s) => s.id === "motion"));
+  assert.match(r.corps.limites, /ailleurs/);
+});
+
 test("un lien illisible (vide, caractères de contrôle) vaut « pas de lien »", () => {
   const { priorites: p } = priorites.nettoyerPriorites([
     { id: "a", titre: "Un", projetMotion: "   " },
