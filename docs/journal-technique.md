@@ -76,7 +76,7 @@ depuis plus de 6 h ».
   (`natureRequete` : question, dictée, capture, pièce, écriture ; le signe de
   vie, les lieux et l'appareil sont « passifs » et ne font rien céder), une
   réponse qui s'écrit, ou un appel au modèle hors fond. Pendant une demande et
-  un **répit** de 20 s après (`REMY_FOND_REPIT_MS`, 0 en test : la question
+  un **répit** de 5 s après (20 s au départ, ramené à 5 à la demande de l'utilisateur ; `REMY_FOND_REPIT_MS`, 0 en test : la question
   suivante arrive souvent dans la foulée), la garde de charge (`jobs.inference`)
   ne laisse partir **aucun** appel de fond (avant : 1 tap + 1 job en même
   temps), et `jobs.passer` ne commence aucun job.
