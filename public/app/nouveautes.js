@@ -23,6 +23,12 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages, { remplace = null, aRemplacer = false } = {}) => Object.freeze({ id, serie, date, titre, capacite, pages, remplace, aRemplacer });
 
 export const CATALOGUE = [
+  // Série 10 (12/11) : le planning de Rémy, à côté de celui de Motion (site seulement).
+  n("planning-remy", 10, "12 nov.", "Le planning de Rémy, à côté de Motion", "planning-remy-v1", [
+    p("deplacer", "Deux plannings côte à côte", "Sur la carte « Demain et 7 jours », « Rémy et Motion » (aussi dans Ctrl+K) : Rémy calcule son propre planning avec les mêmes tâches, et montre d'abord là où il ne fait pas comme Motion. Rien n'est écrit chez Motion."),
+    p("question", "Une ligne de pourquoi", "Chaque écart dit sa raison : une tâche bloquée que Motion place quand même, une échéance ferme que l'un tient et pas l'autre, un ordre différent parce qu'une tâche sert ta priorité n°1."),
+    p("coche", "À toi de juger", "« Rémy a raison » ou « Motion a raison » : ton choix est gardé sur ta tour, daté, et compté. Dans quelques semaines, le compte dira si Rémy peut planifier seul. Coupable dans Réglages › Rémy."),
+  ]),
   // Série 9 (12/11) : une seule mise à jour, quatre tutoriels — présentés en
   // deux feuilles (PAGES_MAX), dans cet ordre.
   n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
