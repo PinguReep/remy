@@ -4,6 +4,88 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
+
+Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait
+demandé à l'instant se met en pause dès qu'arrive une demande ou une mise à
+jour, puis reprend. C'était l'inverse par endroits : la mise à jour
+automatique ATTENDAIT la fin de tout travail de fond (réflexion de nuit,
+sauvegarde, « travaux de fond en attente du modèle »…), d'où l'état « occupé
+depuis plus de 6 h ».
+
+- **Un seul classement** : `lib/priorite.js` (`TRAVAUX`). *Demandé* (réponse
+  du chat et sa suite immédiate — titre, mémoire —, dictée, capture, pièce
+  jointe, écriture, « un autre conseil », compactage depuis la jauge,
+  réflexion lancée à la main), *attendu* (briefing du matin, bilan du soir :
+  calculés sans IA à la lecture), *fond* (réflexion de nuit, relecture de nuit
+  des conversations d'ailleurs, conseil précalculé, compactage automatique,
+  sauvegarde, commerces, indexation, règles, relevés, ménages). Chaque job le
+  déclare par son type (testé : tous les jobs que la tour enregistre y sont) ;
+  conseil et compactage automatiques passent par `jobs.enFond(id, fn)`. Un
+  identifiant inconnu compte comme du fond (dans le doute, il cède).
+- **Une demande**, c'est une requête d'écriture d'une session valide
+  (`natureRequete` : question, dictée, capture, pièce, écriture ; le signe de
+  vie, les lieux et l'appareil sont « passifs » et ne font rien céder), une
+  réponse qui s'écrit, ou un appel au modèle hors fond. Pendant une demande et
+  un **répit** de 20 s après (`REMY_FOND_REPIT_MS`, 0 en test : la question
+  suivante arrive souvent dans la foulée), la garde de charge (`jobs.inference`)
+  ne laisse partir **aucun** appel de fond (avant : 1 tap + 1 job en même
+  temps), et `jobs.passer` ne commence aucun job.
+- **Couper un appel en vol** : un `complete` du modèle local (et des cerveaux
+  locaux de `lib/cerveau.js`) reçoit un signal d'abandon ; une demande le
+  déclenche, la connexion se ferme, et l'appel est **refait en entier** quand
+  la place se libère. Sûr parce qu'un appel au modèle n'écrit rien : ce qui le
+  suit (briefing, résumé, conseil) ne s'exécute qu'avec sa réponse. Ce que
+  fait le serveur du modèle d'une connexion fermée n'est pas vérifiable ici
+  (vLLM et llama.cpp arrêtent le calcul ; le moteur des Sparks, à mesurer sur
+  la tour) : s'il continue à calculer, la demande est quand même servie dès
+  qu'il a de la place, et aucun nouvel appel de fond ne part. Un `stream` de
+  fond n'est **pas** interruptible (ses outils agissent, son texte part au fur
+  et à mesure) : aucun job n'en fait aujourd'hui ; il ne commencerait
+  simplement pas pendant une demande. Mesuré contre un faux modèle lent à une
+  seule place (`test/fond-cede.test.mjs`) : réponse à Sam en ~25 ms pendant un
+  fond de 600 ms ; témoin non interruptible : ~620 ms.
+- **Le délai d'un job** ne compte plus la pause (ni l'appel coupé) : céder ne
+  le fait jamais échouer. Céder n'est pas un essai (`tentatives` inchangé).
+- **Promotion** : Sam qui demande ce qu'un fond fait déjà (compacter le fil en
+  cours de compactage automatique, « un autre conseil » pendant le calcul
+  automatique) le **promeut** : il ne cède plus et sort de la file — sinon la
+  demande attendrait un travail en pause… à cause d'elle.
+- **La mise à jour** (`POST /api/maj-auto/ceder`, appelé par `maj-auto.mjs`
+  avant de juger, et par `--occupe` que l'installeur lance juste avant
+  d'arrêter node) : un **bail** de 20 min met le fond en pause (aucun job ne
+  commence, les appels interruptibles sont coupés), puis l'occupation ne
+  compte plus que ce qui est demandé ou attendu, et le fond **au milieu d'une
+  étape qu'on ne coupe pas** (une sauvegarde qui écrit, un import des
+  commerces, un relevé), jusqu'à son délai maximal (au-delà, déjà compté
+  comme échoué et repris, il ne retient plus rien). Un travail en pause est
+  ENTRE deux étapes : rien n'est à moitié écrit. Retenu seulement par Sam : le
+  bail est levé tout de suite (ses demandes font déjà céder le fond) ; rien
+  installé (code 3, arrêt avant changement) : `DELETE …/ceder`, le fond reprend.
+  Le jeton de la tâche (portée « maj-auto ») ouvre ces deux routes, rien de
+  plus. Aucune protection de la mise à jour n'a changé (droits, contrôles,
+  retour arrière, verrou) ; `installer-tour.ps1` n'est pas modifié.
+- **Reprise après le redémarrage** : un job en pause pendant le bail est marqué
+  dans la file (`erreur = « en pause : mise à jour »`) ; `reprendreInterrompus`
+  le remet en attente **sans compter l'essai** et sans alerte. Un arrêt
+  ordinaire compte toujours le sien. Prouvé par un vrai processus tué net
+  pendant la pause : pas de fichier à moitié écrit, une seule écriture après
+  la reprise (la lecture d'avant l'appel se refait : idempotente).
+- **Non interruptible, et pourquoi** : la sauvegarde (archive chiffrée en
+  cours d'écriture), l'import des commerces (il remplace la base), les jobs
+  sans modèle de quelques secondes (indexation, règles, relevés, ménages) — ils
+  ne concurrencent pas le modèle, ne commencent pas pendant une demande, et la
+  mise à jour les attend ; la suite immédiate d'une réponse (titre, mémoire) :
+  classée « demandée », car elle ne vit qu'en mémoire du processus (une mise à
+  jour la perdrait) ; un appel au secours cloud d'un job (pas le modèle local,
+  rien à lui céder ; la mise à jour l'attend).
+- **« Occupé depuis plus de 6 h »** ne peut plus venir que de demandes
+  continues ou d'un fond non interruptible bloqué avant son délai ; la vue dit
+  maintenant ce qui retient (`occupePar`).
+- **Visible sans bruit** : Réglages › Diagnostic › « Travail de fond »
+  (`GET /api/fond`, `fond-cede-v1`) — « Réflexion de nuit en pause : tu viens
+  de poser une question ». Pas de notification, pas de nouveauté.
+
 ## 2026-11-12 — Une tâche « bloquée par » une autre
 
 Une tâche peut attendre qu'une ou plusieurs autres soient finies (« faire
