@@ -23,6 +23,11 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages, { remplace = null, aRemplacer = false } = {}) => Object.freeze({ id, serie, date, titre, capacite, pages, remplace, aRemplacer });
 
 export const CATALOGUE = [
+  // Série 10 (12/11) : la série 9 tient déjà sur deux feuilles (11 pages).
+  n("projets-bloques", 10, "12 nov.", "Un projet qui en attend un autre", "projets-bloques-v1", [
+    p("pause", "« Bloqué par… » sur un projet", "Dans Projets, ouvre un projet Motion ou un dossier : « Choisir ce qu'il attend… », une tâche ou un autre projet. Aucune de ses tâches ne t'est proposée avant ; elles disent « Projet … bloqué par … »."),
+    p("coche", "Fini, et c'est dit", "Un projet est fini pour Rémy quand toutes ses tâches sont terminées (dans la liste Motion lue en entier), ou quand tu touches « C'est fini ». Ce qui l'attendait se débloque, et l'Historique le garde."),
+  ]),
   // Série 9 (12/11) : une seule mise à jour, quatre tutoriels — présentés en
   // deux feuilles (PAGES_MAX), dans cet ordre.
   n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [

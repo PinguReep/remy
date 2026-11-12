@@ -457,7 +457,7 @@ private struct CarteMaintenant: View {
             .font(Police.titre(26))
             .foregroundStyle(Palette.encre)
             .fixedSize(horizontal: false, vertical: true)
-        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar) }
+        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar, projet: e.projetBloque) }
         if let d = Dependances.marqueDebloque(e.debloque) { MarqueDebloque(texte: d) }
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(reste < 60 ? "\(reste)" : Format.duree(minutes: reste))
@@ -665,7 +665,7 @@ private struct LigneSuite: View {
                             Text(d).font(Police.texte(13)).foregroundStyle(Palette.encre2).lineLimit(1)
                         }
                         if e.retard == true && !passe { Risque(texte: "En retard") }
-                        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar) }
+                        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar, projet: e.projetBloque) }
                         if let d = Dependances.marqueDebloque(e.debloque) { MarqueDebloque(texte: d) }
                     }
                     Spacer(minLength: 0)
@@ -824,7 +824,7 @@ private struct LigneTache: View {
                     if !detail.isEmpty {
                         Text(detail).font(Police.texte(13)).foregroundStyle(enRetard ? Palette.danger : Palette.encre2)
                     }
-                    if t.bloquee == true { MarqueBloquee(raison: t.raison, par: t.bloqueePar) }
+                    if t.bloquee == true { MarqueBloquee(raison: t.raison, par: t.bloqueePar, projet: t.projetBloque) }
                     if let m = t.menaceBlocage { Risque(texte: m) }
                     if let d = Dependances.marqueDebloque(t.debloque) { MarqueDebloque(texte: d) }
                 }
@@ -861,11 +861,13 @@ struct MarqueBloquee: View {
     let raison: String?
     /// taches-dependances-v1 : « Bloquée par « X » » plutôt que la raison.
     var par: [LienTache]? = nil
+    /// projets-bloques-v1 : son projet attend autre chose.
+    var projet: ProjetBloque? = nil
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "pause.circle.fill").font(.system(size: 11, weight: .semibold))
-            Text(Dependances.marque(raison: raison, par: par)).font(Police.texte(12, .semibold)).lineLimit(1)
+            Text(Dependances.marque(raison: raison, par: par, projet: projet)).font(Police.texte(12, .semibold)).lineLimit(1)
         }
         .foregroundStyle(Palette.encre2)
     }
