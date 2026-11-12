@@ -417,7 +417,10 @@ public struct ClassementPriorites: Equatable, Sendable {
             vus.insert(cle)
             let pq = (l.pourquoi ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let mots = (l.mots ?? []).flatMap { Priorites.mots(depuis: $0) }.filter { $0.count >= 3 }
-            let projet = (l.projetMotion ?? "").isEmpty ? nil : l.projetMotion
+            // Le lien ne part qu'avec une confirmation : une piste pas encore
+            // confirmée garde celui que la tour connaît (clé absente), et un
+            // projet seulement « ressemblant » n'est jamais relié en silence.
+            let projet = !confirmee || (l.projetMotion ?? "").isEmpty ? nil : l.projetMotion
             let ligne = LigneEnvoi(id: id, titre: titre,
                                    pourquoi: pq.isEmpty ? nil : String(pq.prefix(240)),
                                    mots: mots.isEmpty ? nil : Array(mots.prefix(8)),
@@ -528,6 +531,13 @@ public enum CeQuiCompte {
             return "Rémy ne répond pas : tu lis la dernière version gardée sur l'iPhone\(quand). Confirmer ou corriger attend ta tour.\(garde)"
         }
         return "Tu lis la dernière version gardée sur l'iPhone\(quand), le temps de relire ta tour."
+    }
+
+    /// Un geste qui ne peut pas partir maintenant : pourquoi.
+    public static func attente(horsLigne: Bool, enregistrement: Bool) -> String {
+        if enregistrement { return "Un instant : ton classement s'enregistre." }
+        if horsLigne { return "Pas de réseau : confirmer ou corriger attend le réseau." }
+        return "Pas encore : ta tour n'a pas été relue. Tire vers le bas pour réessayer."
     }
 
     /// Après « Enregistrer ».
@@ -659,7 +669,9 @@ public final class PrioritesModel {
     public func descendre(_ id: String) { geste { $0.descendre(id) } }
     public func ecarter(_ id: String) { geste { $0.ecarter(id) } }
     public func reproposer() { geste { $0.reproposer() } }
-    public func modifier(_ id: String, titre: String, pourquoi: String, mots: String) {
+    /// « Modifier » ; vrai si c'est fait (la feuille peut se fermer).
+    @discardableResult
+    public func modifier(_ id: String, titre: String, pourquoi: String, mots: String) -> Bool {
         geste { $0.modifier(id, titre: titre, pourquoi: pourquoi, mots: mots) }
     }
 
@@ -681,7 +693,7 @@ public final class PrioritesModel {
     private func geste(_ f: (inout ClassementPriorites) -> CorrectionFaite) -> Bool {
         guard var c = classement else { return false }
         guard peutCorriger else {
-            app?.dire(app?.horsLigne == true ? "Pas de réseau : confirmer ou corriger attend le réseau." : "Pas encore : ta tour n'a pas été relue.")
+            app?.dire(CeQuiCompte.attente(horsLigne: app?.horsLigne == true, enregistrement: enregistrement))
             return false
         }
         let r = f(&c)

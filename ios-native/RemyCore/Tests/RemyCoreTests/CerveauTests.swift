@@ -112,6 +112,14 @@ final class CerveauTests: XCTestCase {
         let v = try await api.priorites()
         XCTAssertEqual(v.priorites.map(\.titre), ["La musique", "Lancer la boutique de bougies", "Voir Léa et Hugo"], "priorités de la démo")
         XCTAssertNotNil(v.priorites.first?.joursSans, "la tour calcule les jours sans trace")
+        // priorites-v2 (12/11) : deux confirmées, et des pistes proposées par Rémy.
+        let p = try await api.propositionPriorites()
+        let c = ClassementPriorites(vue: v, proposition: p)
+        XCTAssertEqual(c.classees.map(\.titre), ["La musique", "Lancer la boutique de bougies"], "le classement confirmé de la démo")
+        XCTAssertTrue(c.proposees.contains { $0.titre == "Voir Léa et Hugo" && $0.ecrite }, "la priorité écrite, à confirmer")
+        XCTAssertTrue(c.proposees.contains { !$0.ecrite && !$0.indices.isEmpty }, "au moins une piste de Motion, avec ses indices")
+        XCTAssertFalse(c.modifie)
+        XCTAssertNotNil(p.limites)
         // La même liste renvoyée : pas de nouvelle version ; une base périmée : refus.
         let meme = try await api.enregistrerPriorites(Priorites.aEnvoyer(v.priorites), base: v.version)
         XCTAssertEqual(meme.version, v.version)

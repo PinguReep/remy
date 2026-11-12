@@ -433,19 +433,42 @@ final class NouveautesTests: XCTestCase {
     }
 
     /// Série 11 (12/11) : un projet « bloqué par » une tâche ou un autre
-    /// projet, seulement quand la tour sait le garder (projets-bloques-v1).
+    /// projet (projets-bloques-v1), et « Ce que Rémy a compris », qui remplace
+    /// « priorites » (priorites-v2). Chacune seulement quand la tour la
+    /// connaît ; les deux tiennent dans une feuille. Comparées en ensemble :
+    /// l'ordre dans une série n'est pas promis.
     func testLaSerie11ProjetsBloques() {
+        let serie11 = Nouveautes.catalogue.filter { $0.serie == 11 }
+        XCTAssertEqual(Set(serie11.map(\.id)), ["projets-bloques", "ce-que-remy-a-compris"])
+        XCTAssertLessThanOrEqual(serie11.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax, "la série tient dans une feuille")
+        XCTAssertEqual(Set(Nouveautes.lot(serie11).map(\.id)), Set(serie11.map(\.id)), "entières, dans la même feuille")
         let e = Nouveautes.catalogue.first { $0.id == "projets-bloques" }
-        XCTAssertEqual(e?.serie, 11)
         XCTAssertEqual(e?.capacite, "projets-bloques-v1")
         XCTAssertLessThanOrEqual(e?.pages.count ?? 9, 3)
-        let a = jusqua(11, ["projets-bloques-v1"])
-        a.verifier()
-        XCTAssertTrue(a.affichees?.entrees.map(\.id).contains("projets-bloques") == true)
-        let b = jusqua(11, [])
-        b.verifier()
-        XCTAssertFalse(b.affichees?.entrees.map(\.id).contains("projets-bloques") == true, "une tour pas encore à jour : pas présentée")
         XCTAssertTrue(e?.pages.contains { $0.texte.contains("toutes ses tâches sont terminées") } == true, "la règle du « fini » est dite")
+        let c = Nouveautes.catalogue.first { $0.id == "ce-que-remy-a-compris" }
+        XCTAssertEqual(c?.capacite, CeQuiCompte.capacite)
+        XCTAssertEqual(c?.remplace, "priorites")
+        XCTAssertTrue(c?.pages.contains { $0.texte.contains("C'est ça") } == true, "le geste qui confirme est dit")
+        XCTAssertTrue(c?.pages.contains { $0.texte.contains("à la main") } == true, "l'ajout à la main reste dit")
+
+        let deux = jusqua(11, ["projets-bloques-v1", CeQuiCompte.capacite])
+        deux.verifier()
+        XCTAssertEqual(Set(deux.affichees?.entrees.map(\.id) ?? []), ["projets-bloques", "ce-que-remy-a-compris"])
+        let bloques = jusqua(11, ["projets-bloques-v1"])
+        bloques.verifier()
+        XCTAssertEqual(Set(bloques.affichees?.entrees.map(\.id) ?? []), ["projets-bloques"])
+        let compris = jusqua(11, [CeQuiCompte.capacite])
+        compris.verifier()
+        XCTAssertEqual(Set(compris.affichees?.entrees.map(\.id) ?? []), ["ce-que-remy-a-compris"])
+        let aucune = jusqua(11, [])
+        aucune.verifier()
+        XCTAssertTrue(Set(aucune.affichees?.entrees.map(\.id) ?? []).isDisjoint(with: ["projets-bloques", "ce-que-remy-a-compris"]),
+                      "une tour pas encore à jour : rien de la série 11")
+        // La tour connaît priorites-v2 : l'ancienne sort du suivi ; sinon elle reste.
+        XCTAssertFalse(compris.historique.contains { $0.id == "priorites" })
+        let ancienne = jusqua(11, ["priorites-v1"])
+        XCTAssertTrue(ancienne.historique.contains { $0.id == "priorites" })
     }
 
     // MARK: - Le suivi (12/11)
