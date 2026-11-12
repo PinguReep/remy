@@ -82,12 +82,15 @@ test("classement : un seul endroit ; chaque job de la tour y est ; le fond qui a
   for (const [id, t] of Object.entries(prio.TRAVAUX)) {
     assert.ok(prio.CATEGORIES[t.categorie], `${id} : catégorie connue`);
     assert.ok(t.nom && t.coupure, `${id} : un nom et ce qui se passe à l'interruption`);
-    if (t.categorie === "fond" && t.modele) assert.equal(t.interruptible, true, `${id} : fond avec le modèle → interruptible`);
+    // Fond avec le modèle : interruptible, ou (agents des outils de code) il cède EN FILE.
+    if (t.categorie === "fond" && t.modele) assert.ok(t.interruptible === true || t.file === true, `${id} : fond avec le modèle → interruptible, ou cède en file`);
     if (t.categorie !== "fond") assert.ok(!t.interruptible, `${id} : une demande n'est jamais coupée par le fond`);
   }
   assert.equal(prio.TRAVAUX["reflexion-nuit"].nom, "Réflexion de nuit");
   assert.equal(prio.TRAVAUX["sauvegarde-nuit"].interruptible, undefined, "la sauvegarde ne se coupe pas au milieu");
   assert.equal(prio.classement("inconnu").categorie, "fond", "dans le doute, il cède");
+  assert.equal(prio.TRAVAUX["agent-clavier"].categorie, "demande", "l'outil de code au clavier : une demande");
+  assert.equal(prio.TRAVAUX["agent-fond"].interruptible, false, "un appel d'agent de fond en cours n'est pas coupé (par défaut)");
   // Ce qu'une requête de l'app demande.
   const n = prio.natureRequete;
   assert.equal(n("GET", "/api/conversations"), null, "une lecture ne fait rien céder");
@@ -545,6 +548,7 @@ test("inventaire : chaque fichier qui appelle le modèle est classé ; aucune bo
     "jobs.js": "la garde de charge elle-même",
     "ocr.js": "pas le modèle (OCR local)",
     "outil-pieces.js": "demande (outil lire_piece, appelé par le modèle pendant une réponse)",
+    "passerelle.js": "demande (clé « au clavier ») ou enFond('agent-fond') (clé « agents de fond », cède en file)",
     "pieces.js": "demande (pièce jointe)",
     "planif.js": "jobs seulement",
     "providers.js": "adaptateurs",

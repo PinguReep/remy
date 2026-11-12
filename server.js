@@ -16,6 +16,7 @@ import { sauvegarderRemy } from "./lib/sauvegarde.js";
 import { runReflection } from "./lib/reflection.js";
 import { preparerCoffre, coffre } from "./lib/coffre.js";
 import { cerveau } from "./lib/providers.js";
+import { estCheminPasserelle, traiterV1 } from "./lib/passerelle.js";
 
 // Sur la tour, Node tient son journal lui-même (UTF-8, horodaté) : relayée par
 // PowerShell 5.1, sa sortie perdait les accents.
@@ -81,6 +82,9 @@ function enTetesCache(fichier) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   try {
+    // La passerelle du modèle local pour les outils de code (lib/passerelle.js) :
+    // même écoute que Rémy, coupée tant qu'elle n'est pas allumée dans Réglages.
+    if (estCheminPasserelle(url.pathname)) return await traiterV1(req, res);
     if (!url.pathname.startsWith("/api")) return serveStatic(res, url.pathname);
     const handled = await routeApi(req, res);
     if (!handled) return sendJSON(res, 404, { error: "Route inconnue" });

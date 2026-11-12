@@ -62,6 +62,90 @@ invisible) et rien ne s'y touchait. Site et tour seulement.
   ligne à une heure, seuil, vitesse au lâcher, inertie) est dans
   `public/app/analyse/heures.js`, testé sous node à fuseau fixé.
 
+## 2026-11-12 — Passerelle du modèle local pour les outils de code (`passerelle-v1`)
+
+Les agents de code (dans T3 Code, sur la tour) parlaient directement au
+modèle local : Rémy ne les voyait pas, une question posée à Rémy pouvait
+attendre derrière un agent, et rien ne les mettait en pause.
+
+- **Une porte « compatible OpenAI »** (`lib/passerelle.js`) : `GET /v1/models`,
+  `GET /v1/models/{id}`, `POST /v1/chat/completions` (avec et sans flux).
+  Servie par `server.js` sur la même écoute que Rémy (127.0.0.1, publiée au
+  seul tailnet par Tailscale Serve), absente de `lib/routes.js` donc de
+  Vercel. Coupée par défaut (Réglages › Outils de code).
+- **Le même arbitre** (`lib/priorite.js`, `lib/jobs.js`), pas un second
+  système. Clé « au clavier » : `jobs.inference` hors fond, nature `clavier`
+  (« tu travailles dans ton outil de code ») — une demande : elle coupe le
+  fond interruptible de Rémy et retient la mise à jour. Clé « agents de
+  fond » : `jobs.enFond("agent-fond")` — ses appels prennent la file de la
+  garde de charge (FIFO, partagée avec les jobs de Rémy), ne partent pas
+  pendant une demande ni son répit. Classé `file: true` (cède en file) plutôt
+  qu'`interruptible` : l'appel parti n'est pas coupé (un outil supporte mal
+  une réponse tronquée) ; option « couper un appel sans flux » (refait en
+  entier, rien n'ayant été envoyé), jamais pour un flux.
+- **`jobs.inference`** gagne `nature`, `abandon` (un signal qui retire un appel
+  de la file tant qu'il n'est pas parti : outil parti, attente dépassée) et
+  `latence: false` (la durée d'un flux d'agent ne signale pas une surcharge).
+- **Attente bornée** (Réglages, 2 min par défaut, 10 s à 10 min) et **file
+  bornée** (8 par défaut) : au-delà, **503** avec `Retry-After` (fin du répit
+  si connue, sinon 10 s). Pourquoi 503 : les SDK OpenAI officiels, le Vercel
+  AI SDK (OpenCode) et Codex réessaient 408/409/429/5xx ; 429 est gardé pour
+  le débit par clé (et certains clients lisent 429 comme un quota épuisé).
+- **Sécurité** : clés `remy_clavier_…`/`remy_fond_…` (32 octets aléatoires),
+  montrées une fois, gardées en SHA-256 (`store.getPasserelle`), comparées à
+  temps constant (les deux empreintes, toujours) ; débit par clé (120/min),
+  corps ≤ 8 Mo, `max_tokens` plafonné ; liste blanche des paramètres
+  (messages, outils, température, stop, format de réponse…), le reste n'est
+  pas relayé ; en-têtes : ceux de Rémy seulement (`glm.relaisModeleLocal`,
+  jeton du relais, `redirect: "error"`) ; images en `data:` seulement (un
+  moteur irait chercher une URL) ; refus si `REMY_GLM_URL` n'est pas « chez
+  toi » ; jamais le secours cloud ; un 401/404 du moteur devient 502 (l'outil
+  ne doit pas croire sa clé fausse).
+- **Rien du contenu** n'est gardé ni journalisé : `logCost("outil de code")`
+  avec la clé (son nom), la durée, l'attente et les jetons (demandés au
+  moteur avec `include_usage` ; l'événement des jetons n'est rendu qu'à
+  l'outil qui l'a demandé).
+- **T3 Code** (dépôt `pingdotgg/t3code`, `docs/user/install.md` § Providers) :
+  il pilote des agents et ne parle pas lui-même à un modèle ; chaque instance
+  de fournisseur a ses variables d'environnement (clé, base URL). Claude Code
+  parle l'API d'Anthropic (pas couvert) ; Codex récent l'API « responses » (non
+  servie). Mode d'emploi : `docs/outils-de-code.md`.
+
+### Relecture de sécurité de la passerelle (12/11)
+
+- **Plafond de la clé « au clavier »** (`lib/priorite.js`, `recuperationClavier`) :
+  45 min de priorité cumulée (appels en cours et leur répit, réunis) sur une
+  heure glissante, puis 15 min où ses appels sont du fond (ils prennent la
+  file, ceux en cours ne font plus céder le fond), puis le compte repart de
+  zéro. Au moins 15 min par heure pour le fond, plus que l'intervalle du
+  planificateur (10 min) : un job dû — la sauvegarde de nuit, testée —
+  commence pendant la récupération. Les demandes faites dans Rémy ne sont pas
+  concernées. Diagnostic le dit (« ton outil de code a eu la priorité 45 min
+  dans l'heure… jusqu'à HH:MM »).
+- **Durée et simultanéité** : un flux dure 30 min au plus ; 4 appels ouverts
+  « au clavier », 2 agents de fond en vol par clé (au-delà : 429,
+  `Retry-After: 5`). Les agents de fond qui attendent restent bornés par la
+  file (503), pas par ce 429 : ils attendent sans erreur, comme convenu.
+- **Contre-pression** : un `write` refusé suspend la lecture du modèle jusqu'à
+  `drain` ; sans `drain` en 30 s, l'outil est coupé et le modèle libéré.
+- **Porte fermée** : sans clé valide, même réponse que porte ouverte avec une
+  clé fausse (401, même corps, les deux empreintes comparées). Avec une clé
+  valide, « porte coupée » est dit.
+- **Schémas** (`tools[].parameters`, `json_schema`) : 64 Ko, 32 niveaux,
+  5 000 éléments au plus ; `/v1/models/%` mal encodé : 400.
+- **Écoute** : `server.js` écoute `HOST || 127.0.0.1` ; l'installeur écrit
+  `HOST=127.0.0.1` dans `remy.env` à sa création (jamais réécrit : la valeur
+  réelle de la tour se lit dans la première ligne du journal, « Rémy démarré →
+  http://… »). La passerelle n'accepte de toute façon que des connexions
+  venues de 127.0.0.1 / ::1 (Tailscale Serve s'y connecte), même si `HOST`
+  était élargi.
+- **Délais HTTP de Node** (22, non modifiés par `server.js`, donc appliqués à
+  `/v1`) : `headersTimeout` 60 s, `requestTimeout` 300 s pour RECEVOIR la
+  requête (vérifiés toutes les 30 s par Node : `connectionsCheckingInterval`),
+  `keepAliveTimeout` 5 s, pas de délai d'inactivité de socket. Ils ne
+  bornent pas la réponse (vérifié : un flux de 3 s passe avec
+  `requestTimeout` 1 s) — d'où le plafond de 30 min de la passerelle.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait
