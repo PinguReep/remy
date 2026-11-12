@@ -13,7 +13,7 @@ import { api, ecrire, nouvelId, seg, sait, natureEchec, tourJoignable } from "..
 import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, heure, quand, duree, isoLocal, versChampDate, depuisChampDate, occupe, demanderTexte, texteErreur, local, squelette } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import * as fileEnvoi from "../file-envoi.js";
-import { BROUILLONS, PRIORITES, impactProlongation, brouillonRaisonnable, brouillonDeplacer, horairesTache, quandSansCreneau, horairesRendezVous, marqueBloquee, marqueDebloque, phraseDebloquees, lienAgendaJour, cocheesDuJour, jourISO, etatMoment, dureeTotale } from "../analyse/journee.js";
+import { BROUILLONS, PRIORITES, impactProlongation, brouillonRaisonnable, brouillonDeplacer, horairesTache, quandSansCreneau, horairesRendezVous, marqueBloquee, marqueDebloque, phraseDebloquees, marqueNoeud, regleFini, lienAgendaJour, cocheesDuJour, jourISO, etatMoment, dureeTotale } from "../analyse/journee.js";
 import { candidats, phraseVide } from "../analyse/dependances.js";
 
 const DELAI_ANNULATION = 2000;
@@ -615,9 +615,9 @@ export function gerer(e, opts = {}) {
     if (puces.length) ajouterA(contenu, h("div", { class: "rangee serree", style: { marginBottom: "6px" } }, puces));
     ajouterA(contenu, h("p", { class: `gerer-horaires mono${e.type === "sans-creneau" && e.retard ? " risque-texte" : ""}` }, e.type === "sans-creneau" ? quandSansCreneau(e) : horairesTache(e, maintenant)));
     const parTache = Array.isArray(e.bloqueePar) && e.bloqueePar.length > 0;
-    if (e.bloquee) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar)));
+    if (e.bloquee) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar, e.projetBloque)));
     // En attente À LA FOIS d'une tâche et de quelque chose (le bon de commande) : les deux se disent.
-    if (parTache && e.attente) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)));
+    if ((parTache || e.projetBloque) && e.attente) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)));
     if (e.menaceBlocage) ajouterA(contenu, h("p", { class: "marque-bloquee risque-texte" }, icone("alerte"), e.menaceBlocage));
     if (marqueDebloque(e.debloque)) ajouterA(contenu, h("p", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(e.debloque)));
   }
@@ -716,7 +716,7 @@ export function gerer(e, opts = {}) {
   } else if (tache) {
     if (sait("taches-etat-v1")) {
       // « Reprendre » lève l'attente manuelle, jamais un « bloquée par » (il se retire plus bas).
-      const manuelle = e.bloquee && (!e.bloqueePar?.length || e.attente);
+      const manuelle = e.bloquee && ((!e.bloqueePar?.length && !e.projetBloque) || e.attente);
       lignes.append(manuelle
         ? ligneAction("Reprendre", (e.bloqueePar?.length ? null : e.raison) || "Elle n'est plus en attente", "lecture", fermerPuis(() => bloquer(e, false, null, { apres })))
         : ligneAction("Mettre en attente", "Mise de côté, avec ce que tu attends", "pause", async () => {
@@ -730,7 +730,8 @@ export function gerer(e, opts = {}) {
       if (e.commencee) lignes.append(ligneAction("Remettre à sa place", "Annule « commencer » : Motion garde son créneau", "arriere", () => { f.fermer(); arreter(e, { apres }); }));
       else if (e.type === "sans-creneau" || etatMoment(e, maintenant) === "avenir") {
         // Bloquée par une tâche pas finie : possible quand même, mais dit.
-        const attend = e.bloqueePar?.length ? `Elle attend encore « ${e.bloqueePar[0].nom || "une autre tâche"} » : commencer quand même` : null;
+        const attend = e.bloqueePar?.length ? `Elle attend encore « ${e.bloqueePar[0].nom || "une autre tâche"} » : commencer quand même`
+          : e.projetBloque ? `Son projet attend « ${e.projetBloque.par?.[0]?.nom || "autre chose"} » : commencer quand même` : null;
         lignes.append(ligneAction("Commencer maintenant", attend || `Elle devient ta tâche en cours, pour ${duree(e.duree ?? (e.debut != null ? dureeTotale(e) : 30))}`, "lecture", fermerPuis(() => commencer(e, { apres }))));
       }
     }
@@ -840,9 +841,17 @@ async function enregistrerBloquantes(e, ids) {
  * « Ajouter… » (chercher parmi les tâches ouvertes), et ce que Motion ignore.
  * Chaque geste dit son succès (avec « Annuler ») ou son échec.
  */
-function sectionBloqueePar(e, { apres } = {}) {
+export function sectionBloqueePar(e, { apres, noeud = false } = {}) {
   const zone = h("div", { class: "bloquee-par" });
-  const sec = h("section", { class: "groupe-gestes" }, h("h3", { class: "titre-section" }, "Bloquée par…"), zone);
+  const sec = h("section", { class: "groupe-gestes" }, h("h3", { class: "titre-section" }, noeud ? "Bloqué par…" : "Bloquée par…"), zone);
+  // Un projet ou un dossier (projets-bloques-v1) : mêmes gestes, au masculin, et ses tâches attendent avec lui.
+  const T = noeud
+    ? { rien: "Il n'attend rien.", choisir: "Choisir ce qu'il attend…", ajouter: "Ajouter autre chose…", plusRien: "n'attend plus rien",
+      attend: (b) => `« ${e.titre} » attend « ${b.nom} » : aucune de ses tâches ne te sera proposée avant.`,
+      note: "Il se débloque seul quand ce qu'il attend est fini : une tâche terminée, ou un projet dont toutes les tâches sont terminées (ou que tu dis fini). Motion ne connaît pas ce lien : il peut planifier ses tâches quand même, Rémy ne te les proposera pas avant." }
+    : { rien: "Elle n'attend aucune autre tâche.", choisir: "Choisir la tâche qu'elle attend…", ajouter: "Ajouter une autre tâche…", plusRien: "n'attend plus aucune tâche",
+      attend: (b) => `« ${e.titre} » attend « ${b.nom} » : Rémy ne te la proposera pas avant.`,
+      note: "Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien (son API ne le permet pas) : il peut la planifier quand même, Rémy ne te la proposera pas avant." };
   let liste = Array.isArray(e.bloqueePar) ? [...e.bloqueePar] : [];
   const changer = async (nouvelle, btn, phrase) => {
     const avant = liste;
@@ -873,35 +882,38 @@ function sectionBloqueePar(e, { apres } = {}) {
       liste.length
         ? h("ul", { class: "bloquee-par-liste" }, liste.map((b) => h("li", { class: "bloquee-par-ligne" },
           icone("pause"), h("span", { class: "nom" }, b.nom || "Une tâche"),
-          bouton("Retirer", { classe: "texte petit", etiquette: `Ne plus attendre « ${b.nom || "cette tâche"} »`, onclick: (ev) => changer(liste.filter((x) => x.id !== b.id), ev.currentTarget, (l) => (l.length ? `« ${e.titre} » n'attend plus « ${b.nom} ».` : `« ${e.titre} » n'attend plus aucune tâche.`)) }))))
-        : h("p", { class: "aide" }, "Elle n'attend aucune autre tâche."),
-      bouton(liste.length ? "Ajouter une autre tâche…" : "Choisir la tâche qu'elle attend…", { classe: "papier", icone: "plus", onclick: () => choisirBloquante(e, liste, (b, btn) => changer([...liste, b], btn, () => `« ${e.titre} » attend « ${b.nom} » : Rémy ne te la proposera pas avant.`)) }),
-      h("p", { class: "aide gerer-note" }, "Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien (son API ne le permet pas) : il peut la planifier quand même, Rémy ne te la proposera pas avant."));
+          bouton("Retirer", { classe: "texte petit", etiquette: `Ne plus attendre « ${b.nom || "cette tâche"} »`, onclick: (ev) => changer(liste.filter((x) => x.id !== b.id), ev.currentTarget, (l) => (l.length ? `« ${e.titre} » n'attend plus « ${b.nom} ».` : `« ${e.titre} » ${T.plusRien}.`)) }))))
+        : h("p", { class: "aide" }, T.rien),
+      bouton(liste.length ? T.ajouter : T.choisir, { classe: "papier", icone: "plus", onclick: () => choisirBloquante(e, liste, (b, btn) => changer([...liste, b], btn, () => T.attend(b)), { noeud }) }),
+      h("p", { class: "aide gerer-note" }, T.note));
   };
   dessiner();
   return sec;
 }
 
 /** La feuille de choix : chercher par nom parmi les tâches ouvertes (liste de la tour, aucune requête Motion). */
-function choisirBloquante(e, deja, choisir) {
-  const champ = h("input", { class: "champ", type: "search", placeholder: "Chercher une tâche…", "aria-label": "Chercher une tâche", autocomplete: "off", autofocus: true });
+function choisirBloquante(e, deja, choisir, { noeud = false } = {}) {
+  // Avec projets-bloques-v1 : les tâches ET les projets ou dossiers.
+  const avecNoeuds = sait("projets-bloques-v1");
+  const quoi = avecNoeuds ? "une tâche ou un projet" : "une tâche";
+  const champ = h("input", { class: "champ", type: "search", placeholder: `Chercher ${quoi}…`, "aria-label": `Chercher ${quoi}`, autocomplete: "off", autofocus: true });
   const zone = h("div", { class: "choix-bloquante", "aria-live": "polite" }, squelette([0.8, 0.6, 0.7]));
-  const f = feuille({ titre: "Elle attend quelle tâche ?", sousTitre: `« ${e.titre} » ne commencera qu'une fois celle-ci finie`, contenu: h("div", null, champ, zone), classe: "feuille-choix-bloquante" });
+  const f = feuille({ titre: noeud ? "Il attend quoi ?" : avecNoeuds ? "Elle attend quoi ?" : "Elle attend quelle tâche ?", sousTitre: avecNoeuds ? `« ${e.titre} » ne commencera qu'une fois ceci fini` : `« ${e.titre} » ne commencera qu'une fois celle-ci finie`, contenu: h("div", null, champ, zone), classe: "feuille-choix-bloquante" });
   let lu = null;
   const dessiner = () => {
     if (!lu) return;
-    const l = candidats(lu.taches, { tacheId: e.id, deja, liens: lu.liens, recherche: champ.value });
-    if (!l.length) return vider(zone, h("p", { class: "aide vide" }, phraseVide({ total: lu.taches.filter((t) => t.id !== e.id).length, recherche: champ.value })));
+    const l = candidats([...lu.taches, ...lu.noeuds], { tacheId: e.id, deja, liens: lu.liens, recherche: champ.value });
+    if (!l.length) return vider(zone, h("p", { class: "aide vide" }, phraseVide({ total: [...lu.taches, ...lu.noeuds].filter((t) => t.id !== e.id).length, recherche: champ.value })));
     vider(zone, h("ul", { class: "choix-bloquante-liste" }, l.map((t) => h("li", null, h("button", { type: "button", class: "gerer-ligne", onclick: async (ev) => {
       const btn = ev.currentTarget;
       await choisir({ id: t.id, nom: t.titre }, btn);
       f.fermer();
-    } }, icone("pause"), h("span", { class: "textes" }, h("strong", null, t.titre), h("span", { class: "detail" }, [t.projet, t.echeance ? `échéance ${quand(t.echeance, { avecHeure: false })}` : null].filter(Boolean).join(" · ") || "Sans échéance")), icone("chevron", "chevron-ligne"))))));
+    } }, icone(t.genre ? (t.genre === "projet" ? "pile" : "dossier") : "pause"), h("span", { class: "textes" }, h("strong", null, t.titre), h("span", { class: "detail" }, t.genre ? (t.genre === "projet" ? "Projet Motion, fini quand toutes ses tâches le sont" : "Dossier de Rémy") : [t.projet, t.echeance ? `échéance ${quand(t.echeance, { avecHeure: false })}` : null].filter(Boolean).join(" · ") || "Sans échéance")), icone("chevron", "chevron-ligne"))))));
   };
   const lire = () => {
     vider(zone, squelette([0.8, 0.6, 0.7]));
     api("/api/dependances").then((r) => {
-      lu = { taches: Array.isArray(r?.taches) ? r.taches : [], liens: Array.isArray(r?.liens) ? r.liens : [] };
+      lu = { taches: Array.isArray(r?.taches) ? r.taches : [], liens: Array.isArray(r?.liens) ? r.liens : [], noeuds: avecNoeuds && Array.isArray(r?.noeuds) ? r.noeuds : [] };
       if (!lu.taches.length && r?.motion?.etat && r.motion.etat !== "ok") {
         return vider(zone, h("p", { class: "aide vide" }, r.motion.etat === "off" ? "Motion n'est pas branché sur ta tour : il n'y a pas de tâche à choisir." : "La liste Motion n'est pas encore lue : réessaie dans un instant."), bouton("Réessayer", { classe: "papier petit", onclick: lire }));
       }
@@ -911,6 +923,51 @@ function choisirBloquante(e, deja, choisir) {
   champ.addEventListener("input", dessiner);
   lire();
   return f;
+}
+
+// --- Un projet ou un dossier qui attend (projets-bloques-v1) ---
+
+/**
+ * Pour le détail d'un projet Motion ou d'un dossier (Projets) : « Bloqué
+ * par… » (les mêmes gestes que pour une tâche), ce que dit son parent s'il
+ * attend, et, s'il retient quelque chose, « C'est fini » avec la règle.
+ * `n` : { id: "motion:…" | "dossier:…", titre, bloquePar, debloque, fini, parentBloque }.
+ */
+export function sectionNoeud(n, { apres } = {}) {
+  const e = { id: n.id, titre: n.titre, bloqueePar: Array.isArray(n.bloquePar) ? n.bloquePar : [] };
+  return h("div", { class: "noeud-blocage" },
+    n.parentBloque ? h("p", { class: "marque-bloquee" }, icone("pause"), `${marqueNoeud({ parentBloque: n.parentBloque })} : ses tâches attendent aussi.`) : null,
+    sectionBloqueePar(e, { apres, noeud: true }),
+    n.debloque?.length || n.fini ? sectionFini(n, { apres }) : null);
+}
+
+function sectionFini(n, { apres } = {}) {
+  const zone = h("div", { class: "bloquee-par" });
+  let fini = Boolean(n.fini);
+  const marquer = async (valeur, btn) => {
+    await occupe(btn, async () => {
+      try {
+        const r = await api(`/api/taches/${seg(n.id)}/etat`, { methode: "PUT", corps: { fait: valeur } });
+        fini = valeur;
+        n.fini = valeur;
+        dessiner();
+        const libres = valeur ? phraseDebloquees(r?.debloquees) : null;
+        dire(valeur ? `« ${n.titre} » : fini.${libres ? ` ${libres}` : ""}` : `« ${n.titre} » n'est plus fini : ce qu'il retenait attend de nouveau.`, {
+          genre: "succes", duree: libres ? 7000 : 5000,
+          action: { libelle: "Annuler", faire: () => marquer(!valeur, null) },
+        });
+        apres?.();
+      } catch (err) {
+        if (err?.nature !== "auth") dire(`« ${n.titre} » n'a pas pu être marqué : ${raisonDe(err)}.`, { genre: "erreur" });
+      }
+    });
+  };
+  const dessiner = () => vider(zone,
+    marqueDebloque(n.debloque) ? h("p", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(n.debloque)) : null,
+    h("p", { class: "aide" }, fini ? `Tu l'as dit fini : ce qu'il retenait est débloqué.` : regleFini(n.titre)),
+    bouton(fini ? "Pas fini, finalement" : "C'est fini", { classe: fini ? "texte" : "papier", icone: fini ? "arriere" : "coche", onclick: (ev) => marquer(!fini, ev.currentTarget) }));
+  dessiner();
+  return h("section", { class: "groupe-gestes" }, h("h3", { class: "titre-section" }, "Ce qu'il retient"), zone);
 }
 
 /** Le résumé d'une durée « 50 min sur 1 h 15 » (carte Maintenant). */

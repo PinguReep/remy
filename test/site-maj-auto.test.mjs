@@ -37,6 +37,7 @@ test("le détail dit ce qui se passe, ou quoi faire", () => {
     "À jour : abc1234 est le dernier commit de main. (passage : aujourd'hui 14:50)");
   assert.equal(V.detailMajAuto({ active: true, intervalleMin: 15 }, T), "Premier passage dans 15 min au plus.");
   assert.match(V.detailMajAuto({ active: true, occupeLongtemps: true, occupeDepuis: "2026-11-12T07:00:00+01:00" }, T), /occupé sans relâche depuis aujourd'hui 07:00/);
+  assert.match(V.detailMajAuto({ active: true, occupeLongtemps: true, occupeDepuis: "2026-11-12T07:00:00+01:00", occupePar: ["1 réponse en cours"] }, T), /ce qui la retient : 1 réponse en cours/);
   assert.match(V.confirmationMajAuto(true), /en pause/);
   assert.match(V.confirmationMajAuto(false), /reprise/);
 });
@@ -49,4 +50,14 @@ test("la recherche la trouve, seulement si la tour sait la faire ; la nouveauté
   assert.notEqual(sans.entrees[0]?.id, "majAuto");
   const e = N.CATALOGUE.find((x) => x.id === "maj-auto");
   assert.equal(e.capacite, "maj-auto-v1");
+});
+
+test("Travail de fond (fond-cede-v1) : la ligne de la tour, et la recherche qui la retrouve", () => {
+  assert.equal(V.phraseFond({ ligne: "Réflexion de nuit en pause : tu viens de poser une question" }), "Réflexion de nuit en pause : tu viens de poser une question");
+  assert.equal(V.phraseFond(null), "Travail de fond : état inconnu");
+  assert.equal(V.phraseFond({ ligne: 3 }), "Travail de fond : état inconnu");
+  const avec = R.chercher("travail de fond", { capacites: ["fond-cede-v1"], reglages: null, bureau: false });
+  assert.equal(avec.entrees[0]?.id, "fond");
+  assert.equal(R.cible(avec.entrees[0], { capacites: ["fond-cede-v1"] }).section, "diagnostic");
+  assert.notEqual(R.chercher("travail de fond", { capacites: [], reglages: null, bureau: false }).entrees[0]?.id, "fond");
 });

@@ -251,17 +251,31 @@ export function detailTache(t, { enRetard = false, noms = [] } = {}) {
  * La marque d'une tâche qui attend : « Bloquée par « X » » (une autre tâche,
  * taches-dependances-v1), sinon « En attente · raison » (état manuel).
  */
-export const marqueBloquee = (raison, par = null) => {
+export const marqueBloquee = (raison, par = null, projet = null) => {
   if (Array.isArray(par) && par.length) return `Bloquée par « ${par[0].nom || "une autre tâche"} »${par.length > 1 ? ` (+${par.length - 1})` : ""}`;
+  // Son projet (ou un dossier parent) attend autre chose (projets-bloques-v1).
+  if (projet?.par?.length) return `Projet « ${projet.nom || "son projet"} » bloqué par « ${projet.par[0].nom || "autre chose"} »${projet.par.length > 1 ? ` (+${projet.par.length - 1})` : ""}`;
   return raison ? `En attente · ${raison}` : "En attente";
 };
+/** Un nœud (projet Motion, dossier) : « dossier:… » ou « motion:… ». */
+export const estNoeud = (id) => /^(dossier|motion):/.test(String(id ?? ""));
+/** La marque d'un projet ou d'un dossier qui attend (le sien, ou celui de son parent), ou null. */
+export function marqueNoeud(n) {
+  if (n?.bloquePar?.length) return `Bloqué par « ${n.bloquePar[0].nom || "autre chose"} »${n.bloquePar.length > 1 ? ` (+${n.bloquePar.length - 1})` : ""}`;
+  if (n?.parentBloque?.par?.length) return `« ${n.parentBloque.nom} » attend « ${n.parentBloque.par[0].nom} »`;
+  return null;
+}
+/** La règle dite à l'écran : quand un projet est « fini » pour Rémy. */
+export const regleFini = (nom) => `« ${nom} » est fini pour Rémy quand toutes ses tâches sont terminées (dans la liste Motion lue en entier, après lui en avoir vu), ou quand tu le dis.`;
 /** Sur la bloquante : « Débloque « Y » » (ce qui attend qu'elle soit finie), ou null. */
 export const marqueDebloque = (d) => (Array.isArray(d) && d.length ? `Débloque « ${d[0].nom || "une autre tâche"} »${d.length > 1 ? ` (+${d.length - 1})` : ""}` : null);
 /** « Y est débloquée. » après la fin d'une bloquante (les `debloquees` rendues par la tour). */
 export function phraseDebloquees(d) {
   const noms = (Array.isArray(d) ? d : []).map((x) => x?.nom).filter(Boolean);
   if (!noms.length) return Array.isArray(d) && d.length ? `${d.length > 1 ? `${d.length} tâches débloquées` : "Une tâche est débloquée"} : elle${d.length > 1 ? "s" : ""} peu${d.length > 1 ? "vent" : "t"} commencer.` : null;
-  if (noms.length === 1) return `« ${noms[0]} » est débloquée : elle peut commencer.`;
+  if (noms.length === 1) {
+    return estNoeud(d.find((x) => x?.nom === noms[0])?.id) ? `« ${noms[0]} » est débloqué : ses tâches peuvent commencer.` : `« ${noms[0]} » est débloquée : elle peut commencer.`;
+  }
   return `« ${noms[0]} » et ${noms.length - 1 === 1 ? `« ${noms[1]} »` : `${noms.length - 1} autres`} sont débloquées.`;
 }
 

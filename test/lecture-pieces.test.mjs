@@ -73,7 +73,7 @@ const ecouter = async (s) => {
 
 test("PDF : le texte est extrait ; protégé, abîmé, scanné ou trop long : la raison, jamais une erreur", async () => {
   const r = await lirePdf(pdfEssai(["Devis n° 2026-114", "Total TTC : 42,00 EUR"]));
-  assert.deepEqual(r, { texte: "Devis n° 2026-114\nTotal TTC : 42,00 EUR", pages: 1, lues: 1, tronque: false });
+  assert.deepEqual(r, { texte: "Devis n° 2026-114\nTotal TTC : 42,00 EUR", pages: 1, premiere: 1, lues: 1, tronque: false });
   assert.equal((await lirePdf(Buffer.from("%PDF-1.4 rien du tout"))).raison, "PDF abîmé ou illisible");
   assert.match((await lirePdf(pdfEssai([""]))).raison, /PDF sans texte \(scanné \?\)/);
   const court = await lirePdf(pdfEssai(["Une ligne assez longue pour être coupée"]), { texteMax: 10 });
@@ -198,6 +198,7 @@ test("GARDE-FOU : secours cloud ALLUMÉ, aucun octet d'image ne part chez Claude
     for (const corps of anthropique) {
       assert.equal(corps.includes(image.toString("base64")), false, "aucun octet de l'image");
       assert.doesNotMatch(corps, /"type":"image"|image_url|"media_type"/);
+      assert.doesNotMatch(corps, /lire_piece|Relire une pièce jointe/, "l'outil de relecture n'est jamais offert à Claude");
     }
     assert.ok(anthropique.length > 0, "le secours a bien servi la conversation (le chemin cloud est éprouvé)");
     assert.match(anthropique.join("\n"), /pièce jointe non lue : capture\.png/, "seule la ligne de texte est partie");

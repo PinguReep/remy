@@ -3,9 +3,11 @@ import Foundation
 // MARK: - Les pièces jointes du chat (12/11)
 //
 // Une image, un PDF ou un texte joint à un message. L'iPhone prépare la pièce
-// (photo réduite en JPEG, texte reconnu sur l'appareil par Vision), la tour la
-// range CHIFFRÉE et lit ce qu'elle peut (texte, PDF, OCR, modèle de vision
-// local) ; le fil montre chaque pièce et ce que Rémy en a lu, ou pourquoi non.
+// (photo réduite en JPEG, aperçu pour le modèle de vision), la tour la range
+// CHIFFRÉE et la LIT — texte, PDF, OCR de Windows, modèle de vision local :
+// une seule lecture, au même endroit que pour le site (l'iPhone ne reconnaît
+// plus le texte lui-même) ; le fil montre chaque pièce et ce que Rémy en a lu,
+// ou pourquoi non.
 // Mêmes limites et mêmes mots que la tour (lib/pieces.js) et le site.
 
 /// Une pièce envoyée, telle que la tour la décrit (sans le texte lu).
@@ -18,7 +20,8 @@ public struct PieceJointe: Codable, Equatable, Sendable, Identifiable {
     public var taille: Int?
     /// « texte », « ocr », « decrite » ou « non ».
     public var lu: String?
-    /// D'où vient le texte reconnu d'une image : « iphone » ou « tour ».
+    /// D'où vient le texte reconnu d'une image : « tour » (« iphone » : une
+    /// fiche d'avant, quand l'iPhone lisait encore lui-même).
     public var par: String?
     public var pages: Int?
     public var caracteres: Int?
@@ -100,10 +103,6 @@ public struct PieceAEnvoyer: Identifiable, Equatable, Sendable {
     public var nom: String
     /// L'original envoyé (une photo : JPEG réduit à `coteOriginal` px).
     public var donnees: Data
-    /// Le texte reconnu sur l'iPhone (Vision), s'il y en a.
-    public var texteLu: String?
-    /// L'iPhone a cherché du texte (même sans en trouver) : la tour ne relit pas.
-    public var lecture: Bool
     /// L'image réduite à `coteVision` px, pour le modèle de vision local de la tour.
     public var apercu: Data?
     /// Une petite image pour la puce du composeur.
@@ -114,13 +113,11 @@ public struct PieceAEnvoyer: Identifiable, Equatable, Sendable {
     public var ficheConversation: String?
     public var envoi = false
 
-    public init(id: UUID = UUID(), nom: String, donnees: Data, texteLu: String? = nil, lecture: Bool = false,
+    public init(id: UUID = UUID(), nom: String, donnees: Data,
                 apercu: Data? = nil, vignette: Data? = nil, fiche: PieceJointe? = nil) {
         self.id = id
         self.nom = nom
         self.donnees = donnees
-        self.texteLu = texteLu
-        self.lecture = lecture
         self.apercu = apercu
         self.vignette = vignette
         self.fiche = fiche
@@ -151,9 +148,6 @@ public enum PiecesJointes {
     /// montré au modèle de vision local.
     public static let coteOriginal = 3000
     public static let coteVision = 1344
-    /// Le texte reconnu sur l'iPhone, au plus (la tour coupe au même endroit).
-    public static let texteMax = 8000
-
     static let familles: [String: String] = [
         "png": "image", "jpg": "image", "jpeg": "image", "webp": "image", "heic": "image", "heif": "image",
         "pdf": "pdf", "txt": "texte", "md": "texte", "markdown": "texte",
@@ -206,11 +200,10 @@ public enum PiecesJointes {
         return (max(1, Int((Double(largeur) * k).rounded())), max(1, Int((Double(hauteur) * k).rounded())))
     }
 
-    /// Le corps d'un envoi (POST /api/conversations/:id/pieces).
+    /// Le corps d'un envoi (POST /api/conversations/:id/pieces) : la pièce et,
+    /// pour une image, son aperçu. Aucun texte reconnu ici : la tour lit.
     public static func corps(_ p: PieceAEnvoyer) -> [String: Any] {
         var c: [String: Any] = ["nom": p.nom, "donnees": p.donnees.base64EncodedString()]
-        if let t = p.texteLu?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { c["texte"] = String(t.prefix(texteMax)) }
-        if p.lecture { c["lecture"] = "iphone" }
         if let a = p.apercu { c["apercu"] = a.base64EncodedString() }
         return c
     }

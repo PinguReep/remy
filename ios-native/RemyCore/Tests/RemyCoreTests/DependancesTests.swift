@@ -121,4 +121,63 @@ final class DependancesTests: XCTestCase {
         let autre = MenaceeTour(id: "x", titre: "X", raison: "sans-creneau", phrase: "Due ce soir.")
         XCTAssertTrue(autre.questionPourRemy.contains("Trouve-lui un créneau"))
     }
+
+    // MARK: - Projets bloqués (projets-bloques-v1)
+
+    func testUnProjetBloqueSeLitSurSesTachesEtSurLuiMeme() throws {
+        let t = try JSONDecoder().decode(TacheResume.self, from: Data(#"""
+        {"id": "c1", "titre": "Porter la voiture chez le carrossier", "bloquee": true, "raison": "projet « Carrosserie » après « Garage »",
+         "projetBloque": {"id": "motion:pc", "nom": "Carrosserie", "par": [{"id": "motion:pg", "nom": "Garage", "noeud": true}]}}
+        """#.utf8))
+        XCTAssertEqual(t.projetBloque?.par.first?.estNoeud, true)
+        XCTAssertEqual(Dependances.marque(raison: t.raison, par: t.bloqueePar, projet: t.projetBloque), "Projet « Carrosserie » bloqué par « Garage »")
+        XCTAssertFalse(Dependances.attenteManuelle(bloquee: true, par: nil, attente: nil, projet: t.projetBloque), "pas de « Reprendre » pour un projet qui attend")
+        XCTAssertEqual(ElementJour.sansCreneau(t, retard: false).projetBloque, t.projetBloque)
+        let l = try JSONDecoder().decode(ListeProjets.self, from: Data(#"""
+        {"projets": [{"id": "pc", "nom": "Carrosserie", "taches": 1, "bloquePar": [{"id": "motion:pg", "nom": "Garage", "noeud": true}]},
+                     {"id": "pg", "nom": "Garage", "taches": 2, "debloque": [{"id": "motion:pc", "nom": "Carrosserie"}], "fini": true}]}
+        """#.utf8))
+        XCTAssertEqual(Dependances.marqueNoeud(bloquePar: l.projets[0].bloquePar, parentBloque: nil), "Bloqué par « Garage »")
+        XCTAssertEqual(l.projets[1].fini, true)
+        let d = try JSONDecoder().decode(Dossier.self, from: Data(#"""
+        {"id": "peinture", "nom": "Peinture", "parent": "motion:pc", "notes": [], "taches": ["c2"],
+         "parentBloque": {"id": "motion:pc", "nom": "Carrosserie", "par": [{"id": "motion:pg", "nom": "Garage"}]}}
+        """#.utf8))
+        XCTAssertEqual(Dependances.marqueNoeud(bloquePar: d.bloquePar, parentBloque: d.parentBloque), "« Carrosserie » attend « Garage »")
+        XCTAssertNil(Dependances.marqueNoeud(bloquePar: nil, parentBloque: nil))
+    }
+
+    func testLesMotsDUnProjetEtLaRegleDuFini() {
+        let n = Dependances.textes(noeud: true)
+        XCTAssertEqual(n.titre, "Bloqué par…")
+        XCTAssertEqual(n.attend("Carrosserie", "Garage"), "« Carrosserie » attend « Garage » : aucune de ses tâches ne te sera proposée avant.")
+        XCTAssertEqual(Dependances.textes(noeud: false).titre, "Bloquée par…")
+        XCTAssertTrue(Dependances.regleFini("Garage").contains("toutes ses tâches sont terminées"))
+        XCTAssertEqual(Dependances.phraseDebloquees([LienTache(id: "motion:pc", nom: "Carrosserie")]), "« Carrosserie » est débloqué : ses tâches peuvent commencer.")
+        XCTAssertEqual(LienTache(id: "dossier:x").libelle, "un autre projet")
+        XCTAssertEqual(Dependances.detailChoix(TacheAChoisir(id: "motion:pg", titre: "Garage", genre: "projet")), "Projet Motion, fini quand toutes ses tâches le sont")
+    }
+
+    /// Le choix n'offre ni ses propres tâches, ni son projet, ni ses branches.
+    func testChoisirParmiTachesEtProjetsSansBoucle() {
+        let items = [
+            TacheAChoisir(id: "g1", titre: "Récupérer la voiture", dans: ["motion:pg"]),
+            TacheAChoisir(id: "c1", titre: "Porter chez le carrossier", dans: ["motion:pc"]),
+            TacheAChoisir(id: "motion:pg", titre: "Garage", genre: "projet"),
+            TacheAChoisir(id: "motion:pc", titre: "Carrosserie", genre: "projet"),
+            TacheAChoisir(id: "dossier:peinture", titre: "Peinture", genre: "dossier", dans: ["motion:pc"]),
+        ]
+        XCTAssertEqual(Set(Dependances.candidats(items, tache: "motion:pc").map(\.id)), ["g1", "motion:pg"])
+        XCTAssertEqual(Set(Dependances.candidats(items, tache: "dossier:peinture").map(\.id)), ["c1", "g1", "motion:pg"])
+        XCTAssertEqual(Dependances.candidats(items, tache: "c1", recherche: "garage").map(\.id), ["motion:pg"])
+    }
+
+    func testLaCarteFaireAttendre() throws {
+        let a = try JSONDecoder().decode(ActionProposee.self, from: Data(#"""
+        {"type": "attendre", "nom": "Carrosserie", "cible": "motion:pc", "cible_nom": "Carrosserie", "attend_ids": ["motion:pg"], "noms_ids": {"motion:pg": "Garage"}, "apres": ["Garage"]}
+        """#.utf8))
+        XCTAssertEqual(a.verbe, "attendre")
+        XCTAssertEqual(Format.detailAction(a), "après « Garage »")
+        XCTAssertEqual(try JSONDecoder().decode(ActionProposee.self, from: JSONEncoder().encode(a)), a)
+    }
 }

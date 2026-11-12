@@ -411,7 +411,7 @@ function dessinerMaintenant() {
     ajouterA(carte, 
       h("div", { class: "tete" }, pucesProjet(e.projet), h("span", { class: "marque-en-cours" }, "EN COURS")),
       h("h2", null, e.titre),
-      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar)) : null,
+      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar, e.projetBloque)) : null,
       marqueDebloque(e.debloque) ? h("p", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(e.debloque)) : null,
       h("div", { class: "reste", "aria-label": `${r.texteReste} ${r.unite} sur ${duree(r.total)}` },
         h("span", { class: "gros" }, r.texteReste), h("span", { class: "unite" }, r.unite), h("span", { class: "sur" }, `· sur ${duree(r.total)}`)),
@@ -596,7 +596,7 @@ function blocFrise(e, { m, top, haut, col, n }) {
   const st = etat(e, m);
   const rdv = e.type === "rdv";
   const detail = [`${heure(e.debut)} – ${heure(finEffective(e))}`, detailLigne(e, m, nomsEtiquettes(e.etiquettes))].filter(Boolean).join(" · ");
-  const marques = [e.retard && st !== "passe" ? "En retard" : null, e.bloquee ? marqueBloquee(e.raison, e.bloqueePar) : null, marqueDebloque(e.debloque)].filter(Boolean);
+  const marques = [e.retard && st !== "passe" ? "En retard" : null, e.bloquee ? marqueBloquee(e.raison, e.bloqueePar, e.projetBloque) : null, marqueDebloque(e.debloque)].filter(Boolean);
   let caseB = null;
   if (!rdv) {
     caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": "false", "aria-label": `Terminer « ${e.titre} »`, title: "Terminer", onclick: (ev) => { ev.stopPropagation(); terminer(e, st === "encours" ? gestesDe(e) : sansSuite(e)); } });
@@ -633,7 +633,7 @@ function ligneTache(t, { retard = false } = {}) {
     h("div", { class: "corps cliquable", role: "button", tabindex: "0", onclick: () => gerer(e, gestesDe(e)), onkeydown: (ev) => { if (ev.key === "Enter") gerer(e, gestesDe(e)); } },
       h("div", { class: "titre-ligne" }, t.titre),
       detail ? h("div", { class: `meta${retard ? " risque-texte" : ""}` }, retard ? icone("alerte") : null, h("span", null, detail)) : null,
-      t.bloquee ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(t.raison, t.bloqueePar)) : null,
+      t.bloquee ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(t.raison, t.bloqueePar, t.projetBloque)) : null,
       t.menaceBlocage ? h("div", { class: "marque-bloquee risque-texte" }, icone("alerte"), t.menaceBlocage) : null,
       marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     bouton("", { classe: "texte", icone: "curseurs", etiquette: `Gérer « ${t.titre} »`, onclick: () => gerer(e, gestesDe(e)) }));

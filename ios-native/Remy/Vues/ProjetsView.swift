@@ -268,6 +268,9 @@ private struct LigneProjet: View {
                         .foregroundStyle(Palette.encre2)
                         .lineLimit(2)
                     if let r = projet.enRetard, r > 0 { Risque(texte: r > 1 ? "\(r) en retard" : "1 en retard") }
+                    if let m = Dependances.marqueNoeud(bloquePar: projet.bloquePar, parentBloque: nil) {
+                        Label(m, systemImage: "pause.circle.fill").font(Police.texte(12, .semibold)).foregroundStyle(Palette.encre2).lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
                 if let s = projet.statut, !s.isEmpty {

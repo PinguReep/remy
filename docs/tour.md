@@ -147,15 +147,29 @@ bloquer ni pour valider ; une relance remplace l'échec d'avant :
    - un échec, une annulation, un délai dépassé : **pas d'installation**, et
      Réglages dit lequel. Relancer le workflow sur GitHub suffit : s'il passe,
      le commit est installé au passage suivant.
-6. **Pas pendant que Rémy travaille.** `GET /api/maj-auto` (local, avec une
-   session signée par `SESSION_SECRET`) dit s'il y a une réponse en cours, un
-   job de fond (sauvegarde, réflexion de la nuit, commerces…), un appel au
-   modèle ou une écriture d'une session valide (envoi, capture ; une requête
-   sans session ne compte pas). Occupé : on repasse dans 15 minutes ; occupé
-   sans relâche plus de 6 h, Réglages le signale. L'installeur revérifie avant
+6. **Pas pendant que Rémy travaille pour toi — le fond, lui, cède la place.**
+   `POST /api/maj-auto/ceder` (local, avec une session signée par
+   `SESSION_SECRET`, de portée réduite) met d'abord le travail de fond en
+   pause (bail de 20 min : aucun job ne commence, un appel de fond au modèle
+   local est coupé et sera refait), puis dit ce qui retient vraiment : une
+   réponse en cours, un appel au modèle pour toi, une écriture d'une session
+   valide (envoi, capture ; une requête sans session ne compte pas), un
+   travail attendu, ou un travail de fond au milieu d'une étape qu'on ne
+   coupe pas (une sauvegarde qui écrit, l'import des commerces), jusqu'à son
+   délai maximal. La réflexion de nuit, le conseil, le compactage ne
+   retiennent plus rien : en pause entre deux étapes, ils reprennent après le
+   redémarrage (un job repris ainsi ne compte pas d'essai). Rien installé :
+   le fond reprend tout de suite (`DELETE …/ceder`), sinon à la fin du bail.
+   La pause dure **45 min d'affilée au plus** : au-delà, le fond reprend
+   d'office et la pause est refusée 30 min (« rattrapage » dans Réglages ; la
+   mise à jour passe au passage suivant). Une demande ouverte depuis plus de
+   10 min (30 min pour une réponse du chat) ne retient plus rien.
+   Occupé : on repasse dans 15 minutes ; occupé sans relâche plus de 6 h,
+   Réglages le signale, avec ce qui retient. (Une tour d'avant cette règle
+   répond 404 : `GET /api/maj-auto`, comme avant.) L'installeur revérifie avant
    sa sauvegarde et juste après (code 3 : rien n'a changé, pas de sauvegarde
    pour rien), puis attend jusqu'à 10 minutes que Rémy soit calme juste avant
-   de l'arrêter (la copie est alors déjà à jour : passé ce délai, il redémarre
+   de l'arrêter (`maj-auto.mjs --occupe`, qui renouvelle la pause du fond) (la copie est alors déjà à jour : passé ce délai, il redémarre
    quand même). Rémy qui ne répond pas deux passages de suite ne travaille pour
    personne : on installe.
 7. **L'installation** passe par l'installeur, `-Ref <commit> -Auto` : sa
