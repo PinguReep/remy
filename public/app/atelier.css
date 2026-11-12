@@ -1808,3 +1808,153 @@ dialog.trancher-revue .feuille-corps { flex: 1; }
 .semaine-porte-remy .textes { flex: 1; min-width: 0; display: grid; }
 .semaine-porte-remy .t { font-weight: 600; }
 .semaine-porte-remy .d { font-size: 13px; color: var(--encre-3); }
+
+/* --- L'arbre des projets (arbre-v1) et « Ce que Rémy a compris » (verrou-v1) --- */
+/* Un retrait par niveau, et un filet qui relie une branche à son parent. */
+.element-maitre.arbre-noeud { position: relative; padding-left: calc(12px + var(--niveau, 0) * 16px); }
+.element-maitre.arbre-sous::before { content: ""; position: absolute; top: 6px; bottom: 6px; left: calc(var(--niveau, 1) * 16px - 2px); width: 1px; background: var(--fond-3); }
+.element-maitre.arbre-noeud.projets-deux-lignes { align-items: flex-start; padding-top: 8px; padding-bottom: 8px; }
+.element-maitre.arbre-noeud.projets-deux-lignes > .ic, .element-maitre.arbre-noeud.projets-deux-lignes > .puce { margin-top: 3px; }
+.arbre-lignes { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.arbre-ligne-1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.arbre-ligne { display: block; min-width: 0; font-size: 12px; line-height: 1.35; color: var(--encre-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arbre-ligne-1 .arbre-ligne { flex: 1; }
+.arbre-ligne-tete { color: var(--encre-3); }
+.arbre-ligne.deduit .arbre-ligne-texte { font-style: italic; color: var(--encre-3); }
+.arbre-ligne-age { color: var(--encre-3); font-variant-numeric: tabular-nums; }
+.arbre-ligne.vieux { opacity: .72; }
+
+/* La pastille d'état : une forme et un mot. Proposée par Rémy : en pointillés, avec « ? ». */
+.arbre-pastille { display: inline-flex; align-items: center; gap: 5px; flex: none; min-height: 18px; padding: 0 7px 0 6px; border-radius: 999px;
+  background: var(--fond-2); color: var(--encre); font: 600 11px/1 var(--texte); white-space: nowrap; border: 1px solid transparent; }
+.arbre-pastille.propose { background: transparent; border: 1px dashed var(--encre-3); color: var(--encre-2); }
+.arbre-q { font-weight: 700; }
+.arbre-forme { position: relative; width: 9px; height: 9px; flex: none; }
+.forme-plein .arbre-forme { border-radius: 50%; background: var(--signal); }
+.forme-sablier .arbre-forme { border-radius: 50%; border: 2px solid var(--encre-2); background: transparent; }
+.forme-pause .arbre-forme { background: linear-gradient(90deg, var(--encre-2) 0 35%, transparent 35% 65%, var(--encre-2) 65%); }
+.forme-coche .arbre-forme::after { content: ""; position: absolute; left: 2px; top: -1px; width: 4px; height: 8px; border: solid var(--encre); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.propose .forme-plein .arbre-forme, .forme-plein.propose .arbre-forme { background: transparent; border: 2px solid var(--signal); }
+
+/* La fiche en tête du détail d'un nœud */
+.arbre-fiche { display: grid; gap: 12px; margin: 0 0 18px; padding: 14px; border: 1px solid var(--filet); border-radius: 16px; background: var(--fond); }
+.arbre-fiche-tete { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.arbre-chemin { font-size: 14px; color: var(--encre-2); min-width: 0; }
+.arbre-chemin a { color: var(--encre-2); text-decoration: underline; text-decoration-color: var(--fond-3); text-underline-offset: 3px; display: inline-block; padding: 6px 0; }
+.arbre-chemin a:hover { color: var(--encre); }
+.arbre-chemin [aria-current] { color: var(--encre); font-weight: 600; }
+.arbre-sep { color: var(--encre-3); }
+.arbre-calcul { font: 500 12px/1.3 var(--mono); color: var(--encre-3); }
+.arbre-champs { display: grid; gap: 8px; }
+.arbre-champ { padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--filet); }
+.arbre-champ.a-confirmer { border-style: dashed; border-color: var(--encre-3); }
+.arbre-champ-tete { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.arbre-champ-tete h4 { margin: 0; font: 500 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--encre-2); }
+.arbre-champ-tete .btn { margin-left: auto; margin-top: -8px; margin-bottom: -8px; }
+.arbre-a-confirmer { font: 600 11px/1 var(--texte); color: var(--encre-2); padding: 3px 7px; border-radius: 999px; border: 1px dashed var(--encre-3); }
+.arbre-valeur { font-size: 15px; line-height: 1.45; color: var(--encre); margin-top: 2px; }
+.arbre-valeur.deduit { font-style: italic; }
+.arbre-origine { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 0; font-size: 12px; line-height: 1.4; color: var(--encre-3); }
+.arbre-origine .ic { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.arbre-inconnu { margin: 2px 0 0; font-size: 13px; color: var(--encre-3); }
+.arbre-gestes { margin-top: 10px; }
+.arbre-autre { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--filet); }
+.arbre-autre-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; font-size: 13px; color: var(--encre-2); }
+.arbre-autre-tete .ic { width: 14px; height: 14px; }
+.arbre-autre-texte { font-style: italic; }
+.arbre-memoire-cachee { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; }
+.arbre-memoire-cachee .ic { width: 14px; height: 14px; }
+.arbre-pied { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.arbre-convs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.arbre-convs .puce { text-decoration: none; min-height: 36px; }
+.arbre-histo { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.arbre-histo li { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; }
+.arbre-histo-quand { color: var(--encre-3); font-size: 12px; }
+
+/* Le bandeau en tête d'une conversation rattachée */
+.arbre-bandeau-zone { padding: 10px 24px; border-bottom: 1px solid var(--filet); background: var(--fond); }
+.arbre-bandeau { display: grid; gap: 2px; max-width: 860px; }
+.arbre-bandeau-tete { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.arbre-bandeau-chemin { display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 36px; font-weight: 600; font-size: 14px; color: var(--encre); text-decoration: none; }
+.arbre-bandeau-chemin span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arbre-bandeau-chemin:hover span { text-decoration: underline; }
+.arbre-bandeau-chemin .ic { width: 16px; height: 16px; flex: none; color: var(--encre-2); }
+.arbre-bandeau-tete .btn { margin-left: auto; }
+.arbre-bandeau-ligne { margin: 0; font-size: 13px; line-height: 1.4; color: var(--encre-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arbre-bandeau-nom { color: var(--encre-3); }
+.arbre-bandeau-ligne.deduit > span:nth-child(2) { font-style: italic; }
+.arbre-bandeau-avant { margin: 0 0 2px; font-size: 12px; color: var(--encre-3); }
+
+/* « Rattacher à… » */
+.feuille-arbre-choix .champ { width: 100%; margin-bottom: 10px; }
+.arbre-choix-liste { display: grid; gap: 2px; max-height: min(56vh, 520px); overflow: auto; }
+.arbre-choix { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 12px 6px calc(12px + var(--niveau, 0) * 18px); border: 0; border-radius: 10px; background: none; color: var(--encre); text-align: left; font: inherit; }
+.arbre-choix:hover, .arbre-choix:focus-visible { background: var(--fond-2); }
+.arbre-choix.actuel { box-shadow: inset 0 0 0 1px var(--filet); background: var(--surface); }
+.arbre-choix > .ic { flex: none; color: var(--encre-2); }
+.arbre-choix-textes { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.arbre-choix-textes small { color: var(--encre-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Le verrou */
+.verrou-carte { display: grid; gap: 16px; }
+.verrou-tete { display: flex; gap: 14px; align-items: flex-start; }
+.verrou-tete h2 { margin: 0 0 4px; }
+.verrou-icone { display: grid; place-items: center; width: 48px; height: 48px; flex: none; border-radius: 14px; background: var(--fond-2); color: var(--encre); }
+.verrou-form { max-width: 520px; }
+.verrou-form .ajout-ligne { margin-top: 6px; }
+.verrou-erreur { margin: 8px 0 0; color: var(--danger); font-size: 14px; font-weight: 600; }
+.verrou-honnete { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.verrou-honnete > div { padding: 12px 14px; border-radius: 12px; background: var(--fond); border: 1px solid var(--filet); }
+.verrou-honnete h4 { margin: 0 0 6px; font: 500 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--encre-2); }
+.verrou-honnete ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; line-height: 1.45; color: var(--encre-2); }
+.verrou-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--fond-2); font-size: 13px; color: var(--encre-2); }
+.verrou-barre .verrou-reste { flex: 1; min-width: 160px; }
+.verrou-ouvert-icone .ic { width: 16px; height: 16px; display: block; }
+
+/* Ce que Rémy a compris */
+.compris-intro { margin: 0 0 6px; }
+.compris-priorites { margin: 0 0 8px; padding-left: 22px; display: grid; gap: 6px; }
+.compris-priorites p { margin: 2px 0 0; }
+.compris-arbre { list-style: none; margin: 0; padding: 0; }
+.compris-noeud { padding: 10px 0 10px calc(var(--niveau, 0) * 18px); border-top: 1px solid var(--filet); }
+.compris-noeud-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.compris-nom { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-weight: 600; color: var(--encre); text-decoration: none; }
+.compris-nom:hover span { text-decoration: underline; }
+.compris-nom .ic { width: 16px; height: 16px; color: var(--encre-2); }
+.compris-faits { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 4px 12px; margin: 4px 0 0; font-size: 14px; }
+.compris-faits dt { color: var(--encre-3); font: 500 11px/1.9 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.compris-faits dd { margin: 0; min-width: 0; }
+.compris-faits dd small { display: block; color: var(--encre-3); font-size: 12px; line-height: 1.4; }
+.compris-faits .deduit { font-style: italic; }
+.compris-memoire { margin: 0; }
+.compris-faits dd .puce { text-decoration: none; margin: 2px 4px 2px 0; }
+.compris-a-confirmer { margin-top: 8px; }
+.compris-a-confirmer summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--encre-2); }
+.compris-a-confirmer .arbre-champ + .arbre-champ { margin-top: 8px; }
+
+@media (max-width: 720px) {
+  .arbre-bandeau-zone { padding: 8px 16px; }
+  .verrou-honnete { grid-template-columns: minmax(0, 1fr); }
+  .compris-faits { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .compris-faits dt { margin-top: 6px; }
+  .compris-noeud { padding-left: calc(var(--niveau, 0) * 12px); }
+  .arbre-histo li { grid-template-columns: 70px minmax(0, 1fr); }
+}
+.arbre-convs .puce, .compris-faits dd .puce { position: relative; }
+.arbre-convs .puce::before, .compris-faits dd .puce::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
+@media (pointer: coarse) { .arbre-convs .puce, .compris-faits dd .puce, .arbre-bandeau-chemin, .compris-nom { min-height: 44px; } }
+/* L'arbre a besoin de place pour se lire sans clic : la colonne s'élargit sur grand écran. */
+@media (min-width: 1280px) { .maitre-detail.avec-arbre { grid-template-columns: 380px minmax(0, 1fr); } }
+.arbre-ligne-1 { align-items: flex-start; }
+.arbre-ligne-1 .arbre-pastille { margin-top: 1px; }
+.arbre-ligne-1 .arbre-ligne { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Au téléphone, même sans « pointeur grossier » déclaré : 44 px dessinés. */
+@media (max-width: 720px) {
+  .arbre-fiche .btn.petit, .compris-a-confirmer .btn.petit, .verrou-barre .btn.petit, .arbre-bandeau .btn.petit, .arbre-convs .puce, .compris-faits dd .puce, .arbre-bandeau-chemin, .compris-nom { min-height: 44px; }
+  .arbre-chemin a, .arbre-chemin [aria-current] { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
+  .arbre-bandeau .btn.icone.petit { width: 44px; }
+}
+@media (max-width: 720px) {
+  /* Au pouce, le chemin et les deux lignes passent à la ligne plutôt que de couper la fin (la branche elle-même). */
+  .arbre-bandeau-chemin span, .arbre-bandeau-ligne { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+}

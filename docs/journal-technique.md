@@ -4,6 +4,75 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — L'arbre des projets comme vue de ce que Rémy a compris (`arbre-v1`, `verrou-v1`)
+
+Demande : voir d'un coup d'œil, pour chaque branche d'un projet, où on en est
+et pourquoi on fait ça — rempli par Rémy, confirmé ou corrigé par Sam, jamais
+un formulaire vide à remplir — et protéger la vue de ce que Rémy a compris par
+un vrai mot de passe.
+
+- **Le pivot** : un nœud est `motion:<id>` (un projet Motion, rien n'est écrit
+  chez Motion) ou `dossier:<id>` (un dossier de Remy). Migration 13 (la 12 est
+  au blocage entre projets) : `fiches_noeuds` (pourquoi, état, point ; pour
+  chaque champ son texte, son **origine** — `confirme` ou `ecrit` —, la source
+  d'une déduction confirmée et sa date ; les déductions écartées),
+  `historique_noeuds` (chaque changement, 40 par nœud au plus),
+  `conversations_noeuds` (une conversation → un nœud). En avant seulement,
+  rien de déplacé. Un dossier supprimé garde sa fiche (suppression douce).
+- **Une déduction n'est jamais rangée** : elle se recalcule à chaque lecture
+  (`lib/arbre.js`, sans IA), avec sa source en clair. D'où elle vient : les
+  tâches Motion ouvertes du nœud et de ses sous-branches (échéances, prochaine
+  tâche, « bloquée par »), ce que Sam a dit d'un projet entier (« attend… »,
+  « C'est fini » : `carnet.marquesNoeuds`), les coches faites depuis Rémy (le
+  résultat de la chaîne d'écriture), le mouvement dans Rémy (dossier, idées,
+  rangements), les conversations rattachées, le rang dans les priorités
+  confirmées et les mots de Sam pour elles, et sa mémoire (lignes qui nomment
+  le nœud). Ce qu'il **ne sait pas** : qu'une branche est finie sans que Sam
+  l'ait dit, le pourquoi d'une branche que ni une priorité ni la mémoire ne
+  nomment, ce qui avance hors de Motion et de Rémy (code, papier, téléphone).
+- **Ce que Sam tient l'emporte** : Rémy ne propose autre chose pour l'état ou
+  le point que si du nouveau est arrivé après (coche, mouvement, conversation,
+  « C'est fini »), jamais pour le pourquoi, et jamais d'après un simple titre
+  de conversation. « Pas ça » n'est plus reproposé tant que la déduction ne
+  change pas.
+- **Le modèle local** peut proposer « où on en est » d'après la dernière
+  conversation rattachée (`POST /api/noeuds/:n/resume-local`) : d'un geste
+  seulement, circuit « arbre » coupable (Réglages › Rémy), journalisé
+  (`kind: "arbre"`), 20 par heure, jamais de secours cloud ; classé
+  « demandé » dans `lib/priorite.js`. Rien n'est rangé avant « C'est ça ».
+- **Le verrou** (`lib/verrou.js`) : `POST /api/verrou { password }` ouvre
+  une fenêtre de 10 min (`REMY_VERROU_MIN`, 1 à 60) liée à LA session (cookie
+  de session, ou appareil du jeton), gardée en mémoire de la tour (un
+  redémarrage reverrouille), signée HMAC ; `DELETE` la referme, la
+  déconnexion aussi. 5 essais par adresse et par quart d'heure, comptés avant
+  la vérification, et dans le compteur global de la connexion. Le mot de passe
+  en clair (`APP_PASSWORD`) est désormais comparé par empreintes de même
+  taille (avant : la longueur sortait avant la comparaison à temps constant).
+- **Derrière le verrou** (refus 423, vérifié à chaque appel, chemins
+  imbriqués et variantes testés) : ce qui montre la **mémoire** —
+  `GET /api/compris`, `GET`/`PUT /api/memory`, `GET /api/export`. **Pas
+  derrière** : `GET /api/noeuds`, l'historique d'une fiche, `PUT` d'une fiche,
+  le rattachement d'une conversation, les priorités — Projets, la conversation
+  et Ce qui compte en ont besoin tout le temps ; verrouiller une copie de ce
+  qui s'affiche déjà ne protégerait rien. Une ligne de mémoire confirmée dans
+  une fiche y devient donc visible sans verrou (dit à l'écran).
+- **Ce que le verrou ne protège pas**, dit à l'écran : le disque (la base de
+  la tour n'est pas chiffrée au repos), l'app iPhone (qui ne sait pas encore
+  déverrouiller : un appareil par jeton lit encore la mémoire, `appareilExempte`,
+  mais pas `/api/compris`), ce que Rémy répond en conversation. Sans mot de
+  passe sur la tour, il n'y a pas de verrou, et l'écran le dit.
+- **Site** : l'arbre de Projets a un retrait par niveau, une pastille (forme
+  et mot ; en pointillés avec « ? » quand Rémy la propose), une ligne « où on
+  en est » (ou « pourquoi ») et son âge ; le détail d'un nœud a son chemin
+  complet, sa fiche (chaque champ dit son origine ; « C'est ça », « Corriger »,
+  « Pas ça »), son historique et ses conversations. Rémy : « Rattacher à… » et
+  un bandeau en tête (chemin, pourquoi, où on en est) ; « En parler à Rémy »
+  rattache la conversation qui en naît. Projets › Ce que Rémy a compris :
+  derrière le verrou. Une tour d'avant (capacité absente) : rien ne change.
+- **Laissé** : l'iPhone (bandeau, fiches, déverrouillage par l'en-tête
+  `X-Remy-Deverrou`, déjà accepté par la tour), le lien avec T3 Code, le
+  glisser-déposer, le repli des branches.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait

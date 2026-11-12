@@ -21,6 +21,8 @@ import * as R from "../analyse/remy.js";
 import * as nonLus from "../non-lus.js";
 import * as PJ from "./pieces.js";
 import * as PA from "../analyse/pieces.js";
+// L'arbre des projets (arbre-v1) : le bandeau en tête, « Rattacher à… ».
+import { lireArbre, bandeauEl, choisirNoeud, rattacher, oublierArbre } from "./arbre.js";
 
 // Les modules des autres lots : toujours par import(), jamais en statique
 // (absents avant la fusion, un import statique manquant casserait la vue).
@@ -197,6 +199,7 @@ function construire() {
   refs.valeurJauge = h("span", { class: "mono remy-jauge-court", hidden: true });
   refs.btnPanneau = h("button", { type: "button", class: "btn texte btn-panneau remy-btn-jauge", "aria-label": "Contexte et étapes", title: "Contexte et étapes", onclick: basculerPanneau }, icone("jauge"), refs.valeurJauge);
   refs.session = h("div", { class: "remy-session", hidden: true });
+  refs.noeud = h("div", { class: "arbre-bandeau-zone", hidden: true });
   refs.messages = h("div", { class: "fil-messages", tabindex: "-1" });
   refs.champ = h("textarea", { rows: 1, placeholder: "Écris à Rémy…", "aria-label": "Message à Rémy" });
   // Pièces jointes (12/11) : le trombone, et coller ou déposer un fichier.
@@ -235,7 +238,7 @@ function construire() {
       refs.liste),
     h("section", { class: "remy-fil" },
       h("header", { class: "fil-tete" }, refs.retour, refs.marque, refs.titre, refs.cadenas, refs.actionsFil, refs.btnPanneau),
-      refs.session, refs.messages, refs.composeur, refs.importee),
+      refs.noeud, refs.session, refs.messages, refs.composeur, refs.importee),
     refs.panneau);
   vider(racine, refs.racine);
   // Les bandeaux se posent au-dessus du composeur, jamais sur le champ.
@@ -426,8 +429,63 @@ function actionsConv(c) {
       : sait("non-lus-v1") && R.peutMarquerNonLu(c, courante?.id || null) ? { libelle: "Marquer comme non lu", icone: "point-plein", faire: () => { nonLus.marquerNonLu(c); dessinerListe(); dire("Marquée comme non lue."); } } : null,
     { libelle: "Renommer", icone: "crayon", faire: () => renommerConv(c) },
     { libelle: c.pinned ? "Désépingler" : "Épingler", icone: "epingle", faire: () => patchConv(c, { pinned: !c.pinned }, c.pinned ? "Désépinglée." : "Épinglée.") },
+    sait("arbre-v1") && !c.origine ? { libelle: "Rattacher à…", icone: "dossier", faire: () => rattacherConv(c) } : null,
     { libelle: "Supprimer", icone: "corbeille", danger: true, faire: () => supprimerConversation(c) },
   ];
+}
+
+// --- L'arbre des projets (arbre-v1) : à quelle branche ce fil se rattache ---
+
+/** « Rattacher à… » : le choix d'une branche, écrit sur la tour, dit en bandeau. */
+async function rattacherConv(c) {
+  let arbre;
+  try {
+    arbre = await lireArbre();
+  } catch (err) {
+    return direErreur(err, () => rattacherConv(c), "Les projets n'ont pas pu être lus");
+  }
+  const actuel = courante?.id === c.id ? courante.noeud || null : c.noeud || null;
+  const choix = await choisirNoeud(arbre?.noeuds || [], { actuel });
+  if (choix === undefined || choix === actuel) return;
+  try {
+    await rattacher(c.id, choix);
+  } catch (err) {
+    if (err.nature !== "auth") direErreur(err, () => rattacherConv(c), "Pas rattachée");
+    return;
+  }
+  for (const x of new Set([c, courante?.id === c.id ? courante : null])) if (x) x.noeud = choix || undefined;
+  oublierArbre();
+  const vue = choix ? (await lireArbre({ frais: true }).catch(() => null))?.parNoeud?.get(choix) : null;
+  dire(choix ? `Rattachée à « ${vue?.chemin?.join(" › ") || "la branche"} ».` : "Détachée de sa branche.", { genre: "succes",
+    action: { libelle: "Annuler", faire: () => rattacher(c.id, actuel).then(() => { for (const x of new Set([c, courante?.id === c.id ? courante : null])) if (x) x.noeud = actuel || undefined; dessinerBandeauNoeud(); }).catch((err) => direErreur(err, null, "Pas annulé")) } });
+  if (courante?.id === c.id) dessinerBandeauNoeud();
+}
+
+/** Le bandeau en tête du fil : la branche, pourquoi, où on en est (ou « Sera rattachée à… » avant le premier message). */
+let bandeauGen = 0;
+async function dessinerBandeauNoeud() {
+  if (!refs.noeud) return;
+  const c = courante;
+  const noeud = c?.noeud || (c?.nouvelle ? c.noeudAttente : null);
+  const moi = ++bandeauGen;
+  if (!noeud || !sait("arbre-v1")) {
+    refs.noeud.hidden = true;
+    vider(refs.noeud);
+    return;
+  }
+  let vue = null;
+  try {
+    vue = (await lireArbre())?.parNoeud?.get(noeud) || null;
+  } catch {}
+  if (moi !== bandeauGen) return;
+  refs.noeud.hidden = false;
+  if (!vue) {
+    vider(refs.noeud, h("div", { class: "arbre-bandeau" }, h("p", { class: "aide" }, c?.nouvelle ? "Sera rattachée à une branche de tes projets." : "Rattachée à une branche qui n'est plus dans tes projets.")));
+    return;
+  }
+  const el = bandeauEl(vue, { changer: c?.id && !c.origine ? () => rattacherConv(c) : null });
+  if (c?.nouvelle) el.prepend(h("p", { class: "arbre-bandeau-avant" }, "Sera rattachée à cette branche dès ton premier message."));
+  vider(refs.noeud, el);
 }
 
 async function patchConv(c, corps, message) {
@@ -703,6 +761,15 @@ function consommerEntrees(cible) {
     }
   }
   if (cible === "nouvelle") {
+    // « En parler à Rémy » sur une branche (arbre-v1) : la conversation qui naîtra y sera rattachée.
+    const n = local.lire("remy-noeud", null);
+    if (n) {
+      local.effacer("remy-noeud");
+      if (courante?.nouvelle && n.noeud && Date.now() - Number(n.a) < 10 * 60e3) {
+        courante.noeudAttente = n.noeud;
+        dessinerBandeauNoeud();
+      }
+    }
     const q = questionEnAttente();
     if (q) preparerQuestion(q);
   }
@@ -760,6 +827,7 @@ function dessinerEnTete() {
       { libelle: c.pinned ? "Désépingler" : "Épingler", icone: "epingle", faire: () => patchConv(c, { pinned: !c.pinned }, c.pinned ? "Désépinglée." : "Épinglée.") },
       { libelle: "Renommer", icone: "crayon", faire: () => renommerConv(c) },
       !prive && !c.origine && !miseEnPrive ? { libelle: "Rendre privée", titre: "Rendre cette conversation privée", icone: "cadenas", faire: rendrePrivee } : null,
+      sait("arbre-v1") && !c.origine ? { libelle: "Rattacher à…", titre: c.noeud ? "Rattachée à une branche : en changer" : "Rattacher à une branche de tes projets", icone: "dossier", faire: () => rattacherConv(c) } : null,
       { libelle: "Supprimer", icone: "corbeille", danger: true, faire: () => supprimerConversation(c) },
     ].filter(Boolean);
     ajouterA(refs.actionsFil, actions.map((a) => bouton("", { classe: "texte icone remy-action-large", icone: a.icone, etiquette: a.libelle, titre: a.titre || a.libelle, onclick: (e) => occupe(e.currentTarget, async () => a.faire()) })));
@@ -773,6 +841,7 @@ function dessinerEnTete() {
     refs.actionsFil.append(bouton("", { classe: "texte icone", icone: "telephone", etiquette: "Appeler Rémy", titre: "Appeler Rémy", onclick: appeler }));
   }
   majBoutonJauge();
+  dessinerBandeauNoeud();
 }
 
 function majBoutonJauge() {
@@ -1425,7 +1494,8 @@ async function envoyerMessage(texte, { titre = null, session = null, pieces = []
     let c;
     let existante = false;
     try {
-      c = await ecrire("/api/conversations", { ...(prive ? { prive: true } : {}), ...(session ? { session } : {}) });
+      const noeud = courante?.nouvelle && sait("arbre-v1") ? courante.noeudAttente : null;
+      c = await ecrire("/api/conversations", { ...(prive ? { prive: true } : {}), ...(session ? { session } : {}), ...(noeud ? { noeud } : {}) });
       // Une étape « Faire connaissance » n'a qu'UNE conversation : la tour rend
       // celle qui existe, avec ses messages (ni renommée, ni retouchée ici).
       existante = Boolean(session) && Array.isArray(c?.messages) && c.messages.length > 0;

@@ -153,6 +153,34 @@ test("déductions d'une branche profonde : en pause sans mouvement, la conversat
   assert.match(tard.source, /rien de fait depuis 33 jours/);
 });
 
+test("déductions : ce que Sam a dit du projet entier (« attend… », « C'est fini ») passe avant les tâches, avec sa source", () => {
+  const base = { taches: [{ id: "x", titre: "Poser la cuisine", echeance: T0 + JOUR }], coches: [], activite: [], conversations: [], priorite: null, memoire: [], statut: null };
+  const attend = { ...base, marque: { bloquePar: [{ id: "motion:p2", nom: "Maison", noeud: true }], parentBloque: null, fini: false } };
+  assert.deepEqual(A.deduireEtat(attend, { maintenant: T0 }), { texte: "en_attente", source: "tu as dit qu'il attend « Maison »" });
+  assert.match(A.deduirePoint(attend, { maintenant: T0 }).texte, /^Attend « Maison »\. Ensuite : « Poser la cuisine »/);
+  const parent = { ...base, marque: { bloquePar: [], parentBloque: { id: "dossier:d-a", nom: "Assistant", par: [{ nom: "Boutique" }] }, fini: false } };
+  assert.match(A.deduireEtat(parent, { maintenant: T0 }).source, /son projet parent « Assistant » attend « Boutique »/);
+  const fini = { ...base, marque: { bloquePar: [], parentBloque: null, fini: true, finiA: T0 - 2 * JOUR } };
+  assert.deepEqual(A.deduireEtat(fini, { maintenant: T0 }), { texte: "fait", source: "tu as dit « C'est fini » il y a 2 j" });
+  // Sans un mot de Sam, Rémy ne conclut jamais « fait ».
+  assert.notEqual(A.deduireEtat({ ...base, taches: [] }, { maintenant: T0 })?.texte, "fait");
+  // Un sous-projet d'un projet Motion que la liste n'a pas rendu reste dans l'arbre.
+  const n = A.noeudsDe({ projets: [], dossiers: [{ id: "d-x", nom: "Pages", parent: "motion:p7" }], nomsMotion: new Map([["p7", "Boutique"]]) });
+  assert.deepEqual(n.map((x) => x.chemin.join(" › ")), ["Boutique", "Boutique › Pages"]);
+  assert.equal(n[0].horsListe, true);
+});
+
+test("le mot de passe est comparé à temps constant, longueur comprise", async () => {
+  const src = fs.readFileSync(new URL("../lib/auth.js", import.meta.url), "utf8");
+  const corps = src.slice(src.indexOf("export function verifyPassword"), src.indexOf("function secret()"));
+  assert.doesNotMatch(corps, /a\.length === b\.length/, "pas de comparaison des longueurs avant");
+  assert.match(corps, /timingSafeEqual/);
+  const { verifyPassword } = await import("../lib/auth.js");
+  for (const essai of ["", "m", "mot-de-passe-de-tes", "mot-de-passe-de-test!", "x".repeat(5000)]) assert.equal(verifyPassword(essai), false, JSON.stringify(essai.slice(0, 20)));
+  assert.equal(verifyPassword("mot-de-passe-de-test"), true);
+  assert.match(fs.readFileSync(new URL("../lib/verrou.js", import.meta.url), "utf8"), /verifyPassword\(/, "le verrou passe par la même vérification");
+});
+
 test("déductions : toutes les tâches bloquées → en attente ; statut Motion « En attente » ; rien à dire → aucune déduction (pas d'invention)", () => {
   const f = { taches: [{ id: "x", titre: "Poser la cuisine", bloquee: true, bloqueePar: [{ id: "y", nom: "Recevoir le devis" }] }], coches: [], activite: [], conversations: [], priorite: null, memoire: [], statut: null };
   const e = A.deduireEtat(f, { maintenant: T0 });
@@ -225,7 +253,10 @@ test("conversations rattachées : une seule branche par conversation, détachabl
 
 // --- Les routes et le verrou ------------------------------------------------------------
 
-const PROTEGEES = [["GET", "/api/compris"], ["GET", "/api/noeuds/motion%3Ap1/historique"], ["GET", "/api/noeuds/dossier%3Ad-interface/historique"], ["GET", "/api/memory"], ["PUT", "/api/memory"], ["GET", "/api/export"]];
+// Ce que le verrou garde : ce que la mémoire de Rémy dit de Sam (et l'export, qui la contient).
+const PROTEGEES = [["GET", "/api/compris"], ["GET", "/api/memory"], ["PUT", "/api/memory"], ["GET", "/api/export"]];
+// Les mêmes, écrits autrement (barre finale, segment en plus, majuscules, encodage) : jamais servis sans déverrouillage.
+const VARIANTES = [["GET", "/api/compris/"], ["GET", "/api/compris/x"], ["GET", "/api/compris/x/y"], ["GET", "/api/memory/"], ["GET", "/api/memory/x"], ["GET", "/api//compris"], ["GET", "/api/%63ompris"], ["GET", "/api/COMPRIS"], ["GET", "/api/compris?x=1"], ["PUT", "/api/memory/"]];
 
 test("verrou : chaque route protégée refuse (423) une session sans ressaisie récente, chemins imbriqués compris ; l'arbre, lui, reste ouvert", async () => {
   await remettreEssais();
@@ -235,8 +266,15 @@ test("verrou : chaque route protégée refuse (423) une session sans ressaisie r
     assert.equal(r.status, 423, `${m} ${chemin}`);
     assert.equal(r.corps.error, "verrou");
   }
+  for (const [m, chemin] of VARIANTES) {
+    const r = await appel(m, chemin, { cookie, corps: m === "PUT" ? { text: "x" } : undefined });
+    assert.ok(r.status === 423 || r.status === 404, `${m} ${chemin} : ${r.status} (jamais servi verrouillé)`);
+    assert.ok(!JSON.stringify(r.corps || {}).includes("Préférences"), `${m} ${chemin} ne rend rien de la mémoire`);
+  }
   // Sans session : 401 avant même le verrou.
   assert.equal((await appel("GET", "/api/compris")).status, 401);
+  // L'historique d'une fiche est ouvert, comme la fiche (l'écran Projets s'en sert).
+  assert.equal((await appel("GET", "/api/noeuds/motion%3Ap1/historique", { cookie })).status, 200);
   // Ce dont l'app a besoin en permanence reste ouvert.
   carnet.ecrireDossier("d-assistant", { nom: "Assistant", parent: null });
   carnet.ecrireDossier("d-fonction", { nom: "Fonctionnalité", parent: "d-assistant" });
