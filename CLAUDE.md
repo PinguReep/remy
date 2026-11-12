@@ -41,8 +41,14 @@ cas de doute, ça ne va pas dans le dépôt.
   et lit lui-même sur le web (`lib/recherche.js`). Claude seulement en secours
   activé à la main, ou pour la recherche d'une tour sans recherche locale
   (`REMY_RECHERCHE=off`, sur autorisation explicite).
-- **Production** : pas d'auto-déploiement. Après chaque fusion, la tour se met à
-  jour avec `scripts/installer-tour.ps1 -Ref <commit>` (voir `docs/tour.md`).
+- **Production** : deux cas (Réglages › Diagnostic dit lequel ; `docs/tour.md`).
+  **Mise à jour automatique activée** (une fois, `installer-tour.ps1 -MiseAJourAuto`,
+  tâche « Rémy - mise à jour ») : tout commit de `main` dont « Serveur — tests » a
+  réussi s'installe seul dans le quart d'heure, quand Rémy ne travaille pas,
+  vérifié par `/api/version`, retour automatique sinon (règle : `lib/maj-auto.js`).
+  Ce qui est fusionné sur `main` part donc en production. **Désactivée** (ou en
+  pause) : pas d'auto-déploiement, la tour se met à jour avec
+  `scripts/installer-tour.ps1 -Ref <commit>` après chaque fusion.
 
 ## `/mute` — répondre court
 
@@ -76,7 +82,8 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
    modification de l'app est prête et que la CI est verte, lancer le build
    TestFlight sans demander. Un build ne change rien sur l'iPhone tant qu'il
    n'est pas installé ; une fonction que la tour ne connaît pas encore reste
-   cachée (capacités). La mise à jour de la tour, elle, reste à son geste.
+   cachée (capacités). La mise à jour de la tour, elle, reste à son geste — ou à
+   la mise à jour automatique, s'il l'a activée (voir « Production »).
 9. **Un mini tutoriel par nouveauté visible** (demande du 21/10) : toute
    mise à jour de l'app qui apporte une fonction qu'on voit ajoute son entrée
    dans `RemyCore/Nouveautes.swift` (série suivante, 1 à 3 pages courtes, la
@@ -95,6 +102,14 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
   l'empreinte avec `ssh`) ; un `.sh` envoyé sur Linux doit être en LF.
 - Installeur de la tour : PowerShell **administrateur** (la tâche planifiée
   « Rémy » est créée ainsi ; sans ces droits, « Accès refusé » au remplacement).
+  La tâche « Rémy - mise à jour », elle, tourne SANS ces droits (RunLevel
+  Limited, revue de sécurité du 12/11) : `-Auto` ne touche à aucune tâche, il
+  arrête node et le lanceur en boucle `run-remy.ps1` le relance. Ne jamais lui
+  redonner l'élévation : elle exécute des fichiers que le compte peut modifier. Jamais de `trap` au niveau du script : son `continue` reprend APRÈS le
+  bloc englobant (un `-Uninstall` sans tailscale sautait son `return` et
+  déroulait une installation, 12/11). La raison d'arrêt et le verrou passent par
+  le `try/catch/finally` du seul chemin d'installation ; tout passage en
+  `Continue` vérifie d'abord sa commande avec `Get-Command`.
 
 ## Mémoire entre les runs
 

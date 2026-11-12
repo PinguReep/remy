@@ -16,6 +16,10 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("maj-auto", 10, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
+    p("rafraichir", "Ce qui passe ses contrôles", "Une fois activée sur la tour, elle installe d'elle-même ce qui arrive sur main, seulement si tous ses contrôles ont réussi, et jamais pendant que Rémy travaille. Sinon, elle revient à la version d'avant."),
+    p("pause", "La voir, la mettre en pause", "Réglages › Diagnostic : « Mise à jour automatique », activée ou non, la dernière (commit, jour, réussie ou annulée et pourquoi), et un interrupteur pour la mettre en pause."),
+  ]),
   n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
     p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
     p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),

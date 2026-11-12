@@ -671,6 +671,32 @@ export function phraseDeconnexion(n) {
 }
 
 /** « 1 nouvelle à découvrir », sinon de quoi revoir les tutoriels. */
+/**
+ * La ligne de Réglages › Diagnostic (maj-auto-v1) : « Mise à jour
+ * automatique : activée — dernière : abc1234, hier 10:05, réussie ».
+ */
+export function phraseMajAuto(v, maintenant = Date.now()) {
+  if (!v) return "Mise à jour automatique : état inconnu";
+  const etat = v.coupeeParLaTour ? "coupée sur la tour" : !v.active ? "désactivée" : v.pause ? "en pause" : "activée";
+  const d = v.derniere;
+  if (!d) return `Mise à jour automatique : ${etat}${v.active ? " — aucune encore" : ""}`;
+  const t = Date.parse(d.date);
+  const resultat = d.resultat === "reussie" ? "réussie" : `annulée${d.raison ? ` (${d.raison})` : ""}`;
+  return `Mise à jour automatique : ${etat} — dernière : ${d.commit}${Number.isFinite(t) ? `, ${quand(t, { maintenant })}` : ""}, ${resultat}`;
+}
+/** Ce qui se passe en ce moment (le dernier passage de la tâche), ou quoi faire. */
+export function detailMajAuto(v, maintenant = Date.now()) {
+  if (!v) return null;
+  if (v.coupeeParLaTour) return "Coupée dans remy.env (REMY_MAJ_AUTO=off) : l'app ne peut pas la rallumer.";
+  if (!v.active) return "Pour qu'elle installe seule ce qui arrive sur main après ses contrôles : une fois, sur la tour, dans un PowerShell administrateur, installer-tour.ps1 -MiseAJourAuto (docs/tour.md).";
+  if (v.pause) return `En pause${v.pauseDepuis ? ` depuis ${quand(Date.parse(v.pauseDepuis), { maintenant })}` : ""} : rien n'est installé.`;
+  const passe = Date.parse(v.dernierePasse);
+  if (v.occupeLongtemps) return `Rémy est occupé sans relâche depuis ${quand(Date.parse(v.occupeDepuis), { maintenant })} : aucune mise à jour ne passe. Si ça dure, regarde ce qui tourne sur la tour (incidents ci-dessous), ou relance Rémy.`;
+  if (v.retard) return `La tâche n'est pas passée depuis ${Number.isFinite(passe) ? quand(passe, { maintenant }) : "son activation"} : regarde le Planificateur de tâches de la tour (« Rémy - mise à jour »).`;
+  return v.message ? `${v.message}${Number.isFinite(passe) ? ` (passage : ${quand(passe, { maintenant })})` : ""}` : `Premier passage dans ${v.intervalleMin || 15} min au plus.`;
+}
+export const confirmationMajAuto = (pause) => (pause ? "Mise à jour automatique en pause : la tour n'installera plus rien seule." : "Mise à jour automatique reprise : la tour installe de nouveau ce qui passe ses contrôles.");
+
 export const sousTitreNouveautes = (n) => (n > 0 ? `${n} nouvelle${n > 1 ? "s" : ""} à découvrir` : "Les tutoriels des mises à jour, à revoir");
 
 // --- Les sections ---
@@ -1195,6 +1221,18 @@ const SECTIONS_RENDU = {
       }
     };
     lireMesures();
+    const majAuto = h("div", { class: "reglages-maj-auto" });
+    const lireMajAuto = async () => {
+      if (!sait("maj-auto-v1")) return vider(majAuto);
+      vider(majAuto, squelette([0.8, 0.6]));
+      try {
+        vider(majAuto, majAutoVue(await api("/api/maj-auto", { delai: 10000 }), lireMajAuto));
+      } catch (err) {
+        if (err?.nature === "auth") return;
+        vider(majAuto, erreurSection(`Mise à jour automatique illisible : ${texteErreur(err)}`, lireMajAuto));
+      }
+    };
+    lireMajAuto();
     return carte("Diagnostic", "Pour comprendre ce que fait Rémy et le signaler. Rien d'indispensable au quotidien.",
       repere("Temps de réponse", h("div", { class: "reglage" }, h("h3", { class: "titre-section reglages-sous-titre" }, "Temps de réponse"), temps)),
       bascule("Jauge du contexte", "Le cadran en haut des conversations : la place prise, et le résumé à 70 %. Allumée par défaut.", local.lire("diagnostic.jauge", true) !== false, async (x) => {
@@ -1208,6 +1246,7 @@ const SECTIONS_RENDU = {
       h("p", { class: "aide reglage" }, "Les codes d'erreur (R-…) restent sous chaque message raté, avec « Copier le diagnostic »."),
       repere("Version", h("dl", { class: "paires reglage" }, h("dt", null, "Tour"), h("dd", null, `${v.serveur || "?"}${v.commit ? ` · ${String(v.commit).slice(0, 7)}` : ""}`), h("dt", null, "API"), h("dd", null, String(v.api)), h("dt", null, "Capacités"), h("dd", null, String((v.capacites || []).length)),
         h("dt", null, "App Windows"), h("dd", null, bureau.estBureau() ? bureau.etatBureau()?.version || "oui" : "non (navigateur)"))),
+      sait("maj-auto-v1") ? repere("Mise à jour automatique", h("div", { class: "reglage" }, majAuto)) : null,
       sousTitre("Incidents récents"),
       incidents.length ? h("ul", { class: "liste" }, incidents.slice(0, 15).map((i) => h("li", { class: "ligne" }, h("div", { class: "corps" }, h("div", { class: "titre-ligne mono" }, i.code || "?"), h("div", { class: "meta" }, [i.type, i.route, i.a ? quand(new Date(i.a).getTime()) : null].filter(Boolean).join(" · ")))))) : vide(null, "Aucun incident."),
       h("div", { class: "rangee", style: { marginTop: "12px" } }, bouton("Copier le diagnostic", { classe: "papier", icone: "copier", onclick: async () => { try { await navigator.clipboard.writeText(texte); dire("Diagnostic copié.", { genre: "succes" }); } catch { dire("Copie impossible ici.", { genre: "erreur" }); } } })));
@@ -1936,6 +1975,23 @@ function lieuxVue(v) {
 }
 
 // --- Temps de réponse (Diagnostic) ---
+
+/** Mise à jour automatique (Diagnostic) : la ligne, ce qui se passe, et la pause. */
+function majAutoVue(v, relire) {
+  const ligneEl = h("strong", { class: "maj-auto-ligne" }, phraseMajAuto(v));
+  const detailEl = h("p", { class: "aide", style: { margin: "4px 0 0" } }, detailMajAuto(v));
+  const blocs = [h("h3", { class: "titre-section reglages-sous-titre" }, "Mise à jour automatique"), ligneEl, detailEl];
+  if (v.active && !v.coupeeParLaTour) {
+    blocs.push(bascule("Installer seule les mises à jour", "Ce qui arrive sur main, une fois ses contrôles réussis, quand Rémy ne travaille pas. Coupé : en pause.", !v.pause, async (x) => {
+      const r = await remplacer("/api/maj-auto", { pause: !x }, { delai: 10000 });
+      ligneEl.textContent = phraseMajAuto(r);
+      detailEl.textContent = detailMajAuto(r);
+      dire(confirmationMajAuto(r.pause), { genre: "succes" });
+    }, { ancre: "Installer seule les mises à jour" }));
+  }
+  blocs.push(h("div", { class: "rangee", style: { marginTop: "8px" } }, bouton("Rafraîchir", { classe: "papier", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, relire) })));
+  return blocs;
+}
 
 function mesuresVue(t, erreur, rafraichir) {
   const ligneM = (titre, s) => h("li", { class: "reglages-mesure" }, h("div", null, titre), h("div", { class: `mono ${s?.n ? "aide" : "reglages-pale"}` }, ligneMesure(s)));

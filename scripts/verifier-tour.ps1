@@ -38,6 +38,15 @@ Write-Output ''
 Write-Output 'Rémy installé'
 $tache = Get-ScheduledTask -TaskName 'Rémy' -ErrorAction SilentlyContinue
 if ($tache) { Info "Tâche planifiée « Rémy » : $($tache.State)" } else { Info 'Tâche planifiée « Rémy » : absente' }
+$tacheMaj = Get-ScheduledTask -TaskName 'Rémy - mise à jour' -ErrorAction SilentlyContinue
+if ($tacheMaj) {
+  $infoMaj = Get-ScheduledTaskInfo -TaskName 'Rémy - mise à jour' -ErrorAction SilentlyContinue
+  Info "Mise à jour automatique : activée ($($tacheMaj.State), dernier passage $($infoMaj.LastRunTime), code $($infoMaj.LastTaskResult))"
+  $journalMaj = Join-Path $base 'maj-auto\journal.log'
+  if (Test-Path $journalMaj) { Get-Content -LiteralPath $journalMaj -Encoding UTF8 -Tail 3 | ForEach-Object { Info "  $_" } }
+} else {
+  Info 'Mise à jour automatique : désactivée (installer-tour.ps1 -MiseAJourAuto pour l''activer)'
+}
 if (Test-Path (Join-Path $app '.git')) {
   Info "Copie de production : $(& git -C $app log -1 --format='%h %s (%cd)' --date=short 2>$null)"
   $versionPrec = Join-Path $base 'version-precedente.txt'

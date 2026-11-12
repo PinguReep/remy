@@ -4,6 +4,105 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 (soir) — Mise à jour automatique : revue de sécurité
+
+- **Plus d'élévation.** La tâche « Rémy - mise à jour » tournait en RunLevel
+  Highest, sans invite, toutes les 15 min, sur des fichiers que tout programme
+  du compte peut modifier (son lanceur, la copie de production, `remy.env` lu
+  par `--env-file` — `NODE_OPTIONS` compris —, la config git, `.npmrc`) : un
+  logiciel sans droits devenait administrateur. Elle tourne désormais en
+  Limited. L'élévation ne servait qu'à remplacer la tâche « Rémy » : `-Auto`
+  n'y touche plus, il arrête node, et le lanceur de « Rémy » est devenu une
+  boucle qui le relance (3 s ; 5 chutes en 2 min : 5 min d'attente, notée
+  dans `remy.log` ; un seul lanceur à la fois, mutex de session).
+  `-MiseAJourAuto` (administrateur, une fois) réécrit ce lanceur, réenregistre
+  « Rémy », pose la tâche. `-Auto` ne fait plus `tailscale serve` ni
+  `tailscale status`.
+- **Durcissements gardés** : conhost, PowerShell et git par leur chemin
+  complet (Node et le Planificateur cherchent un nom dans le dossier courant
+  avant le PATH) ; git sans hooks, fsmonitor ni `refs/replace` ;
+  `npm ci --ignore-scripts` (aucun paquet du lockfile n'a de script
+  d'installation) ; `REMY_MAJ_*` ignorées hors `REMY_ENV=test` ; seule l'API
+  `https://api.github.com` ; jeton de **portée** `maj-auto`, 60 s, accepté par
+  `lib/auth.js` pour `GET /api/maj-auto` et `GET /api/version` seulement.
+- **Les contrôles** : la requête demande `branch=main&event=push`, et
+  `evaluerControles` n'accepte que `event: push` avec `repository` ET
+  `head_repository` = le dépôt attendu. Avant, une PR d'un fork (branche
+  nommée `main`, même commit) pouvait bloquer indéfiniment, et une PR verte
+  pouvait valider un envoi rouge.
+- **Occupé** : une écriture ne compte que d'une session valide (un corps
+  lent sans session sur `/api/login` retenait les mises à jour) ; occupé plus
+  de 6 h d'affilée : signalé dans Réglages. L'installeur vérifie avant la
+  sauvegarde (plus de sauvegarde toutes les 15 min pour rien), après, puis
+  attend jusqu'à 10 min juste avant d'arrêter node.
+- **Retour raté** : `retourEchoue` est gardé et redit à chaque passage
+  (jamais « à jour », jamais une autre installation) tant que Rémy n'annonce
+  pas le commit de la copie.
+- Aussi : verrou de l'installeur à la main en création exclusive
+  (`FileMode.CreateNew`) ; minuterie de 45 min qui tue tout l'arbre
+  (`taskkill /T /F`) ; `If-None-Match` sur `/commits/main` (un 304 ne compte
+  pas dans la limite).
+
+## 2026-11-12 — La tour se met à jour seule (si on l'active)
+
+Après chaque fusion, il fallait coller `installer-tour.ps1 -Ref <commit>` sur
+la tour. `installer-tour.ps1 -MiseAJourAuto` pose une fois une seconde tâche,
+« Rémy - mise à jour » (15 min, ouverture de session + 5 min), qui lance
+`scripts/maj-auto.mjs`. Choix :
+
+- **La décision en Node, testée** (`lib/maj-auto.js`, `passer()` avec tout
+  injecté) ; PowerShell ne fait que poser la tâche et installer. Le script ne
+  dépend d'aucun paquet : `npm ci` peut remplacer `node_modules` sous lui.
+- **Les contrôles = GitHub Actions sur `main`** (`/actions/runs?head_sha=`,
+  `head_branch` = `main`, la dernière exécution par workflow). « Serveur —
+  tests » est exigé et doit avoir réussi — c'est lui qui passe `npm test` et
+  les scripts de la tour sous Windows ; le reste doit être fini, réussi ou
+  sauté. Pas de « Serveur » une heure après le commit : pas d'installation.
+  Les statuts d'autres services (une ancienne intégration Vercel) ne comptent
+  pas. API publique sans jeton : 1 à 2 requêtes par passage, la limite de
+  60/h respectée jusqu'à sa levée.
+- **Jamais en arrière** : `merge-base --is-ancestor installé candidat`. Un
+  commit de branche installé à la main suspend donc l'automatique (dit en
+  clair) plutôt que d'être écrasé.
+- **« Rémy travaille »** = une génération en cours (`lib/arret.js`), un job
+  qui tourne (`lib/jobs.js`, en mémoire : la sauvegarde et la réflexion de la
+  nuit en sont), un appel au modèle (garde de charge) ou une écriture HTTP en
+  cours (POST/PUT/PATCH/DELETE, comptées dans `routeApi`). Exposé par
+  `GET /api/maj-auto`, avec un jeton de session que le script signe avec
+  `SESSION_SECRET` (même format que `lib/auth.js`, vérifié par un test). La
+  sauvegarde « avant-maj » de l'installeur peut durer : `-Auto` revérifie
+  juste après elle, avant de toucher à la copie (code 3, rien de changé).
+  Rémy injoignable deux passages de suite : on installe (il ne sert personne,
+  la version suivante le répare peut-être).
+- **Vérifier puis revenir** : `/api/version` doit annoncer le candidat. Sinon,
+  `git checkout` de la version d'avant PUIS son installeur (`-Retour`) : le
+  retour passe par l'installeur éprouvé, pas par celui qu'on vient d'installer.
+  Le candidat est « refusé » à vie ; un arrêt AVANT tout changement
+  (sauvegarde impossible) n'est pas un refus : réessais espacés (15 min → 6 h).
+- **La sauvegarde n'est jamais contournée** : la tâche n'a pas `-SansSauvegarde`.
+- **Un verrou pour tout le monde** (`maj-auto\verrou.json`, création
+  exclusive, périmé à la mort de son processus ou après 2 h) : l'installeur à
+  la main le prend aussi et refuse de démarrer pendant un passage.
+- **La raison d'un arrêt de l'installeur** lui est écrite en UTF-8 (`-Auto`) :
+  relayée par PowerShell 5.1, la sortie perd les accents. D'abord par un `trap`
+  de portée script — erreur : son `continue` (mode `Continue`) reprend après le
+  bloc englobant, pas après l'instruction ; la CI Windows l'a pris en défaut
+  (`-Uninstall` sans tailscale sautait son `return`, puis le `throw` « Indique
+  la version », et déroulait une installation). Remplacé par un
+  `try/catch/finally` autour du seul chemin d'installation, après les sorties
+  anticipées : le catch écrit la raison et relance la même erreur, le finally
+  rend le verrou. Chaque passage en `Continue` (tailscale, Node deux fois)
+  vérifie sa commande par `Get-Command` : aucune erreur terminale n'y reste
+  possible, et une qui surviendrait arrêterait l'installation avant tout
+  changement. La CI vérifie qu'un `-Uninstall` (sans tailscale, puis sans
+  node, git ni tailscale dans le PATH) rend 0, se dit désinstallé et ne lance
+  rien d'autre.
+- **La pause est un fichier** (`pause.json`), pas un réglage de la base : la
+  tâche la lit même quand Rémy ne répond pas. Réglages › Diagnostic la pose
+  (`PUT /api/maj-auto`), capacité `maj-auto-v1`. `REMY_MAJ_AUTO=off` coupe côté tour.
+- L'installeur appelé par la tâche ne reçoit pas les variables de `remy.env`
+  par l'environnement : il le relit lui-même, exactement comme à la main.
+
 ## 2026-11-12 — Prochaines heures, et « Ce que Rémy a compris »
 
 Deux questions de Sam : « qu'est-ce que je fais là, ce soir, demain matin, et
