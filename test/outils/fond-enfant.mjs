@@ -20,7 +20,7 @@ jobs.planifier("essai-coupe", { cle: "essai-coupe:2026-11-12", entree: { jour: "
 
 process.on("message", async (m) => {
   if (m === "ceder") {
-    const repos = await jobs.cederPourMiseAJour({ reposMs: 3_000 });
+    const { repos } = await jobs.cederPourMiseAJour({ reposMs: 3_000 });
     process.send({ repos, occupation: occupation(), job: jobs.jobParCle("essai-coupe:2026-11-12") });
   }
 });
