@@ -442,7 +442,8 @@ test("routes : /api/maj-auto dit l'occupation et l'état ; la pause s'écrit pou
     assert.equal((await client.occupation()).occupe, false);
     // Une écriture en cours (un envoi qui n'est pas fini), d'une vraie session : occupé.
     const lente = (cookie) => {
-      const q = http.request(`${base}/api/memory`, { method: "PUT", headers: { "Content-Type": "application/json", "Content-Length": "100", ...(cookie ? { Cookie: cookie } : {}) } });
+      // (Pas /api/memory : derrière le verrou de « Ce que Rémy a compris », elle répond 423 sans lire le corps.)
+      const q = http.request(`${base}/api/reglages`, { method: "PUT", headers: { "Content-Type": "application/json", "Content-Length": "100", ...(cookie ? { Cookie: cookie } : {}) } });
       q.on("error", () => {});
       q.write("{");
       return q;
