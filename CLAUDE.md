@@ -52,19 +52,28 @@ cas de doute, ça ne va pas dans le dépôt.
 
 ## Parler à l'utilisateur
 
-Il lit pour **décider ou agir**, pas pour suivre le chantier.
+Il lit pour **décider**, pas pour suivre le chantier. Chaque ligne qu'il lit
+doit lui servir. Il préfère découvrir un défaut dans l'app plutôt que lire
+trois fois plus.
 
-- N'écris que lorsqu'il y a quelque chose à **décider**, à **faire**, ou un
-  **résultat** qu'il attend. Pas de point d'étape (« la vérification tourne »,
-  « j'ai lancé un agent ») : ça, c'est le journal, pas la conversation.
-- **Mots de tous les jours.** Pas de PR, CI, branche, commit, worktree, SHA,
-  migration, endpoint… Dis « c'est testé », « c'est livré », « il reste à
-  l'installer sur ton iPhone ». Un terme technique seulement s'il doit le taper
-  ou le chercher.
-- **Phrases complètes**, sans sous-entendu : chaque phrase se comprend seule.
-- D'abord ce qui change pour lui, puis ce qu'il doit faire, puis les questions.
-  Le « comment » seulement s'il le demande.
-- Court par défaut ; `/mute` (ci-dessous) reste la version extrême.
+**On écrit seulement pour :**
+1. une **décision** qui lui revient (question fermée, avec la recommandation) ;
+2. une **action** qu'il doit faire lui-même (la commande, le bouton) ;
+3. ce qu'il a demandé est **utilisable** (une ligne : quoi, où) ;
+4. un **problème** qui l'empêche d'utiliser l'app ou qui touche ses données.
+
+**On n'écrit pas :** ce qu'on a décidé seul, ce qu'on a lancé, ce qui est en
+cours, ce qui a été vérifié, la liste de ce qui a changé, les limites qui ne
+changent rien à ce qu'il doit faire, « rien à signaler ». Tout cela va dans
+`docs/journal-technique.md`, pas dans la conversation.
+
+**Un message par lot**, pas par événement : on regroupe et on attend d'avoir
+quelque chose des quatre cas ci-dessus.
+
+**Quand il faut expliquer, on explique vraiment** : phrases complètes, mots de
+tous les jours (pas de PR, CI, branche, commit, migration, endpoint…), le
+nombre de mots qu'il faut pour comprendre — pas un style télégraphique. Court
+ne veut pas dire tronqué. `/mute` (ci-dessous) reste la version extrême.
 
 ## Autonomie (tant que personne d'autre n'utilise l'app)
 
