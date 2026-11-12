@@ -176,6 +176,10 @@ extension ElementJour {
         e.bloquee = t.bloquee
         e.raison = t.raison
         e.etiquettes = t.etiquettes
+        e.bloqueePar = t.bloqueePar
+        e.debloque = t.debloque
+        e.attente = t.attente
+        e.menaceBlocage = t.menaceBlocage
         return e
     }
 
@@ -187,6 +191,10 @@ extension ElementJour {
         var t = TacheResume(id: id, titre: titre, echeance: echeance, projet: projet, priorite: priorite,
                             bloquee: bloquee, raison: raison, duree: duree)
         t.etiquettes = etiquettes
+        t.bloqueePar = bloqueePar
+        t.debloque = debloque
+        t.attente = attente
+        t.menaceBlocage = menaceBlocage
         return t
     }
 }

@@ -23,20 +23,27 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages, { remplace = null, aRemplacer = false } = {}) => Object.freeze({ id, serie, date, titre, capacite, pages, remplace, aRemplacer });
 
 export const CATALOGUE = [
-  n("pieces-jointes", 11, "12 nov.", "Joindre un fichier à Rémy", "pieces-v1", [
-    p("trombone", "Le trombone, ou Ctrl+V", "Dans Rémy, le trombone à gauche du champ joint une image, un PDF ou un texte (.txt, .md) ; coller une capture ou déposer un fichier marche aussi. 4 pièces de 10 Mo au plus par message."),
-    p("oeil", "Ce que Rémy en lit", "Un texte, un PDF : leur contenu. Une image : son texte reconnu par la tour, et sa description si le modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non (essai : Réglages › Diagnostic)."),
-    p("cadenas", "Gardée chez toi", "L'original reste chiffré sur ta tour : tu le revois dans le fil (clic pour l'agrandir ou le télécharger). Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
-  ]),
-  n("maj-auto", 10, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
-    p("rafraichir", "Ce qui passe ses contrôles", "Une fois activée sur la tour, elle installe d'elle-même ce qui arrive sur main, seulement si tous ses contrôles ont réussi, et jamais pendant que Rémy travaille. Sinon, elle revient à la version d'avant."),
-    p("pause", "La voir, la mettre en pause", "Réglages › Diagnostic : « Mise à jour automatique », activée ou non, la dernière (commit, jour, réussie ou annulée et pourquoi), et un interrupteur pour la mettre en pause."),
-  ]),
+  // Série 9 (12/11) : une seule mise à jour, quatre tutoriels — présentés en
+  // deux feuilles (PAGES_MAX), dans cet ordre.
   n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
     p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
     p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),
     p("etoile", "Ce que Rémy a compris", "Réglages › Ce qui compte : Rémy propose un classement de tes projets, avec ce qu'il a vu. « C'est ça », ↑ ↓ ou « Pas une priorité » ; seul ce que tu confirmes devient « sert ta priorité n°1 »."),
   ], { remplace: "priorites" }),
+  n("dependances-taches", 9, "12 nov.", "Une tâche qui en attend une autre", "taches-dependances-v1", [
+    p("pause", "« Bloquée par… »", "Dans « Gérer » d'une tâche : « Choisir la tâche qu'elle attend… », cherche par son nom. Tant que l'autre n'est pas finie, Rémy ne te la propose jamais, et sa ligne dit « Bloquée par … » ; l'autre dit « Débloque … »."),
+    p("fleche", "Elle se débloque seule", "Termine celle qu'elle attend (ici, ou dans Motion) : Rémy te dit qu'elle est débloquée, et l'Historique le garde. Motion ne connaît pas ce lien : il peut la planifier quand même."),
+    p("remy", "Rémy le propose", "Décris un projet en étapes (« d'abord le garage, puis le carrossier ») : Rémy propose les tâches avec leur ordre, et rien n'est créé avant ton « Oui »."),
+  ]),
+  n("pieces-jointes", 9, "12 nov.", "Joindre un fichier à Rémy", "pieces-v1", [
+    p("trombone", "Le trombone, ou Ctrl+V", "Dans Rémy, le trombone à gauche du champ joint une image, un PDF ou un texte (.txt, .md) ; coller une capture ou déposer un fichier marche aussi. 4 pièces de 10 Mo au plus par message."),
+    p("oeil", "Ce que Rémy en lit", "Un texte, un PDF : leur contenu. Une image : son texte reconnu par la tour, et sa description si le modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non (essai : Réglages › Diagnostic)."),
+    p("cadenas", "Gardée chez toi", "L'original reste chiffré sur ta tour : tu le revois dans le fil (clic pour l'agrandir ou le télécharger). Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
+  ]),
+  n("maj-auto", 9, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
+    p("rafraichir", "Ce qui passe ses contrôles", "Une fois activée sur la tour, elle installe d'elle-même ce qui arrive sur main, seulement si tous ses contrôles ont réussi, et jamais pendant que Rémy travaille. Sinon, elle revient à la version d'avant."),
+    p("pause", "La voir, la mettre en pause", "Réglages › Diagnostic : « Mise à jour automatique », activée ou non, la dernière (commit, jour, réussie ou annulée et pourquoi), et un interrupteur pour la mettre en pause."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),

@@ -247,7 +247,23 @@ export function detailTache(t, { enRetard = false, noms = [] } = {}) {
 }
 
 /** « En attente · J'attends le devis » (MarqueBloquee). */
-export const marqueBloquee = (raison) => (raison ? `En attente · ${raison}` : "En attente");
+/**
+ * La marque d'une tâche qui attend : « Bloquée par « X » » (une autre tâche,
+ * taches-dependances-v1), sinon « En attente · raison » (état manuel).
+ */
+export const marqueBloquee = (raison, par = null) => {
+  if (Array.isArray(par) && par.length) return `Bloquée par « ${par[0].nom || "une autre tâche"} »${par.length > 1 ? ` (+${par.length - 1})` : ""}`;
+  return raison ? `En attente · ${raison}` : "En attente";
+};
+/** Sur la bloquante : « Débloque « Y » » (ce qui attend qu'elle soit finie), ou null. */
+export const marqueDebloque = (d) => (Array.isArray(d) && d.length ? `Débloque « ${d[0].nom || "une autre tâche"} »${d.length > 1 ? ` (+${d.length - 1})` : ""}` : null);
+/** « Y est débloquée. » après la fin d'une bloquante (les `debloquees` rendues par la tour). */
+export function phraseDebloquees(d) {
+  const noms = (Array.isArray(d) ? d : []).map((x) => x?.nom).filter(Boolean);
+  if (!noms.length) return Array.isArray(d) && d.length ? `${d.length > 1 ? `${d.length} tâches débloquées` : "Une tâche est débloquée"} : elle${d.length > 1 ? "s" : ""} peu${d.length > 1 ? "vent" : "t"} commencer.` : null;
+  if (noms.length === 1) return `« ${noms[0]} » est débloquée : elle peut commencer.`;
+  return `« ${noms[0]} » et ${noms.length - 1 === 1 ? `« ${noms[1]} »` : `${noms.length - 1} autres`} sont débloquées.`;
+}
 
 /** « Et 3 autres en retard. » quand la tour n'envoie pas toutes les lignes. */
 export function plusEnRetard(retard) {

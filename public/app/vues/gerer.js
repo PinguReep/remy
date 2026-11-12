@@ -10,10 +10,11 @@
 // Les tâches cochées d'ici restent listées dans la journée (« Cochées tout à
 // l'heure », clé locale remy-cochees) avec leur « Annuler ».
 import { api, ecrire, nouvelId, seg, sait, natureEchec, tourJoignable } from "../api.js";
-import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, heure, quand, duree, isoLocal, versChampDate, depuisChampDate, occupe, demanderTexte, texteErreur, local } from "../ui.js";
+import { h, ajouterA, vider, icone, bouton, dire, direErreur, feuille, heure, quand, duree, isoLocal, versChampDate, depuisChampDate, occupe, demanderTexte, texteErreur, local, squelette } from "../ui.js";
 import { couleurProjet } from "../couleurs.js";
 import * as fileEnvoi from "../file-envoi.js";
-import { BROUILLONS, PRIORITES, impactProlongation, brouillonRaisonnable, brouillonDeplacer, horairesTache, quandSansCreneau, horairesRendezVous, marqueBloquee, lienAgendaJour, cocheesDuJour, jourISO, etatMoment, dureeTotale } from "../analyse/journee.js";
+import { BROUILLONS, PRIORITES, impactProlongation, brouillonRaisonnable, brouillonDeplacer, horairesTache, quandSansCreneau, horairesRendezVous, marqueBloquee, marqueDebloque, phraseDebloquees, lienAgendaJour, cocheesDuJour, jourISO, etatMoment, dureeTotale } from "../analyse/journee.js";
+import { candidats, phraseVide } from "../analyse/dependances.js";
 
 const DELAI_ANNULATION = 2000;
 
@@ -287,7 +288,10 @@ async function conclure(c, parti) {
   const defaireLa = doitDefaire(c.id);
   majCochee(c.id, { envoi: "fait", ledgerId, defaire: false });
   if (defaireLa) await defaireArrivee(c.id, c.titre, { apres: relireApres });
-  else dire(`Envoyé : « ${c.titre} » est marqué fait.`, { genre: "succes", duree: 5000, action: ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(c.id, { apres: relireApres }) } : null });
+  else {
+    const libres = phraseDebloquees(parti?.results?.[0]?.debloquees);
+    dire(`Envoyé : « ${c.titre} » est marqué fait.${libres ? ` ${libres}` : ""}`, { genre: "succes", duree: libres ? 7000 : 5000, action: ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(c.id, { apres: relireApres }) } : null });
+  }
   relireApres?.();
 }
 /** Défait une coche arrivée après son « Annuler » ; sans ledgerId, Rémy ne peut pas : on dit quoi faire. */
@@ -344,7 +348,9 @@ export function terminer(e, { retirer, remettre, apres, journee, ouvrir, context
       majCochee(e.id, { envoi: "fait", ledgerId: r?.ledgerId ?? null, defaire: false });
       if (defaireLa) await defaireArrivee(e.id, e.titre, { apres });
       else {
-        dire(`« ${e.titre} » est marqué fait dans Motion.`, { genre: "succes", duree: 5000, action: r?.ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(e.id, { apres }) } : null });
+        // Ce qu'elle retenait est libéré (taches-dependances-v1) : c'est dit.
+        const libres = phraseDebloquees(res?.debloquees);
+        dire(`« ${e.titre} » est marqué fait dans Motion.${libres ? ` ${libres}` : ""}`, { genre: "succes", duree: libres ? 7000 : 5000, action: r?.ledgerId ? { libelle: "Annuler", faire: () => annulerCoche(e.id, { apres }) } : null });
         if (journee) import("./et-maintenant.js").then((m) => m.proposerSuite(e.titre, { id: e.id, journee, ouvrir, apres, contexte })).catch((err) => console.warn("Et maintenant ?", err));
       }
       apres?.();
@@ -608,7 +614,12 @@ export function gerer(e, opts = {}) {
     ].filter(Boolean);
     if (puces.length) ajouterA(contenu, h("div", { class: "rangee serree", style: { marginBottom: "6px" } }, puces));
     ajouterA(contenu, h("p", { class: `gerer-horaires mono${e.type === "sans-creneau" && e.retard ? " risque-texte" : ""}` }, e.type === "sans-creneau" ? quandSansCreneau(e) : horairesTache(e, maintenant)));
-    if (e.bloquee) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)));
+    const parTache = Array.isArray(e.bloqueePar) && e.bloqueePar.length > 0;
+    if (e.bloquee) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar)));
+    // En attente À LA FOIS d'une tâche et de quelque chose (le bon de commande) : les deux se disent.
+    if (parTache && e.attente) ajouterA(contenu, h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)));
+    if (e.menaceBlocage) ajouterA(contenu, h("p", { class: "marque-bloquee risque-texte" }, icone("alerte"), e.menaceBlocage));
+    if (marqueDebloque(e.debloque)) ajouterA(contenu, h("p", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(e.debloque)));
   }
 
   // « En parler à Rémy » : la question prête ; avec une prolongation choisie, « Est-ce raisonnable ? ».
@@ -704,8 +715,10 @@ export function gerer(e, opts = {}) {
     lignes.append(ligneAction("Demander à Rémy de le déplacer", "Il propose, tu valides avant tout changement", "deplacer", () => demander(brouillonDeplacer(e))));
   } else if (tache) {
     if (sait("taches-etat-v1")) {
-      lignes.append(e.bloquee
-        ? ligneAction("Reprendre", e.raison || "Elle n'est plus en attente", "lecture", fermerPuis(() => bloquer(e, false, null, { apres })))
+      // « Reprendre » lève l'attente manuelle, jamais un « bloquée par » (il se retire plus bas).
+      const manuelle = e.bloquee && (!e.bloqueePar?.length || e.attente);
+      lignes.append(manuelle
+        ? ligneAction("Reprendre", (e.bloqueePar?.length ? null : e.raison) || "Elle n'est plus en attente", "lecture", fermerPuis(() => bloquer(e, false, null, { apres })))
         : ligneAction("Mettre en attente", "Mise de côté, avec ce que tu attends", "pause", async () => {
           const raison = await demanderTexte("En attente de quoi ?", { etiquette: "Raison (facultative)", libelle: "Mettre en attente", placeholder: "Le devis, une réponse de Hugo…", aide: "Elle reste dans ta journée, marquée « en attente », et le conseil du moment ne te la propose plus." }).catch(() => null);
           if (raison === null) return;
@@ -716,12 +729,17 @@ export function gerer(e, opts = {}) {
     if (sait("taches-etat-v2")) {
       if (e.commencee) lignes.append(ligneAction("Remettre à sa place", "Annule « commencer » : Motion garde son créneau", "arriere", () => { f.fermer(); arreter(e, { apres }); }));
       else if (e.type === "sans-creneau" || etatMoment(e, maintenant) === "avenir") {
-        lignes.append(ligneAction("Commencer maintenant", `Elle devient ta tâche en cours, pour ${duree(e.duree ?? (e.debut != null ? dureeTotale(e) : 30))}`, "lecture", fermerPuis(() => commencer(e, { apres }))));
+        // Bloquée par une tâche pas finie : possible quand même, mais dit.
+        const attend = e.bloqueePar?.length ? `Elle attend encore « ${e.bloqueePar[0].nom || "une autre tâche"} » : commencer quand même` : null;
+        lignes.append(ligneAction("Commencer maintenant", attend || `Elle devient ta tâche en cours, pour ${duree(e.duree ?? (e.debut != null ? dureeTotale(e) : 30))}`, "lecture", fermerPuis(() => commencer(e, { apres }))));
       }
     }
   }
   lignes.append(parler);
   ajouterA(contenu, h("hr", { class: "separateur" }), lignes);
+
+  // « Bloquée par… » (taches-dependances-v1) : elle attend qu'une autre tâche soit finie.
+  if (tache && sait("taches-dependances-v1")) ajouterA(contenu, sectionBloqueePar(e, { apres }));
 
   // Catégorie : la suggestion des mots pré-cochée (pas enregistrée tant que Sam ne valide pas).
   if (tache && sait("categories-taches-v1")) {
@@ -806,6 +824,92 @@ export function gerer(e, opts = {}) {
     terminer(e, { retirer, remettre, apres, contexte, ouvrir, journee: placee ? journee : null });
   } })] : null;
   f = feuille({ titre: e.titre, sousTitre: enCours && e.type !== "rdv" ? "En cours" : e.type === "sans-creneau" ? "Sans créneau" : null, contenu, pied, large: true, classe: `feuille-gerer${e.fait ? " faite" : ""}` });
+  return f;
+}
+
+// --- « Bloquée par… » : une tâche qui attend qu'une autre soit finie (taches-dependances-v1) ---
+
+/** Enregistre la liste COMPLÈTE des bloquantes (la tour la remplace) ; rend la nouvelle, ou null si refusée. */
+async function enregistrerBloquantes(e, ids) {
+  const r = await api(`/api/taches/${seg(e.id)}/etat`, { methode: "PUT", corps: { bloqueePar: ids } });
+  return Array.isArray(r?.bloqueePar) ? r.bloqueePar : [];
+}
+
+/**
+ * La section de Gérer : ce qu'elle attend (chaque ligne se retire, 44 px),
+ * « Ajouter… » (chercher parmi les tâches ouvertes), et ce que Motion ignore.
+ * Chaque geste dit son succès (avec « Annuler ») ou son échec.
+ */
+function sectionBloqueePar(e, { apres } = {}) {
+  const zone = h("div", { class: "bloquee-par" });
+  const sec = h("section", { class: "groupe-gestes" }, h("h3", { class: "titre-section" }, "Bloquée par…"), zone);
+  let liste = Array.isArray(e.bloqueePar) ? [...e.bloqueePar] : [];
+  const changer = async (nouvelle, btn, phrase) => {
+    const avant = liste;
+    await occupe(btn, async () => {
+      try {
+        liste = await enregistrerBloquantes(e, nouvelle.map((x) => x.id));
+        e.bloqueePar = liste;
+        dessiner();
+        dire(phrase(liste), { genre: "succes", action: { libelle: "Annuler", faire: async () => {
+          try {
+            liste = await enregistrerBloquantes(e, avant.map((x) => x.id));
+            e.bloqueePar = liste;
+            if (zone.isConnected) dessiner();
+            dire(`« ${e.titre} » : remise comme avant.`, { genre: "succes" });
+          } catch (err) {
+            direErreur(err, null, "Pas annulé");
+          }
+          apres?.();
+        } } });
+        apres?.();
+      } catch (err) {
+        if (err?.nature !== "auth") dire(`« ${e.titre} » : ${raisonDe(err)}.`, { genre: "erreur" });
+      }
+    });
+  };
+  const dessiner = () => {
+    vider(zone,
+      liste.length
+        ? h("ul", { class: "bloquee-par-liste" }, liste.map((b) => h("li", { class: "bloquee-par-ligne" },
+          icone("pause"), h("span", { class: "nom" }, b.nom || "Une tâche"),
+          bouton("Retirer", { classe: "texte petit", etiquette: `Ne plus attendre « ${b.nom || "cette tâche"} »`, onclick: (ev) => changer(liste.filter((x) => x.id !== b.id), ev.currentTarget, (l) => (l.length ? `« ${e.titre} » n'attend plus « ${b.nom} ».` : `« ${e.titre} » n'attend plus aucune tâche.`)) }))))
+        : h("p", { class: "aide" }, "Elle n'attend aucune autre tâche."),
+      bouton(liste.length ? "Ajouter une autre tâche…" : "Choisir la tâche qu'elle attend…", { classe: "papier", icone: "plus", onclick: () => choisirBloquante(e, liste, (b, btn) => changer([...liste, b], btn, () => `« ${e.titre} » attend « ${b.nom} » : Rémy ne te la proposera pas avant.`)) }),
+      h("p", { class: "aide gerer-note" }, "Elle se débloque seule quand celle qu'elle attend est terminée. Motion ne connaît pas ce lien (son API ne le permet pas) : il peut la planifier quand même, Rémy ne te la proposera pas avant."));
+  };
+  dessiner();
+  return sec;
+}
+
+/** La feuille de choix : chercher par nom parmi les tâches ouvertes (liste de la tour, aucune requête Motion). */
+function choisirBloquante(e, deja, choisir) {
+  const champ = h("input", { class: "champ", type: "search", placeholder: "Chercher une tâche…", "aria-label": "Chercher une tâche", autocomplete: "off", autofocus: true });
+  const zone = h("div", { class: "choix-bloquante", "aria-live": "polite" }, squelette([0.8, 0.6, 0.7]));
+  const f = feuille({ titre: "Elle attend quelle tâche ?", sousTitre: `« ${e.titre} » ne commencera qu'une fois celle-ci finie`, contenu: h("div", null, champ, zone), classe: "feuille-choix-bloquante" });
+  let lu = null;
+  const dessiner = () => {
+    if (!lu) return;
+    const l = candidats(lu.taches, { tacheId: e.id, deja, liens: lu.liens, recherche: champ.value });
+    if (!l.length) return vider(zone, h("p", { class: "aide vide" }, phraseVide({ total: lu.taches.filter((t) => t.id !== e.id).length, recherche: champ.value })));
+    vider(zone, h("ul", { class: "choix-bloquante-liste" }, l.map((t) => h("li", null, h("button", { type: "button", class: "gerer-ligne", onclick: async (ev) => {
+      const btn = ev.currentTarget;
+      await choisir({ id: t.id, nom: t.titre }, btn);
+      f.fermer();
+    } }, icone("pause"), h("span", { class: "textes" }, h("strong", null, t.titre), h("span", { class: "detail" }, [t.projet, t.echeance ? `échéance ${quand(t.echeance, { avecHeure: false })}` : null].filter(Boolean).join(" · ") || "Sans échéance")), icone("chevron", "chevron-ligne"))))));
+  };
+  const lire = () => {
+    vider(zone, squelette([0.8, 0.6, 0.7]));
+    api("/api/dependances").then((r) => {
+      lu = { taches: Array.isArray(r?.taches) ? r.taches : [], liens: Array.isArray(r?.liens) ? r.liens : [] };
+      if (!lu.taches.length && r?.motion?.etat && r.motion.etat !== "ok") {
+        return vider(zone, h("p", { class: "aide vide" }, r.motion.etat === "off" ? "Motion n'est pas branché sur ta tour : il n'y a pas de tâche à choisir." : "La liste Motion n'est pas encore lue : réessaie dans un instant."), bouton("Réessayer", { classe: "papier petit", onclick: lire }));
+      }
+      dessiner();
+    }).catch((err) => vider(zone, h("p", { class: "erreur-champ" }, `Les tâches n'ont pas pu être lues : ${raisonDe(err)}.`), bouton("Réessayer", { classe: "papier petit", onclick: lire })));
+  };
+  champ.addEventListener("input", dessiner);
+  lire();
   return f;
 }
 

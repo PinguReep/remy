@@ -408,11 +408,17 @@ final class NouveautesTests: XCTestCase {
     }
 
     /// Série 10 (12/11) : les pièces jointes du chat, seulement quand la tour
-    /// sait les recevoir et les lire (pieces-v1) : le trombone en dépend.
+    /// sait les recevoir et les lire (pieces-v1) : le trombone en dépend ; et
+    /// les tâches « bloquées par » une autre (taches-dependances-v1). Deux
+    /// tutoriels de la même mise à jour, une seule feuille.
     func testLaSerie10AttendLaTour() {
         let serie10 = Nouveautes.catalogue.filter { $0.serie == 10 }
-        XCTAssertEqual(serie10.map(\.id), ["pieces-jointes"])
+        XCTAssertEqual(serie10.map(\.id), ["pieces-jointes", "dependances-taches"])
         XCTAssertEqual(serie10[0].capacite, PiecesJointes.capacite)
+        XCTAssertEqual(serie10[1].capacite, "taches-dependances-v1")
+        let deux = app([PiecesJointes.capacite, "taches-dependances-v1"], reglages: suite())
+        deux.nouveautes.verifier()
+        XCTAssertEqual(Set(deux.nouveautes.affichees?.entrees.map(\.id) ?? []), ["pieces-jointes", "dependances-taches"])
         XCTAssertLessThanOrEqual(serie10.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
         let a = app([PiecesJointes.capacite], reglages: suite())
         a.nouveautes.verifier()

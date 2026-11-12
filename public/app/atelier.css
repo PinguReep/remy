@@ -391,6 +391,18 @@ dialog.palette { top: 12vh; margin-top: 0; width: min(640px, calc(100vw - 32px))
 .detail-maintenant { color: var(--encre-2); margin-top: 6px; }
 .gestes-maintenant { margin-top: 14px; }
 .marque-bloquee { display: inline-flex; align-items: center; gap: 6px; color: var(--encre-2); font-size: 13px; margin-top: 6px; }
+/* « Bloquée par » / « Débloque » (taches-dependances-v1) */
+.marque-debloque { display: inline-flex; align-items: center; gap: 6px; color: var(--encre-3); font-size: 13px; margin-top: 4px; }
+.gerer .marque-bloquee, .gerer .marque-debloque { display: flex; margin: 4px 0 0; }
+.bloquee-par { display: grid; gap: 8px; }
+.bloquee-par-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.bloquee-par-ligne { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px 0 10px; border-radius: 12px; background: var(--fond-2); }
+.bloquee-par-ligne .nom { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bloquee-par-ligne .btn { min-height: 44px; }
+.bloquee-par > .btn { justify-self: start; min-height: 44px; }
+.feuille-choix-bloquante .champ[type="search"] { width: 100%; margin-bottom: 10px; min-height: 44px; }
+.choix-bloquante-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: min(60vh, 460px); overflow-y: auto; }
+.choix-bloquante .vide { padding: 12px 4px; }
 
 /* La journée à l'échelle */
 .journee-echelle { position: relative; }

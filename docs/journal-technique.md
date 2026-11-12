@@ -4,6 +4,57 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Une tâche « bloquée par » une autre
+
+Une tâche peut attendre qu'une ou plusieurs autres soient finies (« faire
+réparer la voiture au garage », puis « la porter chez le carrossier ») —
+capacité `taches-dependances-v1`, migration 11 (`dependances_taches`).
+
+- **Ce que Motion permet.** Lu dans la doc de l'API publique (Get / List /
+  Create / Update task) : aucun champ de dépendance, ni en lecture ni en
+  écriture (le seul lien entre tâches est `parentRecurringTaskId`). L'app
+  Motion a des « blockers », l'API ne les expose pas. Le lien vit donc dans
+  Remy, et **Motion continue de planifier la tâche bloquée** comme si de rien
+  n'était. Remy ne la propose jamais « à faire maintenant », et le dit (Gérer,
+  nouveautés, consigne du chat). Aucune écriture automatique chez Motion pour
+  compenser (pas de `startDate` repoussée en douce) : c'est un choix à faire
+  avec Sam.
+- **Le modèle.** Une ligne = « `tache_id` attend `bloquante_id` », levée
+  (`levee_a`, `levee_raison`) plutôt qu'effacée. Ni auto-blocage, ni boucle
+  (parcours des bloquantes, même lointaines), 8 bloquantes au plus. L'ancien
+  « en attente » (raison en texte) reste à part : on peut attendre « le bon de
+  commande » sans dépendre d'une tâche, ou les deux (`attente: true`).
+- **Le déblocage seul.** (1) Une coche dans Rémy (`/api/motion/apply`,
+  `terminer`) lève les liens de la bloquante ; le résultat porte
+  `debloquees` et l'app dit « Y est débloquée ». « Annuler » sur la coche les
+  rétablit (et marque la trace annulée). (2) Chaque lecture **complète** de la
+  liste Motion (`quandTachesLues`, jamais une liste tronquée, gardée ou vide)
+  : une bloquante qui n'y est plus est finie ou supprimée dans Motion — sa
+  tâche se débloque. Chaque déblocage laisse une entrée `source: "remy"`,
+  origine « Automatisation », action « Débloquée » dans l'Historique.
+- **Partout où Rémy choisit.** Les marques sont posées sur les tâches BRUTES
+  (`carnet.annoterTaches`) avant tout calcul : journée, conseil, briefing du
+  matin, bilan du soir, menaces, semaine, Projets, À trancher. Une tâche
+  bloquée par une autre est `bloquee: true` (ce que toutes les apps, même
+  anciennes, écartent déjà), avec `raison: « après « A » »` pour celles qui
+  ne lisent pas `bloqueePar`. Effet de bord voulu : l'« en attente » manuel
+  est désormais aussi écarté du briefing du matin (il ne l'était pas : le
+  briefing partait des tâches brutes). Une échéance que le blocage menace
+  (la bloquante finit après, ou elle est due sous 48 h) devient une menace
+  `raison: "bloquee"`, avec « Repousser » après la bloquante.
+- **Rémy le propose.** `motion_proposer` accepte `ref` et `bloquee_par` sur les
+  créations ; vérifiés côté tour (sortie de modèle = non fiable) : ref d'une
+  création de la proposition (le nom exact est ramené à sa ref) ou tâche
+  Motion ouverte, ni boucle ni auto-blocage. Rangés en `bloquee_par` (refs) et
+  `attend_ids` (Motion), plus `apres` (les noms) pour la carte. Les liens sont
+  posés APRÈS l'écriture, avec les identifiants que Motion vient de rendre ;
+  une étape décochée ou ratée ne lie à rien (`liensRates`). Rien n'est créé
+  sans le « Oui » de Sam.
+- **Contrat HTTP.** `PUT /api/taches/:id/etat` : `bloqueePar` (liste
+  complète, `[]` pour tout retirer) ; clé absente = inchangé. `GET
+  /api/dependances` : les liens et les tâches ouvertes (liste en cache, aucune
+  requête Motion de plus).
+
 ## 2026-11-12 — Les pièces jointes du chat (`pieces-v1`)
 
 On ne pouvait rien joindre dans la conversation. Désormais : le trombone, coller

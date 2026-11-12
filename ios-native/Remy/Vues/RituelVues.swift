@@ -84,7 +84,7 @@ struct CarteMenacee: View {
         }
         // « Caser » : la question est préparée pour Rémy, jamais envoyée seule.
         avant()
-        let texte = "« \(m.titre) » est menacée : \(m.phrase) Trouve-lui un créneau avant son échéance, sans toucher à mes rendez-vous."
+        let texte = m.questionPourRemy
         Task {
             if !(await app.preparer(texte, dansFil: Fils.journee(Date()))) {
                 app.dire("Tu as déjà un message en cours pour Rémy : envoie-le ou efface-le d'abord.")

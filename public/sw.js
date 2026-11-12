@@ -9,7 +9,7 @@ const STATIC_ASSETS = [
   "/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png",
   "/app/vues/boite.js", "/app/vues/trancher.js", "/app/analyse/rituel.js",
   "/fonts/inter-latin.woff2", "/fonts/jbmono-latin.woff2", "/fonts/source-serif-4-latin-400.woff2", "/fonts/source-serif-4-latin-600.woff2",
-  "/app/analyse/journee.js", "/app/analyse/conseil.js", "/app/analyse/semaine.js", "/app/vues/conseil.js", "/app/vues/et-maintenant.js", "/app/vues/semaine.js",
+  "/app/analyse/journee.js", "/app/analyse/dependances.js", "/app/analyse/conseil.js", "/app/analyse/semaine.js", "/app/vues/conseil.js", "/app/vues/et-maintenant.js", "/app/vues/semaine.js",
   "/app/atelier.css", "/app/main.js", "/app/api.js", "/app/ui.js", "/app/bureau.js", "/app/file-envoi.js", "/app/palette.js", "/app/couleurs.js",
   "/app/non-lus.js", "/app/menu.js", "/app/analyse/remy.js",
   "/app/analyse/dates.js", "/app/analyse/genre.js", "/app/analyse/motion.js", "/app/analyse/privee.js", "/app/analyse/conversations.js",

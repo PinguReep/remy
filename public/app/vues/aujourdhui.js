@@ -17,7 +17,7 @@ import { h, ajouterA, vider, icone, bouton, dire, direErreur, squelette, blocErr
 import { couleurProjet } from "../couleurs.js";
 import { gerer, terminer, decaler, commencer, choixTache, choixActivite, resteSur, finEffective, estActivite, marquerFaite, cochees, renoncerCochee, suivreFileCochees, chargerEtiquettes, nomsEtiquettes, preparerQuestion } from "./gerer.js";
 import { phraseMotion, motionFrais, ALERTES_MOTION, REESSAI_MOTION } from "../analyse/motion.js";
-import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, plusEnRetard, estPerimee, phraseRafraichi, phrasesSources, phraseGestes, phraseCaptures, carteConnaissance } from "../analyse/journee.js";
+import { BROUILLONS, titreFilJournee, sansCochees, detailLigne, detailTache, marqueBloquee, marqueDebloque, plusEnRetard, estPerimee, phraseRafraichi, phrasesSources, phraseGestes, phraseCaptures, carteConnaissance } from "../analyse/journee.js";
 import * as fileEnvoi from "../file-envoi.js";
 import { creerConseil } from "./conseil.js";
 import { creerSemaine } from "./semaine.js";
@@ -411,7 +411,8 @@ function dessinerMaintenant() {
     ajouterA(carte, 
       h("div", { class: "tete" }, pucesProjet(e.projet), h("span", { class: "marque-en-cours" }, "EN COURS")),
       h("h2", null, e.titre),
-      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison)) : null,
+      e.bloquee ? h("p", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(e.raison, e.bloqueePar)) : null,
+      marqueDebloque(e.debloque) ? h("p", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(e.debloque)) : null,
       h("div", { class: "reste", "aria-label": `${r.texteReste} ${r.unite} sur ${duree(r.total)}` },
         h("span", { class: "gros" }, r.texteReste), h("span", { class: "unite" }, r.unite), h("span", { class: "sur" }, `· sur ${duree(r.total)}`)),
       h("div", { class: "barre-temps", role: "img", "aria-label": `Temps écoulé : ${Math.round(prog * 100)} % du créneau` },
@@ -595,7 +596,7 @@ function blocFrise(e, { m, top, haut, col, n }) {
   const st = etat(e, m);
   const rdv = e.type === "rdv";
   const detail = [`${heure(e.debut)} – ${heure(finEffective(e))}`, detailLigne(e, m, nomsEtiquettes(e.etiquettes))].filter(Boolean).join(" · ");
-  const marques = [e.retard && st !== "passe" ? "En retard" : null, e.bloquee ? marqueBloquee(e.raison) : null].filter(Boolean);
+  const marques = [e.retard && st !== "passe" ? "En retard" : null, e.bloquee ? marqueBloquee(e.raison, e.bloqueePar) : null, marqueDebloque(e.debloque)].filter(Boolean);
   let caseB = null;
   if (!rdv) {
     caseB = h("button", { type: "button", class: "case", role: "checkbox", "aria-checked": "false", "aria-label": `Terminer « ${e.titre} »`, title: "Terminer", onclick: (ev) => { ev.stopPropagation(); terminer(e, st === "encours" ? gestesDe(e) : sansSuite(e)); } });
@@ -632,7 +633,9 @@ function ligneTache(t, { retard = false } = {}) {
     h("div", { class: "corps cliquable", role: "button", tabindex: "0", onclick: () => gerer(e, gestesDe(e)), onkeydown: (ev) => { if (ev.key === "Enter") gerer(e, gestesDe(e)); } },
       h("div", { class: "titre-ligne" }, t.titre),
       detail ? h("div", { class: `meta${retard ? " risque-texte" : ""}` }, retard ? icone("alerte") : null, h("span", null, detail)) : null,
-      t.bloquee ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(t.raison)) : null),
+      t.bloquee ? h("div", { class: "marque-bloquee" }, icone("pause"), marqueBloquee(t.raison, t.bloqueePar)) : null,
+      t.menaceBlocage ? h("div", { class: "marque-bloquee risque-texte" }, icone("alerte"), t.menaceBlocage) : null,
+      marqueDebloque(t.debloque) ? h("div", { class: "marque-debloque" }, icone("fleche"), marqueDebloque(t.debloque)) : null),
     bouton("", { classe: "texte", icone: "curseurs", etiquette: `Gérer « ${t.titre} »`, onclick: () => gerer(e, gestesDe(e)) }));
 }
 
