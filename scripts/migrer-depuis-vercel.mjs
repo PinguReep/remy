@@ -43,8 +43,14 @@ async function telecharger() {
     .map((c) => c.split(";")[0])
     .join("; ");
   if (!cookie) throw new Error("Pas de cookie de session reçu.");
+  // Une app qui a le verrou de « Ce que Rémy a compris » (verrou-v1) garde
+  // l'export derrière : le même mot de passe le déverrouille ; une app d'avant
+  // répond 404 ici, sans conséquence.
+  let deverrou = "";
+  const v = await fetch(`${depuis}/api/verrou`, { method: "POST", headers: { "Content-Type": "application/json", Origin: depuis, Cookie: cookie }, body: JSON.stringify({ password: mdp }) }).catch(() => null);
+  if (v?.ok) deverrou = (v.headers.getSetCookie?.() || [v.headers.get("set-cookie")]).filter(Boolean).map((c) => c.split(";")[0]).join("; ");
   process.stdout.write("Export en cours… ");
-  const r = await fetch(`${depuis}/api/export`, { headers: { Cookie: cookie } });
+  const r = await fetch(`${depuis}/api/export`, { headers: { Cookie: [cookie, deverrou].filter(Boolean).join("; ") } });
   if (r.status === 404) throw new Error("L'ancienne app n'a pas encore la route /api/export (PR non déployée ?).");
   if (!r.ok) throw new Error(`Export refusé (${r.status}) : ${(await r.text()).slice(0, 200)}`);
   const e = await r.json();

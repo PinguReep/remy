@@ -21,6 +21,7 @@ import { surMenu } from "../menu.js";
 import { CLE_PAR_DEFAUT, parDefaut } from "./noter.js";
 import { verrouRecherchePrivee, CE_QUI_SORT } from "../analyse/privee.js";
 import * as R from "../analyse/recherche-reglages.js";
+import { carteVerrou, barreVerrou, etatVerrou } from "./arbre.js";
 
 let racine;
 let ctx;
@@ -1061,9 +1062,20 @@ const SECTIONS_RENDU = {
       m = await api("/api/memory");
     } catch (err) {
       if (err?.nature === "auth") throw err;
+      // Derrière le verrou de « Ce que Rémy a compris » (verrou-v1) : la tour refuse sans mot de passe ressaisi.
+      if (err?.statut === 423) {
+        const c = carteVerrou(await etatVerrou(), { titre: "Ce que Rémy sait de toi", ouvert: () => dessinerSection() });
+        c.prepend(retour());
+        return c;
+      }
       return carte("Ce que Rémy sait de toi", null, erreurSection(`Impossible de lire la mémoire de Rémy : ${texteErreur(err)}`, () => dessinerSection()));
     }
-    return memoireVue({ texteServeur: m?.text || "", majA: m?.updatedAt || null, edition: false });
+    const vue = memoireVue({ texteServeur: m?.text || "", majA: m?.updatedAt || null, edition: false });
+    if (!sait("verrou-v1")) return vue;
+    const etat = await etatVerrou();
+    if (!etat || etat.verrouille) return vue;
+    vue.querySelector("h2")?.after(barreVerrou(etat, { ferme: () => dessinerSection() }));
+    return vue;
   },
 
   async priorites() {

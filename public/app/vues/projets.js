@@ -19,6 +19,9 @@ import { marqueBloquee, marqueDebloque, marqueNoeud } from "../analyse/journee.j
 import { sectionNoeud } from "./gerer.js";
 import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes, ouvrirQuand } from "./rappels.js";
 import { ouvrirTri } from "./tri-rappels.js";
+// L'arbre comme vue de ce que Rémy a compris (arbre-v1, verrou-v1).
+import { lireArbre, lignesNoeud, sectionFiche, champFiche, carteVerrou, barreVerrou, etatVerrou, pastilleEl, oublierArbre, cheminEl } from "./arbre.js";
+import * as AR from "../analyse/arbre.js";
 
 let racine;
 let ctx;
@@ -30,7 +33,7 @@ let tri = null; // la feuille du tri des rappels (#/projets/rappels/tri l'ouvre 
 let hist = null; // l'historique affiché (filtre, pages)
 
 function vides() {
-  return { projets: null, erreurProjets: null, projetsLus: 0, dossiers: null, listes: null, rappels: null, etiquettes: null, dashboard: null, conversations: null };
+  return { projets: null, erreurProjets: null, projetsLus: 0, dossiers: null, listes: null, rappels: null, etiquettes: null, dashboard: null, conversations: null, arbre: null, erreurArbre: null };
 }
 
 export default {
@@ -127,7 +130,24 @@ async function charger({ discret = false } = {}) {
   if (erreurs.length && !discret) direErreur(erreurs[0], () => charger(), "Une partie du carnet n'a pas pu être lue");
   dessinerMaitre();
   dessinerDetail();
+  chargerArbre({ frais: discret });
 }
+
+// Les fiches de l'arbre (arbre-v1) : lues à côté, jamais bloquantes. Sans
+// elles, les lignes gardent leurs comptes d'avant.
+async function chargerArbre({ frais = false } = {}) {
+  if (!sait("arbre-v1")) return;
+  try {
+    donnees.arbre = await lireArbre({ frais });
+    donnees.erreurArbre = null;
+  } catch (err) {
+    donnees.erreurArbre = err;
+  }
+  if (!racine) return;
+  dessinerMaitre();
+  if (selection && ["motion", "dossier"].includes(selection.type)) dessinerDetail();
+}
+const vueNoeud = (noeud) => donnees.arbre?.parNoeud?.get(noeud) || null;
 const recharger = () => charger({ discret: true });
 
 // Ce qui n'est lu qu'à l'affichage de Projets : la mémoire et la journée
@@ -149,9 +169,11 @@ const journee = () => {
 };
 
 // --- Le maître ---
-function element(type, id, texte, n, { sous = false, icone: ic, couleur, meta, fin, menu, href, courant } = {}) {
+function element(type, id, texte, n, { sous = false, niveau = null, icone: ic, couleur, meta, fin, menu, href, courant } = {}) {
   const actif = courant ?? (!href && ouvert(type, id));
-  const a = h("a", { class: `element-maitre${sous ? " sous" : ""}${meta ? " projets-deux-lignes" : ""}`, href: href || `#/projets/${type}${id ? `/${encodeURIComponent(id)}` : ""}`, "aria-current": actif ? "page" : null },
+  // Un retrait par niveau (arbre-v1) : la profondeur se voit.
+  const a = h("a", { class: `element-maitre${sous ? " sous" : ""}${niveau != null ? ` arbre-noeud${niveau > 0 ? " arbre-sous" : ""}` : ""}${meta ? " projets-deux-lignes" : ""}`, href: href || `#/projets/${type}${id ? `/${encodeURIComponent(id)}` : ""}`, "aria-current": actif ? "page" : null,
+    style: niveau != null ? { "--niveau": String(niveau) } : null },
     couleur ? h("span", { class: "puce", style: { padding: 0, minHeight: 0, background: "none" } }, h("span", { class: "point", style: { background: couleur } })) : ic ? icone(ic) : null,
     meta ? h("span", { class: "projets-textes" }, h("span", { class: "t" }, texte), meta) : h("span", { class: "t" }, texte),
     fin || null, n != null ? h("span", { class: "n" }, String(n)) : null);
@@ -180,9 +202,12 @@ function groupeMotion(ok) {
     etat,
     p?.motion !== false ? projets.flatMap((x) => [ok(x.nom) ? element("motion", x.id, x.nom, null, {
       couleur: couleurProjet(x.nom),
-      meta: [petit(C.detailProjet(x)), x.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(x.enRetard)) : null,
+      niveau: sait("arbre-v1") ? 0 : null,
+      // Ce que Rémy a compris (arbre-v1) à la place des comptes, quand il en a quelque chose.
+      meta: [lignesNoeud(vueNoeud(`motion:${x.id}`)) || petit(C.detailProjet(x)), x.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(x.enRetard)) : null,
         marqueNoeud(x) ? h("span", { class: "marque-bloquee" }, icone("pause"), marqueNoeud(x)) : null],
-      fin: x.statut ? h("span", { class: "pastille discrete projets-statut" }, x.statut) : null,
+      // Le statut Motion : seulement sans la pastille de l'arbre (elle en tient compte, et le dit dans sa source).
+      fin: x.statut && !lignesNoeud(vueNoeud(`motion:${x.id}`)) ? h("span", { class: "pastille discrete projets-statut" }, x.statut) : null,
       menu: () => actionsProjet(x),
     }) : null, ...arbre(`motion:${x.id}`, 1, ok, dossiers)]) : null,
     p?.sansProjet > 0 ? h("p", { class: "aide projets-note" }, C.phraseSansProjet(p.sansProjet)) : null,
@@ -191,7 +216,8 @@ function groupeMotion(ok) {
 
 function arbre(parent, niveau, ok, dossiers) {
   return C.enfants(dossiers, parent).filter((d) => d.id !== "idees").flatMap((d) => [
-    ok(d.nom) ? element("dossier", d.id, d.nom, null, { sous: niveau > 0, icone: C.iconeDossier(d), meta: C.metaDossier(d, dossiers) ? petit(C.metaDossier(d, dossiers)) : null, menu: () => actionsDossier(d),
+    ok(d.nom) ? element("dossier", d.id, d.nom, null, { sous: niveau > 0 && !sait("arbre-v1"), niveau: sait("arbre-v1") ? niveau : null, icone: C.iconeDossier(d),
+      meta: lignesNoeud(vueNoeud(`dossier:${d.id}`)) || (C.metaDossier(d, dossiers) ? petit(C.metaDossier(d, dossiers)) : null), menu: () => actionsDossier(d),
       // Bloqué (lui, ou son parent) : projets-bloques-v1.
       fin: marqueNoeud(d) ? h("span", { class: "pastille discrete projets-bloque", title: marqueNoeud(d), "aria-label": marqueNoeud(d) }, icone("pause")) : null }) : null,
     ...arbre(d.id, niveau + 1, ok, dossiers)]);
@@ -224,6 +250,8 @@ function dessinerMaitre() {
     ok("Rappels") ? element("rappels", null, "Rappels", rappelsActifs || null, { icone: "cloche", courant: selection?.type === "rappels" }) : null,
     ok("Catégories") ? element("categories", null, "Catégories", donnees.etiquettes?.length || null, { icone: "curseurs" }) : null,
     ok("Historique") ? element("historique", null, "Historique", null, { icone: "horloge" }) : null,
+    // Ce que Rémy a compris (verrou-v1) : derrière un vrai verrou.
+    sait("verrou-v1") && ok("Ce que Rémy a compris") ? element("compris", null, "Ce que Rémy a compris", null, { icone: "cadenas", meta: petit("Ses fiches, tes priorités, sa mémoire — verrouillé") }) : null,
     // Comme sur l'iPhone (Projets › Conversations) ; sur le téléphone, les
     // onglets du bas n'ont pas la place d'une sixième entrée.
     sait("conversations-externes-v1") && ok("Conversations") ? element("conversations", null, "Conversations", null, {
@@ -232,6 +260,7 @@ function dessinerMaitre() {
       href: "#/reglages/memoire", icone: "personne", meta: petit(C.resumeMemoire(memoire)) }) : null));
   vider(refs.maitre, groupes);
   refs.grille.classList.toggle("detail-ouvert", Boolean(selection));
+  refs.grille.classList.toggle("avec-arbre", Boolean(donnees.arbre));
 }
 
 // --- Chercher (12/11) ---
@@ -337,6 +366,7 @@ function dessinerDetail() {
     if (type === "rappels") return detailRappels(id);
     if (type === "categories") return detailCategories();
     if (type === "historique") return detailHistorique();
+    if (type === "compris") return detailCompris();
   } catch (err) {
     console.error(err);
     vider(refs.detail, h("section", { class: "carte" }, blocErreur(err, recharger)));
@@ -358,9 +388,22 @@ const titreSection = (texte, compte, { danger = false } = {}) =>
 // --- Projets Motion ---
 
 /** « En parler à Rémy » : la question préparée dans une nouvelle conversation, jamais envoyée seule. */
-function enParler(p) {
+function enParler(p, noeud = `motion:${p.id}`) {
   local.ecrire("remy-question", { texte: C.questionProjet(p.nom), a: Date.now() });
+  // La conversation qui en naît est rattachée à ce nœud (arbre-v1).
+  if (sait("arbre-v1")) local.ecrire("remy-noeud", { noeud, a: Date.now() });
   ctx.aller("remy/nouvelle");
+}
+
+/** La fiche en tête du détail d'un nœud : squelette tant que l'arbre se lit, rien sur une tour d'avant. */
+function ficheDuNoeud(noeud, nom) {
+  if (!sait("arbre-v1")) return null;
+  const vue = vueNoeud(noeud);
+  if (vue) return sectionFiche(vue, { parNoeud: donnees.arbre.parNoeud, enParler: true, apres: () => dessinerMaitre() });
+  if (donnees.erreurArbre) return h("div", { class: "arbre-fiche" }, h("p", { class: "aide" }, `Ce que Rémy a compris de « ${nom} » n'a pas pu être lu : ${texteErreur(donnees.erreurArbre)}`),
+    bouton("Réessayer", { classe: "papier petit", icone: "rafraichir", onclick: (e) => occupe(e.currentTarget, () => chargerArbre({ frais: true })) }));
+  if (!donnees.arbre) return h("div", { class: "arbre-fiche" }, squelette([0.5, 0.8, 0.6]));
+  return null;
 }
 const actionsProjet = (p) => [
   { libelle: "En parler à Rémy", icone: "remy", faire: () => enParler(p) },
@@ -390,6 +433,7 @@ function detailMotion(id) {
   vider(refs.detail, carteDetail("Projet Motion", p.nom, [
     bouton("En parler à Rémy", { classe: "papier petit", icone: "remy", titre: "Prépare la question dans une nouvelle conversation, sans l'envoyer", onclick: () => enParler(p) }),
     avecDossiers ? bouton("Sous-projet", { classe: "papier petit", icone: "plus", onclick: () => nouveauDossier(`motion:${p.id}`) }) : null],
+  ficheDuNoeud(`motion:${p.id}`, p.nom),
   h("div", { class: "projets-tete-projet" },
     h("p", { class: "aide" }, C.detailProjet(p)),
     p.enRetard > 0 ? h("span", { class: "risque" }, icone("alerte"), C.phraseRetard(p.enRetard)) : null,
@@ -534,11 +578,13 @@ function detailDossier(id) {
     ? bouton("Aussi dans Motion…", { classe: "papier petit", icone: "pile", titre: "Faire de ce dossier un projet Motion", onclick: (e) => aussiDansMotion(d, e.currentTarget) }) : null;
   vider(refs.detail, carteDetail(d.id === "idees" ? "Rien n'est planifié" : parentNom ? `Dans « ${parentNom} »` : d.projetMotion ? "Dossier, aussi dans Motion" : "Dossier", d.nom,
     d.id === "idees" ? null : [
+      sait("arbre-v1") ? bouton("En parler à Rémy", { classe: "papier petit", icone: "remy", titre: "Prépare la question dans une nouvelle conversation, rattachée à cette branche", onclick: () => enParler(d, `dossier:${d.id}`) }) : null,
       motionBtn,
       bouton("", { classe: "texte icone", icone: "plus", etiquette: "Nouveau sous-projet", titre: "Nouveau sous-projet", onclick: () => nouveauDossier(d.id) }),
       bouton("", { classe: "texte icone", icone: "crayon", etiquette: "Renommer", titre: "Renommer", onclick: () => renommerDossier(d) }),
       bouton("", { classe: "texte icone", icone: "corbeille", etiquette: "Supprimer le dossier", titre: "Supprimer le dossier", onclick: () => supprimerDossier(d) })],
     d.id === "idees" ? null : [
+      d.absent ? null : ficheDuNoeud(`dossier:${d.id}`, d.nom),
       sait("projets-bloques-v1") && !d.absent ? sectionNoeud({ id: `dossier:${d.id}`, titre: d.nom, bloquePar: d.bloquePar, debloque: d.debloque, fini: d.fini, parentBloque: d.parentBloque }, { apres: recharger }) : null,
       sous.length ? [titreSection("Sous-projets", sous.length), h("ul", { class: "liste" }, sous.map(ligneDossier))] : null,
       titreSection("Tâches rangées ici", taches.length),
@@ -1079,6 +1125,81 @@ function dessinerHistorique() {
   }
   const suite = hist.suite && hist.entrees.length ? h("button", { type: "button", class: "btn texte large projets-plus-ancien", onclick: (e) => plusAncien(e.currentTarget) }, h("span", { class: "lib" }, "Plus ancien")) : null;
   vider(refs.detail, carteDetail("Ce qui a été écrit dans Motion et l'agenda", "Historique", null, filtres, corps, suite));
+}
+
+// --- Ce que Rémy a compris (verrou-v1) ---
+// Par l'arbre : ce que Rémy tient pour vrai sur tes projets et d'où ça vient —
+// ce que tu as confirmé, ce que tu as écrit, ce qu'il propose (et de quoi il le
+// tire), ce que sa mémoire en dit, tes priorités. Servi par GET /api/compris,
+// que la tour refuse (423) sans mot de passe ressaisi récemment.
+
+let compris = null; // { etat, donnees } : la dernière lecture, pour redessiner après un geste
+async function detailCompris() {
+  if (!sait("verrou-v1")) return vider(refs.detail, h("section", { class: "carte" }, retourMobile(), vide("Pas encore sur ta tour", "Mets la tour à jour pour voir ce que Rémy a compris, derrière un verrou.")));
+  vider(refs.detail, h("section", { class: "carte" }, squelette([0.6, 0.9, 0.7, 0.8])));
+  const [lu, etat] = await Promise.all([api("/api/compris", { delai: 25000 }).then((d) => ({ d }), (err) => ({ err })), etatVerrou()]);
+  if (selection?.type !== "compris") return;
+  if (lu.err) {
+    if (lu.err.nature === "auth") return;
+    if (lu.err.statut === 423) {
+      compris = null;
+      return vider(refs.detail, h("div", null, retourMobile(), carteVerrou(etat, { ouvert: () => detailCompris() })));
+    }
+    return vider(refs.detail, h("section", { class: "carte" }, retourMobile(), blocErreur(lu.err, () => detailCompris())));
+  }
+  compris = { etat: lu.d.verrou || etat, donnees: lu.d };
+  dessinerCompris();
+}
+
+function dessinerCompris() {
+  if (!compris || selection?.type !== "compris") return;
+  const { donnees: d, etat } = compris;
+  const parNoeud = new Map((d.noeuds || []).map((x) => [x.noeud, x]));
+  const maj = (vue) => {
+    const i = d.noeuds.findIndex((x) => x.noeud === vue.noeud);
+    if (i >= 0) d.noeuds[i] = { ...d.noeuds[i], ...vue };
+    oublierArbre();
+    chargerArbre({ frais: true });
+    dessinerCompris();
+  };
+  const prio = d.priorites || {};
+  const blocNoeud = (x) => {
+    const pq = AR.valeur(x, "pourquoi");
+    const pt = AR.valeur(x, "point");
+    const aConfirmer = AR.CHAMPS.filter((c) => x.propositions?.[c]);
+    return h("li", { class: "compris-noeud", style: { "--niveau": String(x.niveau || 0) } },
+      h("div", { class: "compris-noeud-tete" },
+        h("a", { href: AR.hrefNoeud(x.noeud), class: "compris-nom" }, icone(x.type === "motion" ? "pile" : "dossier"), h("span", null, x.nom)),
+        pastilleEl(AR.pastille(x), { court: true }),
+        x.priorite?.rang ? h("span", { class: "pastille discrete" }, `priorité n°${x.priorite.rang}`) : null),
+      h("dl", { class: "compris-faits" },
+        pq ? [h("dt", null, "Pourquoi"), h("dd", null, h("span", { class: pq.origine === "deduit" ? "deduit" : "" }, pq.texte), h("small", null, AR.origine(pq)))] : null,
+        pt ? [h("dt", null, "Où on en est"), h("dd", null, h("span", { class: pt.origine === "deduit" ? "deduit" : "" }, pt.texte), h("small", null, AR.origine(pt)))] : null,
+        (x.memoire || []).length ? [h("dt", null, "Sa mémoire"), h("dd", null, (x.memoire || []).map((m) => h("p", { class: "compris-memoire" }, `« ${m.texte} »`, h("small", null, m.section ? ` — section « ${m.section} »` : ""))))] : null,
+        x.conversations?.length ? [h("dt", null, "Conversations"), h("dd", null, x.conversations.slice(0, 3).map((c) => h("a", { class: "puce", href: `#/remy/${encodeURIComponent(c.id)}` }, h("span", null, c.titre))))] : null,
+        !pq && !pt && !(x.memoire || []).length ? [h("dt", null, "—"), h("dd", { class: "aide" }, "Rémy n'en sait rien de plus que son nom.")] : null),
+      aConfirmer.length ? h("details", { class: "compris-a-confirmer" }, h("summary", null, `${aConfirmer.length} proposition${aConfirmer.length > 1 ? "s" : ""} à confirmer`),
+        aConfirmer.map((c) => champFiche(x, c, { apres: maj }))) : null);
+  };
+  const noeuds = d.noeuds || [];
+  const confirmes = noeuds.reduce((n, x) => n + AR.CHAMPS.filter((c) => x.fiche?.[c]?.origine === "confirme").length, 0);
+  const ecrits = noeuds.reduce((n, x) => n + AR.CHAMPS.filter((c) => x.fiche?.[c]?.origine === "ecrit").length, 0);
+  const proposes = noeuds.reduce((n, x) => n + Object.keys(x.propositions || {}).length, 0);
+  vider(refs.detail, carteDetail("Derrière le verrou", "Ce que Rémy a compris",
+    null,
+    barreVerrou(etat, { ferme: () => detailCompris() }),
+    h("p", { class: "aide-carte compris-intro" }, "Ce que Rémy tient pour vrai sur tes projets, et d'où ça vient. Trois sortes : ce que tu as ", h("strong", null, "confirmé"), ` (${confirmes}), ce que tu as `, h("strong", null, "écrit"), ` (${ecrits}), et ce qu'il `, h("strong", null, "propose"), ` (${proposes}), toujours avec sa source. Seul ce que tu confirmes ou écris lui sert comme un fait.`),
+    titreSection("Tes priorités, dans l'ordre", (prio.classees || []).length),
+    (prio.classees || []).length ? h("ol", { class: "compris-priorites" }, prio.classees.map((p) => h("li", null, h("strong", null, p.titre), p.projetNom ? h("span", { class: "aide" }, ` — projet « ${p.projetNom} »`) : null, p.pourquoi ? h("p", { class: "aide" }, `Pourquoi : ${p.pourquoi}`) : null)))
+      : h("p", { class: "aide" }, "Aucune priorité confirmée : Réglages › Ce qui compte, Rémy t'en propose un classement."),
+    (prio.ecrites || []).length ? h("p", { class: "aide" }, `Écrites mais pas encore confirmées : ${prio.ecrites.map((p) => `« ${p.titre} »`).join(", ")}.`) : null,
+    titreSection("Projet par projet", noeuds.length),
+    noeuds.length ? h("ul", { class: "compris-arbre" }, noeuds.map(blocNoeud)) : vide(null, "Pas encore de projet ni de dossier."),
+    titreSection("Sa mémoire"),
+    h("p", { class: "aide" }, d.memoire?.vide ? "La mémoire de Rémy est vide." : `${d.memoire?.lignesUtilisees || 0} ligne${(d.memoire?.lignesUtilisees || 0) > 1 ? "s" : ""} de sa mémoire parle${(d.memoire?.lignesUtilisees || 0) > 1 ? "nt" : ""} de tes projets${d.memoire?.majA ? ` (mise à jour ${AR.age(d.memoire.majA)})` : ""}. `, h("a", { href: "#/reglages/memoire" }, "La lire ou la corriger"), "."),
+    titreSection("Ce qu'il ne sait pas déduire"),
+    h("p", { class: "aide" }, d.limites || ""),
+    d.motion === "erreur" ? h("p", { class: "aide" }, "Motion n'a pas répondu : les déductions tirées des tâches manquent pour l'instant.") : null));
 }
 
 function detailHistorique() {

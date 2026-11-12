@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   "/app/analyse/heures.js", "/app/vues/heures.js",
   "/app/analyse/pieces.js", "/app/vues/pieces.js",
   "/app/analyse/planning-remy.js", "/app/vues/planning-remy.js",
+  "/app/analyse/arbre.js", "/app/vues/arbre.js",
 ];
 
 self.addEventListener("install", (e) => {

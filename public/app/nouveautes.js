@@ -23,10 +23,15 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages, { remplace = null, aRemplacer = false } = {}) => Object.freeze({ id, serie, date, titre, capacite, pages, remplace, aRemplacer });
 
 export const CATALOGUE = [
-  // Série 10 (12/11, second lot) : la série 9 tient déjà sur deux feuilles (11 pages).
+  // Série 10 (12/11, second lot) : la série 9 tient déjà sur deux feuilles (11 pages) ; la 10 en a 8.
   n("projets-bloques", 10, "12 nov.", "Un projet qui en attend un autre", "projets-bloques-v1", [
     p("pause", "« Bloqué par… » sur un projet", "Dans Projets, ouvre un projet Motion ou un dossier : « Choisir ce qu'il attend… », une tâche ou un autre projet. Aucune de ses tâches ne t'est proposée avant ; elles disent « Projet … bloqué par … »."),
     p("coche", "Fini, et c'est dit", "Un projet est fini pour Rémy quand toutes ses tâches sont terminées (dans la liste Motion lue en entier), ou quand tu touches « C'est fini ». Ce qui l'attendait se débloque, et l'Historique le garde."),
+  ]),
+  n("arbre-compris", 10, "12 nov.", "L'arbre de tes projets, et ce que Rémy a compris", "arbre-v1", [
+    p("dossier", "Où on en est, sans cliquer", "Dans Projets, chaque branche dit son état (une forme et un mot), où on en est ou pourquoi, et depuis quand. Ce que Rémy propose est en pointillés avec « ? » : il le déduit de Motion, de tes priorités et de ce qui passe par lui."),
+    p("coche", "« C'est ça », ou corrige", "Ouvre une branche : chaque champ dit d'où il vient. « C'est ça » le confirme (la source est gardée), « Corriger » le met avec tes mots, « Pas ça » l'écarte. Dans une conversation, « Rattacher à… » montre la branche en tête."),
+    p("cadenas", "Derrière un vrai verrou", "Projets › Ce que Rémy a compris : ce qu'il tient pour vrai et ce que sa mémoire dit de toi, après avoir ressaisi le mot de passe. La tour le vérifie à chaque demande ; le disque, lui, n'est pas chiffré."),
   ]),
   n("planning-remy", 10, "12 nov.", "Le planning de Rémy, à côté de Motion", "planning-remy-v1", [
     p("deplacer", "Deux plannings côte à côte", "Sur la carte « Demain et 7 jours », « Rémy et Motion » (aussi dans Ctrl+K) : Rémy calcule son propre planning avec les mêmes tâches, et montre d'abord là où il ne fait pas comme Motion. Rien n'est écrit chez Motion."),

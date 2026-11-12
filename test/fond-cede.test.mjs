@@ -535,6 +535,7 @@ test("refus de la pause (plafond) : POST /api/maj-auto/ceder répond 409 pause_p
 test("inventaire : chaque fichier qui appelle le modèle est classé ; aucune boucle planifiée ne l'appelle hors job", () => {
   const CLASSES = {
     "analyses.js": "demande (analyses d'un tap)",
+    "arbre-routes.js": "demande (« Proposer avec le modèle local » d'un tap, sur un nœud de l'arbre)",
     "capture.js": "demande (capture, lecture d'image)",
     "cerveau.js": "adaptateur (passe par la garde de charge)",
     "chat.js": "demande (réponse, routeur, titre et mémoire) ; compactage auto → enFond",
