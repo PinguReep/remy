@@ -113,10 +113,23 @@ jobs:
           # la sortie d'erreur d'un programme redirigée ne doit pas arrêter l'étape.)
           function Lancer($drapeau) {
             $ErrorActionPreference = 'Continue'
-            $sortie = powershell -NoProfile -ExecutionPolicy Bypass -File $installeur $drapeau 2>&1
+            $sortie = @(powershell -NoProfile -ExecutionPolicy Bypass -File $installeur $drapeau 2>&1 | ForEach-Object { "$_" })
             $code = $LASTEXITCODE
             $sortie | ForEach-Object { Write-Host "    $_" }
-            return $code
+            return [pscustomobject]@{ Code = $code; Sortie = ($sortie -join "`n") }
+          }
+          # Apres -Uninstall : code 0, le message de desinstallation, et RIEN
+          # d'autre (ni sauvegarde, ni version notee, ni verrou, ni installation).
+          # Le 12/11, un trap faisait sauter le return du bloc -Uninstall quand
+          # tailscale manquait : l'installeur deroulait une installation.
+          function Verifier-Desinstallation($r, $cas) {
+            if ($r.Code -ne 0) { Write-Error "$cas : code $($r.Code)"; exit 1 }
+            if ($r.Sortie -notmatch 'sinstall') { Write-Error "$cas : pas de message de desinstallation"; exit 1 }
+            if ($r.Sortie -match 'Sauvegarde|Indique la version|Node |npm|Version introuvable|tourne :') { Write-Error "$cas : l'installeur a continue apres la desinstallation"; exit 1 }
+            foreach ($f in 'version-precedente.txt', 'maj-auto\verrou.json', 'run-remy.ps1') {
+              if (Test-Path (Join-Path $base $f)) { Write-Error "$cas : $f ecrit, une installation a ete lancee"; exit 1 }
+            }
+            if (& $trouver) { Write-Error "$cas : tache toujours la"; exit 1 }
           }
           # 0. Deux drapeaux contraires : refus, rien de pose.
           $ErrorActionPreference = 'Continue'
@@ -125,7 +138,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ($codeContraires -eq 0 -or (& $trouver)) { Write-Error 'Drapeaux contraires acceptes'; exit 1 }
           # 1. -MiseAJourAuto, seul : la tache, ses declencheurs, ses droits.
-          if ((Lancer '-MiseAJourAuto') -ne 0) { Write-Error '-MiseAJourAuto a echoue'; exit 1 }
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto a echoue'; exit 1 }
           $t = & $trouver
           if (-not $t) { Write-Error 'Tache de mise a jour absente'; exit 1 }
           Write-Output "Tache : $($t.TaskName) ; droits $($t.Principal.RunLevel) ; $($t.Principal.LogonType)"
@@ -156,14 +169,20 @@ jobs:
           Write-Output "Passage par le lanceur : code $codeLanceur, etat $($etat.etat)"
           if ($codeLanceur -ne 0 -or $etat.etat -ne 'coupee') { Write-Error 'Le lanceur de la tache ne fait pas son passage'; exit 1 }
           # 3. -SansMiseAJourAuto la retire.
-          if ((Lancer '-SansMiseAJourAuto') -ne 0) { Write-Error '-SansMiseAJourAuto a echoue'; exit 1 }
+          if ((Lancer '-SansMiseAJourAuto').Code -ne 0) { Write-Error '-SansMiseAJourAuto a echoue'; exit 1 }
           if ((& $trouver) -or (Test-Path (Join-Path $base 'maj-auto\tache.json'))) { Write-Error 'Tache toujours la apres -SansMiseAJourAuto'; exit 1 }
-          # 4. -Uninstall la retire aussi (et continue sans tailscale : les passages
-          #    en mode Continue ne sont pas arretes par le trap de l'installeur).
-          if ((Lancer '-MiseAJourAuto') -ne 0) { Write-Error '-MiseAJourAuto (2) a echoue'; exit 1 }
-          if ((Lancer '-Uninstall') -ne 0) { Write-Error '-Uninstall a echoue'; exit 1 }
-          if (& $trouver) { Write-Error 'Tache toujours la apres -Uninstall'; exit 1 }
-          Write-Output 'Tache de mise a jour : posee, lancee, retiree (-SansMiseAJourAuto, -Uninstall) : OK'
+          # 4. -Uninstall la retire aussi, et s'arrete la (tailscale absent du runner).
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto (2) a echoue'; exit 1 }
+          Verifier-Desinstallation (Lancer '-Uninstall') '-Uninstall sans tailscale'
+          # 5. -Uninstall sans node, git ni tailscale dans le PATH : jamais d'installation.
+          if ((Lancer '-MiseAJourAuto').Code -ne 0) { Write-Error '-MiseAJourAuto (3) a echoue'; exit 1 }
+          $cheminAvant = $env:Path
+          $env:Path = "$env:SystemRoot\System32;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+          foreach ($o in 'node', 'git', 'tailscale') { if (Get-Command $o -ErrorAction SilentlyContinue) { Write-Error "$o encore dans le PATH reduit"; exit 1 } }
+          $r = Lancer '-Uninstall'
+          $env:Path = $cheminAvant
+          Verifier-Desinstallation $r '-Uninstall sans node, git ni tailscale'
+          Write-Output 'Tache de mise a jour : posee, lancee, retiree (-SansMiseAJourAuto, -Uninstall) ; -Uninstall ne lance jamais rien d autre : OK'
       - name: Spark — empreinte relevée par l'OpenSSH de Windows
         shell: powershell
         run: |

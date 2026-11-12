@@ -103,8 +103,11 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
 - Installeur de la tour : PowerShell **administrateur** (la tâche planifiée
   « Rémy » est créée ainsi ; sans ces droits, « Accès refusé » au remplacement).
   La tâche « Rémy - mise à jour » a ces droits (RunLevel Highest) pour la même
-  raison ; l'installeur a un `trap` (raison d'arrêt pour la tâche, verrou rendu)
-  qui ne s'applique qu'en mode `Stop` — garder les passages `Continue` tels quels.
+  raison. Jamais de `trap` au niveau du script : son `continue` reprend APRÈS le
+  bloc englobant (un `-Uninstall` sans tailscale sautait son `return` et
+  déroulait une installation, 12/11). La raison d'arrêt et le verrou passent par
+  le `try/catch/finally` du seul chemin d'installation ; tout passage en
+  `Continue` vérifie d'abord sa commande avec `Get-Command`.
 
 ## Mémoire entre les runs
 

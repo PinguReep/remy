@@ -44,10 +44,20 @@ la tour. `installer-tour.ps1 -MiseAJourAuto` pose une fois une seconde tâche,
 - **Un verrou pour tout le monde** (`maj-auto\verrou.json`, création
   exclusive, périmé à la mort de son processus ou après 2 h) : l'installeur à
   la main le prend aussi et refuse de démarrer pendant un passage.
-- **La raison d'un arrêt de l'installeur** lui est écrite en UTF-8 par un
-  `trap` (`-Auto`) : relayée par PowerShell 5.1, la sortie perd les accents.
-  Le `trap` ne s'applique qu'en mode `Stop` : les passages `Continue` (Node,
-  tailscale) se comportent comme avant.
+- **La raison d'un arrêt de l'installeur** lui est écrite en UTF-8 (`-Auto`) :
+  relayée par PowerShell 5.1, la sortie perd les accents. D'abord par un `trap`
+  de portée script — erreur : son `continue` (mode `Continue`) reprend après le
+  bloc englobant, pas après l'instruction ; la CI Windows l'a pris en défaut
+  (`-Uninstall` sans tailscale sautait son `return`, puis le `throw` « Indique
+  la version », et déroulait une installation). Remplacé par un
+  `try/catch/finally` autour du seul chemin d'installation, après les sorties
+  anticipées : le catch écrit la raison et relance la même erreur, le finally
+  rend le verrou. Chaque passage en `Continue` (tailscale, Node deux fois)
+  vérifie sa commande par `Get-Command` : aucune erreur terminale n'y reste
+  possible, et une qui surviendrait arrêterait l'installation avant tout
+  changement. La CI vérifie qu'un `-Uninstall` (sans tailscale, puis sans
+  node, git ni tailscale dans le PATH) rend 0, se dit désinstallé et ne lance
+  rien d'autre.
 - **La pause est un fichier** (`pause.json`), pas un réglage de la base : la
   tâche la lit même quand Rémy ne répond pas. Réglages › Diagnostic la pose
   (`PUT /api/maj-auto`), capacité `maj-auto-v1`. `REMY_MAJ_AUTO=off` coupe côté tour.

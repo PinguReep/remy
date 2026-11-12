@@ -56,17 +56,12 @@ if ($Auto) {
   Remove-Item -LiteralPath $raisonFichier -Force -ErrorAction SilentlyContinue
   try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 }
-# Une erreur qui arrête l'installeur (mode « Stop ») : sa raison pour la tâche,
-# et le verrou d'une installation à la main rendu. Les passages en « Continue »
-# (Node, tailscale) gardent leur comportement : on continue.
-trap {
-  if ($ErrorActionPreference -ne 'Stop') { continue }
-  if ($Auto) {
-    try { [IO.File]::WriteAllText($raisonFichier, "$($_.Exception.Message)", (New-Object Text.UTF8Encoding($false))) } catch {}
-  }
-  if ($verrouPris) { Remove-Item -LiteralPath $verrou -Force -ErrorAction SilentlyContinue }
-  break
-}
+# Pas de `trap` au niveau du script : en mode « Continue », son `continue`
+# reprendrait APRÈS le bloc englobant (un -Uninstall sans tailscale sautait son
+# `return` et déroulait une installation, 12/11). La raison d'un arrêt pour la
+# tâche et le verrou rendu passent par le try/catch/finally qui entoure le seul
+# chemin d'installation, plus bas ; les passages en « Continue » vérifient
+# d'abord que leur commande existe (Get-Command) : rien ne peut y être terminal.
 if ($MiseAJourAuto -and $SansMiseAJourAuto) {
   throw "-MiseAJourAuto ou -SansMiseAJourAuto, pas les deux. Rien n'a été changé."
 }
@@ -107,8 +102,12 @@ function Enregistrer-MajAuto {
   if (-not (Test-Path -LiteralPath $script)) {
     throw "La copie de production ($app) n'a pas encore la mise à jour automatique : installe d'abord un commit qui l'a, en une fois : installer-tour.ps1 -Ref <commit> -MiseAJourAuto. Rien n'a été changé."
   }
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $nodeCmd) {
+    throw "Node introuvable dans le PATH : la tâche « $tacheMaj » en a besoin. Rien n'a été changé."
+  }
   New-Item -ItemType Directory -Force $majDir | Out-Null
-  $nodeExe = (Get-Command node).Source
+  $nodeExe = $nodeCmd.Source
   $runnerMaj = Join-Path $base 'run-maj-auto.ps1'
   $lanceurMaj = @"
 # Lancé par la tâche « $tacheMaj » (installer-tour.ps1 -MiseAJourAuto). Rien de secret ici.
@@ -148,9 +147,11 @@ if ($Uninstall) {
   if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
   }
-  $ErrorActionPreference = 'Continue' # (voir la vérification de Node ci-dessous)
-  & tailscale serve --https=$HttpsPort off 2>$null
-  $ErrorActionPreference = 'Stop'
+  if (Get-Command tailscale -ErrorAction SilentlyContinue) {
+    $ErrorActionPreference = 'Continue' # (voir la vérification de Node ci-dessous)
+    & tailscale serve --https=$HttpsPort off 2>$null
+    $ErrorActionPreference = 'Stop'
+  }
   Write-Output "Rémy arrêté et désinstallé. Le coffre, la base et $envFile sont gardés."
   return
 }
@@ -165,6 +166,13 @@ if (-not $Ref) {
   throw "Indique la version à déployer : -Ref tour-v0.2.0 (tag) ou un commit précis. Rien n'a été changé."
 }
 New-Item -ItemType Directory -Force $base | Out-Null
+
+# === Le chemin d'installation, jusqu'à la fin du fichier ===
+# Une erreur qui l'arrête (mode « Stop ») : sa raison est laissée à la tâche
+# (-Auto), puis l'erreur repart telle quelle ; le verrou d'une installation à la
+# main est rendu dans tous les cas (finally). Pas réindenté : le lanceur plus bas
+# est une chaîne @"…"@ dont la fin doit rester en début de ligne.
+try {
 
 # Jamais deux installations à la fois : la tâche de mise à jour tient un verrou
 # (verrou.json, son numéro de processus) pendant son passage. Une installation
@@ -190,6 +198,9 @@ if (-not $Auto) {
 # d'erreur d'un programme en mode « Stop » arrête le script à la première ligne
 # — et Node écrit un avertissement « ExperimentalWarning » pour SQLite : d'où
 # --no-warnings, et « Continue » le temps de l'appel (testé en CI, 5.1).
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  throw "Node introuvable dans le PATH : installe la version LTS depuis nodejs.org, puis relance l'installeur. Rien n'a été changé."
+}
 $ErrorActionPreference = 'Continue'
 & node --no-warnings -e "try { require('node:sqlite'); process.exit(0) } catch { process.exit(1) }" 2>$null
 $nodeOk = ($LASTEXITCODE -eq 0)
@@ -212,7 +223,7 @@ if ((Test-Path $envFile) -and -not $SansSauvegarde) {
 # (une réponse, la réflexion de la nuit…) ? Alors on s'arrête ici, rien n'est
 # changé, et la tâche repassera (code 3). Pas pour un retour en arrière : la
 # version qui tourne ne répond déjà plus comme il faut.
-if ($Auto -and -not $Retour) {
+if ($Auto -and -not $Retour -and (Get-Command node -ErrorAction SilentlyContinue)) {
   $ErrorActionPreference = 'Continue' # (voir la vérification de Node ci-dessus)
   & node --no-warnings "--env-file=$envFile" (Join-Path $PSScriptRoot 'maj-auto.mjs') --occupe 2>$null | Out-Null
   $codeCalme = $LASTEXITCODE
@@ -426,4 +437,17 @@ elseif (Get-ScheduledTask -TaskName $tacheMaj -ErrorAction SilentlyContinue) {
 } else {
   Write-Output "  maj auto  : désactivée (pour l'activer, une fois : -MiseAJourAuto)"
 }
-if ($verrouPris) { Remove-Item -LiteralPath $verrou -Force -ErrorAction SilentlyContinue }
+
+} catch {
+  # Seules les erreurs terminales arrivent ici : les passages en « Continue »
+  # ci-dessus ne lancent que des commandes vérifiées par Get-Command, et une
+  # erreur y arrêterait l'installation AVANT tout changement (jamais une reprise
+  # ailleurs dans le script, comme le faisait l'ancien trap).
+  $erreur = $_
+  if ($Auto) {
+    try { [IO.File]::WriteAllText($raisonFichier, "$($erreur.Exception.Message)", (New-Object Text.UTF8Encoding($false))) } catch {}
+  }
+  throw $erreur
+} finally {
+  if ($verrouPris) { Remove-Item -LiteralPath $verrou -Force -ErrorAction SilentlyContinue }
+}
