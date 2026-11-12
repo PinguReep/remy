@@ -4,6 +4,17 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Chercher dans Projets
+
+Le champ de Projets (site) ne filtrait que les noms de la colonne ; l'iPhone n'en
+avait pas. Les deux cherchent désormais aussi tâches Motion, idées des dossiers,
+articles des listes et rappels (et leur note), **dans ce que l'écran a déjà lu** :
+pas de nouvelle route, pas d'IA, rien ne part à la frappe. Même logique pure des
+deux côtés (`RemyCore/RechercheProjets.swift`, `public/app/analyse/recherche-projets.js`,
+mêmes cas de test) : début de mot, sans accents ni casse, tous les mots requis,
+avec la normalisation de la recherche des réglages ; chaque résultat porte
+l'écran qu'il ouvre et ses morceaux surlignés, la vue ne fait qu'afficher.
+
 ## 2026-11-11 — Des rappels qui préviennent avant, et sur place
 
 Un rappel n'avait qu'un texte et une date. Il gagne une **note**, des

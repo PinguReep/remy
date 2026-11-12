@@ -5,10 +5,15 @@ import RemyCore
 /// deux touchers au magasin), les rappels, puis tes projets Motion du plus
 /// pressé au plus calme, et ce que Rémy sait de toi. Les projets sont en
 /// lecture seule : ils se modifient dans Motion ou avec Rémy.
+/// Le champ du haut (12/11) cherche dans tout ce qui est déjà lu : projets,
+/// tâches, dossiers, idées, listes, articles, rappels (RechercheProjets).
 struct ProjetsView: View {
     @Environment(AppModel.self) private var app
     @Environment(EtatInterface.self) private var ui
     @State private var memoire = false
+    @State private var recherche = ""
+    @State private var ficheRappel: Rappel?
+    @FocusState private var champActif: Bool
 
     var body: some View {
         @Bindable var ui = ui
@@ -34,54 +39,60 @@ struct ProjetsView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 TitreEcran(titre: "Projets", surTitre: "Où tu mets ton énergie")
-                if app.carnet.disponible || !app.carnet.listes.isEmpty {
-                    SectionListes()
-                    SectionRappels()
-                } else if app.serveur != nil {
-                    Vide(texte: "Listes et rappels arriveront ici avec la mise à jour de ta tour.")
-                        .padding(20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .carte()
-                        .padding(.horizontal, 16)
-                }
-                etat
-                if let l = p.liste, !l.projets.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TitreSection(texte: "En cours", compte: l.projets.count).padding(.horizontal, 6)
-                        VStack(spacing: 0) {
-                            ForEach(Array(l.projets.enumerated()), id: \.element.id) { i, projet in
-                                LigneProjet(projet: projet)
-                                if i < l.projets.count - 1 {
-                                    Rectangle().fill(Palette.filet).frame(height: 1).padding(.leading, 58)
+                champRecherche
+                if enRecherche {
+                    ResultatsProjetsVue(resultats: resultats, choisir: { ouvrir($0) })
+                } else {
+                    if app.carnet.disponible || !app.carnet.listes.isEmpty {
+                        SectionListes()
+                        SectionRappels()
+                    } else if app.serveur != nil {
+                        Vide(texte: "Listes et rappels arriveront ici avec la mise à jour de ta tour.")
+                            .padding(20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .carte()
+                            .padding(.horizontal, 16)
+                    }
+                    etat
+                    if let l = p.liste, !l.projets.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TitreSection(texte: "En cours", compte: l.projets.count).padding(.horizontal, 6)
+                            VStack(spacing: 0) {
+                                ForEach(Array(l.projets.enumerated()), id: \.element.id) { i, projet in
+                                    LigneProjet(projet: projet)
+                                    if i < l.projets.count - 1 {
+                                        Rectangle().fill(Palette.filet).frame(height: 1).padding(.leading, 58)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 14)
+                            .carte(rayon: 18)
+                            if let n = l.sansProjet, n > 0 {
+                                Text("\(n) tâche\(n > 1 ? "s" : "") sans projet dans Motion.")
+                                    .font(Police.texte(13))
+                                    .foregroundStyle(Palette.encre3)
+                                    .padding(.horizontal, 6)
+                            }
                         }
-                        .padding(.horizontal, 14)
-                        .carte(rayon: 18)
-                        if let n = l.sansProjet, n > 0 {
-                            Text("\(n) tâche\(n > 1 ? "s" : "") sans projet dans Motion.")
-                                .font(Police.texte(13))
-                                .foregroundStyle(Palette.encre3)
-                                .padding(.horizontal, 6)
-                        }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
-                }
-                if app.organisation.dossiersDisponibles { SectionDossiers() }
-                // Tes conversations d'ailleurs : Claude Code, T3, ChatGPT (29/10).
-                if app.conversationsExternes.disponible {
-                    CarteConversationsExternes().padding(.horizontal, 16)
-                }
-                CarteMemoire { memoire = true }
-                if let le = p.misAJour {
-                    Text("Liste datant \(Format.depuis(le)).")
-                        .font(Police.texte(12))
-                        .foregroundStyle(Palette.encre3)
-                        .padding(.horizontal, 22)
+                    if app.organisation.dossiersDisponibles { SectionDossiers() }
+                    // Tes conversations d'ailleurs : Claude Code, T3, ChatGPT (29/10).
+                    if app.conversationsExternes.disponible {
+                        CarteConversationsExternes().padding(.horizontal, 16)
+                    }
+                    CarteMemoire { memoire = true }
+                    if let le = p.misAJour {
+                        Text("Liste datant \(Format.depuis(le)).")
+                            .font(Police.texte(12))
+                            .foregroundStyle(Palette.encre3)
+                            .padding(.horizontal, 22)
+                    }
                 }
             }
             .padding(.bottom, 48)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Palette.fond)
         .refreshable {
             async let p: Void = app.projets.charger()
@@ -91,6 +102,94 @@ struct ProjetsView: View {
             _ = await (p, c, o, x)
         }
         .sheet(isPresented: $memoire) { MemoireView() }
+        .sheet(item: $ficheRappel) { FicheRappel(rappel: $0) }
+        .task { await demoRecherche() }
+    }
+
+    // MARK: Chercher (12/11)
+
+    private var enRecherche: Bool { !recherche.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Ce que l'app a en mémoire : rien n'est redemandé à la tour.
+    private var resultats: ResultatsProjets {
+        // nil : encore en lecture (l'état vide le dit) ; Motion absent : aucun projet.
+        let projets: [Projet]?
+        if let l = app.projets.liste {
+            projets = l.motion == false ? [] : l.projets
+        } else if app.projets.disponible && app.projets.erreur == nil {
+            projets = nil
+        } else {
+            projets = []
+        }
+        return RechercheProjets.chercher(recherche, projets: projets, dossiers: app.organisation.dossiers,
+                                         listes: app.carnet.listes, rappels: app.carnet.rappels)
+    }
+
+    private var champRecherche: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Palette.encre3)
+                .accessibilityHidden(true)
+            TextField("Chercher une tâche, une liste, un rappel…", text: $recherche)
+                .font(Police.texte(16))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($champActif)
+                .onSubmit { ouvrirPremier() }
+                .accessibilityLabel("Chercher dans les projets, tâches, dossiers, idées, listes et rappels")
+                .accessibilityIdentifier("projets.recherche")
+            if !recherche.isEmpty {
+                Button {
+                    recherche = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.encre3).frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Effacer la recherche")
+            }
+        }
+        .padding(.leading, 14)
+        .frame(minHeight: 48)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.filet, lineWidth: 1))
+        .padding(.horizontal, 16)
+    }
+
+    /// La touche « Rechercher » du clavier : le premier résultat.
+    private func ouvrirPremier() {
+        if let e = resultats.groupes.first?.elements.first { ouvrir(e) }
+    }
+
+    /// Ouvre l'écran du résultat ; la saisie reste (retour = les résultats).
+    private func ouvrir(_ e: ElementTrouve) {
+        Haptique.leger()
+        champActif = false
+        switch e.cible {
+        case .projet(let id):
+            if app.organisation.dossiersDisponibles {
+                ui.cheminProjets.append(.noeud("motion:" + id))
+            } else if let p = app.projets.liste?.projets.first(where: { $0.id == id }) {
+                Task { _ = await app.preparer("Où en est le projet « \(p.nom) » ? Propose-moi les prochaines étapes.", dansFil: p.nom) }
+            }
+        case .tache(let t, let noeud):
+            // Le projet (ou le sous-projet où elle est rangée), la tâche dans « Gérer ».
+            if app.organisation.dossiersDisponibles { ui.cheminProjets.append(.noeud(noeud)) }
+            let duJour = app.tableau.donnees?.journee?.items?.first { $0.id == t.id && !$0.estRendezVous }
+            ui.gerer = duJour ?? ElementJour.sansCreneau(t, retard: (t.echeance ?? .infinity) < Date().millis)
+        case .dossier(let id):
+            ui.cheminProjets.append(.noeud(id))
+        case .liste(let id):
+            ui.cheminProjets.append(.liste(id))
+        case .rappel(let id):
+            ficheRappel = app.carnet.rappels.first { $0.id == id }
+        }
+    }
+
+    /// Captures de la CI : une recherche (« demo »), une recherche sans résultat.
+    private func demoRecherche() async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["REMY_DEMO_MDP"] != nil, let ecran = env["REMY_DEMO_ECRAN"], ecran.hasPrefix("projets-recherche") else { return }
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        recherche = ecran == "projets-recherche-vide" ? "trampoline" : "demo"
     }
 
     /// Ce qui manque, dit simplement, avec ce qui débloque.

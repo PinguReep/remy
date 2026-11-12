@@ -180,6 +180,10 @@ jobs:
           capture 3g-capture-clair light capture
           capture 3h-projets-clair light projets
           capture 3i-projets-sombre dark projets
+          # Chercher dans Projets (12/11) : « demo » (tâche, dossier, idée,
+          # article), puis une saisie sans résultat.
+          capture 3i2-projets-recherche-clair light projets-recherche
+          capture 3i3-projets-recherche-vide-sombre dark projets-recherche-vide
           capture 3j-liste-clair light liste
           capture 3k-rappels-sombre dark rappels
           capture 3k2-rappel-quand-clair light rappel-quand

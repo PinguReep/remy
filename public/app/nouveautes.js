@@ -16,6 +16,10 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
+    p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
+    p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),
+  ]),
   n("rappels-declencheurs", 7, "11 nov.", "Des rappels qui préviennent à temps", "rappels-declencheurs-v1", [
     p("cloche", "La veille, le matin, un peu avant", "Un rappel peut te prévenir avant son heure : la veille à l'heure choisie, le matin même, ou quelques heures avant. Avec « Rappels à l'heure » (Réglages › Ordinateur), Windows te le dit aussi."),
     p("lieu", "Sa note, son lieu", "La ligne d'un rappel montre sa note, son lieu (« En arrivant : … ») et une cloche s'il a des alertes. Tout se règle dans la fiche du rappel, sur ton téléphone : c'est lui qui sonne sur place."),
