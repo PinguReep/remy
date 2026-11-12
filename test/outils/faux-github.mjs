@@ -4,8 +4,12 @@
 // limite: false, panne: false } ; `requetes` compte ce qui a été demandé.
 import http from "node:http";
 
-export function run(sha, { nom = "Serveur — tests", chemin = ".github/workflows/serveur.yml", statut = "completed", conclusion = "success", branche = "main", cree = "2026-11-12T10:00:00Z", numero = 1 } = {}) {
-  return { name: nom, path: chemin, head_sha: sha, head_branch: branche, status: statut, conclusion: statut === "completed" ? conclusion : null, created_at: cree, run_number: numero, workflow_id: chemin.length, html_url: `https://exemple.invalid/runs/${numero}` };
+export function run(sha, { nom = "Serveur — tests", chemin = ".github/workflows/serveur.yml", statut = "completed", conclusion = "success", branche = "main", cree = "2026-11-12T10:00:00Z", numero = 1, evenement = "push", depot = "proprio/remy-essai", tete = depot } = {}) {
+  return {
+    name: nom, path: chemin, head_sha: sha, head_branch: branche, event: evenement, status: statut, conclusion: statut === "completed" ? conclusion : null,
+    created_at: cree, run_number: numero, workflow_id: chemin.length, html_url: `https://exemple.invalid/runs/${numero}`,
+    repository: { full_name: depot }, head_repository: { full_name: tete },
+  };
 }
 
 export async function fauxGitHub({ proprietaire = "proprio", nom = "remy-essai", etat = {} } = {}) {
@@ -22,7 +26,13 @@ export async function fauxGitHub({ proprietaire = "proprio", nom = "remy-essai",
     if (e.limite) return json(403, { message: "API rate limit exceeded" }, { "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 1800) });
     const racine = `/repos/${proprietaire}/${nom}`;
     if (u.pathname === `${racine}/commits/main` && e.main) {
-      return json(200, { sha: e.main.sha, commit: { committer: { date: e.main.date || new Date().toISOString() } } });
+      // ETag : un 304 quand rien n'a changé (ne compte pas dans la limite chez GitHub).
+      const etag = `"${e.main.sha.slice(0, 12)}"`;
+      if (req.headers["if-none-match"] === etag) {
+        res.writeHead(304, { ETag: etag });
+        return res.end();
+      }
+      return json(200, { sha: e.main.sha, commit: { committer: { date: e.main.date || new Date().toISOString() } } }, { ETag: etag });
     }
     if (u.pathname === `${racine}/actions/runs`) {
       const sha = u.searchParams.get("head_sha");

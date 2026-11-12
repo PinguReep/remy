@@ -4,6 +4,45 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 (soir) — Mise à jour automatique : revue de sécurité
+
+- **Plus d'élévation.** La tâche « Rémy - mise à jour » tournait en RunLevel
+  Highest, sans invite, toutes les 15 min, sur des fichiers que tout programme
+  du compte peut modifier (son lanceur, la copie de production, `remy.env` lu
+  par `--env-file` — `NODE_OPTIONS` compris —, la config git, `.npmrc`) : un
+  logiciel sans droits devenait administrateur. Elle tourne désormais en
+  Limited. L'élévation ne servait qu'à remplacer la tâche « Rémy » : `-Auto`
+  n'y touche plus, il arrête node, et le lanceur de « Rémy » est devenu une
+  boucle qui le relance (3 s ; 5 chutes en 2 min : 5 min d'attente, notée
+  dans `remy.log` ; un seul lanceur à la fois, mutex de session).
+  `-MiseAJourAuto` (administrateur, une fois) réécrit ce lanceur, réenregistre
+  « Rémy », pose la tâche. `-Auto` ne fait plus `tailscale serve` ni
+  `tailscale status`.
+- **Durcissements gardés** : conhost, PowerShell et git par leur chemin
+  complet (Node et le Planificateur cherchent un nom dans le dossier courant
+  avant le PATH) ; git sans hooks, fsmonitor ni `refs/replace` ;
+  `npm ci --ignore-scripts` (aucun paquet du lockfile n'a de script
+  d'installation) ; `REMY_MAJ_*` ignorées hors `REMY_ENV=test` ; seule l'API
+  `https://api.github.com` ; jeton de **portée** `maj-auto`, 60 s, accepté par
+  `lib/auth.js` pour `GET /api/maj-auto` et `GET /api/version` seulement.
+- **Les contrôles** : la requête demande `branch=main&event=push`, et
+  `evaluerControles` n'accepte que `event: push` avec `repository` ET
+  `head_repository` = le dépôt attendu. Avant, une PR d'un fork (branche
+  nommée `main`, même commit) pouvait bloquer indéfiniment, et une PR verte
+  pouvait valider un envoi rouge.
+- **Occupé** : une écriture ne compte que d'une session valide (un corps
+  lent sans session sur `/api/login` retenait les mises à jour) ; occupé plus
+  de 6 h d'affilée : signalé dans Réglages. L'installeur vérifie avant la
+  sauvegarde (plus de sauvegarde toutes les 15 min pour rien), après, puis
+  attend jusqu'à 10 min juste avant d'arrêter node.
+- **Retour raté** : `retourEchoue` est gardé et redit à chaque passage
+  (jamais « à jour », jamais une autre installation) tant que Rémy n'annonce
+  pas le commit de la copie.
+- Aussi : verrou de l'installeur à la main en création exclusive
+  (`FileMode.CreateNew`) ; minuterie de 45 min qui tue tout l'arbre
+  (`taskkill /T /F`) ; `If-None-Match` sur `/commits/main` (un 304 ne compte
+  pas dans la limite).
+
 ## 2026-11-12 — La tour se met à jour seule (si on l'active)
 
 Après chaque fusion, il fallait coller `installer-tour.ps1 -Ref <commit>` sur

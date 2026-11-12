@@ -32,6 +32,13 @@ copie de production `%USERPROFILE%\.remy\app`. La règle complète :
   une branche (`origin/main` bouge, le retour ne serait pas garanti).
 - Ne lance pas d'installation pendant qu'une autre tourne (le verrou
   `maj-auto\verrou.json` le refuse de toute façon).
+- **Ne redonne jamais l'élévation à la tâche « Rémy - mise à jour »** (elle
+  tourne en RunLevel Limited, exprès : elle exécute des fichiers que le compte
+  peut modifier). Elle redémarre Rémy en arrêtant node ; c'est le lanceur de
+  la tâche « Rémy » (`run-remy.ps1`, une boucle) qui le relance. Si Rémy ne
+  revient pas après une mise à jour, regarde `remy.log` (« lanceur : … »).
+- Les variables `REMY_MAJ_*` ne servent qu'aux essais (`REMY_ENV=test`) : sur
+  la tour, elles sont ignorées. N'en pose pas dans `remy.env`.
 
 ## 1. L'état, sans rien changer
 
@@ -98,11 +105,11 @@ qu'elle donne (PowerShell administrateur), puis vérifie (3).
 
 ## 5. La mise à jour automatique
 
-| Pour | Commande (PowerShell administrateur) |
+| Pour | Commande (PowerShell administrateur, sauf mention) |
 | --- | --- |
 | l'activer (une fois) | `scripts\installer-tour.ps1 -Ref <commit> -MiseAJourAuto` (ou `-MiseAJourAuto` seul si la copie l'a déjà) |
 | la retirer | `scripts\installer-tour.ps1 -SansMiseAJourAuto` |
-| la mettre en pause | Réglages › Diagnostic › « Installer seule les mises à jour » (dans l'app) |
+| la mettre en pause | Réglages › Diagnostic › « Installer seule les mises à jour » (dans l'app, sans terminal) |
 | la couper côté tour | demande à l'utilisateur d'ajouter `REMY_MAJ_AUTO=off` à `remy.env` |
 | lire le journal | `Get-Content $env:USERPROFILE\.remy\maj-auto\journal.log -Tail 20 -Encoding UTF8` |
 | la dernière installation | `Get-Content $env:USERPROFILE\.remy\maj-auto\derniere-installation.log -Encoding UTF8` |

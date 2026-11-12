@@ -15,9 +15,14 @@
 // jeton), Rémy en 127.0.0.1, et l'installeur. Rien de remy.env n'est écrit
 // nulle part ; le journal ne contient que des commits et des états.
 //
-// Pour les essais : REMY_MAJ_GITHUB_API, REMY_MAJ_DEPOT, REMY_MAJ_URL,
-// REMY_MAJ_APP, REMY_MAJ_DIR, REMY_MAJ_INSTALLEUR (un .ps1, ou un .mjs lancé
-// par Node).
+// La tâche tourne SANS droits d'administrateur (RunLevel Limited). Par
+// prudence quand même : git, PowerShell et l'installeur par leur chemin complet
+// (jamais trouvés dans le dossier courant), git sans hooks ni objets de
+// remplacement, seule l'API https://api.github.com.
+//
+// Pour les essais seulement (REMY_ENV=test, ignorées sinon) : REMY_MAJ_GITHUB_API,
+// REMY_MAJ_DEPOT, REMY_MAJ_URL, REMY_MAJ_APP, REMY_MAJ_DIR, REMY_MAJ_INSTALLEUR
+// (un .ps1, ou un .mjs lancé par Node), REMY_MAJ_PAUSE_MS.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -30,13 +35,16 @@ const option = (nom) => {
   const i = args.indexOf(nom);
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : null;
 };
-const base = option("--base") || process.env.REMY_MAJ_BASE || path.join(os.homedir(), ".remy");
-const app = process.env.REMY_MAJ_APP || path.join(base, "app");
-const dossier = process.env.REMY_MAJ_DIR || path.join(base, "maj-auto");
+const env = process.env;
+const base = path.resolve(option("--base") || path.join(os.homedir(), ".remy"));
+const app = path.resolve(M.surcharge(env, "REMY_MAJ_APP") || path.join(base, "app"));
+const dossier = path.resolve(M.surcharge(env, "REMY_MAJ_DIR") || path.join(base, "maj-auto"));
 const F = M.fichiers(dossier);
 const fichierEnv = path.join(base, "remy.env");
-const url = process.env.REMY_MAJ_URL || `http://127.0.0.1:${process.env.PORT || 3010}`;
-const remy = M.clientRemy({ url, env: process.env, pauseMs: Number(process.env.REMY_MAJ_PAUSE_MS) || 2_000 });
+const port = Number(env.PORT) > 0 && Number(env.PORT) < 65536 ? Number(env.PORT) : 3010;
+const url = M.surcharge(env, "REMY_MAJ_URL") || `http://127.0.0.1:${port}`;
+const remy = M.clientRemy({ url, env, pauseMs: Number(M.surcharge(env, "REMY_MAJ_PAUSE_MS")) || 2_000 });
+const gitExe = M.trouverDansPath("git", { env });
 
 if (args.includes("--occupe")) {
   const o = await remy.occupation();
@@ -55,7 +63,8 @@ if (args.includes("--etat")) {
 const aBlanc = args.includes("--a-blanc");
 
 function git(...a) {
-  return spawnSync("git", ["-C", app, ...a], { encoding: "utf8", timeout: 180_000, windowsHide: true });
+  if (!gitExe) return { status: 127, stdout: "", stderr: "git introuvable dans le PATH" };
+  return spawnSync(gitExe, [...M.optionsGitSures(), "-C", app, ...a], { encoding: "utf8", timeout: 180_000, windowsHide: true, cwd: base, env: M.envGitSur(env) });
 }
 const sortieGit = (...a) => {
   const r = git(...a);
@@ -88,11 +97,12 @@ const depots = {
 };
 
 function lancerInstalleur(sha, { retour = false } = {}) {
-  const installeur = process.env.REMY_MAJ_INSTALLEUR || path.join(app, "scripts", "installer-tour.ps1");
+  if (!/^[0-9a-f]{40}$/.test(String(sha))) return Promise.resolve({ code: 2, raison: "commit illisible" });
+  const installeur = path.resolve(M.surcharge(env, "REMY_MAJ_INSTALLEUR") || path.join(app, "scripts", "installer-tour.ps1"));
   const parametres = ["-Ref", sha, "-Auto", ...(retour ? ["-Retour"] : [])];
   const [exe, a] = installeur.endsWith(".mjs")
     ? [process.execPath, [installeur, ...parametres]]
-    : ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installeur, ...parametres]];
+    : [process.platform === "win32" ? M.powershellWindows(env) : "pwsh", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installeur, ...parametres]];
   fs.rmSync(F.raison, { force: true });
   // L'installeur relit remy.env lui-même, comme lancé à la main : il ne reçoit
   // pas les secrets que --env-file a mis dans l'environnement de ce script.
@@ -100,16 +110,21 @@ function lancerInstalleur(sha, { retour = false } = {}) {
   try {
     noms = M.nomsDansEnv(fs.readFileSync(fichierEnv, "utf8"));
   } catch {}
-  const env = M.envSans(process.env, noms.filter((n) => !/^REMY_MAJ_/.test(n)));
+  const envInstalleur = M.envSans(env, noms.filter((n) => !/^REMY_MAJ_/.test(n)));
   return new Promise((resolve) => {
     let sortie = "";
-    const p = spawn(exe, a, { cwd: base, env, windowsHide: true });
+    const p = spawn(exe, a, { cwd: base, env: envInstalleur, windowsHide: true });
     const garder = (b) => {
       sortie = (sortie + b.toString("utf8")).slice(-200_000);
     };
     p.stdout.on("data", garder);
     p.stderr.on("data", garder);
-    const minuterie = setTimeout(() => p.kill(), 45 * 60_000);
+    // 45 min au plus ; sous Windows, tout l'arbre (npm, node, git), pas seulement PowerShell.
+    const minuterie = setTimeout(() => {
+      if (process.platform === "win32" && p.pid) {
+        spawnSync(path.win32.join(env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"), ["/T", "/F", "/PID", String(p.pid)], { windowsHide: true });
+      } else p.kill("SIGKILL");
+    }, 45 * 60_000);
     const finir = (code, erreur = null) => {
       clearTimeout(minuterie);
       const lignes = M.masquerSecrets(sortie).split(/\r?\n/).filter((l) => l.trim());
@@ -137,14 +152,14 @@ if (!verrou.ok) {
 let resultat;
 try {
   resultat = await M.passer({
-    env: process.env,
+    env,
     maintenant: () => Date.now(),
     aBlanc,
     etat: { lire: () => M.lireJSON(F.etat, {}), ecrire: (e) => M.ecrireJSON(F.etat, e) },
     journal: (texte) => M.journaliser(F.journal, texte),
     pause: () => M.lireJSON(F.pause),
     git: depots,
-    github: M.clientGitHub({ depot: M.depotAttendu(process.env), api: process.env.REMY_MAJ_GITHUB_API || "https://api.github.com" }),
+    github: M.clientGitHub({ depot: M.depotAttendu(env), api: M.surcharge(env, "REMY_MAJ_GITHUB_API") || M.API_GITHUB, env }),
     remy,
     installer: lancerInstalleur,
   });

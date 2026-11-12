@@ -681,6 +681,7 @@ export function detailMajAuto(v, maintenant = Date.now()) {
   if (!v.active) return "Pour qu'elle installe seule ce qui arrive sur main après ses contrôles : une fois, sur la tour, dans un PowerShell administrateur, installer-tour.ps1 -MiseAJourAuto (docs/tour.md).";
   if (v.pause) return `En pause${v.pauseDepuis ? ` depuis ${quand(Date.parse(v.pauseDepuis), { maintenant })}` : ""} : rien n'est installé.`;
   const passe = Date.parse(v.dernierePasse);
+  if (v.occupeLongtemps) return `Rémy est occupé sans relâche depuis ${quand(Date.parse(v.occupeDepuis), { maintenant })} : aucune mise à jour ne passe. Si ça dure, regarde ce qui tourne sur la tour (incidents ci-dessous), ou relance Rémy.`;
   if (v.retard) return `La tâche n'est pas passée depuis ${Number.isFinite(passe) ? quand(passe, { maintenant }) : "son activation"} : regarde le Planificateur de tâches de la tour (« Rémy - mise à jour »).`;
   return v.message ? `${v.message}${Number.isFinite(passe) ? ` (passage : ${quand(passe, { maintenant })})` : ""}` : `Premier passage dans ${v.intervalleMin || 15} min au plus.`;
 }

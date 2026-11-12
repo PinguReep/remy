@@ -102,8 +102,10 @@ Le travail reste le même — c'est le bavardage qui saute, pas la rigueur.
   l'empreinte avec `ssh`) ; un `.sh` envoyé sur Linux doit être en LF.
 - Installeur de la tour : PowerShell **administrateur** (la tâche planifiée
   « Rémy » est créée ainsi ; sans ces droits, « Accès refusé » au remplacement).
-  La tâche « Rémy - mise à jour » a ces droits (RunLevel Highest) pour la même
-  raison. Jamais de `trap` au niveau du script : son `continue` reprend APRÈS le
+  La tâche « Rémy - mise à jour », elle, tourne SANS ces droits (RunLevel
+  Limited, revue de sécurité du 12/11) : `-Auto` ne touche à aucune tâche, il
+  arrête node et le lanceur en boucle `run-remy.ps1` le relance. Ne jamais lui
+  redonner l'élévation : elle exécute des fichiers que le compte peut modifier. Jamais de `trap` au niveau du script : son `continue` reprend APRÈS le
   bloc englobant (un `-Uninstall` sans tailscale sautait son `return` et
   déroulait une installation, 12/11). La raison d'arrêt et le verrou passent par
   le `try/catch/finally` du seul chemin d'installation ; tout passage en

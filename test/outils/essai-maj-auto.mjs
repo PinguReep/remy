@@ -77,7 +77,9 @@ export async function essaiComplet({ installeur = path.join(ici, "faux-installeu
     return json(404, {});
   });
   await new Promise((r) => remy.listen(0, "127.0.0.1", r));
-  const gh = await fauxGitHub({ etat: { main: { sha: B, date: new Date(Date.now() - 600_000).toISOString() }, runs: { [B]: [run(B), run(B, { nom: "Bureau Windows — installateur", chemin: ".github/workflows/bureau-windows.yml", numero: 2 })] } } });
+  const gh = await fauxGitHub({ etat: { main: { sha: B, date: new Date(Date.now() - 600_000).toISOString() }, runs: { [B]: [run(B), run(B, { nom: "Bureau Windows — installateur", chemin: ".github/workflows/bureau-windows.yml", numero: 2 }),
+    // Une PR d'un fork, branche « main », même commit, rouge et plus récente : ne compte pas.
+    run(B, { evenement: "pull_request", tete: "intrus/remy", conclusion: "failure", numero: 9, cree: "2026-11-12T11:00:00Z" })] } } });
 
   const env = {
     ...process.env,
@@ -90,6 +92,8 @@ export async function essaiComplet({ installeur = path.join(ici, "faux-installeu
     FAUX_INSTALLEUR_TRACE: trace,
     SESSION_SECRET: "essai",
     REMY_MAJ_PAUSE_MS: "20",
+    // Les surcharges REMY_MAJ_* ne valent qu'en essai explicite.
+    REMY_ENV: "test",
   };
   delete env.REMY_MAJ_AUTO;
   const passage = async (extra = {}, args = []) => {

@@ -80,12 +80,31 @@ powershell -ExecutionPolicy Bypass -File scripts\installer-tour.ps1 -Ref <dernie
 L'installeur fait sa mise à jour habituelle (sauvegarde « avant-maj », copie de
 production, redémarrage), puis pose une seconde tâche planifiée, **« Rémy -
 mise à jour »**. Une copie de production qui a déjà cette fonction n'a besoin
-que de `installer-tour.ps1 -MiseAJourAuto` (sans `-Ref` : seule la tâche est
-posée). La tâche passe toutes les 15 minutes et 5 minutes après l'ouverture de
-session ; elle a les droits d'administrateur, sans invite, parce que
-l'installeur qu'elle lance remplace la tâche « Rémy » (créée depuis un
-PowerShell administrateur). Une mise à jour à la main, sans ces drapeaux, ne la
-crée ni ne la retire.
+que de `installer-tour.ps1 -MiseAJourAuto` (sans `-Ref` : le lanceur de Rémy est
+réécrit, la tâche « Rémy » réenregistrée et redémarrée, et la tâche de mise à
+jour posée). Elle passe toutes les 15 minutes et 5 minutes après l'ouverture de
+session. Une mise à jour à la main, sans ces drapeaux, ne la crée ni ne la
+retire.
+
+**Sans droits d'administrateur.** La tâche de mise à jour tourne en
+« RunLevel Limited », comme Rémy : un programme du compte qui modifierait ses
+fichiers (la copie de production, `remy.env`, son lanceur) n'en tirerait aucun
+droit de plus. Elle ne touche donc à aucune tâche planifiée : elle arrête le
+node de Rémy, et le lanceur de la tâche « Rémy » (`run-remy.ps1`, posé par
+`-MiseAJourAuto` et par chaque installation à la main) **le relance**, avec la
+nouvelle version (3 s après ; s'il retombe 5 fois en 2 minutes, il attend
+5 minutes et le note dans `remy.log`). Seuls `-MiseAJourAuto`,
+`-SansMiseAJourAuto`, `-Uninstall` et une installation à la main demandent un
+PowerShell administrateur. Ce que `-Auto` fait — `git fetch`/`checkout`,
+`npm ci --ignore-scripts`, la sauvegarde, l'arrêt de node — se fait avec les
+droits du compte ; il ne fait **pas** `tailscale serve` (la publication, posée
+à l'installation, reste en place) ni rien sur les tâches.
+
+Par prudence encore : git, PowerShell et conhost par leur chemin complet
+(jamais trouvés dans un dossier courant), git sans hooks, sans fsmonitor ni
+objets de remplacement, seule l'API `https://api.github.com`, les variables
+d'essai `REMY_MAJ_*` ignorées hors essai, et le jeton que la tâche signe pour
+parler à Rémy ne vaut que 60 s, pour `GET /api/maj-auto` et `GET /api/version`.
 
 ### Ce que ça implique
 
@@ -115,7 +134,10 @@ garder la main : la pause, ou la retirer.
    cette mise à jour), toujours ; **« Bureau Windows — installateur »** quand
    `desktop/` change. Les workflows iOS ne tournent pas sur `main` (PR,
    TestFlight à la demande). On prend la dernière exécution de chaque workflow
-   lancée sur `main` pour ce commit (une relance remplace l'échec d'avant) :
+   lancée par un **envoi** (`push`) sur `main` **du dépôt** (`repository` et
+`head_repository` = `PinguReep/remy`) pour ce commit — une PR, même d'un fork
+dont la branche s'appelle `main` avec le même commit, ne compte ni pour
+bloquer ni pour valider ; une relance remplace l'échec d'avant :
    - « Serveur — tests » doit y être et avoir **réussi** ;
    - toutes les autres terminées, réussies ou sautées ;
    - une encore en cours (ou « Serveur » pas encore lancé, moins d'une heure
@@ -128,10 +150,14 @@ garder la main : la pause, ou la retirer.
 6. **Pas pendant que Rémy travaille.** `GET /api/maj-auto` (local, avec une
    session signée par `SESSION_SECRET`) dit s'il y a une réponse en cours, un
    job de fond (sauvegarde, réflexion de la nuit, commerces…), un appel au
-   modèle ou une écriture (envoi, capture). Occupé : on repasse dans 15
-   minutes. L'installeur revérifie juste après sa sauvegarde, avant de toucher
-   à la copie (code 3 : rien n'a changé). Rémy qui ne répond pas deux passages
-   de suite ne travaille pour personne : on installe.
+   modèle ou une écriture d'une session valide (envoi, capture ; une requête
+   sans session ne compte pas). Occupé : on repasse dans 15 minutes ; occupé
+   sans relâche plus de 6 h, Réglages le signale. L'installeur revérifie avant
+   sa sauvegarde et juste après (code 3 : rien n'a changé, pas de sauvegarde
+   pour rien), puis attend jusqu'à 10 minutes que Rémy soit calme juste avant
+   de l'arrêter (la copie est alors déjà à jour : passé ce délai, il redémarre
+   quand même). Rémy qui ne répond pas deux passages de suite ne travaille pour
+   personne : on installe.
 7. **L'installation** passe par l'installeur, `-Ref <commit> -Auto` : sa
    sauvegarde chiffrée « avant-maj » d'abord. S'il s'arrête avant tout
    changement (sauvegarde impossible, réseau), rien n'a bougé : nouvel essai
@@ -164,6 +190,10 @@ juger) ; si la limite est atteinte, on attend qu'elle se lève.
   peut plus la rallumer).
 - **La retirer** : `installer-tour.ps1 -SansMiseAJourAuto` (PowerShell
   administrateur) ; `-Uninstall` la retire aussi.
+- **Un retour en arrière raté** reste affiché (« retour-echoue », avec la
+  commande à lancer) à chaque passage, jamais « à jour », tant que Rémy
+  n'annonce pas le commit de la copie ou qu'une installation à la main ne l'a
+  pas mise ailleurs.
 
 | Fichier (`%USERPROFILE%\.remy\maj-auto\`) | Rôle |
 | --- | --- |

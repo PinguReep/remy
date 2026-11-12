@@ -36,6 +36,7 @@ test("le détail dit ce qui se passe, ou quoi faire", () => {
   assert.equal(V.detailMajAuto({ active: true, message: "À jour : abc1234 est le dernier commit de main.", dernierePasse: "2026-11-12T14:50:00+01:00" }, T),
     "À jour : abc1234 est le dernier commit de main. (passage : aujourd'hui 14:50)");
   assert.equal(V.detailMajAuto({ active: true, intervalleMin: 15 }, T), "Premier passage dans 15 min au plus.");
+  assert.match(V.detailMajAuto({ active: true, occupeLongtemps: true, occupeDepuis: "2026-11-12T07:00:00+01:00" }, T), /occupé sans relâche depuis aujourd'hui 07:00/);
   assert.match(V.confirmationMajAuto(true), /en pause/);
   assert.match(V.confirmationMajAuto(false), /reprise/);
 });

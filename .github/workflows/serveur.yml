@@ -126,10 +126,12 @@ jobs:
             if ($r.Code -ne 0) { Write-Error "$cas : code $($r.Code)"; exit 1 }
             if ($r.Sortie -notmatch 'sinstall') { Write-Error "$cas : pas de message de desinstallation"; exit 1 }
             if ($r.Sortie -match 'Sauvegarde|Indique la version|Node |npm|Version introuvable|tourne :') { Write-Error "$cas : l'installeur a continue apres la desinstallation"; exit 1 }
-            foreach ($f in 'version-precedente.txt', 'maj-auto\verrou.json', 'run-remy.ps1') {
+            foreach ($f in 'version-precedente.txt', 'maj-auto\verrou.json') {
               if (Test-Path (Join-Path $base $f)) { Write-Error "$cas : $f ecrit, une installation a ete lancee"; exit 1 }
             }
             if (& $trouver) { Write-Error "$cas : tache toujours la"; exit 1 }
+            if (Get-ScheduledTask | Where-Object { $_.TaskName -like 'R*my' }) { Write-Error "$cas : tache Remy toujours la"; exit 1 }
+            if (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('run-remy.ps1') }) { Write-Error "$cas : le lanceur de Remy tourne encore"; exit 1 }
           }
           # 0. Deux drapeaux contraires : refus, rien de pose.
           $ErrorActionPreference = 'Continue'
@@ -142,7 +144,24 @@ jobs:
           $t = & $trouver
           if (-not $t) { Write-Error 'Tache de mise a jour absente'; exit 1 }
           Write-Output "Tache : $($t.TaskName) ; droits $($t.Principal.RunLevel) ; $($t.Principal.LogonType)"
-          if ($t.Principal.RunLevel -ne 'Highest') { Write-Error 'La tache doit avoir les droits les plus eleves (remplacer la tache Remy sans invite)'; exit 1 }
+          # Sans droits d'administrateur : elle ne touche a aucune tache, elle arrete node
+          # et le lanceur de la tache Remy le relance.
+          if ($t.Principal.RunLevel -ne 'Limited') { Write-Error "La tache de mise a jour doit tourner SANS droits d'administrateur (RunLevel $($t.Principal.RunLevel))"; exit 1 }
+          $systeme = $env:SystemRoot
+          foreach ($a in $t.Actions) {
+            if ($a.Execute -ne (Join-Path $systeme 'System32\conhost.exe')) { Write-Error "Action par un chemin relatif : $($a.Execute)"; exit 1 }
+            if (-not $a.Arguments.Contains((Join-Path $systeme 'System32\WindowsPowerShell\v1.0\powershell.exe'))) { Write-Error "powershell.exe par son nom : $($a.Arguments)"; exit 1 }
+          }
+          # -MiseAJourAuto seul reecrit le lanceur de Remy (en boucle) et reenregistre la tache Remy.
+          $remy = Get-ScheduledTask | Where-Object { $_.TaskName -like 'R*my' }
+          if (-not $remy) { Write-Error 'Tache Remy non reenregistree'; exit 1 }
+          if ($remy.Actions[0].Execute -ne (Join-Path $systeme 'System32\conhost.exe')) { Write-Error 'Tache Remy : conhost par son nom'; exit 1 }
+          $lanceurRemy = Join-Path $base 'run-remy.ps1'
+          $erreurs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($lanceurRemy, [ref]$null, [ref]$erreurs) | Out-Null
+          if ($erreurs) { Write-Error "run-remy.ps1 : $($erreurs[0].Message)"; exit 1 }
+          $texteLanceur = Get-Content $lanceurRemy -Raw
+          if (-not $texteLanceur.Contains('RemyLanceur') -or -not $texteLanceur.Contains('while ($true)') -or $texteLanceur.Contains('__APP__')) { Write-Error 'run-remy.ps1 ne relance pas node, ou ses chemins ne sont pas remplis'; exit 1 }
           $ouverture = $t.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }
           $horloge = $t.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskTimeTrigger' }
           if (-not $ouverture -or $ouverture.Delay -ne 'PT5M') { Write-Error "Declencheur d'ouverture de session absent ou sans delai de 5 min"; exit 1 }
