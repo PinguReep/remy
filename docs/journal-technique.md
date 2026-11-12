@@ -53,6 +53,41 @@ attendre derrière un agent, et rien ne les mettait en pause.
   parle l'API d'Anthropic (pas couvert) ; Codex récent l'API « responses » (non
   servie). Mode d'emploi : `docs/outils-de-code.md`.
 
+### Relecture de sécurité de la passerelle (12/11)
+
+- **Plafond de la clé « au clavier »** (`lib/priorite.js`, `recuperationClavier`) :
+  45 min de priorité cumulée (appels en cours et leur répit, réunis) sur une
+  heure glissante, puis 15 min où ses appels sont du fond (ils prennent la
+  file, ceux en cours ne font plus céder le fond), puis le compte repart de
+  zéro. Au moins 15 min par heure pour le fond, plus que l'intervalle du
+  planificateur (10 min) : un job dû — la sauvegarde de nuit, testée —
+  commence pendant la récupération. Les demandes faites dans Rémy ne sont pas
+  concernées. Diagnostic le dit (« ton outil de code a eu la priorité 45 min
+  dans l'heure… jusqu'à HH:MM »).
+- **Durée et simultanéité** : un flux dure 30 min au plus ; 4 appels ouverts
+  « au clavier », 2 agents de fond en vol par clé (au-delà : 429,
+  `Retry-After: 5`). Les agents de fond qui attendent restent bornés par la
+  file (503), pas par ce 429 : ils attendent sans erreur, comme convenu.
+- **Contre-pression** : un `write` refusé suspend la lecture du modèle jusqu'à
+  `drain` ; sans `drain` en 30 s, l'outil est coupé et le modèle libéré.
+- **Porte fermée** : sans clé valide, même réponse que porte ouverte avec une
+  clé fausse (401, même corps, les deux empreintes comparées). Avec une clé
+  valide, « porte coupée » est dit.
+- **Schémas** (`tools[].parameters`, `json_schema`) : 64 Ko, 32 niveaux,
+  5 000 éléments au plus ; `/v1/models/%` mal encodé : 400.
+- **Écoute** : `server.js` écoute `HOST || 127.0.0.1` ; l'installeur écrit
+  `HOST=127.0.0.1` dans `remy.env` à sa création (jamais réécrit : la valeur
+  réelle de la tour se lit dans la première ligne du journal, « Rémy démarré →
+  http://… »). La passerelle n'accepte de toute façon que des connexions
+  venues de 127.0.0.1 / ::1 (Tailscale Serve s'y connecte), même si `HOST`
+  était élargi.
+- **Délais HTTP de Node** (22, non modifiés par `server.js`, donc appliqués à
+  `/v1`) : `headersTimeout` 60 s, `requestTimeout` 300 s pour RECEVOIR la
+  requête (vérifiés toutes les 30 s par Node : `connectionsCheckingInterval`),
+  `keepAliveTimeout` 5 s, pas de délai d'inactivité de socket. Ils ne
+  bornent pas la réponse (vérifié : un flux de 3 s passe avec
+  `requestTimeout` 1 s) — d'où le plafond de 30 min de la passerelle.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait

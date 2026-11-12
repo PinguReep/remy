@@ -34,6 +34,11 @@ Il y a deux clés, et la différence est simple :
 | **Au clavier** | ce que tu fais toi-même dans ton outil, quand tu attends la réponse | passe devant tout, comme une question posée à Rémy ; met en pause le travail de fond de Rémy et les agents de fond |
 | **Agents de fond** | les agents qui tournent seuls | quand tu demandes quelque chose (à Rémy ou au clavier), leurs **nouveaux** appels attendent leur tour, dans l'ordre, puis repartent quelques secondes après ; l'appel déjà en cours **finit** (il n'est pas coupé) |
 
+Une limite protège le travail de fond de Rémy : si la clé « au clavier » a
+eu la priorité 45 minutes dans la même heure, ses appels passent après le
+travail de fond pendant 15 minutes, puis tout redevient normal. Ce que tu
+demandes dans Rémy lui-même n'est jamais concerné.
+
 Si un agent de fond attend plus que le délai réglé (2 min par défaut), ou si
 trop d'appels attendent déjà (8 par défaut), il reçoit une erreur **503** avec
 un en-tête `Retry-After` : les outils compatibles OpenAI réessaient seuls.
@@ -64,7 +69,8 @@ Une instance « au clavier » (ta clé au clavier) pour travailler, une autre
 ## Ce que la porte refuse
 
 Toute requête sans clé valide ; les requêtes de plus de 8 Mo ; plus de 120
-appels par minute et par clé (429) ; les images données par une adresse
+appels par minute et par clé, plus de 4 appels en même temps « au clavier »
+ou 2 agents de fond en cours (429) ; une réponse de plus de 30 min ; les images données par une adresse
 (seulement jointes) ; tout paramètre qu'elle ne connaît pas (il n'est pas
 relayé). Elle n'envoie rien ailleurs que vers le modèle local de la tour —
 jamais vers le cloud — et ne garde rien de ce qui passe : seulement l'heure,

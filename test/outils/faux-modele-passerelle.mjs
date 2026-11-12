@@ -8,7 +8,8 @@
 
 import http from "node:http";
 
-export async function fauxModelePasserelle({ duree = () => 30, morceaux = 4, statut = () => 200 } = {}) {
+// `morceaux(texte)` : combien de morceaux en flux ; `taille(texte)` : leur longueur.
+export async function fauxModelePasserelle({ duree = () => 30, morceaux = () => 4, taille = () => 0, statut = () => 200 } = {}) {
   const etat = { recus: [], servis: [], coupes: [], file: [], actif: null, modeles: 0 };
   const texteDe = (corps) => {
     const c = corps.messages?.at(-1)?.content;
@@ -39,12 +40,14 @@ export async function fauxModelePasserelle({ duree = () => 30, morceaux = 4, sta
     }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     let i = 0;
-    const pas = Math.max(1, Math.floor(e.duree / (morceaux + 1)));
+    const n = morceaux(texte);
+    const gros = taille(texte);
+    const pas = Math.max(1, Math.floor(e.duree / (n + 1)));
     const ecrire = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
     const tic = () => {
       if (e.ferme) return;
-      if (i < morceaux) {
-        ecrire({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: `m${i} ` }, finish_reason: null }] });
+      if (i < n) {
+        ecrire({ id: "x", object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: gros ? "x".repeat(gros) : `m${i} ` }, finish_reason: null }] });
         i++;
         e.minuteur = setTimeout(tic, pas);
         return;

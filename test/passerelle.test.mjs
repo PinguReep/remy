@@ -31,7 +31,7 @@ const journaux = [];
 for (const n of ["log", "info", "warn", "error"]) console[n] = (...a) => journaux.push(a.map(String).join(" "));
 
 // Le travail de fond de Rémy : 900 ms ; un agent « LONG » : 500 ms ; le reste : 20 ms.
-const modele = await fauxModelePasserelle({ duree: (t) => (/FOND/.test(t) ? 900 : /LONG/.test(t) ? 500 : 20), statut: (t) => (/REFUS-400/.test(t) ? 400 : /REFUS-401/.test(t) ? 401 : 200) });
+const modele = await fauxModelePasserelle({ duree: (t) => (/FOND/.test(t) ? 900 : /LONG/.test(t) ? 500 : /GROS/.test(t) ? 400 : 20), morceaux: (t) => (/GROS/.test(t) ? 400 : 4), taille: (t) => (/GROS/.test(t) ? 256 * 1024 : 0), statut: (t) => (/REFUS-400/.test(t) ? 400 : /REFUS-401/.test(t) ? 401 : 200) });
 process.env.REMY_GLM_URL = modele.url;
 process.env.REMY_GLM_TOKEN = "jeton-du-relais-essai";
 
@@ -99,10 +99,10 @@ const remiseAZero = async () => {
 };
 
 test("coupée par défaut ; deux clés créées depuis Réglages, montrées une fois, gardées hachées ; révoquée, refusée tout de suite", async () => {
-  // Rien d'allumé : tout est refusé, même la route des modèles.
+  // Rien d'allumé : tout est refusé, même la route des modèles (sans clé : 401, comme une clé fausse).
   let r = await appeler(null, null, { chemin: "/v1/models", methode: "GET" });
-  assert.equal(r.status, 404);
-  assert.equal((await r.json()).error.code, "passerelle_coupee");
+  assert.equal(r.status, 401);
+  assert.equal((await r.json()).error.code, "invalid_api_key");
   let v = await fetch(`${base}/api/passerelle`, { headers: session }).then((x) => x.json());
   assert.equal(v.active, false, "coupée par défaut");
   assert.deepEqual(v.cles, { clavier: null, fond: null });
@@ -126,9 +126,10 @@ test("coupée par défaut ; deux clés créées depuis Réglages, montrées une 
   assert.equal(disque.includes(clavier.cle) || disque.includes(fond.cle), false, "sur la tour : l'empreinte, jamais la clé");
   assert.ok(disque.includes(crypto.createHash("sha256").update(clavier.cle).digest("hex")));
 
-  // Encore coupée : la clé ne suffit pas.
+  // Encore coupée : la clé ne suffit pas (et à qui a une clé valide, c'est dit).
   r = await appeler(clavier.cle, null, { chemin: "/v1/models", methode: "GET" });
   assert.equal(r.status, 404);
+  assert.equal((await r.json()).error.code, "passerelle_coupee");
   assert.equal((await reglages({ active: true })).active, true);
   r = await appeler(clavier.cle, null, { chemin: "/v1/models", methode: "GET" });
   assert.equal(r.status, 200);
@@ -448,4 +449,232 @@ test("Diagnostic : les appels d'agents sont comptés, au singulier comme au plur
     prio.phraseFond({ travaux: [t("pause", "reflexion-nuit", "Réflexion de nuit"), t("pause"), t("actif"), t("pause")], cede }),
     "Réflexion de nuit en pause : tu viens de poser une question · 2 appels d'agents en attente : tu viens de poser une question · 1 appel d'agent en cours",
   );
+});
+
+
+// --- Relecture de sécurité du 12/11 ----------------------------------------------------------
+
+test("porte fermée : sans clé valide, exactement la même réponse que porte ouverte avec une clé fausse (401, même corps, mêmes comparaisons)", async () => {
+  await remiseAZero();
+  const vrai = crypto.timingSafeEqual;
+  let n = 0;
+  crypto.timingSafeEqual = (a, b) => (n++, vrai(a, b));
+  const essai = async (entetes) => {
+    n = 0;
+    const r = await appeler(null, question("x"), { entetes });
+    return { status: r.status, corps: await r.text(), comparaisons: n, retry: r.headers.get("retry-after"), type: r.headers.get("content-type") };
+  };
+  try {
+    const ouverteFausse = await essai({ Authorization: "Bearer remy_fond_faux" });
+    const ouverteSans = await essai({});
+    await reglages({ active: false });
+    const fermeeFausse = await essai({ Authorization: "Bearer remy_fond_faux" });
+    const fermeeSans = await essai({});
+    for (const x of [ouverteSans, fermeeFausse, fermeeSans]) assert.deepEqual(x, ouverteFausse);
+    assert.equal(ouverteFausse.status, 401);
+    assert.equal(ouverteFausse.comparaisons, 2);
+  } finally {
+    crypto.timingSafeEqual = vrai;
+  }
+  const r = await appeler(cles.fond, question("x"));
+  assert.equal(r.status, 404, "avec une clé valide, la porte fermée est dite");
+  // La porte ne répond qu'à la tour elle-même (et Tailscale Serve, qui s'y connecte en 127.0.0.1).
+  assert.equal(P.origineAdmise({ socket: { remoteAddress: "127.0.0.1" } }), true);
+  assert.equal(P.origineAdmise({ socket: { remoteAddress: "::ffff:127.0.0.1" } }), true);
+  assert.equal(P.origineAdmise({ socket: { remoteAddress: "10.0.0.7" } }), false);
+  assert.equal(P.origineAdmise({ socket: { remoteAddress: "100.101.102.103" } }), false, "même du tailnet, pas en direct : par Tailscale Serve seulement");
+});
+
+test("/v1/models/% (adresse mal encodée) : 400 au format OpenAI, pas une exception", async () => {
+  await remiseAZero();
+  const r = await appeler(cles.fond, null, { chemin: "/v1/models/%", methode: "GET" });
+  assert.equal(r.status, 400);
+  const j = await r.json();
+  assert.equal(j.error.code, "requete_invalide");
+  assert.equal((await appeler(cles.fond, null, { chemin: "/v1/models/%E0%A4%A", methode: "GET" })).status, 400);
+});
+
+test("schémas bornés avant relais : profondeur, taille, nombre d'éléments (400 clair, rien ne part)", async () => {
+  await remiseAZero();
+  const avant = modele.etat.recus.length;
+  let profond = { type: "string" };
+  for (let i = 0; i < 40; i++) profond = { type: "object", properties: { a: profond } };
+  const large = { type: "object", properties: Object.fromEntries(Array.from({ length: 600 }, (_, i) => [`champ_${i}`, { type: "string", description: "d".repeat(100) }])) };
+  const nombreux = { type: "object", examples: Array.from({ length: 6000 }, () => ({})) };
+  for (const [quoi, corps, motif] of [
+    ["outil profond", question("x", { tools: [{ type: "function", function: { name: "f", parameters: profond } }] }), /tools\[0\]\.parameters : schéma trop profond \(32 niveaux au plus\)/],
+    ["outil gros", question("x", { tools: [{ type: "function", function: { name: "f", parameters: large } }] }), /schéma trop grand \(64 Ko au plus\)/],
+    ["outil nombreux", question("x", { tools: [{ type: "function", function: { name: "f", parameters: nombreux } }] }), /schéma trop grand \(5000 éléments au plus\)/],
+    ["format profond", question("x", { response_format: { type: "json_schema", json_schema: { name: "r", schema: profond } } }), /response_format\.json_schema\.schema : schéma trop profond/],
+    ["paramètres pas un objet", question("x", { tools: [{ type: "function", function: { name: "f", parameters: [1] } }] }), /un schéma JSON \(objet\) attendu/],
+  ]) {
+    const r = await appeler(cles.fond, corps);
+    assert.equal(r.status, 400, quoi);
+    assert.match((await r.json()).error.message, motif, quoi);
+  }
+  assert.equal(modele.etat.recus.length, avant);
+  // Un schéma ordinaire passe.
+  assert.equal((await appeler(cles.fond, question("x", { tools: [{ type: "function", function: { name: "f", parameters: { type: "object", properties: { chemin: { type: "string" } } } } }] }))).status, 200);
+});
+
+test("un flux dure 30 min au plus (ici raccourci) : coupé proprement, avec un événement d'erreur, et le modèle libéré", async () => {
+  await remiseAZero();
+  process.env.REMY_PASSERELLE_FLUX_MAX_MS = "150";
+  try {
+    const t0 = Date.now();
+    const evs = await lireFlux(await appeler(cles.clavier, question("LONG sans fin", { stream: true })));
+    assert.ok(Date.now() - t0 < 450, "coupé avant la fin du modèle (500 ms)");
+    assert.equal(evs.at(-1).error.code, "flux_trop_long");
+    await jusqua(() => modele.etat.coupes.includes("LONG sans fin"), 2_000, "le modèle libéré");
+    await attendre(20);
+    const [c] = (await store.listCostEntries()).filter((e) => e.kind === "outil de code");
+    assert.match(c.label, /flux plus long que 0 min : coupé|flux plus long que/);
+  } finally {
+    delete process.env.REMY_PASSERELLE_FLUX_MAX_MS;
+  }
+});
+
+test("appels simultanés par clé : au-delà de 4 « au clavier » (ici 1) ou de 2 agents en vol (ici 1), 429 avec Retry-After", async () => {
+  await remiseAZero();
+  process.env.REMY_PASSERELLE_SIMULTANES_CLAVIER = "1";
+  process.env.REMY_PASSERELLE_SIMULTANES_FOND = "1";
+  process.env.REMY_SPARKS_MAX = "4"; // la garde de charge laisserait passer : c'est la passerelle qui borne
+  try {
+    const long = appeler(cles.clavier, question("LONG au clavier 1", { stream: true }));
+    await modele.enCalcul(/au clavier 1/);
+    const r = await appeler(cles.clavier, question("au clavier 2"));
+    assert.equal(r.status, 429);
+    assert.equal(r.headers.get("retry-after"), "5");
+    assert.equal((await r.json()).error.code, "trop_simultanes");
+    await (await long).text();
+    const agent = appeler(cles.fond, question("LONG agent 1", { stream: true }));
+    await modele.enCalcul(/agent 1/);
+    const r2 = await appeler(cles.fond, question("agent 2"));
+    assert.equal(r2.status, 429);
+    assert.equal((await r2.json()).error.code, "trop_simultanes");
+    await (await agent).text();
+    assert.equal((await appeler(cles.fond, question("agent 3"))).status, 200, "la place libérée, ça repart");
+    assert.equal(modele.etat.recus.some((x) => x.texte === "agent 2" || x.texte === "au clavier 2"), false);
+  } finally {
+    delete process.env.REMY_PASSERELLE_SIMULTANES_CLAVIER;
+    delete process.env.REMY_PASSERELLE_SIMULTANES_FOND;
+    delete process.env.REMY_SPARKS_MAX;
+  }
+});
+
+test("contre-pression : un outil qui ne lit pas ne fait pas gonfler la mémoire ; coupé au-delà du délai, le modèle libéré", async () => {
+  await remiseAZero();
+  process.env.REMY_PASSERELLE_DRAIN_MS = "200";
+  const net = await import("node:net");
+  const corps = JSON.stringify(question("GROS flux", { stream: true }));
+  const s = net.connect(Number(new URL(base).port), "127.0.0.1");
+  try {
+    await new Promise((ok) => s.once("connect", ok));
+    s.pause(); // le faux client ne lit jamais
+    s.write(`POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer ${cles.clavier}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(corps)}\r\n\r\n${corps}`);
+    await jusqua(() => modele.etat.coupes.includes("GROS flux"), 8_000, "flux coupé, modèle libéré");
+    assert.ok(modele.etat.servis.includes("GROS flux") === false, "le modèle n'a pas tout écrit (100 Mo) : il a été arrêté");
+    await attendre(30);
+    const [c] = (await store.listCostEntries()).filter((e) => e.kind === "outil de code");
+    assert.match(c.label, /outil qui ne lit plus : coupé/);
+    assert.ok(process.memoryUsage().rss < 1.5 * 1024 ** 3);
+  } finally {
+    s.destroy();
+    delete process.env.REMY_PASSERELLE_DRAIN_MS;
+  }
+});
+
+test("plafond « au clavier » : 45 min de priorité dans l'heure, puis traitée comme du fond 15 min ; les demandes de Rémy ne sont pas concernées ; Diagnostic le dit", () => {
+  prio._reinitialiser();
+  const min = 60_000;
+  let t = Date.parse("2026-11-12T22:00:00+01:00");
+  prio._horloge(() => t);
+  try {
+    // 44 min d'appels au clavier enchaînés (4 min chacun) : le fond cède toujours.
+    let fin = null;
+    for (let m = 0; m < 44; m += 4) {
+      fin?.();
+      fin = prio.debutDemande("clavier");
+      t += 4 * min;
+    }
+    assert.equal(prio.fondDoitCeder()?.nature, "clavier");
+    assert.equal(prio.recuperationClavier(), null);
+    t += 1 * min; // 45 min d'affilée
+    assert.equal(prio.fondDoitCeder(), null, "plafond atteint : l'appel en cours ne fait plus céder le fond");
+    assert.equal(prio.recuperationClavier(), t + 15 * min);
+    assert.match(prio.etatFond().ligne, /ton outil de code a eu la priorité 45 min dans l'heure : le travail de fond rattrape son retard \(jusqu'à 23:00\)\.$/);
+    fin();
+    fin = prio.debutDemande("clavier");
+    assert.equal(prio.fondDoitCeder(), null, "un nouvel appel au clavier non plus");
+    const q = prio.debutDemande("question");
+    assert.equal(prio.fondDoitCeder()?.nature, "question", "une question posée à Rémy fait toujours céder le fond");
+    q();
+    t += 15 * min;
+    assert.equal(prio.recuperationClavier(), null, "récupération finie");
+    fin();
+    fin = prio.debutDemande("clavier");
+    assert.equal(prio.fondDoitCeder()?.nature, "clavier", "et le compte repart de zéro");
+    assert.ok(prio.cumulClavier() < min);
+    fin();
+    // Des appels espacés (20 min par heure) n'atteignent jamais le plafond.
+    prio._reinitialiser();
+    prio._horloge(() => t);
+    for (let h = 0; h < 6; h++) {
+      const f = prio.debutDemande("clavier");
+      t += 20 * min;
+      f();
+      t += 40 * min;
+      assert.equal(prio.recuperationClavier(), null);
+    }
+  } finally {
+    prio._reinitialiser();
+  }
+});
+
+test("plafond « au clavier » : la sauvegarde de nuit finit par partir malgré un outil qui enchaîne les appels sans relâche", async () => {
+  prio._reinitialiser();
+  jobs._reinitialiserCharge();
+  const min = 60_000;
+  const base0 = Date.parse("2026-11-13T02:00:00+01:00");
+  let t = base0;
+  prio._horloge(() => t);
+  let partie = null;
+  jobs.enregistrer("sauvegarde-nuit", { circuit: "socle", priorite: 1, async executer() { partie = (t - base0) / min; return { nom: "essai" }; } });
+  jobs.planifier("sauvegarde-nuit", { cle: "sauvegarde-nuit:clavier", entree: { jour: "2026-11-13" }, quand: 0 });
+  let fin = null;
+  try {
+    for (let m = 0; m <= 180 && partie === null; m += 5) {
+      t = base0 + m * min;
+      fin?.();
+      fin = prio.debutDemande("clavier"); // un appel au clavier toutes les 5 min, sans trou
+      if (m % 10 === 0) await jobs.passer(); // le planificateur
+    }
+    assert.equal(partie, 50, "partie au premier passage du planificateur après le plafond (45 min)");
+  } finally {
+    fin?.();
+    prio._reinitialiser();
+  }
+});
+
+test("passerelle : la clé « au clavier » plafonnée prend la file comme un agent de fond", async () => {
+  await remiseAZero();
+  let decalage = 0;
+  prio._horloge(() => Date.now() + decalage);
+  try {
+    const f = prio.debutDemande("clavier");
+    decalage += 46 * 60_000;
+    f();
+    assert.ok(prio.recuperationClavier());
+    const q = prio.debutDemande("question");
+    const r = appeler(cles.clavier, question("au clavier plafonné"));
+    await jusqua(() => P.etatPasserelle().enFile === 1, 2_000, "en file");
+    const v = await fetch(`${base}/api/fond`, { headers: session }).then((x) => x.json());
+    assert.match(v.ligne, /1 appel d'agent en attente : tu viens de poser une question · ton outil de code a eu la priorité 45 min/);
+    assert.equal(v.clavier.recuperation, true);
+    assert.equal(modele.etat.recus.length, 0);
+    q();
+    assert.equal((await r).status, 200);
+  } finally {
+    prio._reinitialiser();
+  }
 });
