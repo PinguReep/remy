@@ -215,7 +215,7 @@ test("Rémy : recherche web, recherche privée, circuits — les phrases de l'iP
   assert.equal(V.detailCircuit("syntheses", {}), null, "les autres circuits gardent leur nom seul");
 });
 
-test("Jours actifs, déconnexion, connexion, nouveautés : les phrases", () => {
+test("Jours actifs, déconnexion, connexion : les phrases", () => {
   const jours = Array.from({ length: 20 }, (_, i) => ({ jour: `2026-10-${String(10 + i).padStart(2, "0")}`, messages: i < 6 ? 3 : 0, actif: i === 19 }));
   assert.equal(V.joursActifs({ jours }), 1, "les 14 plus récents seulement");
   assert.equal(V.joursActifs({ jours: [] }), null);
@@ -232,8 +232,6 @@ test("Jours actifs, déconnexion, connexion, nouveautés : les phrases", () => {
   // Une coche gardée pendant une session expirée n'est pas « une note tapée ».
   assert.equal(phraseFile(1, 1), "1 tâche cochée sur cet ordinateur : elle partira après la connexion.");
   assert.equal(phraseFile(3, 1), "3 envois en attente sur cet ordinateur (1 tâche cochée) : ils partiront après la connexion.");
-  assert.equal(V.sousTitreNouveautes(0), "Les tutoriels des mises à jour, à revoir");
-  assert.equal(V.sousTitreNouveautes(2), "2 nouvelles à découvrir");
 });
 
 // --- Les chemins de Réglages, joués contre les vraies routes de la tour ---

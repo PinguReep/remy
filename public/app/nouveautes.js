@@ -8,12 +8,19 @@
 // l'iPhone (Siri et widgets, Partager, au pouce, sélection) n'y sont pas. La
 // conversation privée et l'image (Partager, sur l'iPhone) ont leur entrée
 // d'ici, au clic (contre-relecture du 30/10, tour 2).
+// Le suivi (12/11, comme l'iPhone) : chaque tutoriel est « à découvrir »
+// (jamais ouvert), « commencé » (ouvert, dernière page pas atteinte) ou
+// « suivi » (dernière page atteinte), avec sa date, gardé sur cet ordinateur.
+// Présenté d'office au lancement seulement s'il appartient aux DEUX DERNIÈRES
+// SÉRIES du catalogue (SERIES_PRESENTEES) ; au-delà, il attend dans Réglages ›
+// Nouveautés. `aRemplacer` : plus présenté d'office ; `remplace` : la
+// remplaçante sort l'ancienne du suivi ; RETIREES : les ids retirés.
 // La logique est pure (le stockage passe par `local`, lu à l'appel) ; la
 // feuille n'utilise le document qu'à l'ouverture : importable sous node.
 import { h, vider, icone, bouton, feuille, local } from "./ui.js";
 
 const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
-const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
+const n = (id, serie, date, titre, capacite, pages, { remplace = null, aRemplacer = false } = {}) => Object.freeze({ id, serie, date, titre, capacite, pages, remplace, aRemplacer });
 
 export const CATALOGUE = [
   n("maj-auto", 10, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
@@ -24,7 +31,7 @@ export const CATALOGUE = [
     p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
     p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),
     p("etoile", "Ce que Rémy a compris", "Réglages › Ce qui compte : Rémy propose un classement de tes projets, avec ce qu'il a vu. « C'est ça », ↑ ↓ ou « Pas une priorité » ; seul ce que tu confirmes devient « sert ta priorité n°1 »."),
-  ]),
+  ], { remplace: "priorites" }),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),
@@ -52,17 +59,14 @@ export const CATALOGUE = [
   n("reglages-recherche", 5, "29 oct.", "Chercher dans les réglages", null, [
     p("recherche", "Va droit au réglage", "En haut de Réglages (ou avec Ctrl+K), tape ce que tu cherches : « notif », « jauge », « privé »… Entrée ouvre le premier résultat, le réglage mis en évidence."),
   ]),
-  n("bilan-coucher", 5, "29 oct.", "Le bilan, avant de te coucher", "rituel-v1", [
-    p("lune", "22 h 45 par défaut", "Allumé sans heure choisie, le bilan du soir arrive désormais à 22 h 45 (21 h 30 avant). Une heure que tu avais choisie reste la tienne : Réglages › Ordinateur."),
-  ]),
   // Série 6 de l'iPhone, rangée ici en série 5 : le site reçoit tout le 29/10
-  // d'un coup, et la première feuille garde le bilan de 22 h 45 (6 pages au plus).
+  // d'un coup (6 pages au plus par feuille).
   n("chatgpt-automatique", 5, "29 oct.", "ChatGPT, sans y penser", "conversations-externes-v2", [
     p("ranger", "L'export trouvé dans Téléchargements", "Demande ton export à ChatGPT ; quand le mail arrive, clique son lien sur la tour : Rémy le trouve dans ses Téléchargements, en lecture seule, et te demande ton accord. Reçu ailleurs ? « Importer le .zip » dans la carte."),
     p("cloche", "Un rappel par mois", "Quand ton dernier export a plus de 30 jours, une carte « Exporter ChatGPT » dans Conversations ouvre la bonne page. Réglages › Sources des conversations pour la couper."),
     p("recherche", "Claude Code et T3, bien trouvés", "Les sessions de l'app Claude de bureau et de Remote Control sont lues. Sources dit combien Rémy en a vu, et pourquoi il en écarte : ses propres appels, les « claude -p » d'un seul échange."),
   ]),
-  n("jauge-retour", 4, "27 oct.", "La jauge du contexte, de retour", "jauge-v1", [
+  n("jauge-retour", 4, "27 oct.", "La jauge du contexte", "jauge-v1", [
     p("jauge", "Visible dès le premier message", "Le cadran en haut du chat montre la place que prend la conversation. Pour le masquer : Réglages › Diagnostic › Jauge du contexte."),
     p("compresser", "Le résumé à 70 %", "Clique le cadran : il dit quand Rémy résumera le début du fil (dès 70 %), s'il l'a fait, et « Compacter maintenant » le fait tout de suite. Rien n'est effacé."),
   ]),
@@ -92,13 +96,15 @@ export const CATALOGUE = [
   ]),
   n("a-trancher", 3, "24 oct.", "À trancher, et la revue du dimanche", "a-trancher-v1", [
     p("liste", "Ce qui s'empile, d'un geste", "Cartes en attente, rappels sans date ou en double, articles pris, vieux fils, idées : tout est réuni dans « À trancher », sur Aujourd'hui. Oui, Non, Plus tard… toujours avec « Annuler »."),
-    p("calendrier", "Le dimanche, 10 minutes", "Ta semaine par projet, tes idées, trois décisions pour la suite, et ce que Rémy a remarqué la nuit. Sans IA en plus. Réglages › Revue du dimanche pour la couper."),
+    p("calendrier", "Le dimanche, 10 minutes", "Ta semaine par projet, tes idées, trois décisions pour la suite, et ce que Rémy a remarqué la nuit. Sans IA en plus. Réglages › À trancher et revue pour la couper."),
     p("retour", "De retour après une absence ?", "Après plus de 3 jours, Rémy propose de trier tes retards ligne par ligne : Fait, Demain ou Abandonner."),
   ]),
+  // Remplacée (12/11) par « prochaines-heures » dès que la tour propose
+  // elle-même le classement (priorites-v2) ; d'ici là, plus présentée d'office.
   n("priorites", 3, "24 oct.", "Dis à Rémy ce qui compte", "priorites-v1", [
     p("etoile", "Tes 3 à 5 priorités", "Réglages › Ce qui compte : Rémy te propose ce qu'il a compris, tu confirmes ou tu corriges. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
     p("horloge", "Ce qui n'a pas bougé", "Sans trace d'activité depuis une semaine, une priorité est marquée « négligée », avec sa dernière trace. Chaque version reste sur ta tour."),
-  ]),
+  ], { aRemplacer: true }),
   n("carnet-remy", 3, "24 oct.", "Les courses et les rappels, en parlant", "carnet-outils-v1", [
     p("liste", "« Ajoute du lait »", "Rémy te propose l'article dans Courses, et « rappelle-moi d'appeler Léa demain à 9 h » devient un rappel, pas une tâche Motion. Rien n'est écrit avant « Ajouter »."),
   ]),
@@ -127,20 +133,25 @@ export const CATALOGUE = [
     p("lieu", "Le coiffeur, le drive, la salle", "Les adresses et les commerces sont reconnus sur ta tour : « sans doute Salon Lumière (coiffeur) ». Aucune position ne part ailleurs."),
     p("crayon", "Nomme tes lieux", "Clique un lieu pour le renommer, clic droit pour l'oublier. Gardé 90 jours, puis effacé."),
   ]),
-  n("jauge", 1, "20 oct.", "La jauge du contexte", "jauge-v1", [
-    p("jauge", "Ce que Rémy a en tête", "Le cadran, en haut du chat, montre la place prise dans la mémoire de travail du modèle."),
-    p("jauge", "Clique-le", "La place prise et d'où elle vient, la vitesse de la dernière réponse, la moyenne du fil, et le modèle qui a répondu."),
-  ]),
-  n("compactage", 1, "20 oct.", "Les longues conversations se compactent", "compactage-v1", [
-    p("compresser", "Rien n'est effacé", "Dès 70 % du contexte, le modèle local résume le début du fil pour continuer. À la demande aussi, depuis la jauge."),
-  ]),
   n("regles", 1, "20 oct.", "Les règles de Rémy", "regles-v1", [
     p("liste", "Avant X, fais Y", "Dis-lui « avant une sortie, propose-moi de me raser » : il te propose une règle. Ensuite, il relit ton agenda et te propose la tâche — jamais sans ton « Oui »."),
   ]),
 ];
 
+/**
+ * Les entrées retirées (12/11), et pourquoi — les mêmes que l'iPhone. Leur id
+ * ne resservira pas : un état gardé sous cet id est ignoré.
+ */
+export const RETIREES = Object.freeze({
+  jauge: "remplacée par « jauge-retour »",
+  compactage: "doublon de « jauge-retour » (le résumé à 70 %)",
+  "bilan-coucher": "annonce passée ; couverte par « rituel »",
+});
+/** Présentées d'office au lancement : les deux dernières séries du catalogue. */
+export const SERIES_PRESENTEES = 2;
 /** Au plus, par feuille : une mise à jour n'est pas un cours magistral. */
 export const PAGES_MAX = 6;
+/** Avant le suivi : les ids « vus », lus une fois pour la reprise. */
 export const CLE_VUES = "remy-nouveautes-vues";
 
 /**
@@ -162,45 +173,157 @@ export function lot(entrees, pagesMax = PAGES_MAX) {
 /** Les pages d'un lot, chacune avec son entrée. */
 export const pagesDe = (entrees) => entrees.flatMap((e) => e.pages.map((page) => ({ nouveaute: e, page })));
 
-/** Les entrées dont au moins une page a été affichée, la feuille ayant atteint la page `index` (0 : la première). */
-export function entreesJusqua(entrees, index) {
+/**
+ * La feuille ayant atteint la page `index` (0 : la première) : chaque entrée
+ * atteinte et sa page la plus loin (une entrée dépassée a été vue en entier).
+ */
+export function avancement(entrees, index) {
   let debut = 0;
-  return entrees.filter((e) => {
-    const vue = debut <= index;
+  const r = [];
+  for (const e of entrees) {
+    if (debut <= index) r.push({ nouveaute: e, page: Math.min(index - debut, Math.max(0, e.pages.length - 1)) });
     debut += e.pages.length;
-    return vue;
-  });
+  }
+  return r;
 }
 
+/** Les entrées dont au moins une page a été affichée, la feuille ayant atteint la page `index` (0 : la première). */
+export const entreesJusqua = (entrees, index) => avancement(entrees, index).map((x) => x.nouveaute);
+
+const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+/** « 12 nov. » : le jour d'un état du suivi, à l'heure de Paris (comme l'iPhone). */
+export function jour(ms) {
+  const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "numeric" }).formatToParts(new Date(ms));
+  const v = (t) => Number(parts.find((x) => x.type === t)?.value || 1);
+  return `${v("day")} ${MOIS[Math.max(0, Math.min(11, v("month") - 1))]}`;
+}
+
+/** « 3 à découvrir · 1 commencé · 22 suivis ». */
+export const resume = (aDecouvrir, commences, suivis) =>
+  `${aDecouvrir} à découvrir · ${commences} commencé${commences > 1 ? "s" : ""} · ${suivis} suivi${suivis > 1 ? "s" : ""}`;
+
+/** La forme de l'état (pas la couleur seule) et son mot. */
+export const ETATS = Object.freeze({
+  aDecouvrir: Object.freeze({ mot: "À découvrir", icone: "etincelles" }),
+  commence: Object.freeze({ mot: "Commencé", icone: "horloge" }),
+  suivi: Object.freeze({ mot: "Suivi", icone: "coche" }),
+});
+
 /**
- * Le modèle des nouveautés (NouveautesModel) : les vues gardées dans `local`
- * (ids des entrées dont une page au moins a été affichée). Au tout premier
- * lancement, seules celles de la dernière série sont nouvelles. `sait` : la
- * tour connaît-elle une capacité ?
+ * Le modèle des nouveautés (NouveautesModel) : le suivi gardé dans `local`
+ * ({ id: { etat, page, date, repris? } }, relu à chaque appel : plusieurs
+ * modèles vivent dans la page). Sans suivi, une installation d'avant reprend
+ * ses « vus » (CLE_VUES) en « commencés » ; une installation neuve ne se voit
+ * présenter que la dernière série. `sait` : la tour connaît-elle une capacité ?
  */
-export function modele({ catalogue = CATALOGUE, sait = () => false, cle = CLE_VUES } = {}) {
-  const lireVues = () => {
-    const v = local.lire(cle, null);
-    if (Array.isArray(v)) return new Set(v.filter((x) => typeof x === "string"));
-    const derniere = Math.max(0, ...catalogue.map((x) => x.serie));
-    const vues = new Set(catalogue.filter((x) => x.serie < derniere).map((x) => x.id));
-    local.ecrire(cle, [...vues].sort());
-    return vues;
+export function modele({ catalogue = CATALOGUE, sait = () => false, cle = CLE_VUES, retirees = Object.keys(RETIREES), maintenant = () => Date.now() } = {}) {
+  const base = cle.replace(/-vues$/, "");
+  const cleSuivi = `${base}-suivi`;
+  const cleDepart = `${base}-depart`;
+  const horsCatalogue = new Set(retirees);
+  const derniere = Math.max(0, ...catalogue.filter((e) => !horsCatalogue.has(e.id)).map((e) => e.serie));
+  const lire = () => {
+    const s = local.lire(cleSuivi, null);
+    return s && typeof s === "object" && !Array.isArray(s) ? s : {};
   };
-  let vues = lireVues();
+  const ecrire = (s) => local.ecrire(cleSuivi, s);
+  if (local.lire(cleSuivi, null) == null) {
+    const vues = local.lire(cle, null);
+    if (Array.isArray(vues)) {
+      // La reprise des « vus » : « commencé », pas « suivi » — un vu disait
+      // seulement qu'une page avait été affichée (ou rien, pour l'historique
+      // marqué vu au premier lancement). Rien ne redevient « à découvrir ».
+      const t = maintenant();
+      ecrire(Object.fromEntries(vues.filter((x) => typeof x === "string").map((id) => [id, { etat: "commence", page: 0, date: t, repris: true }])));
+      local.ecrire(cleDepart, 0);
+    } else {
+      ecrire({});
+      local.ecrire(cleDepart, derniere);
+    }
+  }
+  const serieDepart = Number(local.lire(cleDepart, 0)) || 0;
   const m = {
     existe: (e) => !e.capacite || Boolean(sait(e.capacite)),
-    estNouvelle: (e) => !vues.has(e.id),
+    suivi: (e) => lire()[e.id] || null,
+    etat: (e) => lire()[e.id]?.etat || "aDecouvrir",
+    estNouvelle: (e) => m.etat(e) === "aDecouvrir",
+    /** Le catalogue vivant : sans les retirées, ni celles dont la remplaçante est là (et connue de la tour). */
+    actives: () => {
+      const remplacees = new Set(catalogue.filter((e) => e.remplace && !horsCatalogue.has(e.id) && m.existe(e)).map((e) => e.remplace));
+      return catalogue.filter((e) => !horsCatalogue.has(e.id) && !remplacees.has(e.id));
+    },
     /** L'historique (Réglages › Nouveautés) : la plus récente d'abord, l'ordre du catalogue dans une série. */
-    historique: () => catalogue.map((e, i) => [e, i]).sort((a, b) => (a[0].serie !== b[0].serie ? b[0].serie - a[0].serie : a[1] - b[1])).map((x) => x[0]),
-    /** Combien en découvrir (sous-titre de la ligne). */
-    aDecouvrir: () => catalogue.filter((e) => m.estNouvelle(e) && m.existe(e)).length,
-    /** Au lancement : les nouveautés pas encore vues, dont la tour connaît la fonction (une feuille, ≤ 6 pages). */
-    aMontrer: () => lot(catalogue.filter((e) => !vues.has(e.id) && m.existe(e)).map((e, i) => [e, i]).sort((a, b) => a[0].serie - b[0].serie || a[1] - b[1]).map((x) => x[0])),
-    marquerVues: (entrees) => {
-      vues = lireVues();
-      for (const e of entrees) vues.add(typeof e === "string" ? e : e.id);
-      local.ecrire(cle, [...vues].sort());
+    historique: () => m.actives().map((e, i) => [e, i]).sort((a, b) => (a[0].serie !== b[0].serie ? b[0].serie - a[0].serie : a[1] - b[1])).map((x) => x[0]),
+    /** La plus ancienne série encore présentée d'office. */
+    serieMinimale: () => Math.max(derniere - SERIES_PRESENTEES + 1, serieDepart),
+    presentable: (e) => m.estNouvelle(e) && !e.aRemplacer && e.serie >= m.serieMinimale() && m.existe(e),
+    /** Au lancement : les présentables, de la plus ancienne série à la plus récente (une feuille, ≤ 6 pages). */
+    aMontrer: () => lot(m.actives().filter(m.presentable).map((e, i) => [e, i]).sort((a, b) => a[0].serie - b[0].serie || a[1] - b[1]).map((x) => x[0])),
+    /** Ouvrir depuis le suivi : un commencé reprend à sa page la plus loin. */
+    lotPour: (e) => {
+      const s = m.suivi(e);
+      return { entrees: [e], depart: s?.etat === "commence" ? Math.min(s.page || 0, Math.max(0, e.pages.length - 1)) : 0 };
+    },
+    /** Une feuille affiche la page `index` de `entrees` : commencé, ou suivi à la dernière page. Jamais en arrière. */
+    noter: (entrees, index, t = maintenant()) => {
+      const s = lire();
+      let change = false;
+      for (const { nouveaute: e, page } of avancement(entrees, index)) {
+        const fini = page >= e.pages.length - 1;
+        const avant = s[e.id];
+        if (!avant) {
+          s[e.id] = { etat: fini ? "suivi" : "commence", page, date: t };
+          change = true;
+          continue;
+        }
+        const x = { ...avant, page: Math.max(avant.page || 0, page) };
+        if (x.repris) {
+          delete x.repris;
+          x.date = t;
+        }
+        if (fini && x.etat !== "suivi") Object.assign(x, { etat: "suivi", date: t });
+        if (JSON.stringify(x) !== JSON.stringify(avant)) {
+          s[e.id] = x;
+          change = true;
+        }
+      }
+      if (change) ecrire(s);
+    },
+    compte: (etat) => m.actives().filter((e) => m.etat(e) === etat && (etat !== "aDecouvrir" || m.existe(e))).length,
+    /** Combien en découvrir (pastille du maître). */
+    aDecouvrir: () => m.compte("aDecouvrir"),
+    resume: () => resume(m.compte("aDecouvrir"), m.compte("commence"), m.compte("suivi")),
+    /** À découvrir, commencés, suivis, puis ce qui attend la tour ; la plus récente d'abord. */
+    groupes: () => {
+      const h = m.historique();
+      return [
+        { id: "a-decouvrir", titre: "À découvrir", entrees: h.filter((e) => m.etat(e) === "aDecouvrir" && m.existe(e)) },
+        { id: "commences", titre: "Commencés", entrees: h.filter((e) => m.etat(e) === "commence") },
+        { id: "suivis", titre: "Suivis", entrees: h.filter((e) => m.etat(e) === "suivi") },
+        { id: "tour", titre: "Avec la mise à jour de ta tour", entrees: h.filter((e) => m.etat(e) === "aDecouvrir" && !m.existe(e)) },
+      ].filter((g) => g.entrees.length);
+    },
+    /** La ligne d'un tutoriel : son état en mots, sa date ; « page 2 sur 3 » pour un commencé. */
+    libelle: (e) => {
+      const s = m.suivi(e);
+      let t;
+      if (s?.etat === "suivi") t = `Suivi le ${jour(s.date)}`;
+      else if (s?.repris) t = `Commencé · ouvert avant le ${jour(s.date)}`;
+      else if (s) t = `Commencé le ${jour(s.date)}${e.pages.length > 1 ? ` · page ${Math.min(s.page || 0, e.pages.length - 1) + 1} sur ${e.pages.length}` : ""}`;
+      else t = m.existe(e) ? `À découvrir · paru le ${e.date}` : `Arrive avec la mise à jour de ta tour · ${e.date}`;
+      return e.aRemplacer ? `${t} · bientôt remplacé` : t;
+    },
+    /** Ce que « Tout marquer comme suivi » rangerait (la tour connaît la fonction). */
+    aMarquer: () => m.actives().filter((e) => m.existe(e) && m.etat(e) !== "suivi"),
+    /** Tout ranger d'un geste ; rend { n, annuler } (l'état d'avant revient tel quel). */
+    toutMarquerSuivi: (t = maintenant()) => {
+      const a = m.aMarquer();
+      const avant = lire();
+      if (!a.length) return { n: 0, annuler: () => {} };
+      const s = { ...avant };
+      for (const e of a) s[e.id] = { etat: "suivi", page: Math.max(0, e.pages.length - 1), date: t };
+      ecrire(s);
+      return { n: a.length, annuler: () => ecrire(avant) };
     },
   };
   return m;
@@ -211,12 +334,14 @@ export function modele({ catalogue = CATALOGUE, sait = () => false, cle = CLE_VU
 /**
  * Ouvre le tutoriel d'un lot : « Nouveau · i/N », « Plus tard », titre et
  * texte, puis « Suivant » ou « C'est parti ». ← et → tournent les pages,
- * Échap vaut « Plus tard ». Rend une promesse : la page la plus loin affichée.
+ * Échap vaut « Plus tard ». `depart` : la page où elle s'ouvre (reprise) ;
+ * `surPage(i)` : chaque page affichée, dès l'ouverture (le suivi la note).
+ * Rend une promesse : la page la plus loin affichée.
  */
-export function ouvrirFeuille(entrees, { titre = "Nouveautés" } = {}) {
+export function ouvrirFeuille(entrees, { titre = "Nouveautés", depart = 0, surPage = () => {} } = {}) {
   const pages = pagesDe(entrees);
-  let index = 0;
-  let atteinte = 0;
+  let index = Math.max(0, Math.min(pages.length - 1, depart));
+  let atteinte = index;
   const compteur = h("span", { class: "nouveautes-compteur mono" });
   const corps = h("div", { class: "nouveautes-page", "aria-live": "polite" });
   const suivant = bouton("Suivant", { classe: "plein large", onclick: () => (index < pages.length - 1 ? aller(index + 1) : f.fermer("fini")) });
@@ -235,6 +360,7 @@ export function ouvrirFeuille(entrees, { titre = "Nouveautés" } = {}) {
     index = Math.max(0, Math.min(pages.length - 1, i));
     atteinte = Math.max(atteinte, index);
     dessiner();
+    surPage(index);
   };
   const f = feuille({
     titre,
@@ -252,20 +378,22 @@ export function ouvrirFeuille(entrees, { titre = "Nouveautés" } = {}) {
     }
   });
   dessiner();
+  surPage(index);
   suivant.focus();
   return f.fini.then(() => atteinte);
 }
 
-/** Revoir une entrée depuis Réglages › Nouveautés : vue dès qu'elle est ouverte. */
+/** Ouvrir une entrée depuis Réglages › Nouveautés : un commencé reprend à sa page ; chaque page est notée. */
 export async function revoir(e, m) {
-  m.marquerVues([e]);
-  await ouvrirFeuille([e], { titre: e.titre });
+  const l = m.lotPour(e);
+  await ouvrirFeuille(l.entrees, { titre: e.titre, depart: l.depart, surPage: (i) => m.noter(l.entrees, i) });
 }
 
 /**
- * Au lancement (main.js), une fois : les nouveautés non vues, jamais
- * par-dessus une autre feuille ni pendant une saisie (réessayé un peu plus
- * tard, au plus quelques fois). Vues : celles dont une page a été affichée.
+ * Au lancement (main.js), une fois : les nouveautés présentables (à
+ * découvrir, des deux dernières séries), jamais par-dessus une autre feuille
+ * ni pendant une saisie (réessayé un peu plus tard, au plus quelques fois).
+ * Chaque page affichée est notée (commencé, puis suivi).
  */
 export function auLancement({ sait, essais = 6, attente = 20000 } = {}) {
   const m = modele({ sait });
@@ -278,7 +406,7 @@ export function auLancement({ sait, essais = 6, attente = 20000 } = {}) {
       if (reste > 0) setTimeout(() => essayer(reste - 1), attente);
       return;
     }
-    ouvrirFeuille(entrees).then((atteinte) => m.marquerVues(entreesJusqua(entrees, atteinte)));
+    ouvrirFeuille(entrees, { surPage: (i) => m.noter(entrees, i) }).then((atteinte) => m.noter(entrees, atteinte));
   };
   essayer(essais);
 }

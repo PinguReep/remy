@@ -246,6 +246,8 @@ jobs:
           capture 6c-modele-sombre dark modeles
           capture 6d-nouveautes-clair light nouveautes
           capture 6e-nouveautes-liste-sombre dark nouveautes-liste
+          # Le suivi des tutoriels (12/11) : à découvrir, commencés, suivis.
+          capture 6e2-nouveautes-suivi-clair light nouveautes-suivi
           capture 6f-activite-pc-clair light activite-pc
           capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
           capture 6f-priorites-clair light priorites

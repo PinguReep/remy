@@ -10,6 +10,16 @@ import Observation
 //
 // Une nouvelle fonction = une entrée ici, avec la série suivante
 // (CLAUDE.md, Definition of Done).
+//
+// Le suivi (12/11) : chaque tutoriel est « à découvrir » (jamais ouvert),
+// « commencé » (ouvert, dernière page pas atteinte) ou « suivi » (dernière
+// page atteinte), avec sa date, gardé sur l'iPhone. Présenté d'office au
+// lancement seulement s'il appartient aux DEUX DERNIÈRES SÉRIES du catalogue
+// (`Nouveautes.seriesPresentees`) : au-delà, il attend dans Réglages ›
+// Nouveautés sans s'imposer. Une fonction qui change : `aRemplacer` (plus
+// présentée d'office), puis sa remplaçante, avec `remplace` (l'ancienne sort
+// du suivi dès que la tour connaît la nouvelle). Une fonction disparue :
+// son id dans `Nouveautes.retirees`, l'entrée hors du catalogue.
 
 public struct Nouveaute: Identifiable, Equatable, Sendable {
     public struct Page: Equatable, Sendable {
@@ -25,6 +35,13 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
     /// La fonction n'existe que si la tour la connaît.
     public let capacite: String?
     public let pages: [Page]
+    /// L'entrée qu'elle remplace (son id) : l'ancienne sort du suivi et du
+    /// lancement dès que la tour connaît la nouvelle ; la nouvelle, avec son
+    /// propre id, part « à découvrir » même pour qui avait suivi l'ancienne.
+    public var remplace: String? = nil
+    /// Décrit une fonction en train de changer : plus présentée d'office,
+    /// toujours dans le suivi (« bientôt remplacé ») jusqu'à sa remplaçante.
+    public var aRemplacer = false
 }
 
 public enum Nouveautes {
@@ -67,19 +84,15 @@ public enum Nouveautes {
             .init(symbole: "magnifyingglass", titre: "Va droit au réglage",
                   texte: "En haut de Réglages, tape ce que tu cherches : « notif », « jauge », « privé », « Siri »… Touche un résultat : son écran s'ouvre, le réglage mis en évidence."),
         ]),
-        Nouveaute(id: "bilan-coucher", serie: 5, date: "29 oct.", titre: "Le bilan, avant de te coucher", capacite: "rituel-v1", pages: [
-            .init(symbole: "moon.stars", titre: "22 h 45 par défaut",
-                  texte: "Allumé sans heure choisie, le bilan du soir arrive désormais à 22 h 45 (21 h 30 avant). Une heure que tu avais choisie reste la tienne : Réglages › Rendez-vous quotidien."),
-        ]),
         Nouveaute(id: "privee-iphone", serie: 4, date: "27 oct.", titre: "Conversation privée sur l'iPhone", capacite: nil, pages: [
             .init(symbole: "lock", titre: "Une conversation qui reste chez toi",
-                  texte: "Nouvelle conversation : touche « Privée » au-dessus du champ. Ou touche le titre en haut › « Rendre privée » (sans retour). Le cadenas reste sur la marque de Rémy, en haut."),
+                  texte: "Nouvelle conversation : touche « Privée » au-dessus du champ. Ou touche le titre en haut › « Rendre cette conversation privée » (sans retour). Le cadenas reste sur la marque de Rémy, en haut."),
             .init(symbole: "lock.shield", titre: "Ce que ça change",
                   texte: "Rien ne part chez Claude : le modèle local de ta tour répond, n'en retient rien dans sa mémoire, et la nuit ne la relit pas. Ni ailleurs, tant que la recherche y reste coupée. Tour éteinte : pas de réponse."),
             .init(symbole: "magnifyingglass", titre: "Et le web ?",
                   texte: "Coupé par défaut. Réglages › Recherche dans les conversations privées : partent alors des questions générales (Rémy, puis la salle blanche), filtrées ; les pages sont lues depuis ta tour."),
         ]),
-        Nouveaute(id: "jauge-retour", serie: 4, date: "27 oct.", titre: "La jauge du contexte, de retour", capacite: "jauge-v1", pages: [
+        Nouveaute(id: "jauge-retour", serie: 4, date: "27 oct.", titre: "La jauge du contexte", capacite: "jauge-v1", pages: [
             .init(symbole: "gauge.with.dots.needle.33percent", titre: "Visible dès le premier message",
                   texte: "Le cadran en haut du chat montre la place que prend la conversation. Pour le masquer : Réglages › Diagnostic › Jauge du contexte."),
             .init(symbole: "rectangle.compress.vertical", titre: "Le résumé à 70 %",
@@ -121,7 +134,7 @@ public enum Nouveautes {
             .init(symbole: "calendar.badge.clock", titre: "Décaler en un toucher",
                   texte: "Touche une tâche, même en retard : « Demain », « Lundi » ou une date, d'un geste, avec « Annuler ». Le panneau se ferme en le glissant vers le bas."),
             .init(symbole: "bell.badge", titre: "Les rappels se reportent",
-                  texte: "Touche un rappel : « Dans 1 h », « Ce soir », « Demain 9:00 »… Sur la notification aussi : appuie longuement dessus pour « Fait », « Dans 1 h » ou « Demain »."),
+                  texte: "Touche un rappel : « Dans 1 h », « Ce soir 19:00 », « Demain 9:00 »… Sur la notification aussi : appuie longuement dessus pour « Fait », « Dans 1 h » ou « Demain 9:00 »."),
             .init(symbole: "keyboard.chevron.compact.down", titre: "Noter sous le pouce",
                   texte: "Le bouton d'envoi suit le clavier, sous ton pouce."),
         ]),
@@ -140,7 +153,7 @@ public enum Nouveautes {
         ]),
         Nouveaute(id: "idees", serie: 3, date: "24 oct.", titre: "Tes idées restent des idées", capacite: "dossiers-v1", pages: [
             .init(symbole: "tray.and.arrow.down", titre: "Plus de tâche par erreur",
-                  texte: "Une pensée sans action claire va dans « Idées » (Projets), pas dans Motion. « Appeler le garage » reste une tâche. Réglages › Capture pour revenir à l'ancien comportement."),
+                  texte: "Une pensée sans action claire va dans « Idées » (Projets), pas dans Motion. « Appeler le garage » reste une tâche. Réglages › « Une pensée sans action claire » › « Dans Motion » pour revenir à l'ancien comportement."),
         ]),
         Nouveaute(id: "semaine", serie: 3, date: "24 oct.", titre: "Demain et les 7 jours", capacite: "semaine-v1", pages: [
             .init(symbole: "calendar.day.timeline.left", titre: "« À l'échelle », à côté de LA SUITE",
@@ -158,12 +171,14 @@ public enum Nouveautes {
             .init(symbole: "arrow.uturn.backward", titre: "De retour après une absence ?",
                   texte: "Après plus de 3 jours, Rémy propose de trier tes retards ligne par ligne : Fait, Demain ou Abandonner."),
         ]),
+        // À remplacer (12/11) : Rémy proposera lui-même le classement, Sam le
+        // confirmera. Sa remplaçante portera `remplace: "priorites"`.
         Nouveaute(id: "priorites", serie: 3, date: "24 oct.", titre: "Dis à Rémy ce qui compte", capacite: "priorites-v1", pages: [
             .init(symbole: "star", titre: "Tes 3 à 5 priorités",
                   texte: "Réglages › Ce qui compte : écris-les avec leur pourquoi. Le conseil du moment et la réflexion de nuit s'en servent, et un conseil qui sert une priorité le dit."),
             .init(symbole: "clock.badge.exclamationmark", titre: "Ce qui n'a pas bougé",
                   texte: "Sans trace d'activité depuis une semaine, une priorité est marquée « négligée », avec sa dernière trace. Chaque version reste sur ta tour."),
-        ]),
+        ], aRemplacer: true),
         Nouveaute(id: "carnet-remy", serie: 3, date: "24 oct.", titre: "Les courses et les rappels, en parlant", capacite: "carnet-outils-v1", pages: [
             .init(symbole: "cart", titre: "« Ajoute du lait »",
                   texte: "Rémy te propose l'article dans Courses, et « rappelle-moi d'appeler Léa demain à 9 h » devient un rappel qui sonne ici, pas une tâche Motion. Rien n'est écrit avant « Ajouter »."),
@@ -196,7 +211,7 @@ public enum Nouveautes {
         ]),
         Nouveaute(id: "modele", serie: 2, date: "21 oct.", titre: "Choisis le modèle de Rémy", capacite: "modeles-v1", pages: [
             .init(symbole: "cpu", titre: "Rémy suit tes Sparks",
-                  texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Son nom s'affiche sous chaque réponse et dans la jauge."),
+                  texte: "Quand tu charges un autre modèle sur tes Sparks, Rémy le suit tout seul. Touche le cadran en haut du chat : il dit quel modèle a répondu."),
             .init(symbole: "slider.horizontal.3", titre: "Ou fixe-le toi-même",
                   texte: "Réglages › Modèle : garde « Automatique », ou choisis un modèle parmi ceux que tes Sparks servent. Claude n'est pas dans la liste : tes conversations restent chez toi."),
         ]),
@@ -208,16 +223,6 @@ public enum Nouveautes {
             .init(symbole: "mappin.and.ellipse", titre: "Nomme tes lieux",
                   texte: "Touche un lieu pour le nommer. « Pause 2 h » n'enregistre rien, et tout s'efface d'un geste. Gardé 90 jours, puis effacé."),
         ]),
-        Nouveaute(id: "jauge", serie: 1, date: "20 oct.", titre: "La jauge du contexte", capacite: "jauge-v1", pages: [
-            .init(symbole: "gauge.with.dots.needle.33percent", titre: "Ce que Rémy a en tête",
-                  texte: "Le cadran, en haut du chat, montre la place prise dans la mémoire de travail du modèle. Les tokens par seconde s'affichent pendant qu'il écrit."),
-            .init(symbole: "hand.tap", titre: "Touche-le",
-                  texte: "La place prise et d'où elle vient, la vitesse de la dernière réponse, la moyenne du fil, et le modèle qui a répondu."),
-        ]),
-        Nouveaute(id: "compactage", serie: 1, date: "20 oct.", titre: "Les longues conversations se compactent", capacite: "compactage-v1", pages: [
-            .init(symbole: "rectangle.compress.vertical", titre: "Rien n'est effacé",
-                  texte: "Dès 70 % du contexte, le modèle local résume le début du fil pour continuer. À la demande aussi, depuis la jauge."),
-        ]),
         Nouveaute(id: "regles", serie: 1, date: "20 oct.", titre: "Les règles de Rémy", capacite: "regles-v1", pages: [
             .init(symbole: "arrow.triangle.branch", titre: "Avant X, fais Y",
                   texte: "Dis-lui « avant une sortie, propose-moi de me raser » : il te propose une règle. Ensuite, il relit ton agenda et te propose la tâche — jamais sans ton « Oui »."),
@@ -227,6 +232,27 @@ public enum Nouveautes {
                   texte: "« Sélectionner le texte » : la vraie sélection d'iOS, sur tes messages comme sur ceux de Rémy. Une erreur montre son code et « Copier le diagnostic »."),
         ]),
     ]
+
+    /// Les entrées retirées du catalogue (12/11), et pourquoi. Leur id ne
+    /// resservira pas : un état gardé sur l'iPhone sous cet id est ignoré
+    /// (ni compté, ni montré, ni présenté). Retirer = l'id ici, l'entrée
+    /// hors de `catalogue`.
+    public static let retirees: [String: String] = [
+        // Série 1 (20/10) : « Les tokens par seconde s'affichent pendant qu'il
+        // écrit » est faux depuis le 27/10 (masqués par défaut, Diagnostic) ;
+        // la jauge a son tutoriel à jour, « jauge-retour ».
+        "jauge": "remplacée par « jauge-retour » ; la vitesse est masquée par défaut",
+        // Série 1 : tout entière dans la deuxième page de « jauge-retour ».
+        "compactage": "doublon de « jauge-retour » (le résumé à 70 %)",
+        // Série 5 : l'annonce d'un changement d'heure par défaut (21 h 30 →
+        // 22 h 45), passée ; « rituel » dit déjà « vers 22 h 45 ».
+        "bilan-coucher": "annonce passée ; couverte par « rituel »",
+    ]
+
+    /// Présentées d'office au lancement : les entrées des deux dernières séries
+    /// du catalogue. Une plus ancienne (mise à jour sautée, tour à jour plus
+    /// tard) attend dans Réglages › Nouveautés, sans s'imposer.
+    public static let seriesPresentees = 2
 
     /// Au plus, pour ne pas transformer une mise à jour en cours magistral.
     static let pagesMax = 6
@@ -244,12 +270,67 @@ public enum Nouveautes {
         }
         return pris
     }
+
+    /// « 12 nov. » : le jour d'un état du suivi, dans le fuseau de Rémy (les
+    /// mêmes abréviations que les dates du catalogue et que le site).
+    public static func jour(_ d: Date) -> String {
+        let mois = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+        let c = Format.calendrier.dateComponents([.day, .month], from: d)
+        return "\(c.day ?? 1) \(mois[max(0, min(11, (c.month ?? 1) - 1))])"
+    }
+
+    /// « 3 à découvrir · 1 commencé · 22 suivis ».
+    public static func resume(aDecouvrir: Int, commences: Int, suivis: Int) -> String {
+        "\(aDecouvrir) à découvrir · \(commences) commencé\(commences > 1 ? "s" : "") · \(suivis) suivi\(suivis > 1 ? "s" : "")"
+    }
+}
+
+/// Où en est un tutoriel, sur cet iPhone.
+public enum EtatTutoriel: String, Codable, Sendable, CaseIterable {
+    /// Jamais ouvert.
+    case aDecouvrir
+    /// Ouvert, sa dernière page pas encore atteinte.
+    case commence
+    /// Suivi jusqu'à sa dernière page.
+    case suivi
+
+    /// La forme, pas seulement la couleur : vide, à moitié, coché.
+    public var symbole: String {
+        switch self {
+        case .aDecouvrir: return "circle"
+        case .commence: return "circle.lefthalf.filled"
+        case .suivi: return "checkmark.circle.fill"
+        }
+    }
+}
+
+/// L'état gardé d'un tutoriel ouvert au moins une fois (un tutoriel absent
+/// du suivi est « à découvrir »).
+public struct SuiviTutoriel: Codable, Equatable, Sendable {
+    public var etat: EtatTutoriel
+    /// La page la plus loin atteinte (0 : la première) : la reprise s'y ouvre.
+    public var page: Int
+    /// Ouvert (commencé) ou fini (suivi) ce jour-là.
+    public var date: Date
+    /// Repris d'un « vu » d'avant le suivi : on sait seulement qu'il a été
+    /// ouvert avant `date` (le jour de la reprise).
+    public var repris: Bool?
+}
+
+/// Une rubrique de l'écran de suivi (Réglages › Nouveautés).
+public struct GroupeNouveautes: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let titre: String
+    public let entrees: [Nouveaute]
 }
 
 /// Les nouveautés à montrer d'un coup (une feuille), dans l'ordre.
 public struct LotNouveautes: Identifiable, Equatable, Sendable {
     public let id: String
     public let entrees: [Nouveaute]
+    /// La page où la feuille s'ouvre (0 : la première) : un tutoriel
+    /// commencé reprend où il s'était arrêté.
+    public var depart: Int = 0
     /// Toutes les pages de ses entrées : la limite se prend à la
     /// composition du lot (`Nouveautes.lot`), jamais au milieu d'une entrée.
     public var pages: [(nouveaute: Nouveaute, page: Nouveaute.Page)] {
@@ -258,13 +339,21 @@ public struct LotNouveautes: Identifiable, Equatable, Sendable {
     /// Les entrées dont au moins une page a été affichée, la feuille ayant
     /// atteint la page `index` (0 : la première).
     public func entrees(jusqua index: Int) -> [Nouveaute] {
-        var debut = 0
-        return entrees.filter { n in
-            defer { debut += n.pages.count }
-            return debut <= index
-        }
+        avancement(jusqua: index).map { $0.nouveaute }
     }
-    public static func == (a: LotNouveautes, b: LotNouveautes) -> Bool { a.id == b.id && a.entrees == b.entrees }
+    /// La feuille ayant atteint la page `index` du lot : chaque entrée
+    /// atteinte et sa page la plus loin (les pages se tournent une à une :
+    /// une entrée dépassée a été vue jusqu'au bout).
+    public func avancement(jusqua index: Int) -> [(nouveaute: Nouveaute, page: Int)] {
+        var debut = 0
+        var r: [(nouveaute: Nouveaute, page: Int)] = []
+        for n in entrees {
+            if debut <= index { r.append((n, min(index - debut, max(0, n.pages.count - 1)))) }
+            debut += n.pages.count
+        }
+        return r
+    }
+    public static func == (a: LotNouveautes, b: LotNouveautes) -> Bool { a.id == b.id && a.entrees == b.entrees && a.depart == b.depart }
 }
 
 @MainActor
@@ -272,15 +361,24 @@ public struct LotNouveautes: Identifiable, Equatable, Sendable {
 public final class NouveautesModel {
     /// La feuille à montrer (nil : rien).
     public private(set) var affichees: LotNouveautes?
-    public private(set) var vues: Set<String>
+    /// L'état de chaque tutoriel ouvert au moins une fois, par id.
+    public private(set) var suivis: [String: SuiviTutoriel]
 
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored let reglages: UserDefaults
     @ObservationIgnored let catalogue: [Nouveaute]
+    @ObservationIgnored let retirees: Set<String>
+    /// Sur une installation neuve, la série du premier lancement : rien de
+    /// plus ancien n'est présenté d'office (0 : une installation d'avant).
+    @ObservationIgnored let serieDepart: Int
     /// Une feuille par lancement : la suite d'un long lot attend le suivant.
     @ObservationIgnored private var lotMontre = false
     /// La page la plus loin affichée dans la feuille du lancement.
     @ObservationIgnored private var pageAtteinte = 0
+    static let cleSuivi = "nouveautes.suivi"
+    static let cleDepart = "nouveautes.depart"
+    /// Avant le suivi (jusqu'au 12/11) : les ids « vus ». Lu une fois, pour
+    /// la reprise ; plus écrit.
     static let cleVues = "nouveautes.vues"
     /// Reprise unique du build 37 (25/10), faite au premier lancement d'après.
     static let cleReprise37 = "nouveautes.reprise37"
@@ -289,46 +387,88 @@ public final class NouveautesModel {
     /// qu'il a pu montrer. Revoir un tutoriel coûte moins qu'en perdre un.
     static let montreesParLeBuild37: Set<String> = ["partage", "hors-app"]
 
-    public init(reglages: UserDefaults = .standard, catalogue: [Nouveaute] = Nouveautes.catalogue) {
+    public init(reglages: UserDefaults = .standard, catalogue: [Nouveaute] = Nouveautes.catalogue,
+                retirees: Set<String> = Set(Nouveautes.retirees.keys), maintenant: Date = Date()) {
         self.reglages = reglages
         self.catalogue = catalogue
-        if var vues = reglages.stringArray(forKey: Self.cleVues).map(Set.init) {
+        self.retirees = retirees
+        let derniere = catalogue.filter { !retirees.contains($0.id) }.map(\.serie).max() ?? 0
+        var suivis: [String: SuiviTutoriel] = [:]
+        if let d = reglages.data(forKey: Self.cleSuivi),
+           let s = try? JSONDecoder().decode([String: SuiviTutoriel].self, from: d) {
+            suivis = s
+        } else if var vues = reglages.stringArray(forKey: Self.cleVues).map(Set.init) {
             if !reglages.bool(forKey: Self.cleReprise37) {
                 // Les entrées de la série 3 marquées vues sans avoir été
                 // montrées redeviennent nouvelles, une fois pour toutes.
                 let serie3 = Set(catalogue.filter { $0.serie == 3 }.map(\.id))
                 vues.subtract(serie3.subtracting(Self.montreesParLeBuild37))
-                reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
             }
-            self.vues = vues
+            // La reprise des « vus » (12/11) : « commencé », pas « suivi ». Un
+            // « vu » disait seulement qu'une page au moins avait été affichée
+            // — ou rien du tout, pour l'historique marqué vu au premier
+            // lancement. Rien ne redevient « à découvrir », rien ne revient au
+            // lancement ; « Tout marquer comme suivi » range le reste d'un geste.
+            for id in vues { suivis[id] = SuiviTutoriel(etat: .commence, page: 0, date: maintenant, repris: true) }
+            Self.ecrire(suivis, dans: reglages)
+            reglages.set(0, forKey: Self.cleDepart)
         } else {
-            // Premier lancement avec les nouveautés : seules celles de la
-            // dernière mise à jour sont nouvelles ; les autres, à l'historique.
-            let derniere = catalogue.map(\.serie).max() ?? 0
-            vues = Set(catalogue.filter { $0.serie < derniere }.map(\.id))
-            reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
+            // Installation neuve : tout est « à découvrir », mais seule la
+            // dernière série est présentée d'office (comme avant le suivi).
+            Self.ecrire(suivis, dans: reglages)
+            reglages.set(derniere, forKey: Self.cleDepart)
         }
+        self.suivis = suivis
+        self.serieDepart = reglages.integer(forKey: Self.cleDepart)
         reglages.set(true, forKey: Self.cleReprise37)
     }
+
+    static func ecrire(_ s: [String: SuiviTutoriel], dans reglages: UserDefaults) {
+        if let d = try? JSONEncoder().encode(s) { reglages.set(d, forKey: cleSuivi) }
+    }
+    private func enregistrer() { Self.ecrire(suivis, dans: reglages) }
 
     /// La tour connaît la fonction (sinon elle est encore cachée dans l'app).
     public func existe(_ n: Nouveaute) -> Bool {
         n.capacite.map { app?.serveur?.sait($0) == true } ?? true
     }
 
-    /// L'historique (Réglages › Nouveautés) : la plus récente d'abord.
-    public var historique: [Nouveaute] {
-        catalogue.enumerated().sorted { a, b in a.element.serie != b.element.serie ? a.element.serie > b.element.serie : a.offset < b.offset }.map(\.element)
+    /// Le catalogue vivant : sans les entrées retirées, ni celles dont la
+    /// remplaçante est là (et connue de la tour).
+    public var actives: [Nouveaute] {
+        let remplacees = Set(catalogue.filter { $0.remplace != nil && !retirees.contains($0.id) && existe($0) }.compactMap(\.remplace))
+        return catalogue.filter { !retirees.contains($0.id) && !remplacees.contains($0.id) }
     }
 
-    public func estNouvelle(_ n: Nouveaute) -> Bool { !vues.contains(n.id) }
+    /// L'historique (Réglages › Nouveautés) : la plus récente d'abord.
+    public var historique: [Nouveaute] {
+        actives.enumerated().sorted { a, b in a.element.serie != b.element.serie ? a.element.serie > b.element.serie : a.offset < b.offset }.map(\.element)
+    }
 
-    /// Au retour au premier plan : les nouveautés pas encore vues, dont la
-    /// tour connaît la fonction. Rien si une feuille est déjà là. Une feuille
-    /// ne dépasse pas `pagesMax` pages : le reste vient au lancement suivant.
+    public func etat(_ n: Nouveaute) -> EtatTutoriel { suivis[n.id]?.etat ?? .aDecouvrir }
+    public func suivi(de n: Nouveaute) -> SuiviTutoriel? { suivis[n.id] }
+    public func estNouvelle(_ n: Nouveaute) -> Bool { etat(n) == .aDecouvrir }
+
+    /// La plus ancienne série encore présentée d'office : les
+    /// `seriesPresentees` dernières, et rien d'avant le premier lancement.
+    public var serieMinimale: Int {
+        let derniere = catalogue.filter { !retirees.contains($0.id) }.map(\.serie).max() ?? 0
+        return max(derniere - Nouveautes.seriesPresentees + 1, serieDepart)
+    }
+
+    /// Présentée d'office au lancement : jamais ouverte, récente, pas en
+    /// train d'être remplacée, et la tour connaît la fonction.
+    public func presentable(_ n: Nouveaute) -> Bool {
+        estNouvelle(n) && !n.aRemplacer && n.serie >= serieMinimale && existe(n)
+    }
+
+    /// Au retour au premier plan : les nouveautés présentables (de la plus
+    /// ancienne série à la plus récente). Rien si une feuille est déjà là.
+    /// Une feuille ne dépasse pas `pagesMax` pages : le reste vient au
+    /// lancement suivant.
     public func verifier() {
         guard affichees == nil, !lotMontre else { return }
-        let a = Nouveautes.lot(catalogue.filter { !vues.contains($0.id) && existe($0) }.sorted { $0.serie < $1.serie })
+        let a = Nouveautes.lot(actives.filter { presentable($0) }.sorted { $0.serie < $1.serie })
         guard !a.isEmpty else { return }
         lotMontre = true
         pageAtteinte = 0
@@ -338,35 +478,140 @@ public final class NouveautesModel {
     /// La feuille du lancement affiche la page `index` (0 : la première).
     public func pageVue(_ index: Int) {
         pageAtteinte = max(pageAtteinte, index)
+        if let a = affichees { noter(a, page: pageAtteinte) }
     }
 
-    /// Revoir un tutoriel depuis l'historique (Réglages › Nouveautés).
+    /// Ouvrir un tutoriel depuis le suivi (ou la recherche des réglages) :
+    /// commencé, il reprend à sa page la plus loin ; sinon, au début.
     public func lot(pour n: Nouveaute) -> LotNouveautes {
-        LotNouveautes(id: "revoir-\(n.id)", entrees: [n])
+        let s = suivis[n.id]
+        let depart = s?.etat == .commence ? min(s?.page ?? 0, max(0, n.pages.count - 1)) : 0
+        return LotNouveautes(id: "revoir-\(n.id)", entrees: [n], depart: depart)
     }
 
-    /// Un tutoriel parcouru, ou fermé : vu, plus de rappel.
-    public func marquerVues(_ entrees: [Nouveaute]) {
-        vues.formUnion(entrees.map(\.id))
-        reglages.set(Array(vues).sorted(), forKey: Self.cleVues)
+    /// Une feuille (lancement ou suivi) affiche la page `index` de `lot` :
+    /// chaque entrée atteinte passe « commencé », ou « suivi » si sa dernière
+    /// page l'est. Jamais en arrière.
+    public func noter(_ lot: LotNouveautes, page index: Int, maintenant: Date = Date()) {
+        var change = false
+        for (n, p) in lot.avancement(jusqua: index) {
+            let fini = p >= n.pages.count - 1
+            if var s = suivis[n.id] {
+                let avant = s
+                s.page = max(s.page, p)
+                if s.repris == true { s.repris = nil; s.date = maintenant }
+                if fini && s.etat != .suivi { s.etat = .suivi; s.date = maintenant }
+                if s != avant { suivis[n.id] = s; change = true }
+            } else {
+                suivis[n.id] = SuiviTutoriel(etat: fini ? .suivi : .commence, page: p, date: maintenant, repris: nil)
+                change = true
+            }
+        }
+        if change { enregistrer() }
     }
-
-    /// Un tutoriel revu en entier (Réglages › Nouveautés).
-    public func marquerVues(_ lot: LotNouveautes) { marquerVues(lot.entrees) }
 
     /// La feuille du lancement fermée (finie, « Plus tard » ou balayée) :
-    /// vues, les entrées dont une page au moins a été affichée. Les autres
-    /// restent nouvelles et viennent au lancement suivant.
+    /// les entrées dont une page au moins a été affichée sont notées. Les
+    /// autres restent à découvrir et viennent au lancement suivant.
     public func fermer() {
         guard let a = affichees else { return }
-        marquerVues(a.entrees(jusqua: pageAtteinte))
+        noter(a, page: pageAtteinte)
         affichees = nil
         pageAtteinte = 0
+    }
+
+    // MARK: Le suivi (Réglages › Nouveautés)
+
+    /// À découvrir (la tour connaît la fonction), commencés, suivis, puis
+    /// ce qui attend la tour ; la plus récente d'abord dans chaque rubrique.
+    public var groupes: [GroupeNouveautes] {
+        let h = historique
+        let g: [(String, String, [Nouveaute])] = [
+            ("a-decouvrir", "À découvrir", h.filter { etat($0) == .aDecouvrir && existe($0) }),
+            ("commences", "Commencés", h.filter { etat($0) == .commence }),
+            ("suivis", "Suivis", h.filter { etat($0) == .suivi }),
+            ("tour", "Avec la mise à jour de ta tour", h.filter { etat($0) == .aDecouvrir && !existe($0) }),
+        ]
+        return g.filter { !$0.2.isEmpty }.map { GroupeNouveautes(id: $0.0, titre: $0.1, entrees: $0.2) }
+    }
+
+    public var nombreADecouvrir: Int { actives.filter { etat($0) == .aDecouvrir && existe($0) }.count }
+    public var nombreCommences: Int { actives.filter { etat($0) == .commence }.count }
+    public var nombreSuivis: Int { actives.filter { etat($0) == .suivi }.count }
+
+    /// « 3 à découvrir · 1 commencé · 22 suivis ».
+    public var resume: String {
+        Nouveautes.resume(aDecouvrir: nombreADecouvrir, commences: nombreCommences, suivis: nombreSuivis)
+    }
+
+    /// Ce que « Tout marquer comme suivi » rangerait (la tour connaît la fonction).
+    public var aMarquer: [Nouveaute] { actives.filter { existe($0) && etat($0) != .suivi } }
+
+    /// La ligne d'un tutoriel : son état en mots (pas seulement en couleur),
+    /// sa date ; « page 2 sur 3 » pour un commencé.
+    public func libelle(_ n: Nouveaute) -> String {
+        var t: String
+        switch suivis[n.id] {
+        case .some(let s) where s.etat == .suivi:
+            t = "Suivi le \(Nouveautes.jour(s.date))"
+        case .some(let s) where s.repris == true:
+            t = "Commencé · ouvert avant le \(Nouveautes.jour(s.date))"
+        case .some(let s):
+            t = "Commencé le \(Nouveautes.jour(s.date))"
+            if n.pages.count > 1 { t += " · page \(min(s.page, n.pages.count - 1) + 1) sur \(n.pages.count)" }
+        case .none:
+            t = existe(n) ? "À découvrir · paru le \(n.date)" : "Arrive avec la mise à jour de ta tour · \(n.date)"
+        }
+        if n.aRemplacer { t += " · bientôt remplacé" }
+        return t
+    }
+
+    /// Ce que fait le toucher (VoiceOver).
+    public func indice(_ n: Nouveaute) -> String {
+        let l = lot(pour: n)
+        switch etat(n) {
+        case .aDecouvrir: return "Ouvre le tutoriel"
+        case .commence: return l.depart > 0 ? "Reprend à la page \(l.depart + 1)" : "Reprend le tutoriel"
+        case .suivi: return "Le revoir depuis le début"
+        }
+    }
+
+    /// Tout ce qui n'est pas suivi le devient d'un geste, avec « Annuler »
+    /// (l'état d'avant revient tel quel). Rend combien ont été rangés.
+    @discardableResult
+    public func toutMarquerSuivi(maintenant: Date = Date()) -> Int {
+        let a = aMarquer
+        guard !a.isEmpty else { return 0 }
+        let avant = suivis
+        for n in a { suivis[n.id] = SuiviTutoriel(etat: .suivi, page: max(0, n.pages.count - 1), date: maintenant, repris: nil) }
+        enregistrer()
+        let s = a.count > 1 ? "s" : ""
+        app?.dire("\(a.count) tutoriel\(s) marqué\(s) comme suivi\(s).", annuler: { [weak self] in self?.restaurer(avant) })
+        return a.count
+    }
+
+    func restaurer(_ s: [String: SuiviTutoriel]) {
+        suivis = s
+        enregistrer()
     }
 
     /// Captures de la CI seulement.
     public func montrerPourCapture(_ ids: [String]) {
         let e = catalogue.filter { ids.contains($0.id) }
         affichees = e.isEmpty ? nil : LotNouveautes(id: "capture", entrees: e)
+    }
+
+    /// Captures de la CI seulement : un suivi entamé (des commencés, des
+    /// suivis), en mémoire et sur le simulateur.
+    public func suiviPourCapture(maintenant: Date = Date()) {
+        let jour: TimeInterval = 86_400
+        for (i, n) in historique.enumerated() where i >= 2 {
+            if i % 3 == 0 {
+                suivis[n.id] = SuiviTutoriel(etat: .commence, page: min(1, n.pages.count - 1), date: maintenant.addingTimeInterval(-Double(i) * jour), repris: nil)
+            } else {
+                suivis[n.id] = SuiviTutoriel(etat: .suivi, page: n.pages.count - 1, date: maintenant.addingTimeInterval(-Double(i) * jour), repris: nil)
+            }
+        }
+        enregistrer()
     }
 }
