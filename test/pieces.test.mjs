@@ -8,6 +8,11 @@
 //   - le modèle ne reçoit que du TEXTE : le texte lu d'un .md, le texte reconnu
 //     par l'iPhone, ou une ligne « non lue » — jamais une image ni des octets.
 
+// La lecture du texte des images est COUPÉE ici : sur le Windows de la CI
+// l'OCR répond pour de bon, sous Linux non. Ces essais portent sur le reste
+// (un faux moteur est injecté là où l'OCR compte) ; le vrai est éprouvé dans
+// test/ocr.test.mjs et le workflow ocr-windows.
+process.env.REMY_OCR = "off";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -143,7 +148,7 @@ test("ce qui est lu, et pourquoi le reste ne l'est pas : image, texte de l'iPhon
   // Ici (Linux) : pas d'OCR, et le faux modèle local ne voit pas les images (épreuve ratée).
   const site = await (await joindre(id, "capture.png", PNG)).json();
   assert.deepEqual([site.famille, site.type, site.lu], ["image", "png", "non"]);
-  assert.match(site.raison, /OCR de Windows seulement/);
+  assert.match(site.raison, /lecture du texte des images coupée/);
   assert.match(site.raison, /ne voit pas les images/);
   assert.match(site.mention, /^non lue par Rémy : /);
   const iphone = await (await joindre(id, "photo.jpg", PNG, { texte: "Total TTC 42,00 €" })).json();
@@ -274,7 +279,7 @@ test("le modèle ne reçoit que du texte : le .md lu, le texte de l'iPhone, une 
   const dernier = principal.corps.messages.at(-1).content;
   assert.match(dernier, /^Tu peux regarder \?/);
   assert.match(dernier, /\[pièce jointe lue : notes\.md, texte, \d+ o\]\n<matiere_externe source="pièce jointe" titre="notes\.md">\n# Courses du samedi/);
-  assert.match(dernier, /\[pièce jointe non lue : capture\.png, image, \d+ o — [^\]]*OCR de Windows seulement[^\]]*\]/);
+  assert.match(dernier, /\[pièce jointe non lue : capture\.png, image, \d+ o — [^\]]*lecture du texte des images coupée[^\]]*\]/);
   assert.match(dernier, /\[pièce jointe non lue : devis\.pdf, PDF, \d+ o — PDF abîmé ou illisible\]/);
   assert.match(dernier, /\[pièce jointe : ticket\.jpg, image, \d+ o — tu ne vois pas l'image elle-même ; ce qui suit vient d'une lecture automatique qui peut se tromper\]\nTexte reconnu sur l'iPhone :\n<matiere_externe source="texte reconnu sur une image" titre="ticket\.jpg">\nTotal TTC 42,00 €/);
   assert.match(dernier, /Ne prétends pas l'avoir vue ni lue/);
@@ -372,7 +377,7 @@ test("« Essayer la lecture des pièces » : authentifié, ligne par ligne, rien
   assert.equal(r.status, 200);
   const e = await r.json();
   assert.deepEqual(e.lignes.map((l) => l.libelle), ["Reconnaissance de texte Windows", "Le modèle local lit les images", "PDF"]);
-  assert.deepEqual(e.lignes.map((l) => l.ok), [false, false, true], "ici : pas de Windows, un faux modèle qui ne voit pas, pdf.js");
+  assert.deepEqual(e.lignes.map((l) => l.ok), [false, false, true], "ici : OCR coupé, un faux modèle qui ne voit pas, pdf.js");
   assert.match(e.diagnostic, /^Lecture des pièces jointes \(essai de la tour\)\nReconnaissance de texte Windows : non — /);
   assert.match(e.diagnostic, /PDF : oui$/);
   assert.doesNotMatch(e.diagnostic, /127\.0\.0\.1|http|Bearer|:\d{4,5}/, "ni adresse ni jeton");

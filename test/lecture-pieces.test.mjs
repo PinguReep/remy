@@ -3,6 +3,11 @@
 // Garde-fou : une image ne part JAMAIS vers un fournisseur cloud, quel que soit
 // le réglage du secours — ni par la vision, ni par la conversation.
 
+// La lecture du texte des images est COUPÉE ici : sur le Windows de la CI
+// l'OCR répond pour de bon, sous Linux non. Ces essais portent sur le reste
+// (un faux moteur est injecté là où l'OCR compte) ; le vrai est éprouvé dans
+// test/ocr.test.mjs et le workflow ocr-windows.
+process.env.REMY_OCR = "off";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
