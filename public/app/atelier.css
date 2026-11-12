@@ -1219,6 +1219,12 @@ dialog.appel::backdrop { background: var(--fond); }
   /* Une feuille large monte aussi du bas sur toute la largeur. */
   dialog.feuille.large.tri-feuille { width: 100vw; max-width: 100vw; }
 }
+/* Chercher dans Projets (12/11) : les résultats groupés dans le maître, le mot trouvé surligné. */
+.projets-recherche-tete { padding: 0 12px 4px; min-height: 18px; }
+.projets-recherche-vide { padding: 4px 12px; }
+.projets-trouve .t { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.projets-trouve mark { background: color-mix(in srgb, var(--signal) 24%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.projets-trouve.fait .t { color: var(--encre-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--encre-3) 60%, transparent); }
 /* --- fin lot projets */
 
 /* ---------- Réglages ---------- */

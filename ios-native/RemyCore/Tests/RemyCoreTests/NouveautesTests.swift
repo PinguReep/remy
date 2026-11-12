@@ -366,11 +366,27 @@ final class NouveautesTests: XCTestCase {
         let serie8 = Nouveautes.catalogue.filter { $0.serie == 8 }
         XCTAssertEqual(serie8.map(\.id), ["rappels-declencheurs"])
         XCTAssertLessThanOrEqual(serie8.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app(["rappels-declencheurs-v1"], reglages: suite())
+        // Telle qu'elle s'affichait quand elle était la dernière série.
+        let a = jusqua(8, ["rappels-declencheurs-v1"])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["rappels-declencheurs"])
+        let b = jusqua(8, ["rituel-v1"])
+        b.verifier()
+        XCTAssertNil(b.affichees, "une tour pas encore à jour : rien à présenter")
+    }
+
+    /// Série 9 (12/11) : chercher dans Projets. Rien à attendre de la tour
+    /// (la recherche lit ce que l'app a déjà) : montrée à tous, une feuille.
+    func testLaSerie9EstPourTous() {
+        let serie9 = Nouveautes.catalogue.filter { $0.serie == 9 }
+        XCTAssertEqual(serie9.map(\.id), ["recherche-projets"])
+        XCTAssertNil(serie9[0].capacite)
+        XCTAssertLessThanOrEqual(serie9.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
+        let a = app([], reglages: suite())
         a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["rappels-declencheurs"])
-        let b = app(["rituel-v1"], reglages: suite())
+        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"])
+        let b = app(Nouveautes.catalogue.compactMap(\.capacite), reglages: suite())
         b.nouveautes.verifier()
-        XCTAssertNil(b.nouveautes.affichees, "une tour pas encore à jour : rien à présenter")
+        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"], "une tour à jour : la dernière série seule")
     }
 }

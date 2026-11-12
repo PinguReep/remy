@@ -29,6 +29,12 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "recherche-projets", serie: 9, date: "12 nov.", titre: "Chercher dans Projets", capacite: nil, pages: [
+            .init(symbole: "magnifyingglass", titre: "Tout retrouver",
+                  texte: "En haut de Projets, tape un mot : il cherche dans tes projets et tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
+            .init(symbole: "hand.tap", titre: "Droit au bon endroit",
+                  texte: "Touche un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans sa fiche. Au retour, ta recherche est encore là."),
+        ]),
         Nouveaute(id: "rappels-declencheurs", serie: 8, date: "11 nov.", titre: "Des rappels qui préviennent à temps", capacite: "rappels-declencheurs-v1", pages: [
             .init(symbole: "square.and.pencil", titre: "Une fiche par rappel",
                   texte: "Le « + » de Rappels ouvre une fiche : le texte, une note, la date et l'heure. Pour un rappel déjà là : appui long › « Détails… », ou « Détails » sous ses dates."),

@@ -11,9 +11,11 @@ import { extraire } from "../analyse/dates.js";
 import { articles as articlesDe } from "../analyse/genre.js";
 import { resumeEtat, depuis, cheminEtat } from "../analyse/conversations.js";
 import * as C from "../analyse/carnet.js";
+import * as R from "../analyse/recherche-projets.js";
+import { normaliser } from "../analyse/recherche-reglages.js";
 import { surMenu, ouvrirMenu } from "../menu.js";
 import { gerer, terminer, oublierCocheeAnnulee } from "./gerer.js";
-import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes } from "./rappels.js";
+import { ligneRappel, ligneTriRappels, boutonFiltre, ouvrirFiltreRappels, lireFiltreLocal, nouveauRappel, retenirEtiquettes, ouvrirQuand } from "./rappels.js";
 import { ouvrirTri } from "./tri-rappels.js";
 
 let racine;
@@ -36,8 +38,24 @@ export default {
     donnees = vides();
     hist = null;
     selection = lireSelection(args);
-    refs.recherche = h("input", { class: "champ", type: "search", placeholder: "Chercher", "aria-label": "Chercher un projet, une liste…", oninput: (e) => { filtre = e.target.value; dessinerMaitre(); } });
-    refs.maitre = h("nav", { class: "maitre", "aria-label": "Projets et carnet" }, squelette([0.7, 0.5, 0.8, 0.6]));
+    // Chercher (12/11) : projets, tâches, dossiers, idées, listes, articles,
+    // rappels, dans ce qui est déjà lu (analyse/recherche-projets.js). Entrée
+    // ouvre le premier résultat ; Échap vide le champ.
+    refs.recherche = h("input", { class: "champ", type: "search", placeholder: "Chercher une tâche, une liste, un rappel…", autocomplete: "off",
+      "aria-label": "Chercher dans les projets, tâches, dossiers, idées, listes et rappels", "aria-controls": "projets-maitre",
+      oninput: (e) => { filtre = e.target.value; dessinerMaitre(); },
+      onkeydown: (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          refs.premier?.();
+        } else if (e.key === "Escape" && filtre) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.target.value = filtre = "";
+          dessinerMaitre();
+        }
+      } });
+    refs.maitre = h("nav", { class: "maitre", id: "projets-maitre", "aria-label": "Projets et carnet" }, squelette([0.7, 0.5, 0.8, 0.6]));
     refs.detail = h("section", { class: "detail" });
     refs.grille = h("div", { class: "maitre-detail" }, h("div", null, h("div", { class: "recherche-champ", style: { marginBottom: "12px" } }, icone("recherche"), refs.recherche, h("span", { class: "kbd" }, "/")), refs.maitre), refs.detail);
     vider(el,
@@ -176,8 +194,9 @@ function arbre(parent, niveau, ok, dossiers) {
 
 function dessinerMaitre() {
   if (!refs.maitre) return;
-  const f = filtre.trim().toLowerCase();
-  const ok = (t) => !f || String(t).toLowerCase().includes(f);
+  refs.premier = null;
+  if (filtre.trim()) return dessinerRecherche();
+  const ok = () => true;
   const dossiers = donnees.dossiers || [];
   const groupes = [groupeMotion(ok)];
   if (sait("dossiers-v1") || donnees.dossiers) {
@@ -186,7 +205,7 @@ function dessinerMaitre() {
     groupes.push(h("div", { class: "groupe" }, h("h2", { class: "titre-section" }, "Dossiers"),
       ok("Idées") ? element("dossier", "idees", idees?.nom || "Idées", idees?.notes?.filter((n) => !n.fait).length || null, { icone: "ampoule" }) : null,
       racines,
-      donnees.dossiers && !C.enfants(dossiers, null).some((d) => d.id !== "idees") && !f
+      donnees.dossiers && !C.enfants(dossiers, null).some((d) => d.id !== "idees")
         ? h("p", { class: "aide projets-note" }, "Catégories, idées, sous-projets sans Motion : « Nouveau dossier » ici, ou « Projet » dans Noter.") : null));
   }
   const listes = donnees.listes || [];
@@ -207,6 +226,89 @@ function dessinerMaitre() {
     ok("Ce que Rémy sait de toi") || ok("Mémoire") ? element("memoire", null, "Ce que Rémy sait de toi", null, {
       href: "#/reglages/memoire", icone: "personne", meta: petit(C.resumeMemoire(memoire)) }) : null));
   vider(refs.maitre, groupes);
+  refs.grille.classList.toggle("detail-ouvert", Boolean(selection));
+}
+
+// --- Chercher (12/11) ---
+
+const ICONE_GENRE = { projet: "pile", tache: "coche", dossier: "dossier", note: "ampoule", liste: "liste", article: "liste", rappel: "cloche" };
+const FAIT_GENRE = { tache: "faite", note: "relue", article: "pris", rappel: "fait" };
+
+/** Les écrans du carnet dont le nom répond (« Catégories », « Historique »…), comme avant la recherche. */
+function allerA(requete) {
+  const q = normaliser(requete.trim());
+  const ok = (...noms) => noms.some((n) => normaliser(n).includes(q));
+  const memoire = donnees.dashboard?.memoire;
+  return [
+    ok("Toutes les listes") ? element("listes", null, "Toutes les listes", (donnees.listes || []).length || null, { icone: "grille" }) : null,
+    ok("Rappels") ? element("rappels", null, "Rappels", (donnees.rappels || []).filter((r) => !r.fait).length || null, { icone: "cloche", courant: selection?.type === "rappels" }) : null,
+    ok("Catégories", "Étiquettes") ? element("categories", null, "Catégories", donnees.etiquettes?.length || null, { icone: "curseurs" }) : null,
+    ok("Historique") ? element("historique", null, "Historique", null, { icone: "horloge" }) : null,
+    sait("conversations-externes-v1") && ok("Conversations") ? element("conversations", null, "Conversations", null, { href: "#/conversations", icone: "conversations" }) : null,
+    ok("Ce que Rémy sait de toi", "Mémoire") ? element("memoire", null, "Ce que Rémy sait de toi", null, { href: "#/reglages/memoire", icone: "personne", meta: petit(C.resumeMemoire(memoire)) }) : null,
+  ].filter(Boolean);
+}
+
+/** Ouvre ce qu'un résultat désigne : son écran, et pour une tâche ou un rappel, sa feuille. */
+function ouvrirTrouve(t) {
+  const c = t.cible;
+  if (c.type === "projet") return aller("motion", c.id);
+  if (c.type === "dossier") return aller("dossier", c.id);
+  if (c.type === "liste") return aller("liste", c.id);
+  if (c.type === "rappel") {
+    aller("rappels");
+    const r = (donnees.rappels || []).find((x) => x.id === c.id);
+    if (r) ouvrirQuand(r, { apres: recharger });
+    return;
+  }
+  if (c.type === "tache") {
+    // Le projet (ou le sous-projet où elle est rangée) à l'écran, la tâche dans « Gérer ».
+    const p = donnees.projets?.projets?.find((x) => (x.liste || []).some((y) => y.id === c.id));
+    const d = (donnees.dossiers || []).find((x) => (x.taches || []).includes(c.id));
+    if (d) aller("dossier", d.id);
+    else if (p) aller("motion", p.id);
+    gerer(elementTache(c.tache, c.projet), { apres: () => setTimeout(recharger, 600), contexte: ctx });
+  }
+}
+
+const hrefTrouve = (c) => (c.type === "projet" ? `#/projets/motion/${encodeURIComponent(c.id)}`
+  : c.type === "dossier" ? `#/projets/dossier/${encodeURIComponent(c.id)}`
+  : c.type === "liste" ? `#/projets/liste/${encodeURIComponent(c.id)}` : null);
+
+function ligneTrouvee(t) {
+  const titre = h("span", { class: "t" }, t.morceaux.map((m) => (m.trouve ? h("mark", null, m.texte) : m.texte)));
+  const bits = [t.contexte, t.genre === "rappel" && typeof t.quand === "number" ? C.quandRappel(t.quand) : null, t.fait ? FAIT_GENRE[t.genre] : null].filter(Boolean);
+  const ic = t.genre === "article" ? C.iconeListe(t.contexte) : ICONE_GENRE[t.genre];
+  const contenu = [t.genre === "projet" ? h("span", { class: "puce", style: { padding: 0, minHeight: 0, background: "none" } }, h("span", { class: "point", style: { background: couleurProjet(t.titre) } })) : icone(ic),
+    h("span", { class: "projets-textes" }, titre, bits.length ? petit(bits.join(" · ")) : null)];
+  const href = hrefTrouve(t.cible);
+  const classe = `element-maitre projets-deux-lignes projets-trouve${t.fait ? " fait" : ""}`;
+  const libelle = `${t.titre}${bits.length ? `, ${bits.join(", ")}` : ""}`;
+  // Un lien pour ce qui a son adresse ; un bouton pour ce qui ouvre une feuille (tâche, rappel).
+  if (href) return h("a", { class: classe, href, "aria-label": libelle }, contenu);
+  return h("button", { type: "button", class: classe, "aria-label": libelle, "aria-haspopup": "dialog", onclick: () => ouvrirTrouve(t) }, contenu);
+}
+
+function dessinerRecherche() {
+  // null : les projets sont encore en lecture (la phrase de l'état vide le dit).
+  const enLecture = !donnees.projets && sait("projets-v1") && !donnees.erreurProjets;
+  const projets = donnees.projets ? (donnees.projets.motion === false ? [] : donnees.projets.projets || []) : enLecture ? null : [];
+  const r = R.chercher(filtre, { projets, dossiers: donnees.dossiers, listes: donnees.listes, rappels: donnees.rappels });
+  const carnet = allerA(filtre);
+  const premier = r.groupes[0]?.trouves[0];
+  refs.premier = premier ? () => ouvrirTrouve(premier) : carnet[0] ? () => carnet[0].click() : null;
+  const groupes = r.groupes.map((g) => h("div", { class: "groupe", role: "group", "aria-label": g.titre },
+    h("h2", { class: "titre-section" }, g.titre, h("span", { class: "compte" }, String(g.trouves.length + g.reste))),
+    g.trouves.map(ligneTrouvee),
+    g.reste ? h("p", { class: "aide projets-note" }, R.phraseReste(g.reste)) : null));
+  const total = r.total + carnet.length;
+  vider(refs.maitre,
+    h("p", { class: "aide projets-recherche-tete", role: "status" }, total ? (r.total ? r.enTete : "Dans le carnet") : ""),
+    !total ? h("div", { class: "projets-recherche-vide" }, vide(r.titreVide, r.detailVide)) : null,
+    groupes,
+    carnet.length ? h("div", { class: "groupe" }, h("h2", { class: "titre-section" }, "Aller à"), carnet) : null,
+    // Ce qui n'est pas encore lu ne se cherche pas : on le dit.
+    donnees.listes === null || donnees.rappels === null ? h("p", { class: "aide projets-note" }, "Lecture du carnet en cours…") : null);
   refs.grille.classList.toggle("detail-ouvert", Boolean(selection));
 }
 
