@@ -18,7 +18,7 @@ import { demarrerFauxMotion } from "./outils/faux-motion.mjs";
 
 console.log = () => {};
 
-const { semaine, plagesDuJour } = await import("../lib/semaine.js");
+const { semaine, plagesDuJour, faitesDe } = await import("../lib/semaine.js");
 const { debutJour } = await import("../lib/dashboard.js");
 
 const H = 3600_000;
@@ -117,6 +117,30 @@ test("le passage à l'heure d'hiver : un jour de 25 h reste un seul jour", () =>
   assert.equal(s.jours[1].fin - s.jours[1].debut, 25 * H);
 });
 
+test("le passé de la journée : les coches du journal, à leur créneau s'il a été gardé, sinon à leur heure", () => {
+  const d0 = a(0, 0);
+  const d1 = a(1, 0);
+  const entrees = [
+    // Cochée à 10 h 20, son créneau 10:00 – 10:40 gardé.
+    { ts: a(0, 10, 20), results: JSON.stringify([{ ok: true, type: "terminer", taskId: "f1", nom: "Mettre à jour les prix", projet: "Boutiques", avant: { duration: 40 }, creneau: { debut: iso(a(0, 10)), fin: iso(a(0, 10, 40)) } }]) },
+    // Une coche d'avant le 12/11 : pas de créneau, seulement l'heure.
+    { ts: a(0, 11, 5), results: [{ ok: true, type: "terminer", taskId: "f2", nom: "Payer la cantine", avant: { duration: 5 } }] },
+    // Deux actions, la seconde annulée (annulation partielle) ; une création ; un « déjà là ».
+    { ts: a(0, 12), results: [{ ok: true, type: "terminer", taskId: "f3", nom: "Gardée" }, { ok: true, type: "terminer", taskId: "f4", nom: "Annulée" }, { ok: true, type: "creer", taskId: "f5", nom: "Créée" }, { ok: true, type: "terminer", taskId: "f6", nom: "Déjà faite", dejaLa: true }], annulations: JSON.stringify({ 1: { ok: true } }) },
+    // Ratée, illisible, hier, cochée deux fois.
+    { ts: a(0, 13), results: [{ ok: false, type: "terminer", taskId: "f7", nom: "Ratée" }] },
+    { ts: a(0, 14), results: "{pas du json" },
+    { ts: a(-1, 18), results: [{ ok: true, type: "terminer", taskId: "f8", nom: "Hier" }] },
+    { ts: a(0, 15), results: [{ ok: true, type: "terminer", taskId: "f1", nom: "Mettre à jour les prix" }] },
+  ];
+  const f = faitesDe(entrees, d0, d1);
+  assert.deepEqual(f.map((x) => x.id), ["f1", "f2", "f3"]);
+  assert.deepEqual(f[0], { type: "tache", id: "f1", titre: "Mettre à jour les prix", projet: "Boutiques", a: a(0, 10, 20), debut: a(0, 10), fin: a(0, 10, 40), duree: 40 });
+  assert.equal(f[1].debut, undefined, "sans créneau gardé, rien n'est inventé");
+  assert.equal(f[1].a, a(0, 11, 5));
+  assert.deepEqual(faitesDe(null, d0, d1), []);
+});
+
 // --- Par la tour : quota Motion et agenda -------------------------------------------
 
 const lecturesAgenda = [];
@@ -210,6 +234,19 @@ test("la semaine par la tour : une lecture Motion partagée, une requête d'agen
   assert.equal(appelsMotion(/^\/v1\/tasks(\?|$)/), listesAvant, "la liste Motion en cache sert");
   assert.equal(appelsMotion(/^\/v1\/schedules/), 1, "horaires relus au plus toutes les 10 min");
   assert.equal(lecturesAgenda.length, 2, "une lecture pour la semaine, une pour la journée");
+});
+
+test("la semaine par la tour : les coches du jour, lues dans le journal (heures-passe-v1)", async () => {
+  const { db } = await import("../lib/db.js");
+  const ts = debutJour() + 8 * H;
+  db().prepare("INSERT INTO journal (id, ts, source, origine, resume, etat, actions, results, annulations, annule, maj_a) VALUES (?, ?, 'motion', 'tap', 'Coché', 'appliquee', '[]', ?, '{}', ?, ?)")
+    .run("j-heures-1", ts, JSON.stringify([{ ok: true, type: "terminer", taskId: "m9", nom: "Arroser les plantes", creneau: { debut: iso(ts - 30 * M), fin: iso(ts - 20 * M) } }]), 0, ts);
+  db().prepare("INSERT INTO journal (id, ts, source, origine, resume, etat, actions, results, annulations, annule, maj_a) VALUES (?, ?, 'motion', 'tap', 'Coché', 'annulee', '[]', ?, '{}', ?, ?)")
+    .run("j-heures-2", ts, JSON.stringify([{ ok: true, type: "terminer", taskId: "m10", nom: "Annulée ensuite" }]), 1, ts);
+  const r = await lire("/api/semaine?jours=2");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.jours[0].faites.map((x) => [x.id, x.titre, x.debut, x.fin]), [["m9", "Arroser les plantes", ts - 30 * M, ts - 20 * M]]);
+  assert.deepEqual(r.body.jours[1].faites, []);
 });
 
 test("l'agenda en panne : la semaine s'affiche avec Motion, et le dit", async () => {

@@ -36,8 +36,8 @@ export const CATALOGUE = [
   // Série 9 (12/11) : une seule mise à jour, quatre tutoriels — présentés en
   // deux feuilles (PAGES_MAX), dans cet ordre.
   n("prochaines-heures", 9, "12 nov.", "Tes prochaines heures, et pourquoi", "priorites-v2", [
-    p("horloge", "H, et tout s'affiche", "H ouvre « Prochaines heures » : de maintenant à demain midi, ce que Motion a placé, dans son ordre, et sur quel projet. Échap, un clic à côté ou H de nouveau la referment. Aussi dans Ctrl+K."),
-    p("question", "Une ligne de pourquoi", "Sous chaque ligne, ce que les données disent : rendez-vous fixe, échéance ferme, priorité Motion, menacée… Quand rien ne la distingue, Rémy le dit au lieu d'inventer une raison."),
+    p("horloge", "H, et toute ta journée", "H ouvre « Prochaines heures » : de 7 h à demain soir, centrée sur maintenant. Le matin passé reste là, estompé : ce que tu as coché, et ce qui n'a pas été fait à son créneau. Échap, un clic à côté ou H la referment."),
+    p("frise", "Parcourir, ouvrir", "Tire la frise à la souris, ou ← → ; « Maintenant » y ramène. Un clic sur la frise y amène ; un bloc ou une ligne ouvre « Gérer », et tu retrouves la frise où tu l'avais laissée. Sous chaque ligne, le pourquoi : les faits."),
     p("etoile", "Ce que Rémy a compris", "Réglages › Ce qui compte : Rémy propose un classement de tes projets, avec ce qu'il a vu. « C'est ça », ↑ ↓ ou « Pas une priorité » ; seul ce que tu confirmes devient « sert ta priorité n°1 »."),
   ], { remplace: "priorites" }),
   n("dependances-taches", 9, "12 nov.", "Une tâche qui en attend une autre", "taches-dependances-v1", [

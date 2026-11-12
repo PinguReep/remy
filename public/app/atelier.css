@@ -607,58 +607,156 @@ button.etat-captures:hover { background: var(--fond-3); }
 dialog.feuille-echelle { width: min(900px, calc(100vw - 32px)); }
 .feuille-echelle .feuille-tete { align-items: center; }
 .feuille-echelle .echelle-retour[hidden] { display: none; }
-/* « Prochaines heures » (H) : la variante d'« À l'échelle », de maintenant à demain midi. */
-dialog.feuille.feuille-heures { width: min(1120px, calc(100vw - 64px)); max-height: min(90dvh, 980px); }
-.feuille-heures .feuille-pied { justify-content: space-between; align-items: center; }
+/* « Prochaines heures » (H) : la variante d'« À l'échelle ». La frise se parcourt
+   (12/11) : d'aujourd'hui 7 h à demain soir, le passé estompé, maintenant en repère. */
+/* Une hauteur fixe (et non au plus) : la feuille ne change pas de taille quand les données arrivent. */
+dialog.feuille.feuille-heures { width: min(1120px, calc(100vw - 64px)); height: min(90dvh, 980px); max-height: min(90dvh, 980px); }
+.feuille-heures .feuille-corps { flex: 1; min-height: 0; }
+@media (max-width: 720px) { dialog.feuille.feuille-heures { height: 92dvh; max-height: 92dvh; } }
+.feuille-heures .feuille-pied { justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.heures-pied-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .heures-aide { font-size: 13px; }
-@media (hover: none) { .heures-aide { visibility: hidden; } }
+@media (hover: none) { .heures-aide { display: none; } }
 .heures-vue { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.heures-tete { font: 600 18px/1.35 var(--serif); text-wrap: pretty; overflow-wrap: anywhere; }
-.heures-regle { font-size: 13px; margin-top: -4px; }
+.heures-tete { font: 600 18px/1.35 var(--serif); text-wrap: pretty; overflow-wrap: anywhere; margin-top: 4px; }
+.heures-regle { font-size: 13px; margin-top: -6px; }
 .heures-toute { font-size: 13px; }
 .heures-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--encre-2); }
 .heures-note svg.ic { width: 14px; height: 14px; flex: none; }
 .heures-note span { flex: 1 1 220px; }
-.heures-frise-zone { position: relative; margin: 4px 0 2px; padding-top: 18px; overflow: hidden; }
-.heures-frise { position: relative; height: 34px; border-radius: 8px; background: var(--fond-2); }
-.heures-repere { position: absolute; top: 0; bottom: 0; border-left: 1px dashed color-mix(in srgb, var(--encre-3) 35%, transparent); }
-.heures-repere > span { position: absolute; top: -18px; left: 0; transform: translateX(-50%); font: 400 11px/1 var(--mono); color: var(--encre-3); white-space: nowrap; }
-.heures-repere:not(.majeure) > span { opacity: 0; }
-@media (min-width: 900px) { .heures-repere:not(.majeure) > span { opacity: 1; } }
-.heures-nuit { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, var(--fond-3) 0 4px, transparent 4px 8px); display: grid; place-items: center; }
-.heures-nuit > span { font: 500 11px/1 var(--mono); color: var(--encre-3); background: var(--fond-2); padding: 1px 4px; border-radius: 4px; }
-.heures-bloc { position: absolute; top: 5px; bottom: 5px; border-radius: 5px; background: var(--couleur, var(--encre-3)); opacity: .85; }
-.heures-bloc.rdv { background: var(--surface); box-shadow: inset 0 0 0 2px var(--encre-2); opacity: 1; }
-.heures-bloc.menace { box-shadow: 0 0 0 2px var(--danger); }
-.heures-bloc.encours { top: 2px; bottom: 2px; opacity: 1; }
-.heures-maintenant { position: absolute; left: 0; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--signal); }
-.heures-bandes { position: relative; height: 20px; margin-top: 4px; }
-.heures-bande { position: absolute; top: 0; height: 20px; border-top: 2px solid var(--filet); font-size: 11px; color: var(--encre-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 2px 4px 0; }
-.heures-bande + .heures-bande { border-left: 1px solid var(--filet); }
+
+/* La barre au-dessus de la frise : la plage, ← →, Maintenant. */
+/* La frise reste en haut quand la liste défile dessous : les deux restent liées à l'œil. */
+.heures-frise-zone { position: sticky; top: -8px; z-index: 5; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  margin: -8px -4px 0; padding: 12px 4px 8px; background: var(--surface); box-shadow: 0 1px 0 var(--filet); }
+.heures-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.heures-plage { font-size: 13px; color: var(--encre-2); font-variant-numeric: tabular-nums; min-width: 0; }
+.heures-nav-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.heures-pas { width: 44px; padding: 0; }
+.heures-pas.prec svg.ic { transform: scaleX(-1); }
+.heures-btn-mnt svg.ic { color: var(--signal-texte); }
+
+/* Le cadre : hauteur fixe (le squelette a la même), rien ne saute au chargement. */
+.heures-frise-cadre { position: relative; height: 128px; border-radius: 14px; background: var(--fond-2); overflow: hidden; }
+.heures-frise-cadre:has(.heures-defile:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
+.heures-defile { height: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; cursor: grab;
+  user-select: none; -webkit-user-select: none; touch-action: pan-x pan-y; outline: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%); }
+.heures-defile::-webkit-scrollbar { display: none; }
+.heures-defile.au-debut { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent 100%); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent 100%); }
+.heures-defile.a-la-fin { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px); mask-image: linear-gradient(90deg, transparent 0, #000 18px); }
+.heures-defile.au-debut.a-la-fin { -webkit-mask-image: none; mask-image: none; }
+.heures-defile.glisse { cursor: grabbing; }
+.heures-piste { position: relative; height: 100%; }
+.heures-graduation { position: relative; height: 30px; }
+.heures-repere { position: absolute; top: 9px; padding-left: 4px; font: 400 11px/1 var(--mono); color: var(--encre-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.heures-repere.majeure { color: var(--encre-2); font-weight: 500; }
+.heures-repere.masque { visibility: hidden; }
+.heures-mnt-pastille { position: absolute; top: 5px; transform: translateX(-50%); z-index: 4; padding: 3px 7px; border-radius: 999px; background: var(--signal); color: var(--sur-signal);
+  font: 600 11px/1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.heures-voie { position: relative; height: 98px; }
+.heures-trait { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--encre-3) 14%, transparent); pointer-events: none; }
+.heures-trait.majeure { border-left-color: color-mix(in srgb, var(--encre-3) 28%, transparent); }
+.heures-passe { position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--encre-3) 9%, transparent) 0 5px, transparent 5px 11px); }
+.heures-nuit { position: absolute; top: 0; bottom: 0; pointer-events: none; background: color-mix(in srgb, var(--fond-3) 70%, transparent); }
+.heures-nuit > span { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); font: 500 11px/1 var(--mono); color: var(--encre-3); }
+.heures-minuit { position: absolute; top: 0; bottom: 0; border-left: 1.5px solid color-mix(in srgb, var(--encre-3) 55%, transparent); pointer-events: none; }
+.heures-jour { position: absolute; top: 6px; padding-left: 6px; display: flex; flex-direction: column; gap: 1px; font-size: 11px; line-height: 1.15; color: var(--encre-2); white-space: nowrap; pointer-events: none; z-index: 1; }
+.heures-jour strong { font-weight: 600; color: var(--encre); }
+.heures-mnt { position: absolute; top: -26px; bottom: 0; width: 2px; margin-left: -1px; background: var(--signal); z-index: 3; pointer-events: none; }
+.heures-curseur { position: absolute; top: 0; bottom: 0; margin-left: -1px; border-left: 2px dashed var(--encre-2); z-index: 2; pointer-events: none; }
+
+/* Un bloc : un bouton à la zone de clic élargie (≥ 44 px), son dessin à l'échelle dedans. */
+.hb { position: absolute; top: calc(8px + var(--couloir) * (84px / var(--couloirs))); height: calc(84px / var(--couloirs) - 4px);
+  padding: 0; margin: 0; border: 0; background: none; color: var(--encre); font: inherit; text-align: left; cursor: pointer; z-index: 2;
+  -webkit-tap-highlight-color: transparent; }
+.hb-v { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; padding: 0 8px 0 9px; overflow: hidden; color: var(--encre);
+  border-radius: 8px; background: color-mix(in srgb, var(--couleur) 17%, var(--surface)); box-shadow: inset 3px 0 0 var(--couleur), inset 0 0 0 1px color-mix(in srgb, var(--couleur) 28%, transparent);
+  transition-property: box-shadow, opacity, background-color; transition-duration: 140ms; transition-timing-function: ease-out; }
+.hb.rdv .hb-v { background: var(--surface); box-shadow: inset 3px 0 0 var(--encre-2), inset 0 0 0 1px color-mix(in srgb, var(--encre-3) 40%, transparent); }
+.hb.encours .hb-v { background: color-mix(in srgb, var(--couleur) 28%, var(--surface)); }
+.hb.menace .hb-v { box-shadow: inset 3px 0 0 var(--couleur), inset 0 0 0 1.5px var(--danger); }
+/* Le passé et le fait : estompés par la couleur (pas par l'opacité, qui laisserait voir les traits au travers). */
+.hb.passe .hb-v, .hb.fait .hb-v { background: color-mix(in srgb, var(--couleur) 9%, var(--fond-2));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--couleur) 50%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--encre-3) 22%, transparent); }
+.hb.passe .hb-t, .hb.fait .hb-t { color: var(--encre-2); }
+.hb.passe .hb-h, .hb.fait .hb-h { color: var(--encre-3); }
+.hb.glisse .hb-v { background: var(--fond-2); box-shadow: none; outline: 1.5px dashed color-mix(in srgb, var(--couleur) 75%, var(--encre-3)); outline-offset: -1.5px; }
+.hb.ponctuel .hb-v { top: calc(50% - 10px); bottom: auto; height: 20px; padding: 0; border-radius: 50%; align-items: center; opacity: .8;
+  background: color-mix(in srgb, var(--succes) 20%, var(--surface)); box-shadow: inset 0 0 0 1.5px var(--succes); color: var(--succes); }
+.hb.ponctuel .hb-v svg.ic { width: 12px; height: 12px; }
+.hb-t { display: flex; align-items: center; gap: 4px; min-width: 0; font: 600 12.5px/1.2 var(--texte); }
+.hb-t .tt { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hb-t svg.ic { width: 11px; height: 11px; flex: none; color: var(--encre-2); }
+.hb.fait .hb-t svg.ic { color: var(--succes); }
+.hb.et-icone .hb-v { padding: 0 0 0 3px; align-items: center; }
+.hb-i { display: grid; place-items: center; }
+.hb-i svg.ic { width: 12px; height: 12px; color: var(--encre-2); }
+.hb-i .point { width: 8px; height: 8px; border-radius: 50%; background: var(--couleur); }
+.hb.fait .hb-i svg.ic { color: var(--succes); }
+.hb-h { font: 400 11px/1 var(--mono); color: var(--encre-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .hb:hover .hb-v { opacity: 1; box-shadow: inset 3px 0 0 var(--couleur), 0 0 0 2px color-mix(in srgb, var(--encre) 28%, transparent); } }
+.hb.survol .hb-v { opacity: 1; box-shadow: inset 3px 0 0 var(--couleur), 0 0 0 2px color-mix(in srgb, var(--encre) 28%, transparent); }
+.hb.choisi .hb-v { opacity: 1; box-shadow: inset 3px 0 0 var(--couleur), 0 0 0 2px var(--encre); }
+.hb.ponctuel.choisi .hb-v, .hb.ponctuel.survol .hb-v { box-shadow: inset 0 0 0 1.5px var(--succes), 0 0 0 2px var(--encre); }
+.hb:focus-visible { outline: none; }
+.hb:focus-visible .hb-v { outline: 2px solid var(--signal); outline-offset: 2px; opacity: 1; }
+.hb:active .hb-v { transform: scale(.98); }
+.heures-moment { min-height: 20px; margin: 0 2px; font-size: 13px; line-height: 1.5; color: var(--encre-2); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+
+/* La liste, liée à la frise. */
 .heures-grille { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); grid-template-areas: "liste cote"; gap: 18px 24px; align-items: start; margin-top: 6px; }
 .heures-liste { grid-area: liste; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .heures-cote { grid-area: cote; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding: 12px 14px; border-radius: 16px; background: var(--fond-2); }
 @media (max-width: 860px) {
-  .heures-grille { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cote" "liste"; }
+  .heures-grille { grid-template-columns: minmax(0, 1fr); grid-template-areas: "liste" "cote"; }
 }
 .heures-titre { display: flex; align-items: baseline; gap: 8px; font: 600 12px/1.3 var(--texte); letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2); margin-bottom: 6px; }
-.heures-titre .h, .heures-tranche-tete .h { font: 400 12px/1.3 var(--mono); letter-spacing: 0; text-transform: none; color: var(--encre-3); }
+.heures-titre .h, .heures-tranche-tete .h { font: 400 12px/1.3 var(--mono); letter-spacing: 0; text-transform: none; color: var(--encre-3); font-variant-numeric: tabular-nums; }
 .heures-lignes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.heures-ligne { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 2px 12px; padding: 9px 4px 9px 10px; border-left: 3px solid var(--couleur, var(--filet)); border-bottom: 1px solid var(--filet); min-height: 44px; }
-.heures-ligne.encours { background: color-mix(in srgb, var(--signal) 8%, transparent); border-radius: 0 10px 10px 0; }
-.heures-h { font: 400 13px/1.4 var(--mono); color: var(--encre-2); padding-top: 1px; white-space: nowrap; }
+.heures-li { position: relative; border-bottom: 1px solid var(--filet); }
+.heures-ligne { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 2px 12px; width: 100%; min-height: 48px; padding: 9px 6px 9px 10px; margin: 0;
+  border: 0; border-left: 3px solid var(--couleur, var(--filet)); border-radius: 0 10px 10px 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  scroll-margin: 236px 12px 12px; transition-property: background-color; transition-duration: 140ms; transition-timing-function: ease-out; }
+@media (hover: hover) { .heures-ligne:hover { background: var(--fond-2); } }
+.heures-ligne.survol { background: var(--fond-2); }
+.heures-ligne.encours { background: color-mix(in srgb, var(--signal) 8%, transparent); }
+.heures-ligne.choisi { background: color-mix(in srgb, var(--encre) 7%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--encre) 45%, transparent); }
+.heures-ligne:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+.heures-ligne.passe { border-left-color: color-mix(in srgb, var(--couleur, var(--filet)) 45%, transparent); }
+.heures-ligne.passe .heures-h, .heures-ligne.passe .tt { color: var(--encre-3); }
+.heures-ligne.fait .tt { color: var(--encre-2); }
+.heures-chevron { width: 14px; height: 14px; align-self: center; color: var(--encre-3); }
+.heures-h { font: 400 13px/1.4 var(--mono); color: var(--encre-2); padding-top: 1px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .heures-corps { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .heures-t { display: flex; align-items: center; gap: 7px; font-weight: 600; min-width: 0; }
 .heures-t .tt { min-width: 0; overflow-wrap: anywhere; }
 .heures-t svg.ic { width: 13px; height: 13px; flex: none; color: var(--encre-2); }
+.heures-ligne.fait .heures-t svg.ic { color: var(--succes); }
 .heures-t .point { width: 9px; height: 9px; border-radius: 50%; background: var(--couleur, var(--encre-3)); flex: none; }
 .heures-t .pastille { flex: none; }
 .heures-p { font-size: 13px; color: var(--encre-3); display: flex; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
 .feuille-heures .rang { display: inline-flex; align-items: center; font: 600 11px/1 var(--texte); padding: 3px 6px; border-radius: 999px; background: var(--fond-3); color: var(--encre); }
-.heures-pq { display: flex; align-items: flex-start; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--encre-2); overflow-wrap: anywhere; }
+.heures-pq { display: flex; align-items: flex-start; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--encre-2); overflow-wrap: anywhere; text-wrap: pretty; }
 .heures-pq svg.ic { width: 13px; height: 13px; flex: none; margin-top: 3px; }
 .heures-pq.menace { color: var(--danger); }
 .heures-pq.rien { color: var(--encre-3); font-style: italic; }
+.heures-pq.statut { color: var(--encre-3); font-size: 13px; }
+.heures-pq.statut.fait svg.ic { color: var(--succes); }
+.heures-pq.statut.glisse { color: var(--encre-2); }
+.heures-ligne.avec-histo { padding-right: 104px; }
+.heures-li .heures-histo { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--encre-2); }
+.heures-plus-tot-tete { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--fond-2);
+  color: var(--encre); font: inherit; font-size: 14px; text-align: left; cursor: pointer; transition-property: background-color; transition-duration: 140ms; transition-timing-function: ease-out; }
+@media (hover: hover) { .heures-plus-tot-tete:hover { background: var(--fond-3); } }
+.heures-plus-tot-tete svg.ic { width: 14px; height: 14px; color: var(--encre-2); flex: none; }
+.heures-plus-tot-tete .t { font-weight: 600; }
+.heures-plus-tot-tete .d { color: var(--encre-3); font-size: 13px; }
+.heures-plus-tot-corps { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.heures-plus-tot.vide-passe { display: none; }
+.heures-plus-rien { font-size: 13.5px; }
 .heures-projets { display: flex; flex-direction: column; gap: 12px; }
 .heures-tranche-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 14px; margin-bottom: 4px; }
 .ph-barres { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -676,13 +774,25 @@ dialog.feuille-heures:focus { outline: none; }
 .heures-rentre-ligne svg.ic { width: 14px; height: 14px; flex: none; color: var(--danger); margin-top: 2px; }
 .heures-rentre-ligne strong { display: block; color: var(--encre); overflow-wrap: anywhere; }
 .heures-rentre-ligne .d { display: block; }
-.heures-squelettes { display: flex; flex-direction: column; gap: 14px; }
-.squelette-frise { animation: pulse 1.6s ease-in-out infinite; margin-top: 18px; }
+.heures-squelettes { display: flex; flex-direction: column; gap: 10px; }
+.squelette-frise { animation: pulse 1.6s ease-in-out infinite; }
+.squelette-ligne { display: inline-block; width: 220px; max-width: 60%; height: 12px; border-radius: 6px; background: var(--fond-3); animation: pulse 1.6s ease-in-out infinite; }
+.squelette-bouton { display: inline-block; width: 132px; height: 36px; border-radius: var(--rayon-btn); background: var(--fond-2); }
+@media (prefers-reduced-motion: reduce) {
+  .squelette-frise, .squelette-ligne { animation: none; }
+  .hb-v, .heures-ligne, .heures-plus-tot-tete { transition-duration: 0ms; }
+  .hb:active .hb-v { transform: none; }
+}
 @media (max-width: 520px) {
   .heures-nuit > span { display: none; }
-  .heures-ligne { grid-template-columns: minmax(0, 1fr); padding-left: 10px; }
+  .heures-ligne { grid-template-columns: minmax(0, 1fr) auto; padding-left: 10px; }
+  .heures-ligne .heures-h { grid-column: 1; }
+  .heures-ligne .heures-corps { grid-column: 1; }
+  .heures-ligne .heures-chevron { grid-column: 2; grid-row: 1 / span 2; }
   .heures-h { font-size: 12px; }
   .heures-tete { font-size: 16px; }
+  .heures-plage { font-size: 12.5px; }
+  .heures-moment { min-height: 39px; }
 }
 .echelle-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 14px; background: var(--fond-2); margin-bottom: 14px; }
 .echelle-segment button { min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: var(--encre); font-weight: 500; font-size: 15px; }
