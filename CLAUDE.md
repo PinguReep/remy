@@ -44,6 +44,51 @@ cas de doute, ça ne va pas dans le dépôt.
 - **Production** : pas d'auto-déploiement. Après chaque fusion, la tour se met à
   jour avec `scripts/installer-tour.ps1 -Ref <commit>` (voir `docs/tour.md`).
 
+## Parler à l'utilisateur
+
+Il lit pour **décider ou agir**, pas pour suivre le chantier.
+
+- N'écris que lorsqu'il y a quelque chose à **décider**, à **faire**, ou un
+  **résultat** qu'il attend. Pas de point d'étape (« la vérification tourne »,
+  « j'ai lancé un agent ») : ça, c'est le journal, pas la conversation.
+- **Mots de tous les jours.** Pas de PR, CI, branche, commit, worktree, SHA,
+  migration, endpoint… Dis « c'est testé », « c'est livré », « il reste à
+  l'installer sur ton iPhone ». Un terme technique seulement s'il doit le taper
+  ou le chercher.
+- **Phrases complètes**, sans sous-entendu : chaque phrase se comprend seule.
+- D'abord ce qui change pour lui, puis ce qu'il doit faire, puis les questions.
+  Le « comment » seulement s'il le demande.
+- Court par défaut ; `/mute` (ci-dessous) reste la version extrême.
+
+## Autonomie (tant que personne d'autre n'utilise l'app)
+
+Sans demander : ouvrir la demande de fusion, la fusionner dès que tous les
+contrôles passent, lancer le build TestFlight, mettre la tour à jour quand elle
+est joignable. Chercher soi-même (code, documentation, web) avant de poser une
+question.
+
+On demande seulement pour : ce qui ne se rattrape pas (suppression, réécriture
+d'historique, données réelles), les secrets, un nouveau service tiers, une
+dépense, un changement de modèle par défaut. Cette règle tombe le jour où
+l'app a d'autres utilisateurs.
+
+## IDÉE ou GO
+
+Un message qui commence par **IDÉE** : on note, on donne un avis en deux
+lignes, on ne construit rien. **GO** (ou une demande claire) : on construit.
+Dans le doute sur un message mêlé, on construit ce qui est demandé et on note
+le reste comme idées, en le disant.
+
+Une fonctionnalité se lance avec le skill `/fonctionnalite` : la situation
+vécue, les critères vérifiables, **l'écran montré avant** de le porter partout.
+
+## Le travail de fond cède la place
+
+Tout ce que Rémy fait sans qu'on le lui ait demandé à l'instant (réflexion de
+nuit, résumés, indexation, agents en arrière-plan, inférence locale) se met en
+pause dès qu'arrive une demande de l'utilisateur ou une mise à jour, puis
+reprend. Une tâche de fond ne fait jamais attendre une réponse.
+
 ## `/mute` — répondre court
 
 Quand l'utilisateur écrit `/mute` dans un message : réponse en 3 lignes maximum.
