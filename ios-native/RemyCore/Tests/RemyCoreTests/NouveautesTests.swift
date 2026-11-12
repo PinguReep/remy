@@ -383,11 +383,12 @@ final class NouveautesTests: XCTestCase {
         XCTAssertEqual(serie9.map(\.id), ["recherche-projets"])
         XCTAssertNil(serie9[0].capacite)
         XCTAssertLessThanOrEqual(serie9.reduce(0) { $0 + $1.pages.count }, Nouveautes.pagesMax)
-        let a = app([], reglages: suite())
-        a.nouveautes.verifier()
-        XCTAssertEqual(a.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"])
-        let b = app(Nouveautes.catalogue.compactMap(\.capacite), reglages: suite())
-        b.nouveautes.verifier()
-        XCTAssertEqual(b.nouveautes.affichees?.entrees.map(\.id), ["recherche-projets"], "une tour à jour : la dernière série seule")
+        // Telle qu'elle s'affichait quand elle était la dernière série.
+        let a = jusqua(9, [])
+        a.verifier()
+        XCTAssertEqual(a.affichees?.entrees.map(\.id), ["recherche-projets"])
+        let b = jusqua(9, Nouveautes.catalogue.compactMap(\.capacite))
+        b.verifier()
+        XCTAssertEqual(b.affichees?.entrees.map(\.id), ["recherche-projets"], "une tour à jour : la dernière série seule")
     }
 }
