@@ -94,7 +94,7 @@ const remiseAZero = async () => {
   P._reinitialiser();
   modele.vider();
   process.env.REMY_FOND_REPIT_MS = "0";
-  for (const v of ["REMY_PASSERELLE_ATTENTE_MS", "REMY_PASSERELLE_MAX_OCTETS", "REMY_PASSERELLE_DEBIT_MIN"]) delete process.env[v];
+  for (const v of ["REMY_PASSERELLE_ATTENTE_MS", "REMY_PASSERELLE_MAX_OCTETS", "REMY_PASSERELLE_DEBIT_MIN", "REMY_SPARKS_MAX"]) delete process.env[v];
   await reglages({ active: true, fileMax: 8, attenteMaxS: 120, couperSansFlux: false });
 };
 
@@ -313,8 +313,9 @@ test("agents de fond pendant une question : l'appel en cours finit (pas coupé),
   const a = lire(appeler(cles.fond, question("LONG agent A", { stream: true })));
   await modele.enCalcul(/agent A/);
   const fin = prio.debutDemande("question");
+  // B est en file avant que C ne soit envoyé (un état lu, pas un délai) : l'ordre d'arrivée est certain.
   const b = appeler(cles.fond, question("agent B"));
-  await attendre(10);
+  await jusqua(() => P.etatPasserelle().enFile === 1, 2_000, "B en file");
   const c = appeler(cles.fond, question("agent C"));
   await jusqua(() => P.etatPasserelle().enFile === 2, 2_000, "deux appels en file");
   const vue = await fetch(`${base}/api/fond`, { headers: session }).then((x) => x.json());
@@ -325,8 +326,14 @@ test("agents de fond pendant une question : l'appel en cours finit (pas coupé),
   assert.deepEqual(modele.etat.coupes, [], "rien n'est coupé");
   await attendre(60);
   assert.deepEqual(modele.etat.recus.map((x) => x.texte), ["LONG agent A"], "aucun autre ne part pendant la question");
+  // Une seule place sur le modèle pour la sortie : B part, C seulement quand B a fini. Avec deux places, B et C
+  // quittent la file au même instant (B d'abord) sur deux connexions, et l'ordre d'arrivée au faux modèle ne
+  // dépend plus de la file mais du client HTTP : celui de Node 22.23 (undici 6.29) n'écrit sur une connexion
+  // réutilisée (B) qu'un tour de boucle plus tard, après la requête partie sur une connexion neuve (C).
+  process.env.REMY_SPARKS_MAX = "1";
   fin();
   const [rb, rc] = await Promise.all([b, c]);
+  delete process.env.REMY_SPARKS_MAX;
   assert.equal(rb.status, 200);
   assert.equal(rc.status, 200);
   assert.deepEqual(modele.etat.recus.map((x) => x.texte), ["LONG agent A", "agent B", "agent C"], "dans l'ordre d'arrivée");
