@@ -144,7 +144,11 @@ export function provenance({ luA, chargement = false, erreur = null, maintenant 
 /** L'intertitre des menacées. */
 export const intertitreMenacees = (n) => (n > 1 ? `Menacées (${n})` : "Menacée");
 /** Préparé pour Rémy, jamais envoyé seul (CarteMenacee). */
-export const phraseMenacee = (m) => `« ${m.titre} » est menacée : ${m.phrase} Trouve-lui un créneau avant son échéance, sans toucher à mes rendez-vous.`;
+export const phraseMenacee = (m) =>
+  m?.raison === "bloquee"
+    // Bloquée par une autre tâche (taches-dependances-v1) : la caser ne sert à rien tant qu'elle attend.
+    ? `« ${m.titre} » est menacée : ${m.phrase} Aide-moi à décider : avancer ce qu'elle attend, ou repousser son échéance.`
+    : `« ${m.titre} » est menacée : ${m.phrase} Trouve-lui un créneau avant son échéance, sans toucher à mes rendez-vous.`;
 
 /** « Organiser ma journée » : envoyé, le clic étant le geste (Brouillons.journee). */
 export const ORGANISER = "Organise ma journée : regarde mon agenda et mes tâches, dis-moi par quoi commencer et ce qui est en retard. Pose tes questions d'un coup si tu en as.";

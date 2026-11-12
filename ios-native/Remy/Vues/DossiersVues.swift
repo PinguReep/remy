@@ -269,11 +269,18 @@ struct NoeudView: View {
         let item = app.tableau.donnees?.journee?.items?.first { $0.id == t.id && !$0.estRendezVous }
         return Button {
             if let item { ui.gerer = item }
+            // Hors de la journée : le même « Gérer » qu'une tâche sans créneau
+            // (« Bloquée par… » s'y règle aussi, taches-dependances-v1).
+            else if app.tableau.donnees != nil {
+                ui.gerer = ElementJour.sansCreneau(t, retard: (t.echeance ?? .infinity) < Date().millis - 3_600_000)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.titre).font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
                 let bits = [t.echeance.map { "avant le \(Format.jourCourt($0.date))" }, t.duree.map { Format.duree(minutes: $0) }].compactMap { $0 }
                 if !bits.isEmpty { Text(bits.joined(separator: " · ")).font(Police.texte(13)).foregroundStyle(Palette.encre2) }
+                if !(t.bloqueePar ?? []).isEmpty { MarqueBloquee(raison: nil, par: t.bloqueePar) }
+                if let d = Dependances.marqueDebloque(t.debloque) { MarqueDebloque(texte: d) }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())

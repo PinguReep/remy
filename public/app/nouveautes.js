@@ -16,6 +16,11 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("dependances-taches", 9, "12 nov.", "Une tâche qui en attend une autre", "taches-dependances-v1", [
+    p("pause", "« Bloquée par… »", "Dans « Gérer » d'une tâche : « Choisir la tâche qu'elle attend… », cherche par son nom. Tant que l'autre n'est pas finie, Rémy ne te la propose jamais, et sa ligne dit « Bloquée par … » ; l'autre dit « Débloque … »."),
+    p("fleche", "Elle se débloque seule", "Termine celle qu'elle attend (ici, ou dans Motion) : Rémy te dit qu'elle est débloquée, et l'Historique le garde. Motion ne connaît pas ce lien : il peut la planifier quand même."),
+    p("remy", "Rémy le propose", "Décris un projet en étapes (« d'abord le garage, puis le carrossier ») : Rémy propose les tâches avec leur ordre, et rien n'est créé avant ton « Oui »."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),

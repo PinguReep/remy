@@ -760,10 +760,14 @@ public final class TableauModel {
                 cochees[j].ledgerId = r.ledgerId
                 cochees[j].enCours = false
             }
+            // Ce qu'elle retenait est libéré (taches-dependances-v1) : c'est dit.
+            let libres = Dependances.phraseDebloquees(res?.debloquees)
             if aDefaire.remove(id) != nil || defaire {
                 await annulerCoche(id)
             } else if reprise {
-                app?.dire("Envoyé : « \(titre) » est marqué fait.")
+                app?.dire("Envoyé : « \(titre) » est marqué fait." + (libres.map { " " + $0 } ?? ""))
+            } else if let libres {
+                app?.dire(libres)
             }
             return .faite
         } catch {
@@ -2285,16 +2289,18 @@ public final class ChatModel {
             }
             let echecs = bilan.echoues?.count ?? 0
             let ecartees = bilan.ecartees?.count ?? 0
+            // « « B » attendra « A ». » (taches-dependances-v1), ou rien.
+            let liens = Dependances.phraseLiens(r).map { " " + $0 } ?? ""
             if r.toutDejaLa {
                 // Pas un échec : tout y était déjà.
                 app?.dire(p.versAgenda ? "Déjà dans ton agenda : rien à ajouter." : "Déjà dans ton planning : rien à ajouter.")
             } else if echecs == 0 {
                 let ou = p.versAgenda ? " dans ton agenda" : bilan.espace.map { " dans « \($0) »" } ?? " dans ton planning"
-                app?.dire(ecartees > 0 ? "C'est fait\(ou) (\(p.actions.count - ecartees) sur \(p.actions.count))." : "C'est fait\(ou).")
+                app?.dire((ecartees > 0 ? "C'est fait\(ou) (\(p.actions.count - ecartees) sur \(p.actions.count))." : "C'est fait\(ou).") + liens)
             } else if echecs >= p.actions.count - ecartees {
                 app?.dire("Rien n'a pu être fait : la raison est sous chaque ligne.")
             } else {
-                app?.dire("\(echecs) changement\(echecs > 1 ? "s" : "") sur \(p.actions.count) n'\(echecs > 1 ? "ont" : "a") pas pu être fait\(echecs > 1 ? "s" : "") : la raison est sous la ligne.")
+                app?.dire("\(echecs) changement\(echecs > 1 ? "s" : "") sur \(p.actions.count) n'\(echecs > 1 ? "ont" : "a") pas pu être fait\(echecs > 1 ? "s" : "") : la raison est sous la ligne." + liens)
             }
             // L'accueil reflète le changement tout de suite (lecture, aucun appel IA).
             await app?.tableau.charger()

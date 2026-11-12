@@ -51,6 +51,9 @@ export function detailAction(a, versAgenda = false) {
   const p = String(a?.priorite || "").toUpperCase();
   if (p === "ASAP") bits.push("urgent");
   else if (p === "HIGH") bits.push("important");
+  // « d'abord A, puis B » (taches-dependances-v1) : ce que l'étape attend.
+  const apres = (Array.isArray(a?.apres) ? a.apres : []).filter(Boolean);
+  if (apres.length) bits.push(`après « ${apres[0]} »${apres.length > 1 ? ` (+${apres.length - 1})` : ""}`);
   return bits.join(" · ");
 }
 
@@ -166,6 +169,23 @@ export function phraseApplication(p, r, bilan) {
   if (echecs >= n - ecartees) return "Rien n'a pu être fait : la raison est sous chaque ligne.";
   const s = echecs > 1;
   return `${echecs} changement${s ? "s" : ""} sur ${n} n'${s ? "ont" : "a"} pas pu être fait${s ? "s" : ""} : la raison est sous la ligne.`;
+}
+
+/**
+ * Ce que l'application a fait des liens « bloquée par » (taches-dependances-v1) :
+ * « « B » attendra « A ». », un lien pas posé, une tâche débloquée. "" sinon.
+ */
+export function phraseLiens(r) {
+  const res = r?.results || [];
+  const out = [];
+  const lies = res.filter((x) => x?.ok && Array.isArray(x.bloqueePar) && x.bloqueePar.length);
+  if (lies.length === 1) out.push(`« ${lies[0].nom} » attendra « ${lies[0].bloqueePar.map((b) => b.nom || "une autre tâche").join(" » et « ")} ».`);
+  else if (lies.length > 1) out.push(`${lies.length} tâches attendront leur étape précédente.`);
+  const rates = res.flatMap((x) => (Array.isArray(x?.liensRates) ? x.liensRates : []));
+  if (rates.length) out.push(rates.length > 1 ? `${rates.length} liens « après » n'ont pas été posés.` : "Un lien « après » n'a pas été posé (son étape n'a pas été créée).");
+  const libres = res.flatMap((x) => (Array.isArray(x?.debloquees) ? x.debloquees : [])).map((x) => x?.nom).filter(Boolean);
+  if (libres.length) out.push(libres.length > 1 ? `${libres.length} tâches débloquées.` : `« ${libres[0]} » est débloquée.`);
+  return out.join(" ");
 }
 
 /** Ce que dit une règle validée (RetourRegle.phrase). */
@@ -418,7 +438,8 @@ async function appliquer(p, c, index, carte, { rangs = null, confirmer = false, 
     delete p.perimee;
     delete p.raisonPeremption;
     const echecs = bilan.echoues.length;
-    dire(phraseApplication(p, r, bilan), {
+    const liens = phraseLiens(r);
+    dire(`${phraseApplication(p, r, bilan)}${liens ? ` ${liens}` : ""}`, {
       genre: toutDejaLa(r) ? "info" : echecs ? "erreur" : "succes",
       action: !echecs && r?.ledgerId && !toutDejaLa(r) ? { libelle: "Annuler", faire: () => agir(carte, { enCours: false }, () => annulerProposition(p, carte)) } : null,
     });

@@ -29,6 +29,14 @@ public struct Nouveaute: Identifiable, Equatable, Sendable {
 
 public enum Nouveautes {
     public static let catalogue: [Nouveaute] = [
+        Nouveaute(id: "dependances-taches", serie: 10, date: "12 nov.", titre: "Une tâche qui en attend une autre", capacite: "taches-dependances-v1", pages: [
+            .init(symbole: "pause.circle", titre: "« Bloquée par… »",
+                  texte: "Dans « Gérer » d'une tâche : « Choisir la tâche qu'elle attend… », cherche-la par son nom. Tant que l'autre n'est pas finie, Rémy ne te la propose jamais ; sa ligne dit « Bloquée par … », l'autre « Débloque … »."),
+            .init(symbole: "arrow.right.circle", titre: "Elle se débloque seule",
+                  texte: "Termine celle qu'elle attend (ici, ou dans Motion) : Rémy te dit qu'elle est débloquée, et l'Historique le garde. Motion ne connaît pas ce lien : il peut la planifier quand même."),
+            .init(symbole: "bubble.left", titre: "Rémy le propose",
+                  texte: "Décris un projet en étapes (« d'abord le garage, puis le carrossier ») : Rémy propose les tâches avec leur ordre, et rien n'est créé avant ton « Oui »."),
+        ]),
         Nouveaute(id: "recherche-projets", serie: 9, date: "12 nov.", titre: "Chercher dans Projets", capacite: nil, pages: [
             .init(symbole: "magnifyingglass", titre: "Tout retrouver",
                   texte: "En haut de Projets, tape un mot : il cherche dans tes projets et tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),

@@ -471,6 +471,13 @@ public struct ActionProposee: Codable, Equatable, Sendable {
     public var articles: [String]?
     public var texte: String?
     public var quand: String?
+    /// « D'abord A, puis B » (taches-dependances-v1) : le nom court de la
+    /// création dans la proposition, ce qu'elle attend (refs de la proposition
+    /// ou tâches déjà dans Motion), et `apres` — les noms, pour la carte.
+    public var ref: String?
+    public var bloquee_par: [String]?
+    public var attend_ids: [String]?
+    public var apres: [String]?
 
     public init(type: String? = nil, nom: String? = nil, nouveau_nom: String? = nil, titre: String? = nil,
                 nouveau_titre: String? = nil, echeance: String? = nil, debut: String? = nil, fin: String? = nil,
@@ -585,6 +592,11 @@ public struct ResultatAction: Codable, Sendable {
     /// Pourquoi Motion n'a pas pu (capture-idempotente-v1) : quota, serveur,
     /// delai, reseau… (passager) ou refus, supprimee, auth… (à revoir).
     public var nature: String?
+    /// taches-dependances-v1 : ce que cette tâche terminée a débloqué, ce que
+    /// cette création attend désormais, et les liens « après » pas posés.
+    public var debloquees: [LienTache]?
+    public var bloqueePar: [LienTache]?
+    public var liensRates: [LienRate]?
 
     /// Un échec qui passera seul : Motion en quota, en panne, lent ou
     /// injoignable. Une tour plus ancienne ne dit pas la nature : son message
@@ -839,6 +851,13 @@ public struct ElementJour: Codable, Sendable, Equatable, Identifiable {
     public var fait: Bool?
     /// Catégories de la tâche (Voiture, Santé…), gardées par Remy (18/10).
     public var etiquettes: [String]?
+    /// taches-dependances-v1 : les tâches qu'elle attend (« bloquée par »),
+    /// celles qui l'attendent (« débloque »), l'attente manuelle posée en
+    /// plus, et l'échéance menacée par le blocage.
+    public var bloqueePar: [LienTache]?
+    public var debloque: [LienTache]?
+    public var attente: Bool?
+    public var menaceBlocage: String?
 
     public var estRendezVous: Bool { type == "rdv" }
     /// Une activité à soi, à heure fixe dans l'agenda (pas un vrai rendez-vous).
@@ -884,6 +903,11 @@ public struct TacheResume: Codable, Sendable, Equatable, Identifiable {
     public var duree: Int?
     /// Catégories de la tâche (Voiture, Santé…), gardées par Remy (18/10).
     public var etiquettes: [String]?
+    /// taches-dependances-v1 (voir ElementJour).
+    public var bloqueePar: [LienTache]?
+    public var debloque: [LienTache]?
+    public var attente: Bool?
+    public var menaceBlocage: String?
 
     public init(id: String, titre: String, echeance: Millis? = nil, projet: String? = nil, priorite: String? = nil,
                 bloquee: Bool? = nil, raison: String? = nil, duree: Int? = nil) {

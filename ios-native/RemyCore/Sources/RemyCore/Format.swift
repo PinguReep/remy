@@ -185,6 +185,11 @@ public enum Format {
         case "HIGH": bits.append("important")
         default: break
         }
+        // « d'abord A, puis B » (taches-dependances-v1) : ce que l'étape attend.
+        let apres = (a.apres ?? []).filter { !$0.isEmpty }
+        if let premier = apres.first {
+            bits.append("après « \(premier) »" + (apres.count > 1 ? " (+\(apres.count - 1))" : ""))
+        }
         return bits.joined(separator: " · ")
     }
 

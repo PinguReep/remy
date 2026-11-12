@@ -457,7 +457,8 @@ private struct CarteMaintenant: View {
             .font(Police.titre(26))
             .foregroundStyle(Palette.encre)
             .fixedSize(horizontal: false, vertical: true)
-        if e.bloquee == true { MarqueBloquee(raison: e.raison) }
+        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar) }
+        if let d = Dependances.marqueDebloque(e.debloque) { MarqueDebloque(texte: d) }
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(reste < 60 ? "\(reste)" : Format.duree(minutes: reste))
                 .font(Police.titre(54))
@@ -664,7 +665,8 @@ private struct LigneSuite: View {
                             Text(d).font(Police.texte(13)).foregroundStyle(Palette.encre2).lineLimit(1)
                         }
                         if e.retard == true && !passe { Risque(texte: "En retard") }
-                        if e.bloquee == true { MarqueBloquee(raison: e.raison) }
+                        if e.bloquee == true { MarqueBloquee(raison: e.raison, par: e.bloqueePar) }
+                        if let d = Dependances.marqueDebloque(e.debloque) { MarqueDebloque(texte: d) }
                     }
                     Spacer(minLength: 0)
                 }
@@ -822,7 +824,9 @@ private struct LigneTache: View {
                     if !detail.isEmpty {
                         Text(detail).font(Police.texte(13)).foregroundStyle(enRetard ? Palette.danger : Palette.encre2)
                     }
-                    if t.bloquee == true { MarqueBloquee(raison: t.raison) }
+                    if t.bloquee == true { MarqueBloquee(raison: t.raison, par: t.bloqueePar) }
+                    if let m = t.menaceBlocage { Risque(texte: m) }
+                    if let d = Dependances.marqueDebloque(t.debloque) { MarqueDebloque(texte: d) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 10)
@@ -855,13 +859,28 @@ private struct LigneTache: View {
 /// « En attente » (ex-« Bloquée », 15/10) : une forme et un mot (pas une couleur), avec ce qui est attendu.
 struct MarqueBloquee: View {
     let raison: String?
+    /// taches-dependances-v1 : « Bloquée par « X » » plutôt que la raison.
+    var par: [LienTache]? = nil
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "pause.circle.fill").font(.system(size: 11, weight: .semibold))
-            Text(raison.map { "En attente · \($0)" } ?? "En attente").font(Police.texte(12, .semibold)).lineLimit(1)
+            Text(Dependances.marque(raison: raison, par: par)).font(Police.texte(12, .semibold)).lineLimit(1)
         }
         .foregroundStyle(Palette.encre2)
+    }
+}
+
+/// Sur la tâche bloquante : « Débloque « Y » » (taches-dependances-v1).
+struct MarqueDebloque: View {
+    let texte: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.right.circle").font(.system(size: 11, weight: .semibold))
+            Text(texte).font(Police.texte(12)).lineLimit(1)
+        }
+        .foregroundStyle(Palette.encre3)
     }
 }
 

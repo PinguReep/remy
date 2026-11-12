@@ -23,10 +23,20 @@ public struct MenaceeTour: Codable, Sendable, Equatable, Identifiable {
     public var echeance: Millis?
     public var priorite: String?
     public var projet: String?
-    /// apres-echeance, sans-creneau, capacite
+    /// apres-echeance, sans-creneau, capacite, bloquee (taches-dependances-v1)
     public var raison: String
     public var phrase: String
     public var action: Action?
+    /// « bloquee » : ce qu'elle attend (une autre tâche, pas encore finie).
+    public var bloqueePar: [LienTache]?
+
+    /// La question préparée pour Rémy (« Caser » / « En parler »), jamais envoyée seule.
+    /// Bloquée par une autre tâche, la caser ne servirait à rien tant qu'elle attend.
+    public var questionPourRemy: String {
+        raison == "bloquee"
+            ? "« \(titre) » est menacée : \(phrase) Aide-moi à décider : avancer ce qu'elle attend, ou repousser son échéance."
+            : "« \(titre) » est menacée : \(phrase) Trouve-lui un créneau avant son échéance, sans toucher à mes rendez-vous."
+    }
 
     public init(id: String, titre: String, echeance: Millis? = nil, raison: String, phrase: String, action: Action? = nil) {
         self.id = id
