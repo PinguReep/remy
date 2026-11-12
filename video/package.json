@@ -1,0 +1,30 @@
+{
+  "name": "remy-video-presentation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Vidéo de présentation de Rémy, programmée avec Remotion.",
+  "type": "module",
+  "scripts": {
+    "installer-voix": "sh scripts/installer-voix.sh",
+    "voix": "sh scripts/installer-voix.sh && .venv-voix/bin/python scripts/voix.py --modele voix/modele/fr_FR-siwis-medium.onnx",
+    "minutage": "node scripts/minutage.mjs",
+    "sons": "node scripts/minutage.mjs && node scripts/sons.mjs",
+    "studio": "node scripts/minutage.mjs && node scripts/sons.mjs && remotion studio",
+    "images": "node scripts/images.mjs",
+    "rendu": "node scripts/rendu.mjs",
+    "verifier": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "typescript": "5.9.3"
+  }
+}

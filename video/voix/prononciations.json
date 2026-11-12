@@ -1,0 +1,11 @@
+{
+  "_lisez-moi": "Remplacements appliqués au texte AVANT la synthèse (jamais aux sous-titres). Clé : mot tel qu'écrit dans script.md ; valeur : orthographe que la voix prononce bien. Vérifié pour Piper fr_FR-siwis-medium (espeak-ng lit « Rémy » à l'anglaise, « Motion » à la française).",
+  "remplacements": {
+    "Rémy": "Rémi",
+    "T3 Code": "Té-trois Kôde",
+    "Claude Code": "Claude Kôde",
+    "ChatGPT": "Tchatte Gé Pé Té",
+    "Motion": "Mo-cheune",
+    "iPhone": "aïe-phone"
+  }
+}

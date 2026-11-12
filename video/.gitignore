@@ -1,0 +1,15 @@
+node_modules/
+sortie/
+out/
+.remotion/
+# Généré par les scripts (régénérable) : voix, bande-son, minutage
+public/voix/
+public/sons/
+public/minutage.json
+# Modèles de voix téléchargés et environnements Python
+*.onnx
+*.onnx.json
+.venv*/
+__pycache__/
+*.mp4
+voix/modele/
