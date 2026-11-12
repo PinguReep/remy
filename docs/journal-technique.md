@@ -4,6 +4,29 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Assemblage du lot du soir, repris sur la tour
+
+La session qui menait le lot s'est arrêtée avant l'assemblage ; il a été refait
+depuis un clone de développement sur la tour (`claude/integration-novembre-3`).
+
+- **Ce qui est assemblé.** L'intégration précédente, plus cinq branches : le
+  cahier des charges du MVP sans Motion, Prochaines heures qui se parcourt, la
+  passerelle pour outils de code, l'arbre des projets et son verrou, les
+  priorités sur iPhone. Deux conflits seulement : ce journal (toutes les entrées
+  gardées) et `lib/version.js` (union des capacités, aucun doublon).
+- **Tests de l'arbre sous Windows.** Lire une conversation ouvre maintenant la
+  base (`noeudDeConversation`). Quatre tests effaçaient leur dossier sans la
+  refermer : `EPERM` sous Windows, invisible sous Linux. Ils appellent `fermer()`
+  de `lib/db.js` avant d'effacer, comme `outil-pieces.test.mjs`. Le test du
+  verrou acceptait seulement les fins de ligne Unix : `\r?\n`.
+- **`navigateur.test.mjs` et un dossier personnel redirigé.** Lancée avec
+  `USERPROFILE` pointé ailleurs (précaution pour ne rien lire de la vraie
+  installation), la suite voit Chrome refuser de démarrer (« DevTools remote
+  debugging requires a non-default data directory ») : deux faux échecs. Avec le
+  dossier d'origine, les six tests passent. Ce n'est pas une régression.
+- **Pas vérifié ici.** Le Swift (priorités iPhone) : compilé par les contrôles
+  automatiques seulement.
+
 ## 2026-11-12 — Prochaines heures se parcourt (`heures-passe-v1`)
 
 Deux manques à l'usage : la frise commençait à maintenant (le matin passé
