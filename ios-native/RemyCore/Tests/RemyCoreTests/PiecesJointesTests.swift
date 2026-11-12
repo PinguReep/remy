@@ -96,8 +96,12 @@ final class PiecesJointesTests: XCTestCase {
     }
 
     func testSansLaCapaciteLeTromboneResteCache() {
-        XCTAssertFalse(app([]).chat.piecesDisponibles)
-        XCTAssertTrue(app().chat.piecesDisponibles)
+        // Les apps sont gardées en variables : `chat.app` est une référence
+        // faible, un AppModel temporaire disparaîtrait avant la lecture.
+        let sans = app([])
+        XCTAssertFalse(sans.chat.piecesDisponibles)
+        let avec = app()
+        XCTAssertTrue(avec.chat.piecesDisponibles)
     }
 
     func testLeComposeurRefuseCeQueLaTourRefuserait() {
