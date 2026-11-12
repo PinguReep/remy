@@ -180,6 +180,8 @@ export const INDEX = [
     { ancre: "Vitesse de Rémy", mots: ["tokens par seconde", "tok/s", "vitesse", "débit", "rapidité", "performance"] }),
   entree("version", "Version de Rémy", "Le numéro du site et celui de ta tour.", "diagnostic",
     { ancre: "Version", mots: ["version", "build", "numéro", "serveur", "tour", "à jour"] }),
+  entree("majAuto", "Mise à jour automatique", "La tour installe seule ce qui passe ses contrôles ; la mettre en pause.", "diagnostic",
+    { ancre: "Mise à jour automatique", mots: ["mise à jour", "mises à jour", "automatique", "installer", "installation", "pause", "tour", "version", "commit", "déploiement"], si: ["capacite:maj-auto-v1"] }),
   entree("avance.classique", "Interface classique", "La roadmap et la consigne de nuit.", "avance",
     { ancre: "Interface classique", mots: ["classique", "ancienne interface", "roadmap", "consigne"] }),
   entree("deconnexion", "Se déconnecter", "Il faudra retaper le mot de passe.", "avance",

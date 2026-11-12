@@ -4,6 +4,56 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — La tour se met à jour seule (si on l'active)
+
+Après chaque fusion, il fallait coller `installer-tour.ps1 -Ref <commit>` sur
+la tour. `installer-tour.ps1 -MiseAJourAuto` pose une fois une seconde tâche,
+« Rémy - mise à jour » (15 min, ouverture de session + 5 min), qui lance
+`scripts/maj-auto.mjs`. Choix :
+
+- **La décision en Node, testée** (`lib/maj-auto.js`, `passer()` avec tout
+  injecté) ; PowerShell ne fait que poser la tâche et installer. Le script ne
+  dépend d'aucun paquet : `npm ci` peut remplacer `node_modules` sous lui.
+- **Les contrôles = GitHub Actions sur `main`** (`/actions/runs?head_sha=`,
+  `head_branch` = `main`, la dernière exécution par workflow). « Serveur —
+  tests » est exigé et doit avoir réussi — c'est lui qui passe `npm test` et
+  les scripts de la tour sous Windows ; le reste doit être fini, réussi ou
+  sauté. Pas de « Serveur » une heure après le commit : pas d'installation.
+  Les statuts d'autres services (une ancienne intégration Vercel) ne comptent
+  pas. API publique sans jeton : 1 à 2 requêtes par passage, la limite de
+  60/h respectée jusqu'à sa levée.
+- **Jamais en arrière** : `merge-base --is-ancestor installé candidat`. Un
+  commit de branche installé à la main suspend donc l'automatique (dit en
+  clair) plutôt que d'être écrasé.
+- **« Rémy travaille »** = une génération en cours (`lib/arret.js`), un job
+  qui tourne (`lib/jobs.js`, en mémoire : la sauvegarde et la réflexion de la
+  nuit en sont), un appel au modèle (garde de charge) ou une écriture HTTP en
+  cours (POST/PUT/PATCH/DELETE, comptées dans `routeApi`). Exposé par
+  `GET /api/maj-auto`, avec un jeton de session que le script signe avec
+  `SESSION_SECRET` (même format que `lib/auth.js`, vérifié par un test). La
+  sauvegarde « avant-maj » de l'installeur peut durer : `-Auto` revérifie
+  juste après elle, avant de toucher à la copie (code 3, rien de changé).
+  Rémy injoignable deux passages de suite : on installe (il ne sert personne,
+  la version suivante le répare peut-être).
+- **Vérifier puis revenir** : `/api/version` doit annoncer le candidat. Sinon,
+  `git checkout` de la version d'avant PUIS son installeur (`-Retour`) : le
+  retour passe par l'installeur éprouvé, pas par celui qu'on vient d'installer.
+  Le candidat est « refusé » à vie ; un arrêt AVANT tout changement
+  (sauvegarde impossible) n'est pas un refus : réessais espacés (15 min → 6 h).
+- **La sauvegarde n'est jamais contournée** : la tâche n'a pas `-SansSauvegarde`.
+- **Un verrou pour tout le monde** (`maj-auto\verrou.json`, création
+  exclusive, périmé à la mort de son processus ou après 2 h) : l'installeur à
+  la main le prend aussi et refuse de démarrer pendant un passage.
+- **La raison d'un arrêt de l'installeur** lui est écrite en UTF-8 par un
+  `trap` (`-Auto`) : relayée par PowerShell 5.1, la sortie perd les accents.
+  Le `trap` ne s'applique qu'en mode `Stop` : les passages `Continue` (Node,
+  tailscale) se comportent comme avant.
+- **La pause est un fichier** (`pause.json`), pas un réglage de la base : la
+  tâche la lit même quand Rémy ne répond pas. Réglages › Diagnostic la pose
+  (`PUT /api/maj-auto`), capacité `maj-auto-v1`. `REMY_MAJ_AUTO=off` coupe côté tour.
+- L'installeur appelé par la tâche ne reçoit pas les variables de `remy.env`
+  par l'environnement : il le relit lui-même, exactement comme à la main.
+
 ## 2026-11-12 — Chercher dans Projets
 
 Le champ de Projets (site) ne filtrait que les noms de la colonne ; l'iPhone n'en

@@ -16,6 +16,10 @@ const p = (icone, titre, texte) => Object.freeze({ icone, titre, texte });
 const n = (id, serie, date, titre, capacite, pages) => Object.freeze({ id, serie, date, titre, capacite, pages });
 
 export const CATALOGUE = [
+  n("maj-auto", 9, "12 nov.", "Ta tour se met à jour seule", "maj-auto-v1", [
+    p("rafraichir", "Ce qui passe ses contrôles", "Une fois activée sur la tour, elle installe d'elle-même ce qui arrive sur main, seulement si tous ses contrôles ont réussi, et jamais pendant que Rémy travaille. Sinon, elle revient à la version d'avant."),
+    p("pause", "La voir, la mettre en pause", "Réglages › Diagnostic : « Mise à jour automatique », activée ou non, la dernière (commit, jour, réussie ou annulée et pourquoi), et un interrupteur pour la mettre en pause."),
+  ]),
   n("recherche-projets", 8, "12 nov.", "Chercher dans Projets", null, [
     p("recherche", "Tout retrouver", "Le champ en haut de Projets (ou /) cherche aussi dans les tâches Motion, les idées des dossiers, les articles des listes et les rappels. Accents et majuscules n'y font rien ; le mot trouvé est surligné."),
     p("fleche", "Droit au bon endroit", "Clique un résultat : sa liste, son dossier ou son projet s'ouvre ; une tâche s'ouvre dans « Gérer », un rappel dans « Quand ? ». Entrée ouvre le premier, Échap vide le champ."),

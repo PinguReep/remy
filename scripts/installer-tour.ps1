@@ -18,13 +18,23 @@
 #   relancée si elle tombe. Node n'écoute qu'en 127.0.0.1.
 # - Tailscale Serve publie https://<tour>.ts.net:8444 aux seuls appareils du
 #   tailnet (ni Internet, ni le LAN).
+# - Mise à jour automatique (docs\tour.md) : -MiseAJourAuto pose, une fois, la
+#   tâche « Rémy - mise à jour » (toutes les 15 min et à l'ouverture de session,
+#   droits d'administrateur pour remplacer la tâche « Rémy ») ; -SansMiseAJourAuto
+#   et -Uninstall la retirent. Seuls, sans -Ref, ils ne touchent qu'à elle. Sans
+#   ces drapeaux, une mise à jour à la main la laisse telle qu'elle est.
+# - -Auto, -Retour : réservés à cette tâche (scripts\maj-auto.mjs).
 param(
   [string]$Ref = '',
   [switch]$AutoriserBranche,
   [int]$Port = 3010,
   [int]$HttpsPort = 8444,
   [switch]$Uninstall,
-  [switch]$SansSauvegarde
+  [switch]$SansSauvegarde,
+  [switch]$MiseAJourAuto,
+  [switch]$SansMiseAJourAuto,
+  [switch]$Auto,
+  [switch]$Retour
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +43,33 @@ $base = Join-Path $env:USERPROFILE '.remy'
 $app = Join-Path $base 'app'
 $envFile = Join-Path $base 'remy.env'
 $log = Join-Path $base 'remy.log'
+$tacheMaj = 'Rémy - mise à jour'
+$majDir = Join-Path $base 'maj-auto'
+$verrou = Join-Path $majDir 'verrou.json'
+$raisonFichier = Join-Path $majDir 'installeur-raison.txt'
+$verrouPris = $false
+
+# Lancé par la tâche de mise à jour (-Auto) : la raison d'un arrêt lui est
+# laissée en UTF-8 (la sortie de PowerShell 5.1 perd les accents en route).
+if ($Auto) {
+  New-Item -ItemType Directory -Force $majDir | Out-Null
+  Remove-Item -LiteralPath $raisonFichier -Force -ErrorAction SilentlyContinue
+  try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
+}
+# Une erreur qui arrête l'installeur (mode « Stop ») : sa raison pour la tâche,
+# et le verrou d'une installation à la main rendu. Les passages en « Continue »
+# (Node, tailscale) gardent leur comportement : on continue.
+trap {
+  if ($ErrorActionPreference -ne 'Stop') { continue }
+  if ($Auto) {
+    try { [IO.File]::WriteAllText($raisonFichier, "$($_.Exception.Message)", (New-Object Text.UTF8Encoding($false))) } catch {}
+  }
+  if ($verrouPris) { Remove-Item -LiteralPath $verrou -Force -ErrorAction SilentlyContinue }
+  break
+}
+if ($MiseAJourAuto -and $SansMiseAJourAuto) {
+  throw "-MiseAJourAuto ou -SansMiseAJourAuto, pas les deux. Rien n'a été changé."
+}
 
 # Remplacer la tâche planifiée demande un PowerShell administrateur quand elle a
 # été créée depuis l'un d'eux. Le 15/10/2026, l'« Accès refusé » arrivait APRÈS
@@ -41,6 +78,11 @@ $estAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIde
   [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $estAdmin -and (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
   throw "Relance cette commande dans un PowerShell ouvert en administrateur (clic droit > Exécuter en tant qu'administrateur) : la tâche « $taskName » ne se remplace pas sans. Rien n'a été changé, Rémy tourne toujours."
+}
+# La tâche de mise à jour a les droits d'administrateur (sans invite) : seul un
+# PowerShell administrateur peut la poser ou la retirer.
+if (-not $estAdmin -and ($MiseAJourAuto -or $SansMiseAJourAuto -or ($Uninstall -and (Get-ScheduledTask -TaskName $tacheMaj -ErrorAction SilentlyContinue)))) {
+  throw "Relance cette commande dans un PowerShell ouvert en administrateur : la tâche « $tacheMaj » ne se pose ni ne se retire sans. Rien n'a été changé."
 }
 
 function Stop-Remy {
@@ -56,7 +98,52 @@ function Stop-Remy {
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
+# La tâche « Rémy - mise à jour » : node lance scripts\maj-auto.mjs de la copie
+# de production. Droits d'administrateur (RunLevel Highest) : l'installeur
+# qu'elle appelle remplace la tâche « Rémy » sans invite. Ouverture de session
+# (5 min après, le temps que Rémy démarre) et toutes les 15 minutes.
+function Enregistrer-MajAuto {
+  $script = Join-Path $app 'scripts\maj-auto.mjs'
+  if (-not (Test-Path -LiteralPath $script)) {
+    throw "La copie de production ($app) n'a pas encore la mise à jour automatique : installe d'abord un commit qui l'a, en une fois : installer-tour.ps1 -Ref <commit> -MiseAJourAuto. Rien n'a été changé."
+  }
+  New-Item -ItemType Directory -Force $majDir | Out-Null
+  $nodeExe = (Get-Command node).Source
+  $runnerMaj = Join-Path $base 'run-maj-auto.ps1'
+  $lanceurMaj = @"
+# Lancé par la tâche « $tacheMaj » (installer-tour.ps1 -MiseAJourAuto). Rien de secret ici.
+Set-Location -LiteralPath '$base'
+if (-not (Test-Path -LiteralPath '$script')) { exit 0 }
+& '$nodeExe' --no-warnings '--env-file=$envFile' '$script' --base '$base'
+exit `$LASTEXITCODE
+"@
+  [IO.File]::WriteAllText($runnerMaj, $lanceurMaj, (New-Object Text.UTF8Encoding($true)))
+  $actionMaj = New-ScheduledTaskAction -Execute 'conhost.exe' -WorkingDirectory $base `
+    -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runnerMaj`""
+  $aLOuverture = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+  $aLOuverture.Delay = 'PT5M'
+  $toutesLes15 = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(2)) -RepetitionInterval (New-TimeSpan -Minutes 15)
+  $principalMaj = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Highest
+  $reglagesMaj = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2) -StartWhenAvailable -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $tacheMaj -Action $actionMaj -Trigger @($aLOuverture, $toutesLes15) -Principal $principalMaj `
+    -Settings $reglagesMaj -Force -Description "Rémy : installe le dernier commit de main dont les contrôles ont réussi (docs\tour.md)." | Out-Null
+  $marque = @{ active = $true; depuis = (Get-Date).ToUniversalTime().ToString('o'); intervalleMin = 15; tache = $tacheMaj } | ConvertTo-Json -Compress
+  [IO.File]::WriteAllText((Join-Path $majDir 'tache.json'), $marque, (New-Object Text.UTF8Encoding($false)))
+  Write-Output "Mise à jour automatique activée (tâche « $tacheMaj », toutes les 15 min). Journal : $(Join-Path $majDir 'journal.log'). Pause : Réglages > Diagnostic dans l'app ; retrait : -SansMiseAJourAuto."
+}
+
+function Retirer-MajAuto {
+  if (Get-ScheduledTask -TaskName $tacheMaj -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $tacheMaj -Confirm:$false
+  }
+  Remove-Item -LiteralPath (Join-Path $majDir 'tache.json') -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Join-Path $base 'run-maj-auto.ps1') -Force -ErrorAction SilentlyContinue
+  Write-Output "Mise à jour automatique désactivée (tâche « $tacheMaj » retirée). Le journal est gardé."
+}
+
 if ($Uninstall) {
+  Retirer-MajAuto
   Stop-Remy
   if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
@@ -68,10 +155,35 @@ if ($Uninstall) {
   return
 }
 
+# Seulement la tâche de mise à jour, sans réinstaller Rémy.
+if (-not $Ref -and ($MiseAJourAuto -or $SansMiseAJourAuto)) {
+  if ($MiseAJourAuto) { Enregistrer-MajAuto } else { Retirer-MajAuto }
+  return
+}
+
 if (-not $Ref) {
   throw "Indique la version à déployer : -Ref tour-v0.2.0 (tag) ou un commit précis. Rien n'a été changé."
 }
 New-Item -ItemType Directory -Force $base | Out-Null
+
+# Jamais deux installations à la fois : la tâche de mise à jour tient un verrou
+# (verrou.json, son numéro de processus) pendant son passage. Une installation
+# à la main le prend aussi ; périmé si son processus n'existe plus, ou après 2 h.
+if (-not $Auto) {
+  if (Test-Path -LiteralPath $verrou) {
+    $tenu = $null
+    try { $tenu = Get-Content -LiteralPath $verrou -Raw | ConvertFrom-Json } catch {}
+    $age = (Get-Date) - (Get-Item -LiteralPath $verrou).LastWriteTime
+    $vivant = $tenu -and $tenu.pid -and (Get-Process -Id ([int]$tenu.pid) -ErrorAction SilentlyContinue)
+    if ($vivant -and $age.TotalHours -lt 2) {
+      throw "Une mise à jour est déjà en cours ($($tenu.par), depuis $([int]$age.TotalMinutes) min) : attends qu'elle finisse (journal : $(Join-Path $majDir 'journal.log')). Rien n'a été changé."
+    }
+  }
+  New-Item -ItemType Directory -Force $majDir | Out-Null
+  $pris = @{ pid = $PID; par = 'installeur'; depuis = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress
+  [IO.File]::WriteAllText($verrou, $pris, (New-Object Text.UTF8Encoding($false)))
+  $verrouPris = $true
+}
 
 # Node 22.13 ou plus : la base SQLite du Lot 0 (node:sqlite) en dépend. Vérifié
 # AVANT de toucher à quoi que ce soit. Sous PowerShell 5.1, rediriger la sortie
@@ -94,6 +206,20 @@ if ((Test-Path $envFile) -and -not $SansSauvegarde) {
   & node "--env-file=$envFile" (Join-Path $PSScriptRoot 'sauvegarder.mjs') --raison avant-maj --exiger-hors-tour
   if ($LASTEXITCODE -ne 0) {
     throw "Sauvegarde avant mise à jour impossible ou sans copie hors de la tour : rien n'a été changé. Clé : node scripts\cle-sauvegarde.mjs --creer ; Spark : scripts\spark-relier.ps1 (voir docs\tour.md). Ou relance avec -SansSauvegarde en connaissance de cause."
+  }
+}
+# Mise à jour automatique : Rémy s'est-il mis au travail pendant la sauvegarde
+# (une réponse, la réflexion de la nuit…) ? Alors on s'arrête ici, rien n'est
+# changé, et la tâche repassera (code 3). Pas pour un retour en arrière : la
+# version qui tourne ne répond déjà plus comme il faut.
+if ($Auto -and -not $Retour) {
+  $ErrorActionPreference = 'Continue' # (voir la vérification de Node ci-dessus)
+  & node --no-warnings "--env-file=$envFile" (Join-Path $PSScriptRoot 'maj-auto.mjs') --occupe 2>$null | Out-Null
+  $codeCalme = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($codeCalme -eq 10) {
+    Write-Output "Rémy travaille : rien n'a été changé, la mise à jour attendra le prochain passage."
+    exit 3
   }
 }
 # La version qui tourne (commit complet, immuable), pour pouvoir y revenir.
@@ -291,3 +417,13 @@ Write-Output "  motion    : $($h.motion)"
 Write-Output "  sauvegarde: $($h.sauvegardes)"
 Write-Output "  nuit      : $($h.travail_de_fond)"
 Write-Output "  commerces : $($h.commerces)"
+
+# 7. Mise à jour automatique : posée ou retirée seulement si on le demande.
+if ($MiseAJourAuto) { Enregistrer-MajAuto }
+elseif ($SansMiseAJourAuto) { Retirer-MajAuto }
+elseif (Get-ScheduledTask -TaskName $tacheMaj -ErrorAction SilentlyContinue) {
+  Write-Output "  maj auto  : activée (tâche « $tacheMaj ») ; pause dans Réglages > Diagnostic de l'app"
+} else {
+  Write-Output "  maj auto  : désactivée (pour l'activer, une fois : -MiseAJourAuto)"
+}
+if ($verrouPris) { Remove-Item -LiteralPath $verrou -Force -ErrorAction SilentlyContinue }
