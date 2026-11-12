@@ -522,6 +522,7 @@ export const CIRCUITS = {
   conseil: ["Conseil réfléchi", "Le modèle local, sur tes machines, prépare le conseil du moment en arrière-plan. Coupé : conseil calculé sans IA."],
   compactage: ["Compacter les longues conversations", "Dès 70 % du contexte, le modèle local résume le début du fil (rien n'est effacé). Coupé : seulement à la demande, depuis la jauge."],
   regles: ["Vérifier les règles", "Toutes les 3 h, sans IA : Rémy relit ton agenda et Motion pour te proposer les tâches de tes règles."],
+  planificateur: ["Le planning de Rémy à côté de Motion", "Un essai, sans IA : à l'ouverture de « Rémy et Motion », Rémy calcule son propre planning et le compare à celui de Motion. Rien n'est écrit chez Motion. Coupé : rien n'est calculé."],
 };
 export function detailCircuit(id, c) {
   if (c?.forceParLaTour) return `Réglé sur la tour (REMY_CIRCUIT_${id.toUpperCase()}) : à changer là-bas.`;
@@ -534,6 +535,7 @@ export function annonceCircuit(id, actif) {
     case "conseil": return actif ? "Conseil réfléchi allumé." : "Conseil réfléchi coupé : le conseil se calcule sans IA.";
     case "compactage": return actif ? "Compactage automatique allumé." : "Compactage automatique coupé : à la demande seulement.";
     case "regles": return actif ? "Vérification des règles allumée." : "Vérification des règles coupée : Rémy ne propose plus leurs tâches.";
+    case "planificateur": return actif ? "Planning de Rémy allumé." : "Planning de Rémy coupé : rien n'est calculé.";
     default: return actif ? "Circuit allumé." : "Circuit coupé.";
   }
 }
@@ -998,7 +1000,7 @@ const SECTIONS_RENDU = {
       if (circuits.length) {
         tour.push(sousTitre("Circuits"));
         // Ceux que l'écran explique d'abord, dans l'ordre de l'iPhone ; puis les autres, par leur nom.
-        const ordre = ["nuit", "conseil", "compactage", "regles"];
+        const ordre = ["nuit", "conseil", "compactage", "regles", "planificateur"];
         circuits.sort(([a], [b]) => (ordre.includes(a) ? ordre.indexOf(a) : 9) - (ordre.includes(b) ? ordre.indexOf(b) : 9));
         for (const [id, c] of circuits) tour.push(basculeCircuit(id, c, groupe));
         tour.push(zoneNuit);

@@ -3,6 +3,10 @@
 // bord avec une journée réaliste. Tout est relatif à « maintenant ».
 import http from "node:http";
 
+// Les ports, décalables (FAUX_PORTS_DECALAGE=-100 : 9898, 9895…) pour faire
+// tourner une seconde série de faux services à côté de la première.
+const port = (p) => p + (Number(process.env.FAUX_PORTS_DECALAGE) || 0);
+
 const H = 3600_000;
 const now = Date.now();
 const auj = new Date(); auj.setHours(0, 0, 0, 0);
@@ -34,7 +38,8 @@ const taches = [
   { id: "t17", name: "Trier les factures du mois", scheduledStart: t(8, 45, 1), scheduledEnd: t(9, 15, 1), duration: 30, priority: "MEDIUM", workspace: { id: "w1" } },
   { id: "t11", name: "Commander les mèches en coton", scheduledStart: t(14, 0, 1), scheduledEnd: t(14, 30, 1), dueDate: t(19, 0, 3), duration: 30, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   // Placée après son échéance : « Motion la place après ».
-  { id: "t12", name: "Envoyer le dossier à la banque", scheduledStart: t(16, 0, 1), scheduledEnd: t(17, 0, 1), dueDate: t(12, 0, 1), duration: 60, priority: "HIGH", workspace: { id: "w1" } },
+  // Échéance FERME (12/11) : le planning de Rémy la tient, celui de Motion non.
+  { id: "t12", name: "Envoyer le dossier à la banque", scheduledStart: t(16, 0, 1), scheduledEnd: t(17, 0, 1), dueDate: t(12, 0, 1), deadlineType: "HARD", duration: 60, priority: "HIGH", workspace: { id: "w1" } },
   { id: "t13", name: "Écrire la newsletter d'automne", scheduledStart: t(9, 0, 2), scheduledEnd: t(12, 30, 2), dueDate: t(18, 0, 4), duration: 210, project: { id: "p1", name: "Boutiques" }, workspace: { id: "w1" } },
   { id: "t14", name: "Tri des photos de l'été", scheduledStart: t(13, 30, 2), scheduledEnd: t(17, 30, 2), dueDate: t(20, 0, 2), duration: 240, project: { id: "p2", name: "Album « Été »" }, workspace: { id: "w1" } },
   { id: "t15", name: "Faire la déclaration de TVA", scheduledStart: t(10, 0, 4), scheduledEnd: t(11, 30, 4), dueDate: t(23, 0, 5), duration: 90, workspace: { id: "w1" } },
@@ -129,7 +134,7 @@ http.createServer((req, res) => {
     { id: "p4", name: "Musique", status: { name: "En cours" } },
   ] }));
   res.statusCode = 404; res.end("{}");
-}).listen(9998);
+}).listen(port(9998));
 
 http.createServer((req, res) => {
   res.setHeader("Content-Type", "application/json");
@@ -137,7 +142,7 @@ http.createServer((req, res) => {
   if (u.pathname === "/token") return res.end(JSON.stringify({ access_token: "faux", expires_in: 3600 }));
   if (u.pathname.endsWith("/events")) return res.end(JSON.stringify({ items: evenements }));
   res.statusCode = 404; res.end("{}");
-}).listen(9995);
+}).listen(port(9995));
 // Fausse Dictée Locale (:9997) : la dictée et le mode appel de l'app passent
 // par /api/transcribe, qui lui envoie l'audio (multipart, API OpenAI).
 http.createServer((req, res) => {
@@ -150,7 +155,7 @@ http.createServer((req, res) => {
     res.statusCode = 404;
     res.end("{}");
   });
-}).listen(9997);
+}).listen(port(9997));
 // Faux GLM (:9994, API OpenAI de tensorfold) : le conseil du moment réfléchi.
 // Il lit la situation envoyée par la tour et répond un conseil plausible,
 // pour que les captures montrent le vrai chemin (tour → GLM → app).
@@ -245,7 +250,7 @@ http.createServer((req, res) => {
       usage: { prompt_tokens: 300, completion_tokens: 60 },
     }));
   });
-}).listen(9994);
+}).listen(port(9994));
 // Faux ActivityWatch (:9993, API REST /api/0) : la fenêtre au premier plan et
 // la présence, sur les 6 dernières heures. Les titres sont là comme sur une
 // vraie tour : la tour ne doit jamais les garder.
@@ -281,6 +286,6 @@ http.createServer((req, res) => {
     const a = Date.parse(u.searchParams.get("start") || "1970-01-01");
     const b = Date.parse(u.searchParams.get("end") || "2999-01-01");
     res.end(JSON.stringify(liste.filter((e) => Date.parse(e.timestamp) + e.duration * 1000 >= a && Date.parse(e.timestamp) <= b).reverse()));
-  }).listen(9993);
+  }).listen(port(9993));
 }
 console.log("mocks prêts");

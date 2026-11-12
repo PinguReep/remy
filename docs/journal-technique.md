@@ -4,6 +4,65 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Le planning de Rémy, à côté de celui de Motion (`planning-remy-v1`)
+
+Étape 1 de l'étude « se passer du planificateur de Motion » : un planificateur
+« fantôme » qui calcule son propre planning avec les mêmes tâches, le compare à
+celui de Motion et laisse Sam juger les écarts. Il n'écrit RIEN chez Motion ni
+dans un agenda. Site seulement dans ce lot.
+
+- **Le calcul (`lib/planificateur.js`, pur).** Aucune entrée/sortie, aucune
+  horloge implicite (`maintenant` et `tz` sont des paramètres) : même entrée,
+  même sortie, quel que soit le fuseau de la machine. Temps libre = horaires de
+  travail à l'heure de Sam (changements d'heure compris) moins l'agenda, sur une
+  grille de 5 min. Chaque tâche est placée au plus tôt, dans l'ordre de règles
+  NOMMÉES : R1 attend (après ce qu'elle attend ; un projet attendu = ses tâches
+  ouvertes), R2 pas avant, R3 échéance ferme, R4 ASAP, R5 priorités confirmées
+  (rang), R6 échéance (dépassée ou sous 48 h : avant les priorités), R7
+  priorité Motion, R8 ne pas bouger. Plus d'une heure : en morceaux de 30 min
+  au moins. Chaque placement porte la règle qui l'a décidé et sa phrase.
+- **Les échéances fermes (R3).** Avant chaque placement, une simulation « la
+  plus proche échéance d'abord » sur le temps libre restant vérifie que les
+  échéances fermes encore à placer tiennent ; sinon celle qui ne tiendrait plus
+  passe devant (« Avant X : son échéance est ferme… »). Sur une seule machine,
+  c'est la meilleure façon de tenir des échéances quand on peut couper ; la
+  simulation respecte aussi les tâches qu'on ne coupe pas (jusqu'à 1 h : un trou
+  trop court ne compte pas — régression trouvée sur les données de démo). Une
+  échéance déjà intenable est placée au plus tôt, et le manque est dit. Pas de
+  solveur : le glouton suffit et s'explique (300 tâches < 2 s, testé).
+- **La stabilité.** (1) Tris complets, aucun hasard. (2) À règles égales,
+  l'ordre du calcul précédent. (3) R8 : une tâche garde le créneau du calcul
+  d'avant s'il est encore libre, futur (ou en cours), après ce qu'elle attend
+  et avant son échéance ; seules ASAP bougent d'office. (4) Au plus tôt dans
+  l'ordre : un changement ne touche pas ce qui est placé avant lui. Testé : un
+  rendez-vous ajouté mercredi ne bouge rien de lundi-mardi, et ce qui glisse le
+  fait d'au plus sa durée ; une tâche finie ne fait rien remonter ; 20 min qui
+  passent, une durée allongée, une ASAP nouvelle ne rebattent pas l'ordre.
+- **La comparaison** (`comparer`) : bloquée et placée quand même par Motion (ou
+  mise en attente), échéance ferme (puis souple) tenue par l'un et pas par
+  l'autre — dit honnêtement dans les deux sens —, ordre inverse quand une règle
+  de Rémy départage (jamais pour un simple ex æquo). Identifiants stables
+  (`bloquee:t13`, `ordre:t12:t10`) : un jugement suit son écart d'un calcul à
+  l'autre.
+- **Par la tour (`lib/planning-remy.js`).** `GET /api/planning-remy` : la liste
+  Motion et les horaires du CACHE (`tachesConnues`, `horairesConnus`, nouveau,
+  sans requête) — aucune requête Motion de plus (testé) ; l'agenda comme la vue
+  de la semaine. Rien en fond : calcul à l'ouverture seulement. Circuit
+  « planificateur » (coupable dans Réglages › Rémy ; coupé : rien n'est calculé
+  ni gardé). `POST /api/planning-remy/jugements` `{ ecart, verdict: remy |
+  motion | null }`. Un fichier sur la tour, `planning-remy.json` dans la base
+  (sauvegardé avec elle) : le dernier planning (pour R8) et les jugements datés.
+  Pas de migration SQLite : deux autres lots prennent déjà la n° 12. Fichier
+  illisible : le planning s'affiche, un jugement est refusé (503), rien n'est
+  écrasé.
+- **Ce qu'il ne sait pas faire** (dit à l'écran) : déborder des horaires pour
+  une échéance ferme (Motion le fait), pauses, trajets, récurrences, deviner une
+  durée ; les rendez-vous « toute la journée » ou « disponible » ne bloquent
+  rien ; une tâche commencée n'est connue que par le calcul d'avant.
+- **Démo** : t12 (banque) devient ferme, t13 (newsletter) attend t14 (photos) ;
+  `faux-services.mjs` accepte `FAUX_PORTS_DECALAGE` pour une seconde série de
+  faux services à côté de la première.
+
 ## 2026-11-12 — Pièces jointes : tout est lu sur la tour, et le modèle peut relire
 
 Deux demandes de Sam sur les pièces jointes (`pieces-v1`) : que le texte d'une

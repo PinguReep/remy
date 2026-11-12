@@ -179,6 +179,8 @@ carnet.ecrireRappels([
   { id: "r8", texte: "Sortir les poubelles", etiquettes: ["et-perso"], lieu: { nom: "Maison", lat: 48.8566, lon: 2.3522, rayon: 150, sens: "arrivee" } },
 ]);
 carnet.marquerTache("t3", { bloquee: true, raison: "J'attends le bon de commande d'Ondine" });
+// 12/11 : la newsletter attend le tri des photos — Motion la place avant (le planning de Rémy le montre).
+carnet.poserBlocages("t13", ["t14"], { noms: new Map([["t13", "Écrire la newsletter d'automne"], ["t14", "Tri des photos de l'été"]]) });
 // Catégories des tâches (18/10) : gardées par Remy, Motion n'en sait rien.
 carnet.categoriserTache("t1", ["et-pro"]);
 carnet.categoriserTache("t4", ["et-admin"]);

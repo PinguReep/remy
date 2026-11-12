@@ -112,7 +112,7 @@ test("le catalogue reste court, sans les entrées propres à l'iPhone", () => {
   const ids = N.CATALOGUE.map((e) => e.id);
   assert.equal(new Set(ids).size, ids.length, "identifiants uniques");
   for (const id of ["hors-app", "partage", "au-pouce", "privee-iphone", "selection"]) assert.ok(!ids.includes(id), id);
-  for (const id of ["projets-bloques", "dependances-taches", "pieces-jointes", "maj-auto", "prochaines-heures", "recherche-projets", "rappels-declencheurs", "telechargements-accord", "image-noter", "conversation-privee", "conversations-externes", "reglages-recherche", "jauge-retour", "activite-pc", "rituel", "a-trancher", "priorites", "carnet-remy", "recherche-web", "modele", "regles"]) {
+  for (const id of ["planning-remy", "projets-bloques", "dependances-taches", "pieces-jointes", "maj-auto", "prochaines-heures", "recherche-projets", "rappels-declencheurs", "telechargements-accord", "image-noter", "conversation-privee", "conversations-externes", "reglages-recherche", "jauge-retour", "activite-pc", "rituel", "a-trancher", "priorites", "carnet-remy", "recherche-web", "modele", "regles"]) {
     assert.ok(ids.includes(id), id);
   }
   // Retirées (12/11), comme sur l'iPhone : l'id dans RETIREES, l'entrée hors du catalogue.
