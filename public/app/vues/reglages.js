@@ -368,7 +368,7 @@ function essaiPieces() {
   }) });
   return repere("Lecture des pièces jointes", h("div", { class: "reglage" },
     h("h3", { class: "titre-section reglages-sous-titre" }, "Lecture des pièces jointes"),
-    h("p", { class: "aide" }, "Ce que ta tour sait lire de ce que tu joins : le texte des images (reconnaissance de Windows), les images (le modèle local), les PDF. Des fichiers d'essai, rien de toi."),
+    h("p", { class: "aide" }, "Ce que ta tour sait lire de ce que tu joins, ici ou depuis l'iPhone : le texte des images (reconnaissance de Windows, sur la tour), les images (le modèle local), les PDF ; et si le modèle peut relire une pièce. Des fichiers d'essai, rien de toi."),
     h("div", { class: "rangee", style: { marginTop: "8px" } }, essayer, copier), resultat));
 }
 

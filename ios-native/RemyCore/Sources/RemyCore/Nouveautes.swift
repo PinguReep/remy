@@ -56,7 +56,7 @@ public enum Nouveautes {
             .init(symbole: "paperclip", titre: "Le trombone",
                   texte: "À gauche du champ : une photo de la photothèque, une prise maintenant, ou un fichier (PDF, texte, image). Jusqu'à 4 pièces de 10 Mo par message, avec ou sans texte."),
             .init(symbole: "eye", titre: "Ce que Rémy en lit",
-                  texte: "Le texte d'une photo est lu sur l'iPhone ; la tour lit les PDF et les textes, et décrit l'image si son modèle local voit les images. Sous chaque pièce : ce qui a été lu, ou pourquoi non."),
+                  texte: "La tour lit tout, pas l'iPhone : le texte d'une photo, les PDF, les textes, et décrit l'image si son modèle local voit. Pour un détail, Rémy relit la pièce. Sous chaque pièce : ce qui a été lu, ou pourquoi non."),
             .init(symbole: "lock.shield", titre: "Gardée chez toi",
                   texte: "L'original reste chiffré sur ta tour : touche la pièce pour la revoir en grand. Rien ne part chez un fournisseur cloud ; supprimer la conversation supprime ses pièces."),
         ]),

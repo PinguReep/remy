@@ -810,6 +810,7 @@ struct BarreEtapes: View {
         case "motion": return "list.bullet.rectangle"
         case "web": return "globe"
         case "navigateur": return "safari"
+        case "piece": return "paperclip"
         case "proposition": return "calendar.badge.plus"
         case "budget": return "hourglass"
         case "secours": return "exclamationmark.triangle"

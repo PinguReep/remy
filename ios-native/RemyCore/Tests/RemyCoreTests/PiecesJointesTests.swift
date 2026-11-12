@@ -53,14 +53,15 @@ final class PiecesJointesTests: XCTestCase {
         XCTAssertEqual(PiecesJointes.reduction(largeur: 800, hauteur: 600, cote: 1344)?.largeur, 800, "jamais agrandie")
     }
 
-    func testLeCorpsDUnEnvoiDitCeQueLIPhoneALu() {
-        let p = PieceAEnvoyer(nom: "ticket.jpg", donnees: Data([1, 2, 3]), texteLu: "  Total 42 €  ", lecture: true, apercu: Data([9]))
+    func testLeCorpsDUnEnvoiLaisseLaTourLire() {
+        let p = PieceAEnvoyer(nom: "ticket.jpg", donnees: Data([1, 2, 3]), apercu: Data([9]))
         let c = PiecesJointes.corps(p)
         XCTAssertEqual(c["nom"] as? String, "ticket.jpg")
         XCTAssertEqual(c["donnees"] as? String, "AQID")
-        XCTAssertEqual(c["texte"] as? String, "Total 42 €")
-        XCTAssertEqual(c["lecture"] as? String, "iphone")
+        XCTAssertNil(c["texte"], "aucun texte reconnu sur l'iPhone : la tour lit")
+        XCTAssertNil(c["lecture"])
         XCTAssertEqual(c["apercu"] as? String, "CQ==")
+        XCTAssertEqual(Set(c.keys), ["nom", "donnees", "apercu"])
         let pdf = PiecesJointes.corps(PieceAEnvoyer(nom: "devis.pdf", donnees: Data([1])))
         XCTAssertNil(pdf["texte"])
         XCTAssertNil(pdf["lecture"])
@@ -85,6 +86,8 @@ final class PiecesJointesTests: XCTestCase {
         XCTAssertFalse(pieces[1].estLue)
         XCTAssertTrue(pieces[1].estImage)
         XCTAssertEqual(pieces[2].libelle, "lue par Rémy")
+        XCTAssertEqual(PieceJointe(id: "x", nom: "t.png", famille: "image", lu: "ocr", par: "tour").libelle, "texte reconnu sur la tour — peut se tromper")
+        // Une fiche d'avant (l'iPhone lisait encore) garde sa vérité.
         XCTAssertEqual(PieceJointe(id: "x", nom: "t.png", famille: "image", lu: "ocr", par: "iphone").libelle, "texte reconnu sur l'iPhone — peut se tromper")
         XCTAssertEqual(PieceJointe(id: "x", nom: "t.png", famille: "image", lu: "decrite").libelle, "décrite par le modèle local — peut se tromper")
         let lignes = ChatModel.lignes(de: conv)
@@ -119,19 +122,20 @@ final class PiecesJointesTests: XCTestCase {
         FauxServeur.reponses = [
             "POST /api/conversations": [(201, #"{"id":"c1","title":"Nouvelle conversation","messages":[]}"#)],
             "POST /api/conversations/c1/pieces": [
-                (201, #"{"id":"p1","nom":"ticket.jpg","famille":"image","taille":3,"lu":"ocr","par":"iphone","mention":"texte reconnu sur l'iPhone — peut se tromper"}"#),
+                (201, #"{"id":"p1","nom":"ticket.jpg","famille":"image","taille":3,"lu":"ocr","par":"tour","mention":"texte reconnu sur la tour — peut se tromper"}"#),
                 (201, #"{"id":"p2","nom":"devis.pdf","famille":"pdf","taille":1,"lu":"texte","pages":1}"#),
             ],
             "POST /api/conversations/c1/messages": [(200, "event: done\ndata: {\"text\":\"Vu.\"}\n\n")],
             "GET /api/conversations": [(200, "[]")],
         ]
         let a = app()
-        a.chat.ajouterPiece(PieceAEnvoyer(nom: "ticket.jpg", donnees: Data([1, 2, 3]), texteLu: "Total 42 €", lecture: true))
+        a.chat.ajouterPiece(PieceAEnvoyer(nom: "ticket.jpg", donnees: Data([1, 2, 3]), apercu: Data([9])))
         a.chat.ajouterPiece(PieceAEnvoyer(nom: "devis.pdf", donnees: Data([4])))
         let r = await a.chat.envoyer("")
         XCTAssertEqual(r, "Vu.", "un message fait seulement de pièces part")
         XCTAssertEqual(FauxServeur.recues.filter { $0 == "POST /api/conversations/c1/pieces" }.count, 2)
-        XCTAssertEqual(FauxServeur.historique["POST /api/conversations/c1/pieces"]?.first?["texte"] as? String, "Total 42 €")
+        XCTAssertNil(FauxServeur.historique["POST /api/conversations/c1/pieces"]?.first?["texte"], "la tour lit l'image elle-même")
+        XCTAssertEqual(FauxServeur.historique["POST /api/conversations/c1/pieces"]?.first?["apercu"] as? String, "CQ==")
         XCTAssertEqual(FauxServeur.corps["POST /api/conversations/c1/messages"]?["pieces"] as? [String], ["p1", "p2"])
         XCTAssertEqual(FauxServeur.corps["POST /api/conversations/c1/messages"]?["text"] as? String, "")
         XCTAssertTrue(a.chat.piecesEnAttente.isEmpty)

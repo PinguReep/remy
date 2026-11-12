@@ -4,6 +4,71 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Pièces jointes : tout est lu sur la tour, et le modèle peut relire
+
+Deux demandes de Sam sur les pièces jointes (`pieces-v1`) : que le texte d'une
+image soit lu **sur la tour**, quel que soit l'appareil qui l'envoie ; et que le
+modèle puisse aller **rechercher lui-même** une pièce de la conversation quand
+l'extrait reçu à l'envoi ne suffit pas.
+
+- **Une seule lecture, au même endroit.** L'iPhone ne reconnaît plus le texte
+  d'une photo (Vision retiré de `PreparationPiece.image`, `texteLu` et
+  `lecture` retirés de `PieceAEnvoyer` et du corps d'envoi) : il envoie la
+  photo (JPEG 3 000 px) et son aperçu (1 344 px, pour le modèle de vision),
+  la tour la lit comme celle du site (OCR de Windows, modèle de vision local).
+  Côté tour, `texte` et `lecture: "iphone"` envoyés par une **ancienne** app
+  sont ignorés : la tour lit quand même — jamais deux vérités. Choix du plus
+  simple : pas de Vision « en secours » quand la tour ne sait pas lire. Une
+  tour sans OCR (non Windows, langue absente) laisse l'image « non lue », avec
+  la raison de la tour sous la pièce (« pas de lecture du texte des images sur
+  cette tour… ») ; l'essai des Réglages le dit aussi (« le texte des images, du
+  site comme de l'iPhone, n'est donc pas lu »). Les fiches d'avant
+  (`par: "iphone"`) gardent leur mention, vraie à l'époque.
+- **L'outil `lire_piece`** (`lib/outil-pieces.js`), pour le modèle LOCAL :
+  sans argument, la liste des pièces du fil (nom, type, taille, pages, ce qui a
+  été lu à l'envoi) ; avec `piece` (nom, morceau de nom sans ambiguïté, ou
+  identifiant) : un PDF — `pages` (« 12-13 », « 4 », « p. 3 à 8 », sinon depuis
+  la page 1), chaque page marquée `[page N]`, avec `pages_total` et la `suite`
+  à demander ; un texte — la suite à partir de `depuis` ; une image — son texte
+  relu par l'OCR de la tour (jusqu'à 16 000 caractères, au lieu des 8 000 de la
+  fiche ; utile aussi pour une fiche d'avant, lue par l'iPhone, ou lue quand
+  l'OCR manquait) ou, avec `question`, la réponse du modèle de vision local
+  (`decrireImage` prend désormais une `question`, bornée à 300 caractères, et
+  le `reqId` de la réponse).
+- **Garde-fous.** Seulement les pièces de CE fil (prises dans ses messages au
+  début de la réponse ; un nom ou un identifiant d'un autre fil est refusé ;
+  la lecture passe par `pieces.lire`, identifiants vérifiés, jamais un chemin).
+  Offert seulement quand le modèle local répond **et** qu'il est sur les
+  machines de Sam (`modeleLocalChezToi`) : jamais à Claude — ni cerveau
+  cloud, ni secours (le secours repart de la demande d'origine, sans `pieces`
+  ni résultats d'outil) ; appelé sans ce contexte (Claude, salle blanche), il
+  refuse et dit pourquoi. Bornes : 4 appels par message, 16 000 caractères par
+  appel, 40 000 par message, 10 pages par appel ; les refus de budget
+  commencent par « Budget » (lib/glm.js les compte comme un budget épuisé). Ce
+  qui est relu est encadré (matière externe) et rejoint le lexique du filtre
+  des requêtes sortantes, comme `motion_lister`. Conversations privées : rien
+  ne change, l'outil est local. `REMY_OUTIL_PIECES=off` le coupe.
+- **Le prompt** (seulement quand l'outil est offert) : s'en servir quand la
+  question porte sur un détail ABSENT de l'extrait (pièce coupée, page non lue,
+  image dont le texte ne dit pas ce qui est demandé), pas « pour voir » ; dire
+  quand l'outil ne trouve pas, au lieu de deviner.
+- **Ce qui se voit et se compte.** L'étape `piece` dans la barre du chat
+  (« Rémy relit le PDF « rapport.pdf »… », « Rémy regarde l'image … (modèle
+  local)… » ; icône trombone sur le site, `paperclip` sur l'iPhone). Chaque
+  relecture laisse une ligne à 0 $ au panneau des coûts (`kind`
+  « piece-relue », le nom de la pièce, jamais son contenu) ; la vision, qui
+  consomme de l'inférence, garde sa ligne « piece-vision » avec ses jetons.
+- **pdf.js** : `lirePdf` prend `debut` et `marquer` (le fil de travail lit une
+  plage) et rend `premiere` ; une plage au-delà du PDF ou sans texte a sa
+  raison.
+- **L'essai des Réglages** a une quatrième ligne, « Le modèle relit une pièce
+  (outil) » : un constat de réglages (coupé, pas de modèle local, modèle hors
+  de tes machines), sans appel au modèle. Les apps lisent les lignes telles
+  quelles : rien à changer pour l'iPhone.
+- **Non vérifié ici** : le Swift (compilé par la CI seulement) ; un vrai
+  modèle local qui choisit d'appeler `lire_piece` au bon moment (essayé contre
+  un faux modèle scripté) ; l'OCR de Windows sur une photo de l'iPhone.
+
 
 ## 2026-11-12 — Un projet « bloqué par » une tâche ou un autre projet
 
@@ -145,7 +210,7 @@ texte (.txt, .md) ; tout autre type est refusé avec sa raison. **4 pièces de
 |---|---|---|
 | .txt, .md | la tour | UTF-8, 20 000 caractères au plus (au-delà : coupé, dit) |
 | PDF | la tour | pdf.js (`pdfjs-dist` 6.4.299, build legacy) dans un fil de travail à part : 50 pages, 20 000 caractères, 20 s, 384 Mo ; texte seulement (ni eval, ni polices, ni XFA, ni scripts, ni réseau). Protégé, abîmé, trop long ou scanné : joint, non lu, raison dite |
-| Image de l'iPhone | l'iPhone | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper » |
+| Image de l'iPhone | l'iPhone, puis la tour | Vision (hors ligne) sur l'aperçu à 1 344 px ; envoyé comme « peut se tromper ». **Remplacé le même jour** : la tour lit aussi les images de l'iPhone (voir « tout est lu sur la tour », plus haut) |
 | Image du site / de Windows | la tour | OCR de Windows (`Windows.Media.Ocr`, PowerShell 5.1, l'image par l'entrée standard : aucun fichier temporaire ; 30 s ; français d'abord). Absent (Linux, langue non installée) : la raison est dite |
 | Toute image | le modèle de vision **local** | `REMY_VISION_URL` (+ `_MODELE`, `_TOKEN`), sinon le modèle local principal ; partie `image_url` en `data:` ; image réduite à 1 344 px par le client (site : canvas ; iPhone : ImageIO), sinon l'original s'il fait 4 Mo au plus ; description de 1 500 caractères au plus |
 
