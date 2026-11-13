@@ -254,7 +254,10 @@ jobs:
           capture 6e2-nouveautes-suivi-clair light nouveautes-suivi
           capture 6f-activite-pc-clair light activite-pc
           capture 6g-nouveautes-activite-pc-sombre dark nouveautes-activite-pc
+          # Ce que Rémy a compris (12/11, priorites-v2) : le classement confirmé,
+          # puis les pistes proposées avec leurs indices (données fictives).
           capture 6f-priorites-clair light priorites
+          capture 6f2-priorites-sombre dark priorites
           capture 6-reglages-sombre dark reglages
           # Chercher dans les réglages (29/10) : « notif », une saisie sans
           # résultat, puis « jauge » touché (Diagnostic, la ligne en évidence).
@@ -282,6 +285,7 @@ jobs:
           capture 11d-grand-texte-remy-prive-clair light remy-fil c15
           capture 11e-grand-texte-reglages-recherche-clair light reglages-recherche
           capture 11f-grand-texte-reglages-vide-sombre dark reglages-recherche-vide
+          capture 11g-grand-texte-priorites-clair light priorites
           xcrun simctl ui "$UDID" content_size large || true
           # Mesure de la frappe (Sam, 18/10 : touches lentes après une longue
           # dictée). Les chiffres sortent dans le journal et sur la capture.

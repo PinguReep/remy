@@ -4,6 +4,240 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-12 — Assemblage du lot du soir, repris sur la tour
+
+La session qui menait le lot s'est arrêtée avant l'assemblage ; il a été refait
+depuis un clone de développement sur la tour (`claude/integration-novembre-3`).
+
+- **Ce qui est assemblé.** L'intégration précédente, plus cinq branches : le
+  cahier des charges du MVP sans Motion, Prochaines heures qui se parcourt, la
+  passerelle pour outils de code, l'arbre des projets et son verrou, les
+  priorités sur iPhone. Deux conflits seulement : ce journal (toutes les entrées
+  gardées) et `lib/version.js` (union des capacités, aucun doublon).
+- **Tests de l'arbre sous Windows.** Lire une conversation ouvre maintenant la
+  base (`noeudDeConversation`). Quatre tests effaçaient leur dossier sans la
+  refermer : `EPERM` sous Windows, invisible sous Linux. Ils appellent `fermer()`
+  de `lib/db.js` avant d'effacer, comme `outil-pieces.test.mjs`. Le test du
+  verrou acceptait seulement les fins de ligne Unix : `\r?\n`.
+- **`navigateur.test.mjs` et un dossier personnel redirigé.** Lancée avec
+  `USERPROFILE` pointé ailleurs (précaution pour ne rien lire de la vraie
+  installation), la suite voit Chrome refuser de démarrer (« DevTools remote
+  debugging requires a non-default data directory ») : deux faux échecs. Avec le
+  dossier d'origine, les six tests passent. Ce n'est pas une régression.
+- **Pas vérifié ici.** Le Swift (priorités iPhone) : compilé par les contrôles
+  automatiques seulement.
+
+## 2026-11-12 — Prochaines heures se parcourt (`heures-passe-v1`)
+
+Deux manques à l'usage : la frise commençait à maintenant (le matin passé
+invisible) et rien ne s'y touchait. Site et tour seulement.
+
+- **La plage, honnête.** La frise va d'aujourd'hui 7 h (plus tôt si quelque
+  chose y est, ou si on y est) à demain 22 h (plus tard si quelque chose y
+  finit), à l'heure ronde ; jamais au-delà de demain minuit : c'est ce que
+  `/api/semaine?jours=2` couvre. **Hier n'y est pas** : la tour ne lit la
+  semaine qu'à partir de minuit (l'ajouter coûterait une lecture d'agenda de
+  plus pour peu). La nuit vide reste resserrée à la place d'une heure.
+- **Le passé de la journée.** Les rendez-vous passés étaient déjà dans la
+  réponse ; une tâche finie, elle, sort de la liste Motion. La tour ajoute
+  donc à chaque jour `faites` : les coches **par Rémy** (action `terminer` de
+  la chaîne d'écriture), lues dans son journal (une requête SQLite, aucune
+  requête Motion), sans les annulées. Pour la placer, le résultat d'une coche
+  garde désormais `creneau` : le `scheduledStart/End` que Motion lui donnait,
+  lu dans l'`avant` que la coche récupère déjà (aucune requête de plus, jamais
+  renvoyé à Motion à l'annulation). Une coche plus ancienne n'a que son heure :
+  elle est dessinée comme une marque à cette heure, pas comme une durée
+  inventée. Une tâche dont le créneau est passé sans coche est dite « pas
+  cochée : Motion la replacera » ; une activité de l'agenda pas cochée,
+  « passée, pas cochée » ; un rendez-vous avec d'autres, « passé ». **Ce qui
+  est coché dans Motion même n'apparaît pas** (Motion ne garde pas l'heure
+  d'une tâche finie dans sa liste) : dit dans la feuille par son absence, et ici.
+- **Les gestes.** Au doigt, le défilement natif du navigateur (son inertie,
+  et il annule lui-même le clic d'un doigt qui a glissé) ; à la souris, un
+  glisser au-delà de 6 px (10 au doigt) avec une inertie freinée (`pasInertie`,
+  interrompue par tout autre geste, coupée sous « réduire les animations ») ;
+  molette ou trackpad horizontal ; ← → (une heure, Maj : trois), Début/Fin ;
+  ‹ › (trois heures) et « Maintenant ». Un glisser n'ouvre rien (le clic qui
+  le suit est avalé) et ne ferme jamais la feuille (`avantFermeture` refuse
+  « fond » dans les 450 ms qui suivent). La frise suit maintenant tant
+  qu'elle y est centrée ; sinon un redessin (chaque minute, après un geste
+  dans Gérer) garde l'heure qu'on regardait.
+- **Cliquer.** Hors d'un bloc : ce moment au milieu, la ligne qui le couvre
+  (ou la suivante) mise en avant et la liste qui y défile. Un bloc ou une
+  ligne : « Gérer » **par-dessus** (deux `<dialog>` modales empilées, Échap
+  ne ferme que la dernière), la frise reste où elle était et le focus revient
+  au bloc. Une coche du journal n'est plus chez Motion : la ligne dit quand
+  elle a été cochée et mène à l'Historique (qui l'annule). Zones de clic d'au
+  moins 44 px, élargies du côté libre, jamais sur un voisin ; deux éléments
+  qui se chevauchent sont l'un au-dessus de l'autre. 96 px par heure au doigt
+  (une demi-heure fait 48 px), 124 à la souris.
+- **La liste** est liée à la frise (survol, focus, sélection : les deux côtés
+  s'éclairent) ; elle s'ouvre sur ce qui vient, le passé et le fait repliés
+  sous « Passé ou fait » (déplié d'un clic, ou en visant un bloc passé). La
+  frise reste collée en haut pendant que la liste défile. « Sur quel projet »
+  et « Ne rentre pas avant demain midi » ne changent pas.
+- **Les raisons du planning de Rémy ne sont pas reprises** dans la ligne de
+  pourquoi : elles expliquent SON placement, pas celui de Motion qu'on affiche
+  (ce serait présenter une raison qui n'est pas celle de l'ordre montré). Un
+  bouton du pied y mène.
+- Tout le calcul (plage, échelle et inverse, couloirs, zones de clic,
+  étiquettes qui ne passent pas sous la pastille de maintenant, centrage,
+  ligne à une heure, seuil, vitesse au lâcher, inertie) est dans
+  `public/app/analyse/heures.js`, testé sous node à fuseau fixé.
+
+## 2026-11-12 — Passerelle du modèle local pour les outils de code (`passerelle-v1`)
+
+Les agents de code (dans T3 Code, sur la tour) parlaient directement au
+modèle local : Rémy ne les voyait pas, une question posée à Rémy pouvait
+attendre derrière un agent, et rien ne les mettait en pause.
+
+- **Une porte « compatible OpenAI »** (`lib/passerelle.js`) : `GET /v1/models`,
+  `GET /v1/models/{id}`, `POST /v1/chat/completions` (avec et sans flux).
+  Servie par `server.js` sur la même écoute que Rémy (127.0.0.1, publiée au
+  seul tailnet par Tailscale Serve), absente de `lib/routes.js` donc de
+  Vercel. Coupée par défaut (Réglages › Outils de code).
+- **Le même arbitre** (`lib/priorite.js`, `lib/jobs.js`), pas un second
+  système. Clé « au clavier » : `jobs.inference` hors fond, nature `clavier`
+  (« tu travailles dans ton outil de code ») — une demande : elle coupe le
+  fond interruptible de Rémy et retient la mise à jour. Clé « agents de
+  fond » : `jobs.enFond("agent-fond")` — ses appels prennent la file de la
+  garde de charge (FIFO, partagée avec les jobs de Rémy), ne partent pas
+  pendant une demande ni son répit. Classé `file: true` (cède en file) plutôt
+  qu'`interruptible` : l'appel parti n'est pas coupé (un outil supporte mal
+  une réponse tronquée) ; option « couper un appel sans flux » (refait en
+  entier, rien n'ayant été envoyé), jamais pour un flux.
+- **`jobs.inference`** gagne `nature`, `abandon` (un signal qui retire un appel
+  de la file tant qu'il n'est pas parti : outil parti, attente dépassée) et
+  `latence: false` (la durée d'un flux d'agent ne signale pas une surcharge).
+- **Attente bornée** (Réglages, 2 min par défaut, 10 s à 10 min) et **file
+  bornée** (8 par défaut) : au-delà, **503** avec `Retry-After` (fin du répit
+  si connue, sinon 10 s). Pourquoi 503 : les SDK OpenAI officiels, le Vercel
+  AI SDK (OpenCode) et Codex réessaient 408/409/429/5xx ; 429 est gardé pour
+  le débit par clé (et certains clients lisent 429 comme un quota épuisé).
+- **Sécurité** : clés `remy_clavier_…`/`remy_fond_…` (32 octets aléatoires),
+  montrées une fois, gardées en SHA-256 (`store.getPasserelle`), comparées à
+  temps constant (les deux empreintes, toujours) ; débit par clé (120/min),
+  corps ≤ 8 Mo, `max_tokens` plafonné ; liste blanche des paramètres
+  (messages, outils, température, stop, format de réponse…), le reste n'est
+  pas relayé ; en-têtes : ceux de Rémy seulement (`glm.relaisModeleLocal`,
+  jeton du relais, `redirect: "error"`) ; images en `data:` seulement (un
+  moteur irait chercher une URL) ; refus si `REMY_GLM_URL` n'est pas « chez
+  toi » ; jamais le secours cloud ; un 401/404 du moteur devient 502 (l'outil
+  ne doit pas croire sa clé fausse).
+- **Rien du contenu** n'est gardé ni journalisé : `logCost("outil de code")`
+  avec la clé (son nom), la durée, l'attente et les jetons (demandés au
+  moteur avec `include_usage` ; l'événement des jetons n'est rendu qu'à
+  l'outil qui l'a demandé).
+- **T3 Code** (dépôt `pingdotgg/t3code`, `docs/user/install.md` § Providers) :
+  il pilote des agents et ne parle pas lui-même à un modèle ; chaque instance
+  de fournisseur a ses variables d'environnement (clé, base URL). Claude Code
+  parle l'API d'Anthropic (pas couvert) ; Codex récent l'API « responses » (non
+  servie). Mode d'emploi : `docs/outils-de-code.md`.
+
+### Relecture de sécurité de la passerelle (12/11)
+
+- **Plafond de la clé « au clavier »** (`lib/priorite.js`, `recuperationClavier`) :
+  45 min de priorité cumulée (appels en cours et leur répit, réunis) sur une
+  heure glissante, puis 15 min où ses appels sont du fond (ils prennent la
+  file, ceux en cours ne font plus céder le fond), puis le compte repart de
+  zéro. Au moins 15 min par heure pour le fond, plus que l'intervalle du
+  planificateur (10 min) : un job dû — la sauvegarde de nuit, testée —
+  commence pendant la récupération. Les demandes faites dans Rémy ne sont pas
+  concernées. Diagnostic le dit (« ton outil de code a eu la priorité 45 min
+  dans l'heure… jusqu'à HH:MM »).
+- **Durée et simultanéité** : un flux dure 30 min au plus ; 4 appels ouverts
+  « au clavier », 2 agents de fond en vol par clé (au-delà : 429,
+  `Retry-After: 5`). Les agents de fond qui attendent restent bornés par la
+  file (503), pas par ce 429 : ils attendent sans erreur, comme convenu.
+- **Contre-pression** : un `write` refusé suspend la lecture du modèle jusqu'à
+  `drain` ; sans `drain` en 30 s, l'outil est coupé et le modèle libéré.
+- **Porte fermée** : sans clé valide, même réponse que porte ouverte avec une
+  clé fausse (401, même corps, les deux empreintes comparées). Avec une clé
+  valide, « porte coupée » est dit.
+- **Schémas** (`tools[].parameters`, `json_schema`) : 64 Ko, 32 niveaux,
+  5 000 éléments au plus ; `/v1/models/%` mal encodé : 400.
+- **Écoute** : `server.js` écoute `HOST || 127.0.0.1` ; l'installeur écrit
+  `HOST=127.0.0.1` dans `remy.env` à sa création (jamais réécrit : la valeur
+  réelle de la tour se lit dans la première ligne du journal, « Rémy démarré →
+  http://… »). La passerelle n'accepte de toute façon que des connexions
+  venues de 127.0.0.1 / ::1 (Tailscale Serve s'y connecte), même si `HOST`
+  était élargi.
+- **Délais HTTP de Node** (22, non modifiés par `server.js`, donc appliqués à
+  `/v1`) : `headersTimeout` 60 s, `requestTimeout` 300 s pour RECEVOIR la
+  requête (vérifiés toutes les 30 s par Node : `connectionsCheckingInterval`),
+  `keepAliveTimeout` 5 s, pas de délai d'inactivité de socket. Ils ne
+  bornent pas la réponse (vérifié : un flux de 3 s passe avec
+  `requestTimeout` 1 s) — d'où le plafond de 30 min de la passerelle.
+
+## 2026-11-12 — L'arbre des projets comme vue de ce que Rémy a compris (`arbre-v1`, `verrou-v1`)
+
+Demande : voir d'un coup d'œil, pour chaque branche d'un projet, où on en est
+et pourquoi on fait ça — rempli par Rémy, confirmé ou corrigé par Sam, jamais
+un formulaire vide à remplir — et protéger la vue de ce que Rémy a compris par
+un vrai mot de passe.
+
+- **Le pivot** : un nœud est `motion:<id>` (un projet Motion, rien n'est écrit
+  chez Motion) ou `dossier:<id>` (un dossier de Remy). Migration 13 (la 12 est
+  au blocage entre projets) : `fiches_noeuds` (pourquoi, état, point ; pour
+  chaque champ son texte, son **origine** — `confirme` ou `ecrit` —, la source
+  d'une déduction confirmée et sa date ; les déductions écartées),
+  `historique_noeuds` (chaque changement, 40 par nœud au plus),
+  `conversations_noeuds` (une conversation → un nœud). En avant seulement,
+  rien de déplacé. Un dossier supprimé garde sa fiche (suppression douce).
+- **Une déduction n'est jamais rangée** : elle se recalcule à chaque lecture
+  (`lib/arbre.js`, sans IA), avec sa source en clair. D'où elle vient : les
+  tâches Motion ouvertes du nœud et de ses sous-branches (échéances, prochaine
+  tâche, « bloquée par »), ce que Sam a dit d'un projet entier (« attend… »,
+  « C'est fini » : `carnet.marquesNoeuds`), les coches faites depuis Rémy (le
+  résultat de la chaîne d'écriture), le mouvement dans Rémy (dossier, idées,
+  rangements), les conversations rattachées, le rang dans les priorités
+  confirmées et les mots de Sam pour elles, et sa mémoire (lignes qui nomment
+  le nœud). Ce qu'il **ne sait pas** : qu'une branche est finie sans que Sam
+  l'ait dit, le pourquoi d'une branche que ni une priorité ni la mémoire ne
+  nomment, ce qui avance hors de Motion et de Rémy (code, papier, téléphone).
+- **Ce que Sam tient l'emporte** : Rémy ne propose autre chose pour l'état ou
+  le point que si du nouveau est arrivé après (coche, mouvement, conversation,
+  « C'est fini »), jamais pour le pourquoi, et jamais d'après un simple titre
+  de conversation. « Pas ça » n'est plus reproposé tant que la déduction ne
+  change pas.
+- **Le modèle local** peut proposer « où on en est » d'après la dernière
+  conversation rattachée (`POST /api/noeuds/:n/resume-local`) : d'un geste
+  seulement, circuit « arbre » coupable (Réglages › Rémy), journalisé
+  (`kind: "arbre"`), 20 par heure, jamais de secours cloud ; classé
+  « demandé » dans `lib/priorite.js`. Rien n'est rangé avant « C'est ça ».
+- **Le verrou** (`lib/verrou.js`) : `POST /api/verrou { password }` ouvre
+  une fenêtre de 10 min (`REMY_VERROU_MIN`, 1 à 60) liée à LA session (cookie
+  de session, ou appareil du jeton), gardée en mémoire de la tour (un
+  redémarrage reverrouille), signée HMAC ; `DELETE` la referme, la
+  déconnexion aussi. 5 essais par adresse et par quart d'heure, comptés avant
+  la vérification, et dans le compteur global de la connexion. Le mot de passe
+  en clair (`APP_PASSWORD`) est désormais comparé par empreintes de même
+  taille (avant : la longueur sortait avant la comparaison à temps constant).
+- **Derrière le verrou** (refus 423, vérifié à chaque appel, chemins
+  imbriqués et variantes testés) : ce qui montre la **mémoire** —
+  `GET /api/compris`, `GET`/`PUT /api/memory`, `GET /api/export`. **Pas
+  derrière** : `GET /api/noeuds`, l'historique d'une fiche, `PUT` d'une fiche,
+  le rattachement d'une conversation, les priorités — Projets, la conversation
+  et Ce qui compte en ont besoin tout le temps ; verrouiller une copie de ce
+  qui s'affiche déjà ne protégerait rien. Une ligne de mémoire confirmée dans
+  une fiche y devient donc visible sans verrou (dit à l'écran).
+- **Ce que le verrou ne protège pas**, dit à l'écran : le disque (la base de
+  la tour n'est pas chiffrée au repos), l'app iPhone (qui ne sait pas encore
+  déverrouiller : un appareil par jeton lit encore la mémoire, `appareilExempte`,
+  mais pas `/api/compris`), ce que Rémy répond en conversation. Sans mot de
+  passe sur la tour, il n'y a pas de verrou, et l'écran le dit.
+- **Site** : l'arbre de Projets a un retrait par niveau, une pastille (forme
+  et mot ; en pointillés avec « ? » quand Rémy la propose), une ligne « où on
+  en est » (ou « pourquoi ») et son âge ; le détail d'un nœud a son chemin
+  complet, sa fiche (chaque champ dit son origine ; « C'est ça », « Corriger »,
+  « Pas ça »), son historique et ses conversations. Rémy : « Rattacher à… » et
+  un bandeau en tête (chemin, pourquoi, où on en est) ; « En parler à Rémy »
+  rattache la conversation qui en naît. Projets › Ce que Rémy a compris :
+  derrière le verrou. Une tour d'avant (capacité absente) : rien ne change.
+- **Laissé** : l'iPhone (bandeau, fiches, déverrouillage par l'en-tête
+  `X-Remy-Deverrou`, déjà accepté par la tour), le lien avec T3 Code, le
+  glisser-déposer, le repli des branches.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait

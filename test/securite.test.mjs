@@ -156,9 +156,12 @@ test("un jeton d'appareil ne crée pas d'accès qui survivrait à sa révocation
     assert.equal(r.status, 403, `${m} ${chemin}`);
     assert.match(r.corps.message, /Depuis le site seulement/);
   }
-  // Le site (cookie), lui, peut.
+  // Le site (cookie), lui, peut — après avoir ressaisi le mot de passe (verrou-v1 : l'export contient la mémoire).
   const { cookie } = await appel("POST", "/api/login", { corps: { password: "mot-de-passe-de-test" } });
-  assert.equal((await appel("GET", "/api/export", { cookie })).status, 200);
+  assert.equal((await appel("GET", "/api/export", { cookie })).status, 423, "verrouillé sans ressaisie récente");
+  const v = await appel("POST", "/api/verrou", { cookie, corps: { password: "mot-de-passe-de-test" } });
+  assert.equal(v.status, 200);
+  assert.equal((await appel("GET", "/api/export", { cookie: `${cookie}; ${v.cookie}` })).status, 200);
 });
 
 test("sans mot de passe configuré : ouvert seulement depuis la tour elle-même, jamais via le tailnet", async () => {

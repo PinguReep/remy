@@ -390,9 +390,11 @@ public enum RechercheReglages {
                       symbole: "trash", ecran: .sourcesConversations, ancre: "Tout effacer de la tour",
                       mots: ["effacer", "supprimer", "oublier", "conversations", "ChatGPT", "Claude Code", "T3", "import", "clé", "vie privée"],
                       si: [.capacite("conversations-externes-v1")]),
-        EntreeReglage("priorites", "Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.",
+        // Vrai pour les deux écrans (12/11) : une tour à jour propose le
+        // classement (priorites-v2), une tour d'avant garde la liste écrite.
+        EntreeReglage("priorites", "Ce qui compte", sous: "Ce qui compte pour toi, dans l'ordre : le conseil et la nuit s'en servent.",
                       symbole: "star", ecran: .priorites,
-                      mots: ["priorités", "priorité", "objectifs", "important", "focus", "valeurs"],
+                      mots: ["priorités", "priorité", "objectifs", "important", "focus", "valeurs", "classement", "confirmer", "ce que Rémy a compris"],
                       si: [.capacite("priorites-v1")]),
         EntreeReglage("regles", "Règles de Rémy", sous: "Les tâches à faire avant un type d'événement.",
                       symbole: "arrow.triangle.branch", ecran: .regles,
