@@ -13,17 +13,19 @@ avalé : Rémy ne connaissait que les projets portés par une tâche, perdait ce
 sans tâche ouverte, le nom de ceux rattachés par identifiant seul, et ne savait
 plus qu'un projet était terminé.
 
-- **Correction.** `projetsDeTousLesEspaces` lit `/workspaces`, puis
-  `/projects?workspaceId=…` pour chacun, l'un après l'autre (quota). Un espace
-  illisible n'efface pas les autres ; tous illisibles, la dernière liste connue
-  reste.
-- **Le quota.** Une requête par espace au lieu d'une : le premier essai a fait
-  échouer le test d'intégration de l'iPhone (une tâche créée à l'instant
-  n'apparaissait pas, sa relecture attendait derrière la liste des projets).
-  La liste ne part donc que s'il reste, après elle, la réserve des gestes
-  (`RESERVE_GESTES`) ; sinon elle attend le passage suivant. La liste des
-  espaces est gardée 30 min et partagée avec `motionIds`
-  (`projets-quota.test.mjs`).
+- **Correction.** `projetsDesEspaces` lit `/projects?workspaceId=…` pour chaque
+  espace, l'un après l'autre. Un espace illisible n'efface pas les autres ; tous
+  illisibles, la dernière liste connue reste.
+- **Le quota, compté au plus juste.** Deux essais ont fait échouer le test
+  d'intégration de l'iPhone (une tâche créée à l'instant n'apparaissait plus
+  dans la journée) : lire d'abord `/workspaces` ajoutait une requête dans la
+  minute, et c'était une de trop pour la relecture qui suit la création — le
+  même test passait sur `main` à la même heure. Donc aucune requête pour
+  connaître les espaces : ce sont ceux des tâches déjà lues, plus la liste
+  complète que `motionIds` lit à la première écriture (un espace sans tâche
+  ouverte n'est couvert qu'à partir de là). Un seul espace : une requête, comme
+  avant. Plusieurs : seulement s'il reste ensuite la réserve des gestes
+  (`RESERVE_GESTES`), sinon au passage suivant (`projets-quota.test.mjs`).
 - **Pourquoi les tests ne l'avaient pas vu.** Les faux Motion répondaient 200 à
   `/projects` sans espace. Ils refusent maintenant comme le vrai, et
   `projets.test.mjs` vérifie que la demande part espace par espace.

@@ -8,11 +8,11 @@ const H = 3600_000;
 const maintenant = Date.UTC(2026, 9, 15, 8, 40);
 const iso = (ms) => new Date(ms).toISOString();
 const taches = [
-  { id: "a", name: "Retouche des photos", project: { id: "p1", name: "Album « Été »" }, dueDate: iso(maintenant + 8 * H), status: { name: "Todo" } },
+  { id: "a", name: "Retouche des photos", project: { id: "p1", name: "Album « Été »" }, dueDate: iso(maintenant + 8 * H), status: { name: "Todo" }, workspace: { id: "w1" } },
   { id: "b", name: "Écrire le couplet", project: { id: "p1", name: "Album « Été »" }, status: { name: "Todo" } },
   { id: "c", name: "Prospection zone nord", projectId: "p2", dueDate: iso(maintenant + 5 * H), status: { name: "Todo" } },
   { id: "d", name: "Relancer le comptable", project: { name: "Admin" }, dueDate: iso(maintenant - 48 * H), status: { name: "Todo" } },
-  { id: "e", name: "Trier la boîte mail", dueDate: iso(maintenant + H), status: { name: "Todo" } },
+  { id: "e", name: "Trier la boîte mail", dueDate: iso(maintenant + H), status: { name: "Todo" }, workspace: { id: "w2" } },
 ];
 const projets = [
   { id: "p1", name: "Album « Été »", status: { name: "En cours" } },
@@ -21,7 +21,8 @@ const projets = [
   { id: "p4", name: "Ancien projet", status: { name: "Fini", isResolvedStatus: true } },
 ];
 // Comme le vrai Motion : les projets se lisent espace par espace, et `GET /projects`
-// sans espace est refusé (400 « Validation failed », vu en production).
+// sans espace est refusé (400 « Validation failed », vu en production). Les espaces
+// sont ceux des tâches (w1, w2) : aucune requête n'est dépensée pour les connaître.
 const parEspace = { w1: projets.slice(0, 2), w2: projets.slice(2) };
 const demandes = [];
 const serveur = http.createServer((req, res) => {
@@ -59,4 +60,5 @@ test("les projets ouverts, leurs tâches et la plus proche échéance", async ()
     ["/v1/projects?workspaceId=w1", "/v1/projects?workspaceId=w2"],
     "les projets sont demandés espace par espace, jamais sans espace",
   );
+  assert.ok(!demandes.includes("/v1/workspaces"), "connaître les espaces ne coûte aucune requête");
 });
