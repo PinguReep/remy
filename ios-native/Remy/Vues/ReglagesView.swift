@@ -148,7 +148,9 @@ struct ReglagesView: View {
                         }
                     }
                     if app.serveur?.sait("priorites-v1") == true {
-                        ligne("Ce qui compte", sous: "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.", symbole: "star") {
+                        // priorites-v2 (12/11) : Rémy propose le classement, Sam le confirme.
+                        ligne("Ce qui compte", sous: app.priorites.disponible ? CeQuiCompte.ligneReglages : "Tes 3 à 5 priorités : le conseil et la nuit s'en servent.",
+                              symbole: "star") {
                             prioritesOuvertes = true
                         }
                     }

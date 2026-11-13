@@ -67,7 +67,12 @@ const remy = http.createServer(async (req, res) => {
 });
 await new Promise((r) => remy.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${remy.address().port}`;
-test.after(() => { remy.close(); glm.close(); fs.rmSync(dossier, { recursive: true, force: true }); });
+// Lire une conversation ouvre la base : on la referme avant d'effacer le dossier (Windows refuse sinon).
+let fermerDb = () => {};
+try {
+  fermerDb = (await import("../lib/db.js")).fermer;
+} catch {}
+test.after(() => { remy.close(); glm.close(); fermerDb(); fs.rmSync(dossier, { recursive: true, force: true }); });
 
 const post = (chemin, corps) => fetch(base + chemin, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) });
 const evenements = (brut) => brut.split("\n\n").filter(Boolean).map((b) => ({ nom: b.match(/^event: (.+)$/m)?.[1], data: JSON.parse(b.match(/^data: (.+)$/m)?.[1] || "null") }));

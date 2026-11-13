@@ -2,8 +2,9 @@ import SwiftUI
 import RemyCore
 
 // Le cerveau relié à la vie (24/10) : la carte « carnet » du chat (courses et
-// rappels proposés par Rémy) et Réglages › Ce qui compte (les priorités de
-// Sam, et les notifications des propositions).
+// rappels proposés par Rémy) et, pour une tour d'avant priorites-v2,
+// Réglages › Ce qui compte écrit à la main. Depuis le 12/11, c'est Rémy qui
+// propose le classement et Sam qui le confirme : PrioritesVues.swift.
 
 /// Carte d'une proposition « carnet » : des articles pour une liste, un rappel.
 /// Rien n'est écrit avant « Ajouter ».
@@ -98,16 +99,18 @@ struct CarteCarnet: View {
     }
 }
 
-/// Réglages › Ce qui compte : les 3 à 5 priorités de Sam (versionnées sur la
-/// tour), ce qui n'a pas bougé, et les notifications des propositions.
-struct PrioritesVue: View {
+/// Réglages › Ce qui compte, sur une tour d'avant priorites-v2 : la liste
+/// écrite par Sam (versionnée sur la tour), ce qui n'a pas bougé, et les
+/// notifications des propositions. La tour à jour, c'est « Ce que Rémy a
+/// compris » (PrioritesVues.swift) ; cet écran reste tel quel pour une tour
+/// qui ne sait pas encore proposer.
+struct PrioritesEcritesVue: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var fermer
     @State private var vue: VuePriorites?
     @State private var brouillon: [Priorite] = []
     @State private var erreur: String?
     @State private var enregistrement = false
-    @AppStorage(PropositionsAttente.cleActives) private var notifications = true
 
     private var modifie: Bool { Priorites.aEnvoyer(brouillon) != Priorites.aEnvoyer(vue?.priorites ?? []) }
 
@@ -152,31 +155,7 @@ struct PrioritesVue: View {
                 } footer: {
                     if let v = vue, v.version > 0 { Text(piedVersion(v)) }
                 }
-                Section {
-                    Toggle(isOn: $notifications) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Me notifier").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
-                            Text("Les tâches proposées par tes règles et les sujets de plus pour la nuit, avec « Oui » et « Plus tard » dans la notification.")
-                                .font(Police.texte(13))
-                                .foregroundStyle(Palette.encre2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .tint(Palette.signal)
-                    .frame(minHeight: 52)
-                    .onChange(of: notifications) { _, actives in
-                        Task {
-                            if actives {
-                                await Notifications.demander()
-                                await NotificationsPropositions.rafraichir(app)
-                            } else {
-                                await NotificationsPropositions.retirerToutes()
-                            }
-                        }
-                    }
-                } header: {
-                    Text("Propositions de Rémy")
-                }
+                SectionNotificationsPropositions()
             }
             .navigationTitle("Ce qui compte")
             .navigationBarTitleDisplayMode(.inline)
@@ -220,7 +199,7 @@ struct PrioritesVue: View {
 
     private func piedVersion(_ v: VuePriorites) -> String {
         let date = v.majA.map { " du " + Format.jourCourt($0.date) } ?? ""
-        return "Version \(v.version)\(date) : chaque enregistrement garde les précédentes sur ta tour."
+        return "Version \(v.version)\(date) : chaque enregistrement garde les précédentes sur ta tour. Le classement proposé par Rémy arrive avec la mise à jour de ta tour."
     }
 
     private func charger() async {
@@ -253,6 +232,41 @@ struct PrioritesVue: View {
                 return
             }
             app.signaler(error)
+        }
+    }
+}
+
+/// Réglages › Ce qui compte › Propositions de Rémy : les notifications des
+/// propositions qui attendent un « oui » (les deux écrans de Ce qui compte).
+struct SectionNotificationsPropositions: View {
+    @Environment(AppModel.self) private var app
+    @AppStorage(PropositionsAttente.cleActives) private var notifications = true
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $notifications) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Me notifier").font(Police.texte(16, .medium)).foregroundStyle(Palette.encre)
+                    Text("Les tâches proposées par tes règles et les sujets de plus pour la nuit, avec « Oui » et « Plus tard » dans la notification.")
+                        .font(Police.texte(13))
+                        .foregroundStyle(Palette.encre2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(Palette.signal)
+            .frame(minHeight: 52)
+            .onChange(of: notifications) { _, actives in
+                Task {
+                    if actives {
+                        await Notifications.demander()
+                        await NotificationsPropositions.rafraichir(app)
+                    } else {
+                        await NotificationsPropositions.retirerToutes()
+                    }
+                }
+            }
+        } header: {
+            Text("Propositions de Rémy")
         }
     }
 }

@@ -118,6 +118,8 @@ public final class AppModel {
     public let aTrancher: ATrancherModel
     /// Tes conversations ailleurs : Claude Code, T3 Code, ChatGPT (29/10).
     public let conversationsExternes: ConversationsExternesModel
+    /// Ce qui compte : le classement proposé par Rémy, confirmé par Sam (priorites-v2, 12/11).
+    public let priorites: PrioritesModel
     /// La file du quota Motion pendant qu'une écriture attend (motion-file-v1,
     /// 24/10) : la carte dit « En file chez Motion : ~20 s ». nil : rien à dire.
     public var attenteMotion: AttenteMotion?
@@ -153,6 +155,7 @@ public final class AppModel {
         self.rituel = RituelModel(api: api, rangement: rangement)
         self.aTrancher = ATrancherModel(api: api, reglages: reglages)
         self.conversationsExternes = ConversationsExternesModel(api: api)
+        self.priorites = PrioritesModel(api: api, rangement: rangement)
         tableau.app = self
         projets.app = self
         semaine.app = self
@@ -170,6 +173,7 @@ public final class AppModel {
         rituel.app = self
         aTrancher.app = self
         conversationsExternes.app = self
+        priorites.app = self
         chat.surSujetsTraites = { [weak self] in
             Task { await self?.tableau.charger() }
         }
@@ -224,6 +228,7 @@ public final class AppModel {
             historique.vider()
             carnet.vider()
             rituel.vider()
+            priorites.vider()
             phase = .connexion
         } catch {
             // Hors ligne au lancement : on montre l'app quand même, et chaque
@@ -261,6 +266,7 @@ public final class AppModel {
         carnet.vider()
         rituel.vider()
         aTrancher.vider()
+        priorites.vider()
         onglet = .aujourdhui
         reglagesOuverts = false
         message = nil
@@ -439,6 +445,7 @@ public final class AppModel {
             historique.vider()
             carnet.vider()
             rituel.vider()
+            priorites.vider()
             phase = .connexion
             // Le dernier message promettait peut-être « partira dès que Rémy
             // sera joignable » : on dit ce qui se passe vraiment.
