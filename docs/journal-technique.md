@@ -4,6 +4,35 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-13 — Les projets de Motion se lisent espace par espace
+
+Depuis le 14/10, le journal de la tour répétait « Motion GET /projects : 400 » :
+Motion refuse la liste des projets demandée sans espace de travail (« Validation
+failed »). Comme les projets sont « un plus, jamais une panne », l'échec était
+avalé : Rémy ne connaissait que les projets portés par une tâche, perdait ceux
+sans tâche ouverte, le nom de ceux rattachés par identifiant seul, et ne savait
+plus qu'un projet était terminé.
+
+- **Correction.** `projetsDesEspaces` lit `/projects?workspaceId=…` pour chaque
+  espace, l'un après l'autre. Un espace illisible n'efface pas les autres ; tous
+  illisibles, la dernière liste connue reste.
+- **Le quota, compté au plus juste.** Deux essais ont fait échouer le test
+  d'intégration de l'iPhone (une tâche créée à l'instant n'apparaissait plus
+  dans la journée) : lire d'abord `/workspaces` ajoutait une requête dans la
+  minute, et c'était une de trop pour la relecture qui suit la création — le
+  même test passait sur `main` à la même heure. Donc aucune requête pour
+  connaître les espaces : ce sont ceux des tâches déjà lues, plus la liste
+  complète que `motionIds` lit à la première écriture (un espace sans tâche
+  ouverte n'est couvert qu'à partir de là). Un seul espace : une requête, comme
+  avant. Plusieurs : seulement s'il reste ensuite la réserve des gestes
+  (`RESERVE_GESTES`), sinon au passage suivant (`projets-quota.test.mjs`).
+- **Pourquoi les tests ne l'avaient pas vu.** Les faux Motion répondaient 200 à
+  `/projects` sans espace. Ils refusent maintenant comme le vrai, et
+  `projets.test.mjs` vérifie que la demande part espace par espace.
+- **Preuve sur la tour**, en lecture seule contre le vrai compte : l'ancien code
+  voit 0 projet et journalise le 400, le nouveau voit le projet ouvert, sans
+  avertissement.
+
 ## 2026-11-12 — Assemblage du lot du soir, repris sur la tour
 
 La session qui menait le lot s'est arrêtée avant l'assemblage ; il a été refait

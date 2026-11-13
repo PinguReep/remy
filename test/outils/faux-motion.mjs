@@ -91,7 +91,11 @@ export async function demarrerFauxMotion({ pageTaille = 50, quotaParMinute = nul
       if (chemin === "/workspaces") return repondre(200, { workspaces: [{ ...espace, statuses: statuts }], meta: {} });
       if (chemin === "/statuses") return repondre(200, statuts);
       if (chemin === "/schedules") return repondre(200, [{ name: "Work Hours", isChunkedTaskSchedule: false, timezone: "Europe/Paris", ...(horaires ? { schedule: horaires } : {}) }]);
-      if (chemin === "/projects") return repondre(200, { projects: [], meta: {} });
+      // Comme le vrai : sans espace de travail, la liste des projets est refusée.
+      if (chemin === "/projects") {
+        if (req.method === "GET" && !u.searchParams.get("workspaceId")) return repondre(400, { message: "Validation failed", error: "Bad Request", statusCode: 400 });
+        return repondre(200, { projects: [], meta: {} });
+      }
 
       if (chemin === "/tasks" && req.method === "GET") {
         let liste = [...taches.values()];
