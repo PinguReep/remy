@@ -20,10 +20,21 @@ const projets = [
   { id: "p3", name: "Voyage à Porto" },
   { id: "p4", name: "Ancien projet", status: { name: "Fini", isResolvedStatus: true } },
 ];
+// Comme le vrai Motion : les projets se lisent espace par espace, et `GET /projects`
+// sans espace est refusé (400 « Validation failed », vu en production).
+const parEspace = { w1: projets.slice(0, 2), w2: projets.slice(2) };
+const demandes = [];
 const serveur = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "application/json" });
-  if (req.url.startsWith("/v1/projects")) return res.end(JSON.stringify({ projects: projets, meta: {} }));
-  res.end(JSON.stringify({ tasks: taches, meta: {} }));
+  const u = new URL(req.url, "http://faux");
+  demandes.push(u.pathname + u.search);
+  const repondre = (code, v) => (res.writeHead(code, { "Content-Type": "application/json" }), res.end(JSON.stringify(v)));
+  if (u.pathname === "/v1/workspaces") return repondre(200, { workspaces: [{ id: "w1", name: "Perso" }, { id: "w2", name: "Travail" }], meta: {} });
+  if (u.pathname === "/v1/projects") {
+    const espace = u.searchParams.get("workspaceId");
+    if (!espace) return repondre(400, { message: "Validation failed", error: "Bad Request", statusCode: 400 });
+    return repondre(200, { projects: parEspace[espace] || [], meta: {} });
+  }
+  repondre(200, { tasks: taches, meta: {} });
 });
 await new Promise((r) => serveur.listen(0, r));
 process.env.MOTION_API_KEY = "cle";
@@ -43,4 +54,9 @@ test("les projets ouverts, leurs tâches et la plus proche échéance", async ()
   assert.equal(r.projets.find((p) => p.id === "p3").taches, 0, "un projet sans tâche reste visible");
   assert.ok(!r.projets.some((p) => p.id === "p4"), "un projet terminé n'apparaît pas");
   assert.equal(r.sansProjet, 1);
+  assert.deepEqual(
+    demandes.filter((d) => d.startsWith("/v1/projects")),
+    ["/v1/projects?workspaceId=w1", "/v1/projects?workspaceId=w2"],
+    "les projets sont demandés espace par espace, jamais sans espace",
+  );
 });

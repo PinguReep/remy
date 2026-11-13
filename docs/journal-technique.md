@@ -4,6 +4,26 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-13 — Les projets de Motion se lisent espace par espace
+
+Depuis le 14/10, le journal de la tour répétait « Motion GET /projects : 400 » :
+Motion refuse la liste des projets demandée sans espace de travail (« Validation
+failed »). Comme les projets sont « un plus, jamais une panne », l'échec était
+avalé : Rémy ne connaissait que les projets portés par une tâche, perdait ceux
+sans tâche ouverte, le nom de ceux rattachés par identifiant seul, et ne savait
+plus qu'un projet était terminé.
+
+- **Correction.** `projetsDeTousLesEspaces` lit `/workspaces`, puis
+  `/projects?workspaceId=…` pour chacun, l'un après l'autre (quota). Un espace
+  illisible n'efface pas les autres ; tous illisibles, la dernière liste connue
+  reste.
+- **Pourquoi les tests ne l'avaient pas vu.** Les faux Motion répondaient 200 à
+  `/projects` sans espace. Ils refusent maintenant comme le vrai, et
+  `projets.test.mjs` vérifie que la demande part espace par espace.
+- **Preuve sur la tour**, en lecture seule contre le vrai compte : l'ancien code
+  voit 0 projet et journalise le 400, le nouveau voit le projet ouvert, sans
+  avertissement.
+
 ## 2026-11-12 — Le travail de fond cède la place (`fond-cede-v1`)
 
 Règle posée par Sam (CLAUDE.md) : ce que Rémy fait sans qu'on le lui ait
