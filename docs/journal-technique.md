@@ -4,6 +4,42 @@ Les décisions techniques non triviales : quoi, et pourquoi. Rien de personnel
 ici (le dépôt est public) — les choix de produit et leur contexte vivent dans les
 notes privées, sur la tour.
 
+## 2026-11-24 — Mémoire : plafond relevé à 40 000 caractères, condensation près du plafond
+
+- **Constat** : la mémoire est un seul texte, relu en entier avant chaque
+  réponse et réécrit en entier après chaque échange. À 97 % du plafond
+  (25 000 caractères, chiffre de l'import initial, sans raison écrite), Rémy
+  cessait de l'enrichir sans rien dire d'autre qu'une ligne du diagnostic. Et
+  la consigne demandait « ~1500 mots » à un texte qui en faisait plus du double.
+- **Ce qui borne vraiment la taille** : la réécriture complète, en un appel
+  sans flux (290 s au plus). Mesuré sur le modèle local de la tour : 3,3
+  caractères par jeton, 118 jetons par seconde. 40 000 caractères ≈ 12 200
+  jetons ≈ deux minutes. `MEMORY_MAX_CHARS = 40_000` ; la réponse a droit à
+  `MEMORY_MAX_CHARS / 2,5` jetons (16 000, contre 8 000 en dur : une mémoire de
+  25 000 caractères en demandait déjà 7 800) et au délai le plus long
+  (`MEMORY_DELAI_MS`). Le nombre de mots dit au modèle suit le plafond.
+- **Condensation** (`condenserMemoire`, `lib/chat.js`, circuit « memoire ») :
+  passé 85 % du plafond, l'échange suivant ne fait plus une mise à jour mais
+  une réécriture plus courte (cible 60 %), qui intègre aussi cet échange — un
+  seul appel. Elle n'est écrite que si elle est croyable
+  (`condensationCredible` : entière, sections gardées, repassée sous le seuil,
+  pas réduite à moins d'un tiers) et si la mémoire n'a pas changé entre-temps.
+  L'ancienne version est gardée avant l'écriture (`archiverMemoire` : dans le
+  coffre, dossier « Mémoire — anciennes versions », les cinq dernières ; sinon à
+  côté de la base ; sur Redis, une clé) ; sans copie, pas de condensation. Un
+  essai raté n'est pas refait avant 6 h, et la mise à jour ordinaire reprend.
+- **Écarté** : couper la mémoire en un cœur court et des faits rangés à part,
+  relus à la demande. C'est la vraie réponse à long terme (chaque échange
+  réécrit aujourd'hui tout le texte : une à deux minutes de modèle local), mais
+  c'est une refonte ; la demande était d'agrandir un peu et de condenser.
+- **Vérifié** : `test/memoire-condensation.test.mjs` (faux modèle, coffre
+  jetable) ; puis le vrai modèle local sur une copie jetable de la mémoire de la
+  tour : mise à jour ordinaire en 71 s (7 790 jetons), condensation d'un texte
+  de 34 687 caractères à 24 837 en 69 s, sections et mentions « [déclaré] »
+  toutes retrouvées, ancienne version gardée à l'identique.
+- **Limite** : l'iPhone n'affiche pas l'interrupteur du circuit (il ne liste
+  que certains circuits) ; il est dans les Réglages du site.
+
 ## 2026-11-13 — Les projets de Motion se lisent espace par espace
 
 Depuis le 14/10, le journal de la tour répétait « Motion GET /projects : 400 » :

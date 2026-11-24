@@ -210,6 +210,8 @@ test("Rémy : recherche web, recherche privée, circuits — les phrases de l'iP
   assert.equal(V.annonceCircuit("conseil", false), "Conseil réfléchi coupé : le conseil se calcule sans IA.");
   assert.equal(V.annonceCircuit("compactage", true), "Compactage automatique allumé.");
   assert.equal(V.annonceCircuit("regles", false), "Vérification des règles coupée : Rémy ne propose plus leurs tâches.");
+  assert.equal(V.annonceCircuit("memoire", false), "Condensation de la mémoire coupée : passé le plafond, Rémy n'apprendra plus rien.");
+  assert.match(V.detailCircuit("memoire", {}), /L'ancienne version est gardée dans ton coffre/);
   assert.equal(V.annonceCircuit("syntheses", true), "Circuit allumé.");
   assert.equal(V.detailCircuit("nuit", { forceParLaTour: true }), "Réglé sur la tour (REMY_CIRCUIT_NUIT) : à changer là-bas.");
   assert.equal(V.detailCircuit("syntheses", {}), null, "les autres circuits gardent leur nom seul");
