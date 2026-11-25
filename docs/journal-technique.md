@@ -39,6 +39,15 @@ notes privées, sur la tour.
   toutes retrouvées, ancienne version gardée à l'identique.
 - **Limite** : l'iPhone n'affiche pas l'interrupteur du circuit (il ne liste
   que certains circuits) ; il est dans les Réglages du site.
+- **Test instable corrigé en passant** : `test/outil-pieces.test.mjs` échouait
+  au hasard (« fetch failed », Ubuntu de la CI et ici, environ une fois sur
+  trois). Cause prouvée en instrumentant : la connexion se faisait par un
+  `await` au niveau du module, entre deux `test()`. node:test finit les tests
+  déjà déclarés pendant cet `await`, lance `test.after` (qui ferme le serveur),
+  et les tests déclarés ensuite trouvent porte close (`ECONNREFUSED`). La
+  connexion se fait maintenant dans les tests. Dix autres fichiers ont un
+  `await` au niveau du module après un `test()` (`etapes`, `semaine`,
+  `site-*`…) ; aucun n'a échoué, laissés tels quels.
 
 ## 2026-11-13 — Les projets de Motion se lisent espace par espace
 
