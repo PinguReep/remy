@@ -272,10 +272,20 @@ test("jamais hors du modèle local : pas offert sans contexte, refusé à Claude
 });
 
 // --- De bout en bout, par les vraies routes ------------------------------------------------------
-const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "mot-de-passe-de-test" }) });
-const cookie = login.headers.get("set-cookie").split(";")[0];
-const appel = (methode, chemin, corps) =>
-  fetch(base + chemin, { method: methode, headers: { cookie, ...(corps !== undefined ? { "Content-Type": "application/json" } : {}) }, body: corps === undefined ? undefined : JSON.stringify(corps) });
+// La connexion se fait DANS les tests, pas au chargement du fichier : un `await` au
+// niveau du module entre deux tests laisse node:test finir les tests déjà déclarés,
+// lancer test.after (qui ferme le serveur) et faire échouer ceux d'après
+// (« fetch failed », au hasard, 24/11).
+let cookie = null;
+const connexion = async () => {
+  if (!cookie) {
+    const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "mot-de-passe-de-test" }) });
+    cookie = login.headers.get("set-cookie").split(";")[0];
+  }
+  return cookie;
+};
+const appel = async (methode, chemin, corps) =>
+  fetch(base + chemin, { method: methode, headers: { cookie: await connexion(), ...(corps !== undefined ? { "Content-Type": "application/json" } : {}) }, body: corps === undefined ? undefined : JSON.stringify(corps) });
 const evenements = async (r) =>
   [...(await r.text()).matchAll(/^event: (.+)\ndata: (.+)$/gm)].map((m) => {
     try {
